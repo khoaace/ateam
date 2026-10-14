@@ -2,6 +2,11 @@
 
 ## Chưa phát hành
 
+- **Sửa: gõ tiếng Việt trong ô nhập bị lỗi font** (dấu rời khỏi chữ, sót dấu khi bộ gõ sửa chữ). Bộ gõ
+  để bảng mã Unicode tổ hợp gửi chữ và dấu thành các ký tự riêng; terminal vẽ dấu lệch, còn Backspace của
+  bộ gõ chỉ xoá một ký tự nên dấu cũ sót lại. Mọi ô nhập giờ gộp chữ về dạng dựng sẵn (NFC) và
+  Backspace/Delete xoá trọn một chữ cùng dấu của nó.
+
 - **Sửa: mọi task của Codex lỗi ngay** với `error: unexpected argument '--full-auto' found` — Codex 0.152
   đã bỏ cờ này. Lệnh mặc định đổi sang `codex exec --sandbox workspace-write` (cũng chạy trên bản Codex
   cũ). Cấu hình cũ còn `--full-auto` được tự đổi khi đọc; cấu hình chung nâng lên bản 4.
