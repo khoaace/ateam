@@ -1,5 +1,12 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Tab Đội không còn bị trôi khi cuộn**: log của từng agent tự xuống dòng theo bề rộng ô (trước đây
+  ô hẹp hơn 78 cột thì sinh thanh cuộn ngang, chữ bị cắt và vuốt trackpad làm log trôi ngang); màn hình,
+  tab và lưới ô agent bị khoá không cuộn, chỉ log trong từng ô cuộn. Output agent được lọc thêm ký tự
+  điều khiển C1 (U+0080–U+009F) và DEL, vốn có thể làm terminal xuống dòng/cuộn ngược và đẩy lệch TUI.
+
 ## 0.5.1 — 14/10/2026
 
 - **Gõ `/` ở đầu ô nhập** hiện danh sách lệnh kèm tham số và mô tả, gõ tiếp để lọc; Tab chèn lệnh,
