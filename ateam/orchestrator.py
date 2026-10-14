@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import shutil
 import time
 from pathlib import Path
 from typing import Callable
@@ -305,6 +306,33 @@ class Orchestrator:
         self.log(f"⚙ {agent}: {key} = {value or 'mặc định của CLI'}")
         self.emit("changed")
         return f"{agent}: {a.label()}"
+
+    async def discover_models(self, agent: str, timeout: float = 30) -> str:
+        """Chạy models_command của agent (vd `opencode models`) để lấy danh sách model thật."""
+        from .config import parse_models, save_found_models
+        a = self.cfg.agents.get(agent)
+        if not a:
+            return f"Không có agent '{agent}'"
+        if not a.models_command:
+            return f"{agent}: CLI không có lệnh liệt kê model — dùng danh mục có sẵn"
+        if not shutil.which(a.models_command[0]):
+            return f"{agent}: chưa cài lệnh '{a.models_command[0]}'"
+        run = Run(list(a.models_command), str(self.root), self.env_for(), use_pty=a.pty,
+                  timeout=timeout, on_line=lambda _l: None)
+        try:
+            code = await run.start()
+        except Exception as e:
+            return f"{agent}: không chạy được {' '.join(a.models_command)}: {e}"
+        found = parse_models(run.output, a.models_filter)
+        if not a.models_filter and any(agent.lower() in m.lower() for m in found):
+            found = [m for m in found if agent.lower() in m.lower()]
+        if code != 0 or not found:
+            why = "hết thời gian" if run.timed_out else f"mã thoát {code}" if code else "không thấy model nào"
+            return f"{agent}: {' '.join(a.models_command)} — {why}"
+        save_found_models(agent, found)
+        a.models = found + [m for m in a.models if m not in found]
+        self.emit("changed")
+        return f"{agent}: tìm thấy {len(found)} model"
 
     def edit(self, tid: int, prompt: str) -> str:
         t = self.db.task(tid)

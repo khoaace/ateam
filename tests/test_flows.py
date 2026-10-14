@@ -155,3 +155,16 @@ def test_run_exits_when_only_cooldown_tasks_left(env, project, tmp_path):
     r = ateam(env, project, "run", "-q", timeout=60)  # không được treo
     assert tasks(project)[0].status == "queued"
     assert "hết hạn mức" in r.stdout
+
+
+def test_models_refresh_asks_cli(env, project):
+    r = ateam(env, project, "models", "grok", "--refresh")
+    assert "tìm thấy 3 model" in r.stdout, r.stdout
+    assert "xai/grok-5-fast" in r.stdout and "openai/gpt-5.5" not in r.stdout
+    # agy chỉ in khi có terminal -> phải hỏi qua pty
+    r = ateam(env, project, "models", "antigravity", "--refresh")
+    assert "gemini-3-pro" in r.stdout and "Available" not in r.stdout, r.stdout
+    # lần sau đọc lại từ state.json, không cần hỏi lại
+    r = ateam(env, project, "models")
+    assert "xai/grok-5-fast" in r.stdout and "gemini-3-flash" in r.stdout
+    assert "claude-opus-5-5" in r.stdout

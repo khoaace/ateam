@@ -23,6 +23,9 @@ nhưng chưa có báo cáo chạy thật. Cần xác nhận:
       không; nếu không, để `effort` trống cho grok.
 - [ ] Thông báo hết hạn mức thật của từng CLI khớp `LIMIT_RE` và đọc được giờ hồi
       (khi gặp: lấy `ateam log <task>`, thêm mẫu + test).
+- [ ] Danh mục model trong `CATALOG` (`config.py`) khớp tên CLI thật nhận (codex `gpt-5.5-codex`,
+      alias của claude); định dạng output thật của `agy models` / `opencode models` bóc đúng bằng
+      `parse_models` (agy cần đăng nhập, chạy qua pty).
 - [ ] Kế hoạch JSON của Claude thật được bóc ổn định (`.ateam/logs/lead.log` khi lỗi).
 
 ## Backlog tính năng (đã đề xuất với người dùng, chưa làm)

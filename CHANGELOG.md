@@ -1,5 +1,15 @@
 # Changelog
 
+## Chưa phát hành
+
+- Thêm: xem model và effort mỗi agent hỗ trợ. Tab Đội hiện danh sách ngay trong ô từng agent (mục đang
+  dùng tô đậm); `/model <agent>` và `/effort <agent>` (không kèm giá trị) hoặc bấm vào tiêu đề ô agent
+  mở bảng chọn; lựa chọn được lưu và đi thẳng vào cờ CLI như `/model <agent> <tên>`.
+- Thêm `/models [agent]`, `ateam models [agent] [--refresh]`. Danh mục model/effort có sẵn cho
+  claude, codex, agy, opencode; với `opencode models` / `agy models`, ateam hỏi CLI danh sách thật
+  (lần đầu mở app, hoặc `/models <agent> làm mới`) và lưu vào `state.json`.
+- Khoá cấu hình mới (không bắt buộc): `models`, `models_command`, `models_filter`.
+
 ## 0.3.1 — 14/10/2026
 
 - Sửa: phím tắt Ctrl+D, Ctrl+K… không có tác dụng khi con trỏ đang ở ô nhập (mặc định khi mở app) —

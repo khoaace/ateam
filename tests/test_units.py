@@ -77,3 +77,39 @@ def test_old_global_config_is_upgraded_with_backup(tmp_path, monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(cfgmod)
+
+
+def test_parse_models_from_cli_listing():
+    from ateam.config import parse_models
+    out = "Available models:\n  gemini-3-pro      (default)\n- gemini-3-flash\n\nNAME\nxai/grok-4.7\nxai/grok-4.7\n"
+    assert parse_models(out) == ["gemini-3-pro", "gemini-3-flash", "xai/grok-4.7"]
+    assert parse_models(out, "grok") == ["xai/grok-4.7"]
+
+
+def test_catalog_fills_models_and_efforts(tmp_path, monkeypatch):
+    import importlib
+    import json
+
+    import ateam.config as cfgmod
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfgmod = importlib.reload(cfgmod)
+    try:
+        cfgmod.GLOBAL_DIR.mkdir(parents=True)
+        cfgmod.GLOBAL_CONFIG.write_text(
+            'config_version = 99\n[agents.claude]\ncommand = ["/usr/local/bin/claude", "-p", "{prompt}"]\n'
+            '[agents.mine]\ncommand = ["mycli"]\nmodels = ["a", "b"]\nefforts = []\n'
+            '[agents.grok]\ncommand = ["opencode", "run", "{prompt}"]\nmodel = "xai/custom"\n')
+        cfgmod.STATE_FILE.write_text(json.dumps({"models_found": {"grok": ["xai/grok-5-fast", "xai/grok-4.7"]}}))
+        c = cfgmod.load_config(tmp_path / "proj")
+        cl = c.agents["claude"]
+        assert "opus" in cl.models and cl.efforts == ["low", "medium", "high", "max"]
+        assert c.agents["mine"].models == ["a", "b"] and c.agents["mine"].efforts == []
+        g = c.agents["grok"]
+        assert g.models_command == ["opencode", "models"]
+        assert g.models[:3] == ["xai/grok-5-fast", "xai/grok-4.7", "xai/grok-build-0.1"]
+        assert g.model_choices()[0] == "xai/custom"
+        text = cfgmod.describe_models(c, "grok")
+        assert "●xai/custom" in text and "opencode models" in text
+    finally:
+        monkeypatch.undo()
+        importlib.reload(cfgmod)

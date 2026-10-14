@@ -91,6 +91,8 @@ def cmd_doctor(args) -> int:
             print(f"     dự phòng khi hết hạn mức: {', '.join(a.fallback)}")
         print(f"     model/effort: {a.label()}"
               + (f"   (effort hợp lệ: {', '.join(a.efforts)})" if a.efforts else ""))
+        if a.models:
+            print(f"     model gợi ý: {', '.join(a.models[:8])}" + (" …" if len(a.models) > 8 else ""))
         print(f"     {' '.join(a.argv('<prompt>'))}")
     if cfg.lead not in cfg.agents:
         print(f"\n✗ Trưởng nhóm '{cfg.lead}' không có trong [agents].")
@@ -242,6 +244,24 @@ def cmd_set(args) -> int:
     return 0
 
 
+def cmd_models(args) -> int:
+    from .config import describe_models
+    setup_config()
+    root = find_root(args.dir)
+    cfg = load_config(root)
+    if args.agent and args.agent not in cfg.agents:
+        print(f"Không có agent '{args.agent}'. Có: {', '.join(cfg.agents)}", file=sys.stderr)
+        return 1
+    if args.refresh:
+        orch = Orchestrator(root, cfg, open_db(root))
+        for n, a in cfg.agents.items():
+            if (not args.agent or n == args.agent) and a.models_command:
+                print(asyncio.run(orch.discover_models(n)))
+    print(describe_models(cfg, args.agent))
+    print("Đặt: ateam set <agent> --model <tên> --effort <mức>")
+    return 0
+
+
 def _orch(args):
     root = find_root(args.dir)
     cfg = load_config(root)
@@ -331,6 +351,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("agent")
     s.add_argument("--model", help="tên model, '-' để về mặc định")
     s.add_argument("--effort", help="mức effort, '-' để về mặc định")
+    s = sub.add_parser("models", help="xem model / effort mỗi agent hỗ trợ")
+    s.add_argument("agent", nargs="?")
+    s.add_argument("--refresh", action="store_true",
+                   help="hỏi CLI danh sách model thật (opencode models, agy models)")
     s = sub.add_parser("note", help="ghi chú chung cho cả đội")
     s.add_argument("text", nargs="+")
     sub.add_parser("list", help="liệt kê mục tiêu và task")
@@ -355,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     handlers = {None: cmd_tui, "tui": cmd_tui, "init": cmd_init, "doctor": cmd_doctor,
                 "goal": cmd_goal, "add": cmd_add, "note": cmd_note, "list": cmd_list,
-                "log": cmd_log, "run": cmd_run, "set": cmd_set, "diff": cmd_diff,
+                "log": cmd_log, "run": cmd_run, "set": cmd_set, "models": cmd_models, "diff": cmd_diff,
                 "merge": cmd_merge, "reject": cmd_reject, "verify": cmd_verify,
                 "usage": cmd_usage, "cooldown": cmd_cooldown}
     try:

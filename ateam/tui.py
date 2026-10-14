@@ -12,10 +12,12 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import (DataTable, Footer, Header, Input, RichLog, Static, TabbedContent,
-                             TabPane)
+from textual.screen import ModalScreen
+from textual.widgets import (DataTable, Footer, Header, Input, OptionList, RichLog, Static,
+                             TabbedContent, TabPane)
+from textual.widgets.option_list import Option
 
-from .config import Config, save_project_setting
+from .config import AgentConfig, Config, describe_models, load_state, save_project_setting
 from .db import DB
 from .orchestrator import SYSTEM, Orchestrator
 
@@ -43,6 +45,8 @@ GOAL_STATUS = {
 }
 SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 SILENT_WARN = 60  # giây không có output -> cảnh báo "im lặng"
+PANE_MODELS = 5   # số model gợi ý hiện trong ô agent (đủ xem bằng /models <agent>)
+RESET = "\x00reset"  # lựa chọn "quay về mặc định" trong bảng chọn
 
 HELP = """\
 Gõ một câu bình thường  → giao MỤC TIÊU cho trưởng nhóm lập kế hoạch & chia việc.
@@ -74,7 +78,10 @@ Hạn mức:
 Model & effort của từng agent (được lưu lại cho lần sau):
   /model <agent> <tên model>        vd: /model claude opus   ·   /model grok xai/grok-4.7
   /effort <agent> <mức>             vd: /effort codex xhigh  ·   /effort claude high
+  /model <agent>   /effort <agent>  mở bảng chọn từ danh sách agent hỗ trợ (hoặc bấm vào ô agent ở tab Đội)
   /model <agent> -  /effort <agent> -   quay về mặc định trong config
+  /models [agent]                   xem model & effort mỗi agent hỗ trợ
+  /models <agent> làm mới           hỏi CLI danh sách model thật (opencode models, agy models)
   /agents                           xem model, effort, mức effort hợp lệ của từng agent
 
 Khác:
@@ -119,6 +126,66 @@ class AgentPane(Vertical):
     @property
     def body(self) -> RichLog:
         return self.query_one(".pane-log", RichLog)
+
+    def on_click(self, event) -> None:
+        if event.widget is self.head:  # bấm vào tiêu đề ô -> chọn model rồi effort
+            self.app.open_picker(self.agent, "model", then_effort=True)
+
+
+def choice_line(label: str, items: list[str], current: str, limit: int = 0) -> Text:
+    """'model: [opus] sonnet haiku … +3' — mục đang dùng được tô đậm."""
+    t = Text(f"{label}: ", "dim")
+    if not items:
+        t.append("(để CLI tự chọn)" if label == "model" else "(không có)", "dim")
+        return t
+    shown = items[:limit] if limit else items
+    if current and current not in shown:
+        shown = [current] + shown[:-1] if limit else [current] + shown
+    for i, it in enumerate(shown):
+        if i:
+            t.append(" ")
+        t.append(it, "bold reverse cyan" if it == current else "cyan")
+    if len(items) > len(shown):
+        t.append(f" … +{len(items) - len(shown)}", "dim")
+    return t
+
+
+class ChoiceScreen(ModalScreen):
+    """Bảng chọn model/effort cho 1 agent. Trả về giá trị chọn, RESET, hoặc None (Esc)."""
+
+    BINDINGS = [Binding("escape", "dismiss_none", "Đóng", priority=True)]
+    DEFAULT_CSS = """
+    ChoiceScreen { align: center middle; }
+    #choice-box { width: 60; height: auto; max-height: 80%; border: thick $accent;
+                  background: $surface; padding: 0 1; }
+    #choice-list { height: auto; max-height: 30; }
+    """
+
+    def __init__(self, title: str, items: list[str], current: str, default_label: str):
+        super().__init__()
+        self.title_text, self.items, self.current = title, items, current
+        self.default_label = default_label
+
+    def compose(self) -> ComposeResult:
+        opts = [Option(("● " if it == self.current else "  ") + it, id=f"i{n}")
+                for n, it in enumerate(self.items)]
+        opts.append(Option(("● " if not self.current else "  ") + self.default_label, id="reset"))
+        with Vertical(id="choice-box"):
+            yield Static(Text(self.title_text, "bold"))
+            yield OptionList(*opts, id="choice-list")
+            yield Static(Text("Enter: chọn · Esc: đóng · tên khác: /model <agent> <tên>", "dim"))
+
+    def on_mount(self) -> None:
+        ol = self.query_one(OptionList)
+        ol.highlighted = self.items.index(self.current) if self.current in self.items else len(self.items)
+        ol.focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        oid = event.option.id or ""
+        self.dismiss(RESET if oid == "reset" else self.items[int(oid[1:])])
+
+    def action_dismiss_none(self) -> None:
+        self.dismiss(None)
 
 
 class Timeline(Static):
@@ -264,6 +331,7 @@ class TeamApp(App):
             self.orch.log("ℹ " + n)
         self._booted = True
         self._loop_task = asyncio.get_running_loop().create_task(self.orch.run_forever())
+        self.run_worker(self._discover_missing_models(), exclusive=False)
         self.set_interval(0.5, self.refresh_view)
         self.refresh_view()
         self.query_one("#cmd", Input).focus()
@@ -470,6 +538,10 @@ class TeamApp(App):
             if u:
                 t.append(f"   hôm nay {u['runs']} lượt · {fmt_dur(u['secs'])} · "
                          f"~{(u['prompt_chars'] + u['output_chars']) // 4 // 1000}k token", "dim")
+            t.append("\n")
+            t.append_text(choice_line("model", a.model_choices(), a.model, PANE_MODELS))
+            t.append("\n")
+            t.append_text(choice_line("effort", a.efforts, a.effort))
             if not a.installed():
                 t.append(f"\n✗ chưa cài lệnh '{a.binary}'", "red")
             elif self.orch.in_cooldown(name) and not acts:
@@ -632,6 +704,35 @@ class TeamApp(App):
         out.append("(~token = ước tính từ độ dài prompt và output, chưa gồm file agent tự đọc)")
         return "\n".join(out)
 
+    def models_text(self, only: str | None = None) -> str:
+        return (describe_models(self.cfg, only) + "\nChọn: /model <agent>, /effort <agent> hoặc bấm vào "
+                "ô agent ở tab Đội. Model ngoài danh sách vẫn đặt được: /model <agent> <tên>.")
+
+    def open_picker(self, agent: str, key: str, then_effort: bool = False) -> None:
+        a: AgentConfig | None = self.cfg.agents.get(agent)
+        if not a:
+            return
+        items = a.model_choices() if key == "model" else list(a.efforts)
+        current = a.model if key == "model" else a.effort
+        title = f"Chọn {key} cho {agent}  (đang dùng: {current or 'mặc định'})"
+
+        def done(value) -> None:
+            if value is not None:
+                self.notify(self.orch.set_agent_option(agent, key, None if value == RESET else value))
+                self.refresh_view()
+            if then_effort and key == "model" and value is not None and a.efforts:
+                self.open_picker(agent, "effort")
+
+        self.push_screen(ChoiceScreen(title, items, current, "mặc định trong config / CLI"), done)
+
+    async def _discover_missing_models(self) -> None:
+        """Lần đầu mở app: hỏi các CLI có lệnh liệt kê model (opencode models, agy models)."""
+        found = load_state().get("models_found", {})
+        for n, a in self.cfg.active_agents().items():
+            if a.models_command and n not in found and a.installed():
+                msg = await self.orch.discover_models(n)
+                self.orch.log("⚙ " + msg)
+
     def _check_effort(self, agent: str, effort: str | None) -> None:
         a = self.cfg.agents[agent]
         if effort and effort != "-" and a.efforts and effort not in a.efforts:
@@ -666,13 +767,27 @@ class TeamApp(App):
                             severity="warning")
                 return
             if len(parts) == 1:
-                a = self.cfg.agents[parts[0]]
-                hint = f" · effort hợp lệ: {', '.join(a.efforts)}" if a.efforts else ""
-                self.notify(f"{a.name}: {a.label()}{hint}")
+                self.open_picker(parts[0], cmd)
                 return
             if cmd == "effort":
                 self._check_effort(parts[0], parts[1].strip())
             self.notify(o.set_agent_option(parts[0], cmd, parts[1].strip()))
+        elif cmd == "models":
+            parts = rest.split()
+            if parts and parts[0] not in self.cfg.agents:
+                self.notify(f"Dùng: /models [agent] [làm mới] — agent: {', '.join(self.cfg.agents)}",
+                            severity="warning")
+                return
+            if len(parts) > 1:
+                async def _d(agent=parts[0]):
+                    self.notify(f"Đang hỏi {agent} danh sách model…")
+                    msg = await o.discover_models(agent)
+                    o.log("⚙ " + msg)
+                    self.write_sys(self.models_text(agent))
+                    self.refresh_view()
+                self.run_worker(_d(), exclusive=False)
+                return
+            self.write_sys(self.models_text(parts[0] if parts else None))
         elif cmd == "set":
             tid, key, *val = rest.split(maxsplit=2)
             if key not in ("model", "effort"):
