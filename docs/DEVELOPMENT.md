@@ -33,6 +33,12 @@ Bỏ dòng `PATH=…fakebin` để chạy với CLI thật.
 Helper trong `tests/conftest.py`: fixture `env` (PATH có fakebin, XDG riêng, thư mục hạn mức,
 file log đối số), `project`, hàm `ateam(env, cwd, *args)`, `git_init`, `write_project_config`, `tasks`.
 
+Máy CI (Ubuntu) không có git identity. Chạy test giống CI để bắt lỗi kiểu này:
+
+```bash
+mkdir -p /tmp/cihome && HOME=/tmp/cihome GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 python -m pytest -q
+```
+
 ### Agent giả lập (`tests/fakebin/`)
 
 | Script | Hành vi |

@@ -4,6 +4,8 @@
 
 - Sửa: phím tắt Ctrl+D, Ctrl+K… không có tác dụng khi con trỏ đang ở ô nhập (mặc định khi mở app) —
   ô nhập của Textual nuốt phím. Các phím tắt của app giờ có `priority=True`.
+- Sửa: `ateam merge` (dòng lệnh) thất bại trên máy chưa cấu hình git identity vì không chạy bước
+  setup; identity dự phòng `ateam <ateam@localhost>` giờ được kiểm tra ngay trước mỗi commit/merge.
 - Thêm bộ test tự động (19 test, agent giả lập trong `tests/fakebin`) và CI GitHub Actions
   (Ubuntu + macOS, Python 3.9 và 3.13).
 - Thêm tài liệu cho người phát triển và AI agent: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `docs/`.

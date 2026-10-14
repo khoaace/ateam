@@ -36,7 +36,7 @@ class Orchestrator:
         self.lead_busy: set[int] = set()  # goal đang được lập kế hoạch / review
         self.paused = False
         self.use_worktree = False
-        self.git_ident: list[str] = []
+        self._git_ident: list[str] | None = None  # None = chưa kiểm tra
         self._merge_lock = asyncio.Lock()
         self._bg: set[asyncio.Task] = set()
         self._cancel_req: set[int] = set()
@@ -122,9 +122,6 @@ class Orchestrator:
             rc2, _ = await self._git("rev-parse", "--verify", "HEAD")
             if rc == 0 and rc2 == 0 and Path(top.strip()).resolve() == self.root:
                 self.use_worktree = True
-                rc, email = await self._git("config", "user.email")
-                if rc != 0 or not email.strip():
-                    self.git_ident = ["-c", "user.name=ateam", "-c", "user.email=ateam@localhost"]
             else:
                 self.log("⚠ isolation=worktree cần chạy ở thư mục gốc của git repo đã có commit — "
                          "chuyển sang chế độ shared.")
@@ -792,6 +789,15 @@ class Orchestrator:
             self.emit("changed")
 
     # ------------------------------------------------------------------ git worktree
+    async def git_ident(self) -> list[str]:
+        """Cờ `-c user.name/email` dự phòng khi máy chưa cấu hình git identity (vd máy CI).
+        Kiểm tra lúc cần, vì lệnh CLI như `ateam merge` không chạy setup()."""
+        if self._git_ident is None:
+            rc, email = await self._git("config", "user.email")
+            self._git_ident = ([] if rc == 0 and email.strip() else
+                               ["-c", "user.name=ateam", "-c", "user.email=ateam@localhost"])
+        return self._git_ident
+
     async def _git(self, *args: str, cwd: Path | None = None) -> tuple[int, str]:
         proc = await asyncio.create_subprocess_exec(
             "git", *args, cwd=str(cwd or self.root), stdin=asyncio.subprocess.DEVNULL,
@@ -820,7 +826,7 @@ class Orchestrator:
         await self._git("add", "-A", cwd=path)
         _, st = await self._git("status", "--porcelain", cwd=path)
         if st.strip():
-            await self._git(*self.git_ident, "commit", "-q", "-m",
+            await self._git(*(await self.git_ident()), "commit", "-q", "-m",
                             f"ateam #{t.id} ({t.agent}): {t.title}", cwd=path)
         _, head = await self._git("rev-parse", "HEAD", cwd=path)
         await self._git("worktree", "remove", "--force", str(path))
@@ -848,7 +854,7 @@ class Orchestrator:
     async def _merge_branch(self, t: Task) -> tuple[bool, str | None]:
         branch = f"ateam/t{t.id}"
         async with self._merge_lock:
-            rc, out = await self._git(*self.git_ident, "merge", "--no-ff", "--no-edit", "-m",
+            rc, out = await self._git(*(await self.git_ident()), "merge", "--no-ff", "--no-edit", "-m",
                                       f"ateam: merge #{t.id} ({t.agent}) {t.title}", branch)
             if rc != 0:
                 await self._git("merge", "--abort")

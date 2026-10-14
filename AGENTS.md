@@ -64,9 +64,10 @@ Chạy thử với agent giả lập thay vì CLI thật:
    giá trị mặc định trong code khi khoá vắng mặt.
 8. **Thêm cột DB** → thêm vào `SCHEMA` *và* danh sách migration trong `DB.__init__` (DB cũ phải mở được).
 9. **Phím tắt TUI dùng `priority=True`**, nếu không ô nhập của Textual nuốt mất Ctrl+D/Ctrl+K.
-10. **Không làm treo vòng lặp asyncio**: mọi tiến trình con chạy qua `asyncio`/`Run`; không gọi
+10. **Đừng giả định máy có git identity**: commit/merge luôn qua `await self.git_ident()`.
+11. **Không làm treo vòng lặp asyncio**: mọi tiến trình con chạy qua `asyncio`/`Run`; không gọi
     `subprocess.run` trong orchestrator hoặc TUI.
-11. **Phát hành**: tăng `__version__` (`ateam/__init__.py`) *và* `version` (`pyproject.toml`), ghi
+12. **Phát hành**: tăng `__version__` (`ateam/__init__.py`) *và* `version` (`pyproject.toml`), ghi
     `CHANGELOG.md`, push lên `main` → CI chạy test, Cloudflare tự deploy trang docs + zip mới.
 
 ## Đọc tiếp
