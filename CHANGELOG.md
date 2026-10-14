@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.5.0 — 14/10/2026
 
 - Thêm **agent và workflow tuỳ chỉnh**: `/custom` (hoặc nút *Agent & workflow tuỳ chỉnh…* ở màn hình
   thiết lập) mở màn hình quản lý cùng kiểu màn hình thiết lập. Form thêm agent có mẫu (claude, codex,
