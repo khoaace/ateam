@@ -11,6 +11,11 @@
   VS Code/Cursor trên macOS chặn Ctrl+G (Go to Line) và Ctrl+R (Run Recent Command). Footer và gợi ý
   giờ hiện F2/F5; phím Ctrl cũ vẫn dùng được.
 - Lệnh mới `/drop [mục tiêu]`: bỏ kế hoạch nháp, huỷ mọi task nháp của nó.
+- **Sửa: mọi task của Codex lỗi ngay** với `error: unexpected argument '--full-auto' found` — Codex 0.152
+  đã bỏ cờ này. Lệnh mặc định đổi sang `codex exec --sandbox workspace-write` (cũng chạy trên bản Codex
+  cũ). Cấu hình cũ còn `--full-auto` được tự đổi khi đọc; cấu hình chung nâng lên bản 4.
+- `ateam doctor` so từng cờ trong `command` với `<lệnh> --help` (vd `codex exec --help`) và báo cờ
+  CLI không còn nhận. Task lỗi vì CLI không nhận cờ thì thông báo lỗi nhắc chạy `ateam doctor`.
 - **Sửa lỗi** `Lỗi: not enough values to unpack (expected at least 2, got 0)` khi gõ `/se` (hoặc `/set`)
   rồi Enter: danh sách gợi ý chèn `/set `, Enter lần nữa chạy `/set` không có tham số. Giờ gõ đủ tên một
   lệnh bắt buộc tham số rồi Enter chỉ chèn dấu cách chờ gõ tiếp; lệnh thiếu/sai tham số (`/set`, `/assign 3`,

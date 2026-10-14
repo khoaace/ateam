@@ -31,7 +31,7 @@ Hoặc tải file `.zip` từ trang docs, rồi chạy `./install.sh` trong thư
 ```bash
 cd ateam
 ./install.sh          # tạo venv ở ~/.ateam, lệnh `ateam` ở ~/.local/bin
-ateam doctor          # kiểm tra claude / codex / agy / opencode đã có chưa
+ateam doctor          # kiểm tra claude / codex / agy / opencode đã có chưa, cờ trong lệnh còn hợp lệ không
 ```
 
 Yêu cầu: Python 3.9+ (`brew install python` nếu chưa có), git, và các CLI agent **đã đăng nhập sẵn**
@@ -252,7 +252,8 @@ role = "Đọc codebase lớn, viết tài liệu."
 
 * **Claude Code**: mặc định `--permission-mode acceptEdits` (được sửa file, không chạy lệnh shell).
   Muốn cho chạy test/build, đổi thành `bypassPermissions` — chỉ trong repo bạn tin tưởng.
-* **Codex**: `codex exec --full-auto` — sửa file và chạy lệnh trong sandbox của Codex.
+* **Codex**: `codex exec --sandbox workspace-write` — sửa file và chạy lệnh trong sandbox của Codex
+  (Codex 0.152 trở đi đã bỏ `--full-auto`; cấu hình cũ còn cờ này được ateam tự đổi).
 * **Antigravity (`agy`)**: chỉ in output khi có terminal thật, nên `ateam` chạy nó trong pseudo-terminal
   (`pty = true`), với `--mode accept-edits` (được sửa file) và `--print-timeout 0`. Muốn cho chạy cả lệnh
   shell: thay `--mode accept-edits` bằng `--dangerously-skip-permissions`.
