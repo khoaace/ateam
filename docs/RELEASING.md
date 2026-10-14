@@ -27,6 +27,20 @@ Người dùng nâng cấp bằng lệnh cài một dòng (tải nhánh `main` t
 curl -fsSL https://raw.githubusercontent.com/khoaace/ateam/main/scripts/get.sh | bash
 ```
 
+### Khi CI hỏng
+
+Bước cuối của job ghi các dòng `FAILED …`/`E …` của pytest thành annotation, đọc được kể cả khi không
+tải được log:
+
+```bash
+RID=$(gh run list -R khoaace/ateam --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run view -R khoaace/ateam $RID --json jobs --jq '.jobs[] | select(.conclusion!="success") | .databaseId' |
+  while read J; do gh api repos/khoaace/ateam/check-runs/$J/annotations --jq '.[].message'; done
+```
+
+Tái hiện lỗi chỉ có trên Ubuntu: chạy test với `HOME` trống và `GIT_CONFIG_GLOBAL=/dev/null`
+(xem `docs/DEVELOPMENT.md`).
+
 ## Trang docs
 
 - Nội dung: `site/index.html` (một file, CSS/JS nội tuyến, font Be Vietnam Pro + JetBrains Mono từ

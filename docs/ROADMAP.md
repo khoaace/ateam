@@ -63,3 +63,6 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
 - `max_concurrent > 1` cho cùng agent ở chế độ shared dễ ghi đè lẫn nhau.
 - Token ở `/usage` chỉ là ước tính từ độ dài prompt/output.
 - Chưa có Windows (dùng `pty`, `fcntl`, `os.killpg`).
+- CI: một lần (14/10/2026) job macOS + Python 3.13 hỏng ngẫu nhiên rồi qua ở 3 lượt chạy sau; chưa biết
+  test nào. Nếu lặp lại, annotation `pytest` của job sẽ nêu tên test (xem `docs/RELEASING.md`) — nghi
+  các test phụ thuộc thời gian (`test_tui_smoke`, `test_worktree_conflict`).
