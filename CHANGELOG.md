@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1 — 14/10/2026
+
+- **Gõ `/` ở đầu ô nhập** hiện danh sách lệnh kèm tham số và mô tả, gõ tiếp để lọc; Tab chèn lệnh,
+  Enter chạy luôn với lệnh không cần tham số. Gõ sai lệnh thì gợi ý lệnh gần nhất (`/stup` → `/setup`).
+- **Trợ giúp trong bảng nổi** (`F1` hoặc `/help`): lệnh tô màu theo mục, đủ rộng để không bị gãy dòng
+  như khi in vào cột log. Lần đầu mở app chỉ in phần *bắt đầu nhanh* thay vì toàn bộ trợ giúp.
+- Bảng việc trống có hướng dẫn cách giao việc; mục tiêu chờ duyệt nhắc Ctrl+G; mục tiêu đang lập kế
+  hoạch/review có spinner; cột trạng thái có biểu tượng (✓ ✗ ✎ ◆ …, spinner khi đang chạy).
+- Thanh agent chỉ xuống dòng giữa các agent (không cắt đôi "(mặc định)"); terminal hẹp (< 140 cột) nới
+  cột bảng việc để cột *Task* không bị đẩy mất; ô agent ở tab Đội gọn hơn (token ước tính xem ở `/usage`).
+- Form workflow: tiêu đề cột thẳng hàng với ô nhập, ô chọn agent không còn bị gãy thành 2 dòng.
+
 ## 0.5.0 — 14/10/2026
 
 - Thêm **agent và workflow tuỳ chỉnh**: `/custom` (hoặc nút *Agent & workflow tuỳ chỉnh…* ở màn hình

@@ -412,3 +412,83 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
+
+
+def test_tui_command_popup_help_and_empty_state(env, project, monkeypatch):
+    """Gõ / hiện danh sách lệnh; F1 / /help mở trợ giúp; bảng việc trống có hướng dẫn."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import CommandInput, HelpScreen, MentionList, TeamApp
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(140, 40)) as pilot:
+            await pilot.pause(0.5)
+            empty = app.query_one("#tasks-empty")
+            assert empty.display and not app.query_one("#tasks").display
+            assert "Chưa có task" in str(empty.render())
+            box = app.query_one("#cmd", CommandInput)
+            popup = app.query_one("#mention", MentionList)
+            await pilot.press("/", "s", "e")
+            await pilot.pause(0.2)
+            assert popup.display and popup.border_title == "/ lệnh"
+            ids = [popup.get_option_at_index(i).id for i in range(popup.option_count)]
+            assert ids == ["set", "setup", "pause"]  # bắt đầu bằng "se" trước, rồi chứa "se"
+            await pilot.press("tab")                # chèn lệnh có tham số, chờ gõ tiếp
+            assert box.value == "/set " and not popup.display
+            box.value = ""
+            await pilot.press(*"/pau", "enter")     # lệnh không tham số: Enter chạy luôn
+            await pilot.pause(0.2)
+            assert app.orch.paused and box.value == ""
+            await pilot.press(*"/help", "enter")    # gõ đủ tên lệnh: Enter chạy, không chèn
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, HelpScreen)
+            await pilot.press("f1")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, HelpScreen)
+            await pilot.press("f1")
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, HelpScreen)
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, HelpScreen)
+            app.run_command("/resume")
+            app.run_command("/task codex tạo a")
+            await pilot.pause(0.6)
+            assert app.query_one("#tasks").display and not empty.display
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+
+
+def test_tui_helpers():
+    from rich.text import Text
+
+    from ateam.tui import (COMMANDS, flow_chunks, fmt_tokens, help_text, match_commands,
+                           suggest_command)
+
+    assert [fmt_tokens(n) for n in (0, 850, 1234, 37500)] == ["0", "850", "1.2k", "37k"]
+
+    assert suggest_command("stup") == "setup"
+    assert suggest_command("hlep") == "help"
+    assert suggest_command("mer") == "merge"          # tiền tố duy nhất
+    assert suggest_command("workflw") == "custom"     # gần với bí danh -> lệnh thật
+    assert suggest_command("xyzxyz") is None
+    assert [c[0] for c in match_commands("m")] == ["merge", "model", "models"]
+    assert "custom" in [c[0] for c in match_commands("us")]  # chứa chữ, xếp sau
+    assert len(match_commands("")) == len(COMMANDS)
+    # chỉ xuống dòng giữa các mảnh, không cắt đôi "○ antigravity (mặc định)"
+    out = flow_chunks([Text(" ○ claude (mặc định) "), Text(" ○ antigravity (mặc định) ")], 30)
+    assert out.plain.split("\n") == [" ○ claude (mặc định) ", " ○ antigravity (mặc định) "]
+    assert "\n" not in flow_chunks([Text("ab"), Text("cd")], 0).plain
+    h = help_text()
+    assert "Giao việc:" in h.plain and "/flow" in h.plain
