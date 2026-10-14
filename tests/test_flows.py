@@ -258,3 +258,26 @@ enabled = true
     ateam(env, project, "run", "-q")
     assert (project / "a.txt").exists()
     assert tasks(project)[0].status == "done"
+
+
+def test_compact_replaces_notes_with_lead_summary(env, project, tmp_path):
+    r = ateam(env, project, "compact", check=False)
+    assert r.returncode == 1 and "Chưa có ghi chú" in r.stdout
+    for n in ("API chạy cổng 8080", "dùng pytest", "đừng sửa vendor/"):
+        ateam(env, project, "note", n)
+    env = dict(env, ATEAM_FAKE_FULL_LOG=str(tmp_path / "full.log"))
+    r = ateam(env, project, "compact", "giữ", "cổng")
+    assert "Đã thu gọn" in r.stdout and "- API chạy cổng 8080" in r.stdout, r.stdout
+    prompt = (tmp_path / "full.log").read_text()
+    assert "COMPACT it" in prompt and "đừng sửa vendor/" in prompt and "giữ cổng" in prompt
+    from ateam.db import DB
+    db = DB(project / ".ateam/team.db")
+    notes = db.recent_notes()
+    assert [a for a, _ in notes] == ["compact"] and notes[0][1].startswith("- API chạy cổng 8080")
+    db.add_note("user", "ghi chú mới")
+    assert [a for a, _ in db.recent_notes()] == ["compact", "user"]
+    # prompt của task sau chỉ mang bản tóm tắt + ghi chú mới, không còn ghi chú cũ
+    ateam(env, project, "add", "--to", "codex", "tạo a")
+    ateam(env, project, "run", "-q")
+    last = (tmp_path / "full.log").read_text().split("<<codex>>")[-1]
+    assert "Mục tiêu đã xong" in last and "ghi chú mới" in last and "đừng sửa vendor/" not in last

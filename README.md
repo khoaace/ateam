@@ -60,7 +60,9 @@ của từng agent. **Ctrl+S** lưu, **Esc** bỏ qua (giữ cấu hình hiện 
 * Chọn task trong bảng (↑↓) để xem log trực tiếp của nó; **Ctrl+L** về log hệ thống.
 * **Agent & workflow riêng**: `/custom` (hoặc nút *Agent & workflow tuỳ chỉnh…* ở màn hình thiết lập) —
   xem mục dưới.
-* **Ctrl+R** chạy lại task đang chọn, **Ctrl+K** huỷ, `/note ...` ghi chú cho cả đội. Gõ `/` ở đầu ô nhập để xem danh sách lệnh kèm mô tả; **F1** (hoặc `/help`) mở bảng trợ giúp đầy đủ.
+* **Ctrl+R** chạy lại task đang chọn, **Ctrl+K** huỷ, `/note ...` ghi chú cho cả đội. Ghi chú dài dần
+  thì `/compact [trọng tâm]` (hoặc `ateam compact`): trưởng nhóm tóm tắt ghi chú, mục tiêu gần đây và log
+  thành một ghi chú ngắn thay thế, prompt gửi agent sau đó gọn hơn. Gõ `/` ở đầu ô nhập để xem danh sách lệnh kèm mô tả; **F1** (hoặc `/help`) mở bảng trợ giúp đầy đủ.
 * **Ctrl+T** mở tab **Đội** để xem cả 4 agent làm việc cùng lúc.
 
 Không cần giao diện:

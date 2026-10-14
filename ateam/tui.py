@@ -111,6 +111,7 @@ Agent & workflow tuỳ chỉnh:
 
 Khác:
   /pause  /resume                   tạm dừng / tiếp tục nhận task mới
+  /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
   /team  /board                     chuyển tab Đội / Bảng việc (Ctrl+T)
   /help                             trợ giúp này (F1)
@@ -147,6 +148,7 @@ COMMANDS = [
     ("custom", "", "agent & workflow tuỳ chỉnh"),
     ("usage", "", "thống kê lượt chạy, thời gian, token"),
     ("cooldown", "<agent> <phút|off>", "cho agent tạm nghỉ"),
+    ("compact", "[trọng tâm]", "tóm tắt ngữ cảnh chung cho prompt gọn lại"),
     ("pause", "", "tạm dừng nhận task mới"),
     ("resume", "", "tiếp tục nhận task"),
     ("log", "[task|sys]", "xem log 1 task / log hệ thống"),
@@ -167,6 +169,24 @@ def suggest_command(cmd: str) -> str | None:
         return pre[0]
     close = difflib.get_close_matches(cmd, names + list(COMMAND_ALIASES), n=1, cutoff=0.6)
     return COMMAND_ALIASES.get(close[0], close[0]) if close else None
+
+
+def command_usage(cmd: str) -> str:
+    """'Dùng: /lệnh <tham số> — mô tả', kèm gợi ý lệnh khác bắt đầu bằng cùng tên (/set -> /setup)."""
+    name = COMMAND_ALIASES.get(cmd, cmd)
+    spec = next((c for c in COMMANDS if c[0] == name), None)
+    if not spec:
+        return f"Không hiểu lệnh /{cmd}"
+    out = f"Dùng: /{name} {spec[1]} — {spec[2]}".replace("  ", " ")
+    others = [n for n, _a, _d in COMMANDS if n != name and n.startswith(name)]
+    if others:
+        out += " · hay ý bạn là " + ", ".join("/" + n for n in others) + "?"
+    return out
+
+
+def command_needs_args(cmd: str) -> bool:
+    name = COMMAND_ALIASES.get(cmd, cmd)
+    return next((a for n, a, _d in COMMANDS if n == name), "").startswith("<")
 
 
 def match_commands(query: str) -> list[tuple[str, str, str]]:
@@ -1210,8 +1230,13 @@ class CommandInput(Input):
         if self.popup_open and self._mode == "cmd":
             typed = self.value[1:].lower()
             known = {n for n, _a, _d in COMMANDS} | set(COMMAND_ALIASES)
-            # gõ đủ tên lệnh rồi Enter -> chạy luôn; chưa đủ -> chèn lệnh đang chọn,
-            # lệnh không cần tham số thì chạy luôn
+            # gõ đủ tên lệnh rồi Enter -> chạy luôn (lệnh bắt buộc tham số thì chèn dấu cách, chờ gõ
+            # tiếp); chưa đủ -> chèn lệnh đang chọn, lệnh không cần tham số thì chạy luôn
+            if typed in known and command_needs_args(typed):
+                self.value = f"/{typed} "
+                self.cursor_position = len(self.value)
+                self.close_popup()
+                return
             if typed not in known and self.accept() and self.value.endswith(" "):
                 return
         elif self.popup_open and self.accept():
@@ -1770,6 +1795,8 @@ class TeamApp(App):
             return
         try:
             self.run_command(text)
+        except (ValueError, IndexError):  # thiếu/sai tham số (vd /set không có task) -> chỉ cách dùng
+            self.notify(command_usage(text[1:].split(" ", 1)[0].lower()), severity="warning")
         except Exception as e:
             self.notify(f"Lỗi: {e}", severity="error")
 
@@ -1904,6 +1931,9 @@ class TeamApp(App):
         if cmd in ("help", "h", "?"):
             self.action_help()
             return
+        if not rest and command_needs_args(cmd) and cmd not in ("flow", "model", "effort"):
+            self.notify(command_usage(cmd), severity="warning")
+            return
         elif cmd in ("task", "t"):
             spec, _, prompt = rest.partition(" ")
             m = re.fullmatch(r"([^:@]+)(?::([^@]+))?(?:@(.+))?", spec)
@@ -2004,6 +2034,12 @@ class TeamApp(App):
             self.notify(o.force_review(num(rest)))
         elif cmd == "note":
             o.note(rest)
+        elif cmd == "compact":
+            async def _c(focus=rest):
+                ok, msg = await o.compact(focus)
+                self.notify(msg, severity="information" if ok else "warning")
+                self.refresh_view()
+            self.run_worker(_c(), exclusive=False)
         elif cmd == "pause":
             o.paused = True
             o.log("⏸ Tạm dừng: không bắt đầu task mới (task đang chạy vẫn tiếp tục).")

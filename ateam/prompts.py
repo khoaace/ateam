@@ -111,6 +111,29 @@ Reply with ONLY a JSON object, no other text:
 {{"done": true|false, "summary": "<short assessment for the user>", "new_tasks": {TASK_SCHEMA}}}"""
 
 
+def compact_prompt(*, notes: str, goals: str, log: str, focus: str, cwd: str) -> str:
+    return f"""You are the TEAM LEAD of a team of AI coding agents working in: {cwd}
+
+The team's shared context has grown long. COMPACT it: write a short summary that will REPLACE the
+notes below and be sent with every future prompt to the team.
+
+SHARED TEAM NOTES:
+{notes or '(none)'}
+
+RECENT GOALS (id, status, text, lead's assessment):
+{goals or '(none)'}
+
+SYSTEM LOG (last lines):
+{log or '(empty)'}
+{(chr(10) + 'Focus of the summary, from the user: ' + focus + chr(10)) if focus else ''}
+Keep only what future tasks need: decisions, conventions, facts about the project (commands, ports,
+paths), what is done and what is still open or failing. Drop chatter, timings and repeated lines.
+At most ~25 short bullet points. Write in the same language as the notes and goals.
+Do NOT modify any files.
+
+End your answer with a line 'SUMMARY:' followed by the bullet points (nothing after them)."""
+
+
 # ---------------- tách kết quả ----------------
 
 def extract_json(text: str, kind: type):
