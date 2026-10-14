@@ -1,7 +1,10 @@
 # Changelog
 
-## Chưa phát hành
+## 0.5.2 — 14/10/2026
 
+- Cấu hình chung nâng lên bản 4: lần mở đầu tiên sau khi nâng cấp, `~/.config/ateam/config.toml` được
+  sao lưu (`config.v3.….bak.toml`) và thay bằng file mặc định mới; lựa chọn trong `state.json` và
+  `custom.toml` giữ nguyên.
 - **Sửa: gõ tiếng Việt trong ô nhập bị lỗi font** (dấu rời khỏi chữ, sót dấu khi bộ gõ sửa chữ). Bộ gõ
   để bảng mã Unicode tổ hợp gửi chữ và dấu thành các ký tự riêng; terminal vẽ dấu lệch, còn Backspace của
   bộ gõ chỉ xoá một ký tự nên dấu cũ sót lại. Mọi ô nhập giờ gộp chữ về dạng dựng sẵn (NFC) và
