@@ -687,3 +687,71 @@ def test_tui_plan_approval_bar(env, project, monkeypatch):
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
+
+
+def test_tui_team_tab_layout_stays_fixed(env, project, monkeypatch):
+    """Tab Đội: cuộn chuột chỉ cuộn log trong từng ô; màn hình, tiêu đề và ô agent đứng yên,
+    log tự xuống dòng theo bề rộng ô (không có cuộn ngang)."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual import events
+    from textual.widget import Widget
+    from textual.widgets import Header, RichLog
+
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.runner import clean_line
+    from ateam.tui import AgentPane, TeamApp
+
+    def scroll(w, cls):
+        r = w.region
+        w.post_message(cls(w, r.x + 1, r.y + 1, 0, 0, 0, False, False, False,
+                           screen_x=r.x + 1, screen_y=r.y + 1))
+
+    async def main(size):
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=size) as pilot:
+            await pilot.pause(0.3)
+            await pilot.press("ctrl+t")
+            await pilot.pause(0.2)
+            panes = list(app.query(AgentPane))
+            for p in panes:
+                for i in range(200):
+                    p.body.write('{"prompt": "' + "dòng log rất dài không xuống dòng " * 6 + f'{i}"}}')
+            await pilot.pause(0.3)
+            before = {p.agent: p.region for p in panes}
+            targets = [w for p in panes for w in (p.head, p.body)]
+            targets += [app.query_one("#timeline"), app.query_one("#team-grid"), app.screen]
+            for w in targets:
+                for cls in (events.MouseScrollUp, events.MouseScrollDown,
+                            events.MouseScrollLeft, events.MouseScrollRight):
+                    for _ in range(5):
+                        scroll(w, cls)
+                await pilot.pause(0.02)
+            await pilot.pause(0.3)
+            w, h = size
+            assert app.query_one(Header).region.y == 0
+            assert {p.agent: p.region for p in panes} == before
+            for p in panes:
+                r = p.region
+                assert r.y >= 1 and r.bottom <= h - 3, (size, p.agent, r)
+                log = p.body
+                assert log.virtual_size.width <= log.scrollable_content_region.width, (size, log)
+                assert log.scroll_x == 0
+            for node in app.screen.walk_children(Widget):
+                if not isinstance(node, RichLog):
+                    assert node.scroll_y == 0 and node.scroll_x == 0, (size, node)
+            assert app.screen.scroll_y == 0
+            await pilot.press("ctrl+q")
+
+    for size in ((80, 24), (150, 45), (150, 132), (220, 60)):
+        asyncio.run(main(size))
+    # ký tự điều khiển C1 (NEL, RI…) trong output agent không được lọt ra terminal
+    assert clean_line("a\x85b\x8dc\x7fd\x1b[2Je") == "abcde"

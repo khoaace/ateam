@@ -319,7 +319,10 @@ class AgentPane(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static(classes="pane-head")
-        yield RichLog(classes="pane-log", wrap=True, markup=False, highlight=False, max_lines=3000)
+        # min_width=1: RichLog mặc định vẽ mỗi dòng rộng ít nhất 78 cột; ô agent hẹp hơn thì
+        # sinh thanh cuộn ngang, chữ bị cắt và vuốt trackpad làm log trôi sang ngang
+        yield RichLog(classes="pane-log", wrap=True, markup=False, highlight=False,
+                      max_lines=3000, min_width=1)
 
     @property
     def head(self) -> Static:
@@ -1447,9 +1450,11 @@ class TeamApp(App):
     TITLE = "AI Team"
     ENABLE_COMMAND_PALETTE = False
     CSS = """
-    Screen { layers: base overlay; }
+    Screen { layers: base overlay; overflow: hidden hidden; }
     #tabs { height: 1fr; }
-    TabPane { padding: 0; }
+    #tabs > ContentSwitcher { height: 1fr; }
+    TabPane { padding: 0; height: 1fr; }
+    #team { height: 1fr; overflow: hidden hidden; }
     #board { height: 1fr; }
     #left { width: 46%; min-width: 40; }
     #right { width: 1fr; border-left: solid $primary-darken-2; }
@@ -1458,13 +1463,13 @@ class TeamApp(App):
     #tasks { height: 1fr; }
     #tasks-empty { height: 1fr; padding: 1 2; color: $text-muted; }
     #detail { height: auto; max-height: 9; padding: 0 1; background: $boost; }
-    #log { height: 1fr; padding: 0 1; }
+    #log { height: 1fr; padding: 0 1; overflow-x: hidden; }
     #team-grid { layout: grid; grid-size: 2; grid-gutter: 0 1; height: 1fr; }
     .agentpane { border: round $panel-lighten-2; height: 1fr; }
     .agentpane.busy { border: heavy $accent; }
     .agentpane.missing { border: round $error 50%; }
     .pane-head { height: auto; padding: 0 1; background: $boost; }
-    .pane-log { height: 1fr; padding: 0 1; }
+    .pane-log { height: 1fr; padding: 0 1; overflow-x: hidden; }
     #timeline { height: auto; max-height: 14; padding: 0 1; border-top: solid $primary-darken-2; }
     #cmd { dock: bottom; margin: 0 0 1 0; }
     #plan { height: auto; max-height: 20; display: none; border: heavy $warning;
@@ -1519,7 +1524,7 @@ class TeamApp(App):
                     with Vertical(id="right"):
                         yield Static(id="detail")
                         yield RichLog(id="log", wrap=True, markup=False, highlight=False,
-                                      max_lines=5000)
+                                      max_lines=5000, min_width=1)
             with TabPane("👥 Đội", id="tab-team"):
                 with Vertical(id="team"):
                     with Vertical(id="team-grid"):

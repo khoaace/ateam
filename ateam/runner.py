@@ -17,7 +17,10 @@ def clean_line(s: str) -> str:
     if "\r" in s:  # spinner/progress: giữ phần sau dấu \r cuối cùng có nội dung
         parts = [p for p in s.split("\r") if p.strip()]
         s = parts[-1] if parts else ""
-    return "".join(ch for ch in s if ch == "\t" or ch >= " " or ch == "\n").rstrip()
+    # bỏ cả DEL và ký tự điều khiển C1 (U+0080–U+009F): nhiều terminal hiểu U+0085/U+008D
+    # là xuống dòng/cuộn ngược, in thẳng ra sẽ làm cả màn hình TUI bị đẩy lệch
+    return "".join(ch for ch in s
+                   if ch == "\t" or ch == "\n" or (ch >= " " and not "\x7f" <= ch <= "\x9f")).rstrip()
 
 
 class Run:

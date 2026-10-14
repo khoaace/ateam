@@ -27,6 +27,10 @@
 - **`/compact [trọng tâm]`** (và `ateam compact`): trưởng nhóm tóm tắt ghi chú chung, mục tiêu gần đây và
   log hệ thống thành một ghi chú ngắn; prompt gửi agent về sau chỉ mang bản tóm tắt này cùng ghi chú mới
   hơn, thay vì cả chuỗi ghi chú cũ.
+- **Tab Đội không còn bị trôi khi cuộn**: log của từng agent tự xuống dòng theo bề rộng ô (trước đây
+  ô hẹp hơn 78 cột thì sinh thanh cuộn ngang, chữ bị cắt và vuốt trackpad làm log trôi ngang); màn hình,
+  tab và lưới ô agent bị khoá không cuộn, chỉ log trong từng ô cuộn. Output agent được lọc thêm ký tự
+  điều khiển C1 (U+0080–U+009F) và DEL, vốn có thể làm terminal xuống dòng/cuộn ngược và đẩy lệch TUI.
 
 ## 0.5.1 — 14/10/2026
 
