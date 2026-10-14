@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import re
 import shutil
 import time
 from pathlib import Path
@@ -14,12 +15,15 @@ from . import limits
 from . import mentions
 from . import prompts as P
 from .config import AgentConfig, Config
-from .db import (ACTIVE, BLOCKED, CANCELLED, CONFLICT, DB, DONE, DRAFT, FAILED, FINISHED_BAD,
-                 QUEUED, REVIEW, RUNNING, Task)
+from .db import (ACTIVE, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
+                 FINISHED_BAD, QUEUED, REVIEW, RUNNING, Task)
 from .runner import Run
 
 SYSTEM = 0  # id "task" của log hệ thống
 MAX_DELEGATIONS_PER_TASK = 5
+# CLI báo không nhận cờ (clap, argparse, commander, yargs…) -> gợi ý chạy `ateam doctor`
+BAD_FLAG_RE = re.compile(r"unexpected argument '-|unrecognized (?:argument|option)|unknown (?:option|flag|argument)"
+                         r"|no such option", re.I)
 
 
 class Orchestrator:
@@ -36,6 +40,7 @@ class Orchestrator:
             gi.write_text("*\n")
         self.runs: dict[int, Run] = {}
         self.lead_busy: set[int] = set()  # goal đang được lập kế hoạch / review
+        self.compacting = False  # /compact đang chạy
         self.paused = False
         self.use_worktree = False
         self._git_ident: list[str] | None = None  # None = chưa kiểm tra
@@ -220,7 +225,7 @@ class Orchestrator:
             if self.cfg.approve_plan:
                 self.db.update_goal(gid, status="awaiting")
                 self.log(f"📋 Kế hoạch #{gid}: {len(ids)} task ở trạng thái NHÁP. "
-                         f"Sửa bằng /assign, /edit, /cancel rồi gõ /go {gid} để chạy.")
+                         f"Duyệt bằng /go {gid} (trong TUI: F2 hoặc Ctrl+G); sửa trước bằng /edit, /assign, /cancel.")
             else:
                 self.db.update_goal(gid, status="running")
                 self.log(f"📋 Kế hoạch #{gid}: {len(ids)} task — bắt đầu chạy.")
@@ -288,6 +293,20 @@ class Orchestrator:
                 self.db.update_goal(g.id, status="running")
         if n:
             self.log(f"▶ Đã duyệt {n} task.")
+        self.emit("changed")
+        return n
+
+    def discard_plan(self, gid: int) -> int:
+        """Bỏ kế hoạch nháp của mục tiêu: huỷ mọi task nháp, mục tiêu thành "đã huỷ"."""
+        g = self.db.goal(gid)
+        if not g or g.status != "awaiting":
+            return 0
+        n = 0
+        for t in self.db.tasks(goal_id=gid, status=DRAFT):
+            self.db.update_task(t.id, status=CANCELLED, finished=time.time())
+            n += 1
+        self.db.update_goal(gid, status="cancelled", summary="Người dùng bỏ kế hoạch")
+        self.log(f"✗ Đã bỏ kế hoạch #{gid} ({n} task nháp).")
         self.emit("changed")
         return n
 
@@ -433,6 +452,46 @@ class Orchestrator:
     def note(self, text: str, author: str = "user") -> None:
         self.db.add_note(author, text)
         self.log(f"📝 Ghi chú ({author}): {text}")
+
+    def compact_sources(self) -> tuple[str, str, str]:
+        """Ghi chú, mục tiêu và log hệ thống kể từ lần /compact trước — thứ sẽ được tóm tắt."""
+        since = self.db.last_compact()
+        goals = "\n".join(f"#{g.id} [{g.status}] {g.text}" + (f" — {g.summary}" if g.summary else "")
+                          for g in self.db.goals()[-12:] if (g.created or 0) >= since)
+        log = ""
+        p = self.logs / "system.log"
+        if p.exists():
+            lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+            log = "\n".join(lines[-60:])
+        return self.notes_text(), goals, log
+
+    async def compact(self, focus: str = "") -> tuple[bool, str]:
+        """/compact: trưởng nhóm tóm tắt ghi chú + mục tiêu + log thành 1 ghi chú ngắn; prompt sau chỉ
+        mang bản tóm tắt này (cùng ghi chú mới hơn) thay vì cả chuỗi ghi chú cũ. Trả về (thành công, lời nhắn)."""
+        if self.compacting:
+            return False, "Đang thu gọn ngữ cảnh rồi, chờ chút…"
+        notes, goals, log = self.compact_sources()
+        if not notes and not goals:
+            return False, "Chưa có ghi chú hay mục tiêu nào để thu gọn."
+        self.compacting = True
+        try:
+            self.log(f"🗜 {self.cfg.lead} đang thu gọn ngữ cảnh…")
+            out = await self._call_lead(P.compact_prompt(notes=notes, goals=goals, log=log, focus=focus,
+                                                         cwd=str(self.root)), "Thu gọn ngữ cảnh")
+            summary = P.extract_summary(out) if out and "SUMMARY:" in out else ""
+            if not summary:
+                self.log("✗ Không thu gọn được: trưởng nhóm không trả về dòng SUMMARY: "
+                         "(xem .ateam/logs/lead.log). Ghi chú cũ vẫn giữ nguyên.")
+                return False, "Không thu gọn được — ghi chú cũ vẫn giữ nguyên"
+            self.db.add_note(COMPACT_AUTHOR, summary)
+            before = len(notes) + len(goals)
+            self.log(f"🗜 Đã thu gọn ngữ cảnh: ~{before} → {len(summary)} ký tự. Bản tóm tắt:")
+            for line in summary.splitlines():
+                self.log("   " + line)
+            return True, f"Đã thu gọn ngữ cảnh (~{before} → {len(summary)} ký tự)"
+        finally:
+            self.compacting = False
+            self.emit("changed")
 
     def force_review(self, gid: int) -> str:
         g = self.db.goal(gid)
@@ -609,6 +668,8 @@ class Orchestrator:
             return "timeout"
         if limits.looks_rate_limited(run.output, rc):
             return "ratelimit"
+        if rc != 0 and BAD_FLAG_RE.search(run.output):
+            return "badflag"
         if rc != 0:
             return "failed"
         if not run.output.strip():
@@ -803,6 +864,8 @@ class Orchestrator:
             "cancelled": (CANCELLED, "Bị huỷ"),
             "timeout": (FAILED, f"Quá thời gian ({a.timeout}s)"),
             "failed": (FAILED, f"Thoát với mã {rc}"),
+            "badflag": (FAILED, f"{a.binary} không nhận một cờ trong lệnh (CLI có thể đã đổi phiên bản)"
+                                " — chạy `ateam doctor` rồi sửa command trong cấu hình"),
             "empty": (FAILED, "Agent không in ra gì (kiểm tra đăng nhập / quyền / pty)"),
             "ratelimit": (FAILED, f"{a.name} hết hạn mức"),
         }[res]

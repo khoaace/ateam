@@ -31,7 +31,7 @@ Hoặc tải file `.zip` từ trang docs, rồi chạy `./install.sh` trong thư
 ```bash
 cd ateam
 ./install.sh          # tạo venv ở ~/.ateam, lệnh `ateam` ở ~/.local/bin
-ateam doctor          # kiểm tra claude / codex / agy / opencode đã có chưa
+ateam doctor          # kiểm tra claude / codex / agy / opencode đã có chưa, cờ trong lệnh còn hợp lệ không
 ```
 
 Yêu cầu: Python 3.9+ (`brew install python` nếu chưa có), git, và các CLI agent **đã đăng nhập sẵn**
@@ -50,8 +50,10 @@ model thật, rồi cho bạn chọn trong một màn hình: agent nào tham gia
 của từng agent. **Ctrl+S** lưu, **Esc** bỏ qua (giữ cấu hình hiện tại). Mở lại bất cứ lúc nào bằng
 `/setup` trong app hoặc `ateam setup`.
 
-* **Gõ một câu bình thường** → giao mục tiêu cho trưởng nhóm. Kế hoạch hiện ra ở trạng thái *nháp*;
-  xem, sửa (`/assign`, `/edit`, `/cancel`) rồi **Ctrl+G** hoặc `/go` để chạy.
+* **Gõ một câu bình thường** → giao mục tiêu cho trưởng nhóm. Kế hoạch hiện ra ở trạng thái *nháp*
+  trong khung **Duyệt kế hoạch** ngay trên ô nhập (thấy ở cả tab Bảng việc và Đội): danh sách task kèm
+  agent và phụ thuộc, con trỏ đặt sẵn ở nút *Duyệt & chạy* nên chỉ cần **Enter** (hoặc **F2** / **Ctrl+G** /
+  `/go`). Enter trên một task để sửa nội dung, nút *Đổi agent*, *Bỏ kế hoạch* (`/drop`); Esc về ô nhập.
 * **Giao tay**: `/task codex viết unit test cho utils.py`
 * **Nhắc file/thư mục bằng `@`**: gõ `@` trong ô nhập để hiện danh sách file và thư mục của dự án, gõ
   tiếp để lọc (khớp cả rải rác, vd `@atcfg` → `ateam/config.py`), ↑↓ chọn, Tab/Enter chèn, Esc đóng.
@@ -60,7 +62,9 @@ của từng agent. **Ctrl+S** lưu, **Esc** bỏ qua (giữ cấu hình hiện 
 * Chọn task trong bảng (↑↓) để xem log trực tiếp của nó; **Ctrl+L** về log hệ thống.
 * **Agent & workflow riêng**: `/custom` (hoặc nút *Agent & workflow tuỳ chỉnh…* ở màn hình thiết lập) —
   xem mục dưới.
-* **Ctrl+R** chạy lại task đang chọn, **Ctrl+K** huỷ, `/note ...` ghi chú cho cả đội. Gõ `/` ở đầu ô nhập để xem danh sách lệnh kèm mô tả; **F1** (hoặc `/help`) mở bảng trợ giúp đầy đủ.
+* **F5** (hoặc **Ctrl+R**) chạy lại task đang chọn, **Ctrl+K** huỷ, `/note ...` ghi chú cho cả đội. Ghi chú dài dần
+  thì `/compact [trọng tâm]` (hoặc `ateam compact`): trưởng nhóm tóm tắt ghi chú, mục tiêu gần đây và log
+  thành một ghi chú ngắn thay thế, prompt gửi agent sau đó gọn hơn. Gõ `/` ở đầu ô nhập để xem danh sách lệnh kèm mô tả; **F1** (hoặc `/help`) mở bảng trợ giúp đầy đủ.
 * **Ctrl+T** mở tab **Đội** để xem cả 4 agent làm việc cùng lúc.
 
 Không cần giao diện:
@@ -248,7 +252,8 @@ role = "Đọc codebase lớn, viết tài liệu."
 
 * **Claude Code**: mặc định `--permission-mode acceptEdits` (được sửa file, không chạy lệnh shell).
   Muốn cho chạy test/build, đổi thành `bypassPermissions` — chỉ trong repo bạn tin tưởng.
-* **Codex**: `codex exec --full-auto` — sửa file và chạy lệnh trong sandbox của Codex.
+* **Codex**: `codex exec --sandbox workspace-write` — sửa file và chạy lệnh trong sandbox của Codex
+  (Codex 0.152 trở đi đã bỏ `--full-auto`; cấu hình cũ còn cờ này được ateam tự đổi).
 * **Antigravity (`agy`)**: chỉ in output khi có terminal thật, nên `ateam` chạy nó trong pseudo-terminal
   (`pty = true`), với `--mode accept-edits` (được sửa file) và `--print-timeout 0`. Muốn cho chạy cả lệnh
   shell: thay `--mode accept-edits` bằng `--dangerously-skip-permissions`.

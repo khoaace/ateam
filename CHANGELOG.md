@@ -2,6 +2,27 @@
 
 ## Chưa phát hành
 
+- **Khung Duyệt kế hoạch**: khi trưởng nhóm (hoặc workflow, hoặc vòng review) có kế hoạch nháp, một khung
+  viền vàng hiện ngay trên ô nhập ở cả tab Bảng việc và Đội, liệt kê từng task (agent, effort, tiêu đề,
+  phụ thuộc) với nút *Duyệt & chạy*, *Sửa task*, *Đổi agent*, *Bỏ kế hoạch*. Kế hoạch mới tới thì con
+  trỏ nhảy vào nút duyệt (Enter là chạy) nếu bạn không đang gõ dở; Esc quay về ô nhập.
+- Ctrl+G duyệt kế hoạch đang hiện trong khung (trước đây duyệt mọi kế hoạch nháp cùng lúc).
+- Phím thay thế **F2** (= Ctrl+G, duyệt & chạy) và **F5** (= Ctrl+R, chạy lại): terminal tích hợp của
+  VS Code/Cursor trên macOS chặn Ctrl+G (Go to Line) và Ctrl+R (Run Recent Command). Footer và gợi ý
+  giờ hiện F2/F5; phím Ctrl cũ vẫn dùng được.
+- Lệnh mới `/drop [mục tiêu]`: bỏ kế hoạch nháp, huỷ mọi task nháp của nó.
+- **Sửa: mọi task của Codex lỗi ngay** với `error: unexpected argument '--full-auto' found` — Codex 0.152
+  đã bỏ cờ này. Lệnh mặc định đổi sang `codex exec --sandbox workspace-write` (cũng chạy trên bản Codex
+  cũ). Cấu hình cũ còn `--full-auto` được tự đổi khi đọc; cấu hình chung nâng lên bản 4.
+- `ateam doctor` so từng cờ trong `command` với `<lệnh> --help` (vd `codex exec --help`) và báo cờ
+  CLI không còn nhận. Task lỗi vì CLI không nhận cờ thì thông báo lỗi nhắc chạy `ateam doctor`.
+- **Sửa lỗi** `Lỗi: not enough values to unpack (expected at least 2, got 0)` khi gõ `/se` (hoặc `/set`)
+  rồi Enter: danh sách gợi ý chèn `/set `, Enter lần nữa chạy `/set` không có tham số. Giờ gõ đủ tên một
+  lệnh bắt buộc tham số rồi Enter chỉ chèn dấu cách chờ gõ tiếp; lệnh thiếu/sai tham số (`/set`, `/assign 3`,
+  `/retry abc`, …) hiện cách dùng kèm gợi ý lệnh cùng tiền tố (`/set` → *hay ý bạn là /setup?*) thay vì lỗi.
+- **`/compact [trọng tâm]`** (và `ateam compact`): trưởng nhóm tóm tắt ghi chú chung, mục tiêu gần đây và
+  log hệ thống thành một ghi chú ngắn; prompt gửi agent về sau chỉ mang bản tóm tắt này cùng ghi chú mới
+  hơn, thay vì cả chuỗi ghi chú cũ.
 - **Tab Đội không còn bị trôi khi cuộn**: log của từng agent tự xuống dòng theo bề rộng ô (trước đây
   ô hẹp hơn 78 cột thì sinh thanh cuộn ngang, chữ bị cắt và vuốt trackpad làm log trôi ngang); màn hình,
   tab và lưới ô agent bị khoá không cuộn, chỉ log trong từng ô cuộn. Output agent được lọc thêm ký tự

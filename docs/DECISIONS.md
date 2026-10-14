@@ -14,7 +14,7 @@ mỗi CLI tự lo đọc/sửa file và công cụ của nó; thêm agent mới 
 
 **Quyết định**: agent báo kết quả bằng dòng `SUMMARY:`, giao việc bằng khối `<<<DELEGATE …>>>`,
 ghi chú bằng `<<<NOTE>>>`; trưởng nhóm trả JSON. **Lý do**: hoạt động với mọi CLI kể cả khi agent bị
-sandbox chặn ghi ra ngoài thư mục làm việc (Codex `--full-auto` không ghi được `.ateam/team.db` từ
+sandbox chặn ghi ra ngoài thư mục làm việc (Codex `--sandbox workspace-write` không ghi được `.ateam/team.db` từ
 worktree) hoặc không được chạy lệnh shell. Lệnh `ateam add/note` vẫn có cho agent chạy được shell.
 **Xem lại nếu**: muốn agent giao việc *giữa chừng* và chờ kết quả — khi đó cần MCP server của ateam.
 

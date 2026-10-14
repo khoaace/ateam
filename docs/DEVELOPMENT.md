@@ -117,6 +117,9 @@ Dùng nguyên văn thông báo người dùng gửi (`ateam log <task>`).
   model · effort, thư mục); `.ateam/logs/lead.log` — kế hoạch/review thô của trưởng nhóm.
 - `sqlite3 .ateam/team.db 'select id,agent,status,error from tasks'` — xem thẳng bảng việc.
 - `ateam doctor` — in đúng argv sẽ chạy cho từng agent (đã chèn model/effort).
+  Nó cũng so cờ trong `command` với `<lệnh> [lệnh con] --help` và báo cờ lạ. CLI đổi/bỏ cờ thì thêm
+  vào `LEGACY_FLAGS` (`config.py`) để cấu hình cũ tự được đổi khi đọc; agent giả lập in cờ "biết" ở
+  `--help` qua biến `fake_flags` (`tests/fakebin/_common.sh`).
 - Lỗi khi vẽ TUI bị nuốt trong `refresh_view` (để app không treo) và ghi bằng `self.log.error`;
   muốn thấy thì `pip install textual-dev`, mở `textual console` ở một terminal, chạy app với
   `TEXTUAL=devtools python -m ateam` ở terminal khác.

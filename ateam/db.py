@@ -61,6 +61,9 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 """
 
+# tác giả của ghi chú tóm tắt do /compact tạo
+COMPACT_AUTHOR = "compact"
+
 # trạng thái task
 DRAFT, QUEUED, RUNNING, DONE, FAILED, CANCELLED, BLOCKED, CONFLICT, REVIEW = (
     "draft", "queued", "running", "done", "failed", "cancelled", "blocked", "conflict", "review",
@@ -196,9 +199,17 @@ class DB:
                           (author, text, time.time()))
 
     def recent_notes(self, limit: int = 15) -> list[tuple[str, str]]:
+        """Ghi chú gần nhất, tính từ bản tóm tắt /compact mới nhất (ghi chú cũ hơn đã nằm trong nó)."""
         rows = self.conn.execute(
-            "SELECT author, text FROM notes ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            "SELECT author, text FROM notes WHERE id >= (SELECT COALESCE(MAX(id), 0) FROM notes"
+            " WHERE author = ?) ORDER BY id DESC LIMIT ?", (COMPACT_AUTHOR, limit)).fetchall()
         return [(r["author"], r["text"]) for r in reversed(rows)]
+
+    def last_compact(self) -> float:
+        """Thời điểm /compact gần nhất (0 nếu chưa từng)."""
+        r = self.conn.execute("SELECT MAX(created) FROM notes WHERE author = ?",
+                              (COMPACT_AUTHOR,)).fetchone()
+        return float(r[0] or 0)
 
     # ---------- runs (thống kê lượt chạy) ----------
     def add_run(self, task_id: int | None, agent: str, kind: str, prompt_chars: int) -> int:
