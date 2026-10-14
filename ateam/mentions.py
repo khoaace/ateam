@@ -13,6 +13,8 @@ import re
 import time
 from pathlib import Path
 
+from .clipboard import is_image
+
 # Cú pháp mặc định theo tên lệnh (command[0]). Ghi đè từng agent bằng file_ref / file_args trong config.
 #   file_ref   cách viết đường dẫn trong prompt; {path} được thay
 #   file_args  cờ thêm vào lệnh cho mỗi file/thư mục được nhắc (trước prompt)
@@ -24,6 +26,13 @@ SYNTAX: dict[str, tuple[str, list[str]]] = {
     "opencode": ("{path}", ["-f", "{path}"]),  # opencode run đính file bằng -f/--file
 }
 DEFAULT_SYNTAX = ("{path}", [])
+
+# Ảnh (png, jpg… — xem clipboard.IMAGE_EXTS): CLI nào đính ảnh bằng cờ riêng thì dùng cờ này thay cho
+# file_args; đường dẫn trong prompt vẫn viết theo file_ref. Ghi đè bằng image_args trong config.
+# codex: `-i/--image` nhận nhiều giá trị, dạng `--image=…` để nó không nuốt luôn prompt phía sau.
+IMAGE_ARGS: dict[str, list[str]] = {
+    "codex": ["--image={path}"],
+}
 
 IGNORE_DIRS = {".git", ".ateam", "node_modules", "__pycache__", ".venv", "venv", ".mypy_cache",
                ".pytest_cache", ".ruff_cache", ".tox", ".idea", ".next", ".cache", "dist", "build",
@@ -41,12 +50,26 @@ def syntax_for(binary: str, file_ref: str | None = None,
     return (file_ref if file_ref else ref), (list(file_args) if file_args is not None else list(args))
 
 
-def describe(binary: str, file_ref: str | None = None, file_args: list[str] | None = None) -> str:
+def image_args_for(binary: str, file_args: list[str] | None = None,
+                   image_args: list[str] | None = None) -> list[str]:
+    if image_args is not None:
+        return list(image_args)
+    own = IMAGE_ARGS.get(os.path.basename(binary or ""))
+    return list(own) if own is not None else syntax_for(binary, None, file_args)[1]
+
+
+def describe(binary: str, file_ref: str | None = None, file_args: list[str] | None = None,
+             image_args: list[str] | None = None) -> str:
     """Mô tả ngắn cú pháp nhắc file của agent, vd "@src/app.py" hoặc "src/app.py + -f src/app.py"."""
     ref, args = syntax_for(binary, file_ref, file_args)
     out = ref.replace("{path}", "src/app.py")
     if args:
         out += " + " + " ".join(a.replace("{path}", "src/app.py") for a in args)
+    img = image_args_for(binary, file_args, image_args)
+    if img != args:
+        out += " · ảnh: " + ref.replace("{path}", "a.png")
+        if img:
+            out += " + " + " ".join(a.replace("{path}", "a.png") for a in img)
     return out
 
 
@@ -78,22 +101,38 @@ def find(prompt: str, roots: list[Path]) -> list[tuple[int, int, str, str]]:
     return out
 
 
+def _located(path: str, roots: list[Path]) -> str:
+    """Đường dẫn tương đối không có trong thư mục làm việc (roots[0], vd worktree) nhưng có ở thư mục
+    dự án (vd ảnh dán ở .ateam/images, bị git bỏ qua) -> đổi sang đường dẫn tuyệt đối để agent mở được."""
+    p = Path(os.path.expanduser(path))
+    if p.is_absolute() or not roots or (roots[0] / p).exists():
+        return path
+    for r in roots[1:]:
+        if (r / p).exists():
+            return str(r / p)
+    return path
+
+
 def render(prompt: str, binary: str, roots: list[Path], *, file_ref: str | None = None,
-           file_args: list[str] | None = None) -> tuple[str, list[str]]:
-    """Đổi @đường-dẫn sang cú pháp của agent. Trả (prompt mới, cờ đính kèm file)."""
+           file_args: list[str] | None = None,
+           image_args: list[str] | None = None) -> tuple[str, list[str]]:
+    """Đổi @đường-dẫn sang cú pháp của agent. Trả (prompt mới, cờ đính kèm file/ảnh)."""
     ref, args = syntax_for(binary, file_ref, file_args)
+    img_args = image_args_for(binary, file_args, image_args)
     found = find(prompt, roots)
     if not found:
         return prompt, []
     parts, extra, seen, last = [], [], set(), 0
     for start, end, path, tail in found:
+        path = _located(path, roots)
         spaced = any(c.isspace() for c in path)
         shown = f'"{path}"' if spaced and ref.startswith("@") else path
         parts.append(prompt[last:start] + ref.replace("{path}", shown) + tail)
         last = end
-        if args and path not in seen:
+        flags = img_args if is_image(path) else args
+        if flags and path not in seen:
             seen.add(path)
-            extra += [a.replace("{path}", path) for a in args]
+            extra += [a.replace("{path}", path) for a in flags]
     parts.append(prompt[last:])
     return "".join(parts), extra
 

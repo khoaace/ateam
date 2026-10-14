@@ -87,6 +87,14 @@ Chỉ đổi khi đường dẫn có thật trong dự án, nên `a@b.com`, `@pr
 Đường dẫn có dấu cách viết `@"thư mục/file.md"`. Đổi cú pháp cho một agent bằng `file_ref` /
 `file_args` trong config (xem `docs/CONFIG.md`); `ateam doctor` và `/agents` in cú pháp đang dùng.
 
+### Dán ảnh (Ctrl+V)
+
+Chụp màn hình vào clipboard (vd **Cmd+Ctrl+Shift+4** trên macOS) rồi bấm **Ctrl+V** trong ô nhập: ảnh
+được lưu ở `.ateam/images/` và ô nhập có thêm `@.ateam/images/paste-….png`. Kéo-thả file ảnh từ
+Finder vào terminal cũng ra `@ảnh`. Khi chạy, ảnh đi như `@file` ở trên, riêng **codex** được thêm cờ
+`--image=<ảnh>` để thấy ảnh thật (đổi bằng `image_args`). macOS dùng `osascript` có sẵn (hoặc
+`pngpaste` nếu đã cài); Linux cần `wl-paste` hoặc `xclip`. Cmd+V vẫn dán chữ như thường.
+
 ## Xem tiến trình từng agent — tab "Đội" (Ctrl+T)
 
 Mỗi agent một ô: model · effort đang dùng (và danh sách model/effort agent đó hỗ trợ), số task ✓ xong / ✗ lỗi / ⏳ chờ, task đang chạy kèm
@@ -172,7 +180,7 @@ thay** khi `config.toml` được nâng cấp lên bản mới.
 sẵn (claude, codex, agy, opencode, Gemini CLI, Aider, hoặc trống), rồi sửa: lệnh (`{prompt}` = nội dung
 task), vai trò (trưởng nhóm phân việc dựa vào đây), model mặc định + model gợi ý + cờ truyền model,
 các mức effort + cờ truyền effort, lệnh liệt kê model, cách nhắc file `@` (`@{path}` hay `{path}`, cờ
-đính file như `-f {path}`), agent dự phòng khi hết hạn mức, timeout, pty. Dòng *Lệnh sẽ chạy* ở cuối form
+đính file như `-f {path}`, cờ đính ảnh như `--image={path}`), agent dự phòng khi hết hạn mức, timeout, pty. Dòng *Lệnh sẽ chạy* ở cuối form
 cho thấy lệnh thật và CLI đã cài chưa. Lưu xong, agent vào đội ngay (ô riêng ở tab Đội, bật/tắt và chọn
 model/effort ở `/setup`, trưởng nhóm thấy nó khi lập kế hoạch).
 

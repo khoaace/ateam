@@ -232,6 +232,59 @@ def test_tui_setup_screen(env, project, monkeypatch):
     assert not needs_setup()
 
 
+def test_tui_paste_image(env, project, monkeypatch):
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    shot = project / "outside shot.png"
+    shot.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual import events
+
+    from ateam import clipboard
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import CommandInput, TeamApp
+
+    async def fake_grab(folder):
+        folder.mkdir(parents=True, exist_ok=True)
+        p = folder / "paste-1.png"
+        p.write_bytes(b"\x89PNG\r\n\x1a\n")
+        return p, ""
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(140, 40)) as pilot:
+            await pilot.pause(0.3)
+            box = app.query_one("#cmd", CommandInput)
+            await pilot.press(*"sửa theo")
+            monkeypatch.setattr(clipboard, "grab_image", fake_grab)
+            await pilot.press("ctrl+v")
+            await pilot.pause(0.3)
+            assert box.value == "sửa theo @.ateam/images/paste-1.png ", box.value
+            box.post_message(events.Paste(str(shot).replace(" ", "\\ ")))  # kéo-thả ảnh vào terminal
+            await pilot.pause(0.3)
+            assert box.value.endswith('paste-1.png @"outside shot.png" '), box.value
+            box.post_message(events.Paste("chữ"))                       # dán chữ thường như cũ
+            await pilot.pause(0.2)
+            assert box.value.endswith(" chữ")
+
+            async def no_image(folder):
+                return None, "clipboard không có ảnh"
+            monkeypatch.setattr(clipboard, "grab_image", no_image)
+            before = box.value
+            await pilot.press("ctrl+v")
+            await pilot.pause(0.3)
+            assert box.value == before
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+
+
 def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
     """/custom: thêm agent từ mẫu, thêm workflow từ mẫu, đội cập nhật ngay; /flow chạy workflow;
     nút ở màn hình thiết lập mở cùng màn hình và form thiết lập có agent mới."""

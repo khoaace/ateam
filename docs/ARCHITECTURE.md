@@ -153,6 +153,22 @@ làm mới tối đa 20 giây/lần, chạy bất đồng bộ) và hiện `Ment
 `overlay`). Khi danh sách mở, ↑↓/Tab/Enter/Esc thuộc về nó; khi đóng, Enter gửi lệnh và Tab chuyển
 focus như cũ.
 
+### Ảnh (`clipboard.py`)
+
+Terminal không gửi ảnh khi dán (Cmd+V chỉ có chữ), nên Ctrl+V trong `CommandInput` (đè `paste` của
+`Input`) gọi `clipboard.grab_image`: macOS dùng `pngpaste` nếu có, không thì `osascript` (PNG trong
+clipboard, hoặc file ảnh copy từ Finder thì dùng thẳng file đó); Linux dùng `wl-paste`/`xclip`. Ảnh lưu
+ở `.ateam/images/paste-<giờ>.png` (xoá ảnh cũ hơn 7 ngày) rồi chèn `@.ateam/images/…` vào ô nhập.
+Không có ảnh thì dán chữ trong clipboard nội bộ của Textual như Ctrl+V cũ, hoặc báo lý do. Kéo-thả
+file ảnh vào terminal là một sự kiện `Paste` chứa đường dẫn (thoát dấu cách bằng `\` hoặc trong nháy):
+`_on_paste` đổi thành `@ảnh`.
+
+Từ đó ảnh đi đúng đường `@file`. `render` dùng `image_args` (mặc định `mentions.IMAGE_ARGS`; vắng thì
+như `file_args`) thay `file_args` cho đường dẫn có đuôi ảnh: Codex nhận `--image=<path>` (dạng có `=`
+vì `-i` nhận nhiều giá trị, sẽ nuốt luôn prompt), OpenCode `-f`, Claude/agy đọc `@path` trong prompt.
+Đường dẫn tương đối không có trong thư mục làm việc (worktree không có `.ateam/`, vì git bỏ qua) nhưng
+có ở gốc dự án được đổi sang tuyệt đối.
+
 ## Hạn mức
 
 `limits.looks_rate_limited(output, rc)` chỉ xét khi agent thất bại hoặc in ≤ 15 dòng (tránh nhầm

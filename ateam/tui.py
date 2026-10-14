@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from rich.text import Text
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -18,7 +19,7 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
                              RichLog, Select, Static, TabbedContent, TabPane)
 from textual.widgets.option_list import Option
 
-from . import mentions
+from . import clipboard, mentions
 from .config import (CUSTOM_FILE, LEAD_ALIAS, NAME_RE, WORKFLOW_TEMPLATES, AgentConfig, Config,
                      Workflow, WorkflowStep, agent_from_dict, agent_templates, describe_models,
                      load_config, load_custom, load_state, mark_setup_done, save_custom_item,
@@ -72,6 +73,9 @@ Nhắc file / thư mục:
   gõ @ trong ô nhập                 hiện danh sách file/thư mục của dự án, gõ tiếp để lọc
                                     ↑↓ chọn · Tab/Enter chèn · Esc đóng (chọn thư mục để đi vào trong)
                                     khi chạy, @đường-dẫn được đổi sang cú pháp của từng agent (xem /agents)
+  Ctrl+V trong ô nhập               dán ảnh từ clipboard (lưu vào .ateam/images, chèn @ảnh);
+                                    kéo-thả file ảnh vào terminal cũng thành @ảnh. Mỗi agent nhận ảnh
+                                    theo cách CLI đó hỗ trợ (codex: --image, opencode: -f)
 
 Kiểm tra & duyệt code:
   /verify <lệnh>                    lệnh kiểm tra sau mỗi task cho dự án này (vd: /verify npm test)
@@ -436,6 +440,7 @@ class AgentEditScreen(ModalScreen):
         ("models-command", "Lệnh liệt kê model", "vd: mycli models (tuỳ chọn)", "models_command", "argv"),
         ("file-ref", "Nhắc file @", "vd: @{path} hoặc {path} · trống = theo lệnh", "file_ref", "text"),
         ("file-args", "Cờ đính file", "vd: -f {path} · trống = theo lệnh · '-' = tắt", "file_args", "argv"),
+        ("image-args", "Cờ đính ảnh", "vd: --image={path} · trống = theo lệnh · '-' = tắt", "image_args", "argv"),
         ("fallback", "Dự phòng", "agent thay khi hết hạn mức, cách nhau dấu phẩy", "fallback", "csv"),
         ("timeout", "Timeout (giây)", "mặc định 1800", "timeout", "int"),
         ("max-concurrent", "Số task cùng lúc", "mặc định 1", "max_concurrent", "int"),
@@ -480,7 +485,7 @@ class AgentEditScreen(ModalScreen):
             if v is None:
                 text = ""
             elif kind == "argv":
-                text = "-" if key == "file_args" and v == [] else _argv_text(v)
+                text = "-" if key in ("file_args", "image_args") and v == [] else _argv_text(v)
             elif kind == "csv":
                 text = "-" if v == [] else ", ".join(map(str, v if isinstance(v, list) else [v]))
             else:
@@ -517,7 +522,7 @@ class AgentEditScreen(ModalScreen):
             if not text:
                 continue
             if kind == "argv":
-                if key == "file_args" and text == "-":
+                if key in ("file_args", "image_args") and text == "-":
                     out[key] = []
                     continue
                 try:
@@ -550,7 +555,7 @@ class AgentEditScreen(ModalScreen):
                 t.append("Lệnh sẽ chạy: ", "bold")
                 t.append(" ".join(a.argv("<prompt>", model=a.model or None, effort=a.effort or None)))
                 t.append("\n@file → ", "bold")
-                t.append(mentions.describe(a.binary, a.file_ref, a.file_args))
+                t.append(mentions.describe(a.binary, a.file_ref, a.file_args, a.image_args))
                 t.append("   ")
                 t.append(f"✓ đã cài '{a.binary}'" if a.installed() else f"✗ chưa cài '{a.binary}'",
                          "green" if a.installed() else "yellow")
@@ -913,7 +918,7 @@ MENTION_AT_CURSOR = re.compile(r'(?:^|(?<=[\s(\[{\'`]))@(?:"([^"]*)|([^\s"\'`]*)
 
 
 class CommandInput(Input):
-    """Ô nhập lệnh, có gợi ý file/thư mục khi gõ @."""
+    """Ô nhập lệnh, có gợi ý file/thư mục khi gõ @ và dán ảnh bằng Ctrl+V."""
 
     BINDINGS = [
         Binding("up", "mention_move(-1)", show=False),
@@ -921,12 +926,46 @@ class CommandInput(Input):
         Binding("tab", "mention_accept", show=False),
         Binding("enter", "mention_enter", show=False),
         Binding("escape", "mention_close", show=False),
+        Binding("ctrl+v", "paste_image", show=False),
     ]
 
     def __init__(self, root: Path, **kw):
         super().__init__(**kw)
+        self.root = root
         self.index = mentions.FileIndex(root)
         self._span: tuple[int, int] | None = None  # vị trí "@…" đang gõ trong value
+
+    # ------------------------------------------------------------ ảnh
+    def insert_mentions(self, paths: list[str]) -> None:
+        """Chèn `@ảnh` tại con trỏ (có dấu cách ngăn với chữ đứng trước/sau)."""
+        before = self.value[:self.cursor_position]
+        text = " ".join(mentions.quote(clipboard.shorten(Path(p), self.root)) for p in paths) + " "
+        if before and not before[-1].isspace():
+            text = " " + text
+        self.insert_text_at_cursor(text)
+        self.close_popup()
+
+    def action_paste_image(self) -> None:
+        self.run_worker(self._paste_image(), exclusive=True, group="paste-image")
+
+    async def _paste_image(self) -> None:
+        path, why = await clipboard.grab_image(self.root / ".ateam" / "images")
+        if path:
+            self.insert_mentions([str(path)])
+            self.app.notify(f"Đã dán ảnh {clipboard.shorten(path, self.root)}", timeout=3)
+        elif self.app.clipboard:
+            self.action_paste()  # chữ đã copy trong app (Ctrl+C / Ctrl+X) như Ctrl+V cũ
+        else:
+            self.app.notify(f"Không dán được ảnh: {why}. Dán chữ bằng Cmd+V.",
+                            severity="warning", timeout=4)
+
+    async def _on_paste(self, event: events.Paste) -> None:
+        # kéo-thả ảnh vào terminal = dán đường dẫn của nó -> đổi thành @ảnh để agent nhận được ảnh
+        found = clipboard.dropped_images(event.text)
+        if found:
+            event.prevent_default()
+            event.stop()
+            self.insert_mentions(found)
 
     @property
     def popup(self) -> MentionList:
@@ -1779,7 +1818,7 @@ class TeamApp(App):
                 lines.append(f"{n:12} {st}{lead}\n   model/effort: {a.label()}"
                              + (f"   (effort hợp lệ: {', '.join(a.efforts)})" if a.efforts else "")
                              + f"\n   lệnh: {' '.join(a.argv('<prompt>'))}"
-                             + f"\n   @file → {mentions.describe(a.binary, a.file_ref, a.file_args)}"
+                             + f"\n   @file → {mentions.describe(a.binary, a.file_ref, a.file_args, a.image_args)}"
                              + f"\n   vai trò: {a.role}")
             self.write_sys("\n".join(lines))
         elif cmd == "setup":

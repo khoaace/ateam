@@ -77,7 +77,8 @@ class Orchestrator:
                  effort: str | None = None, plan: bool = False) -> list[str]:
         """Lệnh chạy agent, đã đổi @đường-dẫn sang cú pháp của CLI đó (xem mentions.py)."""
         prompt, extra = mentions.render(prompt, a.binary, [Path(workdir), self.root],
-                                        file_ref=a.file_ref, file_args=a.file_args)
+                                        file_ref=a.file_ref, file_args=a.file_args,
+                                        image_args=a.image_args)
         return mentions.insert_args(a.argv(prompt, model=model, effort=effort, plan=plan),
                                     prompt, extra)
 

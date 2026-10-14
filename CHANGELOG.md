@@ -19,6 +19,10 @@
 - Lựa chọn lưu ở `state.json` (`agents.<tên>.enabled`, `lead`, `onboarded`); chỉ ghi giá trị khác file
   cấu hình, nên sửa file vẫn có tác dụng.
 - `ateam models --refresh` và lần hỏi model khi mở app giờ chạy song song.
+- **Dán ảnh** vào ô nhập bằng **Ctrl+V** (macOS: `osascript`/`pngpaste`; Linux: `wl-paste`/`xclip`):
+  ảnh lưu ở `.ateam/images/` và được chèn dạng `@ảnh`; kéo-thả file ảnh vào terminal cũng thành `@ảnh`.
+  Mỗi agent nhận ảnh theo CLI của nó: Codex thêm cờ `--image=…`, OpenCode `-f`, Claude/agy `@ảnh`.
+  Khoá mới `image_args` theo agent. Ảnh trong `.ateam/` (không có ở worktree) được truyền bằng đường dẫn tuyệt đối.
 
 ## 0.4.0 — 14/10/2026
 

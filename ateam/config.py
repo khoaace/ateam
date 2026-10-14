@@ -205,6 +205,7 @@ class AgentConfig:
     verify: bool = True
     file_ref: str = ""                        # "" = theo mentions.SYNTAX của lệnh
     file_args: list[str] | None = None        # None = theo mentions.SYNTAX của lệnh
+    image_args: list[str] | None = None       # None = theo mentions.IMAGE_ARGS (vắng thì như file_args)
 
     @property
     def binary(self) -> str:
@@ -577,6 +578,8 @@ def agent_to_dict(a: AgentConfig) -> dict:
             d[k] = list(getattr(a, k))
     if a.file_args is not None:
         d["file_args"] = list(a.file_args)
+    if a.image_args is not None:
+        d["image_args"] = list(a.image_args)
     if a.plan_command:
         d["plan_command"] = list(a.plan_command)
     if a.timeout != 1800:
@@ -681,6 +684,7 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
         verify=bool(a.get("verify", True)),
         file_ref=str(a.get("file_ref", "") or ""),
         file_args=_strs(a["file_args"]) if "file_args" in a else None,
+        image_args=_strs(a["image_args"]) if "image_args" in a else None,
     )
 
 
