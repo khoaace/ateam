@@ -494,6 +494,75 @@ def test_tui_helpers():
     assert "Giao việc:" in h.plain and "/flow" in h.plain
 
 
+def test_tui_missing_args_show_usage_and_compact(env, project, monkeypatch):
+    """Lỗi cũ: gõ /se Enter (chèn "/set ") rồi Enter -> 'Lỗi: not enough values to unpack'.
+    Giờ thiếu/sai tham số chỉ hiện cách dùng (kèm gợi ý /setup); /compact tóm tắt ghi chú."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import CommandInput, TeamApp, command_usage
+
+    assert command_usage("set") == ("Dùng: /set <task> effort|model <giá trị> — effort/model riêng cho "
+                                    "1 task · hay ý bạn là /setup?")
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        seen: list[tuple[str, str]] = []
+        monkeypatch.setattr(app, "notify", lambda msg, severity="information", **kw: seen.append((severity, msg)))
+        async with app.run_test(size=(140, 40)) as pilot:
+            await pilot.pause(0.5)
+            box = app.query_one("#cmd", CommandInput)
+            await pilot.press(*"/se", "enter")      # chèn lệnh đang chọn (/set), chờ gõ tham số
+            await pilot.pause(0.2)
+            assert box.value == "/set "
+            await pilot.press("enter")              # Enter lần nữa khi chưa có tham số
+            await pilot.pause(0.2)
+            assert seen and seen[-1][0] == "warning" and "/setup" in seen[-1][1], seen
+            assert not any(m.startswith("Lỗi") for _s, m in seen)
+            await pilot.press(*"/set", "enter")     # gõ đủ tên lệnh cần tham số: chỉ chèn dấu cách
+            await pilot.pause(0.2)
+            assert box.value == "/set "
+            box.value = ""
+            for bad in ("/set 1", "/assign 1", "/set abc model x", "/retry", "/t"):
+                seen.clear()
+                await pilot.press(*bad)
+                box.close_popup()
+                await pilot.press("enter")
+                await pilot.pause(0.1)
+                assert seen and seen[-1][1].startswith("Dùng: /"), (bad, seen)
+                box.value = ""
+            await pilot.press(*"/setup", "enter")
+            await pilot.pause(0.3)
+            assert type(app.screen).__name__ == "SetupScreen"
+            await pilot.press("escape")
+            await pilot.pause(0.3)
+            seen.clear()
+            app.run_command("/compact")
+            for _ in range(40):
+                await pilot.pause(0.1)
+                if seen:
+                    break
+            assert seen[-1] == ("warning", "Chưa có ghi chú hay mục tiêu nào để thu gọn."), seen
+            app.run_command("/note API chạy cổng 8080")
+            app.run_command("/compact giữ cổng")
+            for _ in range(80):
+                await pilot.pause(0.1)
+                if app.db.recent_notes()[0][0] == "compact":
+                    break
+            assert [a for a, _ in app.db.recent_notes()] == ["compact"]
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+
+
 def test_tui_plan_approval_bar(env, project, monkeypatch):
     """Kế hoạch nháp hiện khung duyệt ở cả hai tab, focus vào nút duyệt; sửa/bỏ/duyệt từ khung."""
     for k, v in env.items():

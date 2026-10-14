@@ -219,6 +219,15 @@ def cmd_note(args) -> int:
     return 0
 
 
+def cmd_compact(args) -> int:
+    o = _orch(args)
+    ok, msg = asyncio.run(o.compact(" ".join(args.focus)))
+    print(msg)
+    if ok:
+        print(o.notes_text())
+    return 0 if ok else 1
+
+
 def cmd_list(args) -> int:
     db = open_db(find_root(args.dir))
     for g in db.goals()[-10:]:
@@ -394,6 +403,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="hỏi CLI danh sách model thật (opencode models, agy models)")
     s = sub.add_parser("note", help="ghi chú chung cho cả đội")
     s.add_argument("text", nargs="+")
+    s = sub.add_parser("compact", help="trưởng nhóm tóm tắt ghi chú & mục tiêu thành 1 ghi chú ngắn")
+    s.add_argument("focus", nargs="*", help="điều cần giữ trong bản tóm tắt (tuỳ chọn)")
     sub.add_parser("list", help="liệt kê mục tiêu và task")
     s = sub.add_parser("log", help="in log của 1 task (hoặc 'sys')")
     s.add_argument("id")
@@ -415,7 +426,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
     handlers = {None: cmd_tui, "tui": cmd_tui, "setup": cmd_tui, "init": cmd_init, "doctor": cmd_doctor,
-                "goal": cmd_goal, "flow": cmd_goal, "flows": cmd_flows, "add": cmd_add, "note": cmd_note, "list": cmd_list,
+                "goal": cmd_goal, "flow": cmd_goal, "flows": cmd_flows, "add": cmd_add, "note": cmd_note,
+                "compact": cmd_compact, "list": cmd_list,
                 "log": cmd_log, "run": cmd_run, "set": cmd_set, "models": cmd_models, "diff": cmd_diff,
                 "merge": cmd_merge, "reject": cmd_reject, "verify": cmd_verify,
                 "usage": cmd_usage, "cooldown": cmd_cooldown}

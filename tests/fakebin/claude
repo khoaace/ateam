@@ -13,6 +13,12 @@ if [[ "$P" == *"Reply with ONLY a JSON array"* ]]; then
  {"id":3,"agent":"antigravity","title":"Tổng hợp","prompt":"đọc a và b","depends_on":[1,2],"effort":"bogus"}]
 ```
 J
+elif [[ "$P" == *"COMPACT it"* ]]; then
+  # /compact: không đụng file, trả bản tóm tắt sau SUMMARY:
+  echo "Đang đọc ghi chú..."
+  echo "SUMMARY:"
+  echo "- API chạy cổng 8080"
+  echo "- Mục tiêu đã xong: tạo a, b, c"
 elif [[ "$P" == *"Review round 1 of"* ]]; then
   echo '{"done": false, "summary": "Còn thiếu c.txt", "new_tasks": [{"id":1,"agent":"claude","title":"Tạo c.txt","prompt":"tạo c.txt","depends_on":[]}]}'
 elif [[ "$P" == *"Review round"* ]]; then
