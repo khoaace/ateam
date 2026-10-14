@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import inspect
 import re
 import shlex
@@ -38,6 +39,8 @@ STATUS = {
     "conflict": ("xung đột", "bold yellow"),
     "review": ("chờ duyệt", "bold yellow"),
 }
+STATUS_ICON = {"draft": "✎", "queued": "◌", "done": "✓", "failed": "✗", "cancelled": "–",
+               "blocked": "⊘", "conflict": "≠", "review": "◆"}  # running: dùng SPIN
 BAR_STYLE = {"running": "magenta", "done": "green", "failed": "red", "cancelled": "grey50",
              "blocked": "red", "conflict": "yellow", "review": "yellow"}
 GOAL_STATUS = {
@@ -64,12 +67,14 @@ Giao việc:
   /go [mục tiêu]                    duyệt kế hoạch nháp và chạy (Ctrl+G)
   /assign <task> <agent>            đổi người làm 1 task
   /edit <task> <nội dung>           sửa nội dung task (khi chưa chạy)
-  /set <task> effort|model <giá trị>  đổi effort/model riêng cho 1 task ('-' = theo agent)
+  /set <task> effort|model <giá trị>
+                                    đổi effort/model riêng cho 1 task ('-' = theo agent)
   /retry <task>   /cancel <task>    chạy lại (Ctrl+R) / huỷ (Ctrl+K) task
   /review <mục tiêu>                bắt trưởng nhóm review ngay
   /note <nội dung>                  ghi chú chung cho cả đội
 
-Nhắc file / thư mục:
+Lệnh, file, ảnh trong ô nhập:
+  gõ / ở đầu ô nhập                 hiện danh sách lệnh kèm mô tả, gõ tiếp để lọc
   gõ @ trong ô nhập                 hiện danh sách file/thư mục của dự án, gõ tiếp để lọc
                                     ↑↓ chọn · Tab/Enter chèn · Esc đóng (chọn thư mục để đi vào trong)
                                     khi chạy, @đường-dẫn được đổi sang cú pháp của từng agent (xem /agents)
@@ -93,7 +98,7 @@ Model & effort của từng agent (được lưu lại cho lần sau):
   /model <agent> <tên model>        vd: /model claude opus   ·   /model grok xai/grok-4.7
   /effort <agent> <mức>             vd: /effort codex xhigh  ·   /effort claude high
   /model <agent>   /effort <agent>  mở bảng chọn từ danh sách agent hỗ trợ (hoặc bấm vào ô agent ở tab Đội)
-  /model <agent> -  /effort <agent> -   quay về mặc định trong config
+  /model <agent> -                  quay về mặc định trong config (tương tự /effort <agent> -)
   /models [agent]                   xem model & effort mỗi agent hỗ trợ
   /models <agent> làm mới           hỏi CLI danh sách model thật (opencode models, agy models)
   /agents                           xem model, effort, mức effort hợp lệ của từng agent
@@ -108,7 +113,98 @@ Khác:
   /pause  /resume                   tạm dừng / tiếp tục nhận task mới
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
   /team  /board                     chuyển tab Đội / Bảng việc (Ctrl+T)
+  /help                             trợ giúp này (F1)
   /quit                             thoát (Ctrl+Q) — agent đang chạy sẽ bị dừng"""
+
+WELCOME = """\
+👋 Chào mừng tới ateam — bắt đầu nhanh:
+  • Gõ một mục tiêu (vd: Thêm trang đăng nhập) → trưởng nhóm lập kế hoạch, Ctrl+G để duyệt & chạy
+  • /task codex viết test cho utils.py → giao tay cho 1 agent
+  • Gõ / để xem các lệnh · @ để nhắc file · Ctrl+V dán ảnh
+  • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: xem cả đội làm việc"""
+
+# lệnh cho bảng gợi ý khi gõ "/" (tên, tham số, mô tả ngắn) — giữ khớp với TeamApp.run_command
+COMMANDS = [
+    ("task", "<agent> <nội dung>", "giao tay cho 1 agent"),
+    ("go", "[mục tiêu]", "duyệt kế hoạch nháp và chạy"),
+    ("flow", "<tên> <mục tiêu>", "chạy mục tiêu theo workflow"),
+    ("assign", "<task> <agent>", "đổi người làm 1 task"),
+    ("edit", "<task> <nội dung>", "sửa nội dung task chưa chạy"),
+    ("set", "<task> effort|model <giá trị>", "effort/model riêng cho 1 task"),
+    ("retry", "<task>", "chạy lại task"),
+    ("cancel", "<task>", "huỷ task"),
+    ("review", "<mục tiêu>", "bắt trưởng nhóm review ngay"),
+    ("note", "<nội dung>", "ghi chú chung cho cả đội"),
+    ("diff", "<task>", "xem thay đổi của task"),
+    ("merge", "<task>", "duyệt và merge task đang chờ"),
+    ("reject", "<task> [góp ý]", "từ chối, có góp ý thì giao làm lại"),
+    ("verify", "[lệnh|off]", "lệnh kiểm tra sau mỗi task"),
+    ("model", "<agent> [tên|-]", "đổi model của agent"),
+    ("effort", "<agent> [mức|-]", "đổi effort của agent"),
+    ("models", "[agent] [làm mới]", "xem model & effort hỗ trợ"),
+    ("agents", "", "cấu hình, lệnh chạy của từng agent"),
+    ("setup", "", "màn hình thiết lập đội"),
+    ("custom", "", "agent & workflow tuỳ chỉnh"),
+    ("usage", "", "thống kê lượt chạy, thời gian, token"),
+    ("cooldown", "<agent> <phút|off>", "cho agent tạm nghỉ"),
+    ("pause", "", "tạm dừng nhận task mới"),
+    ("resume", "", "tiếp tục nhận task"),
+    ("log", "[task|sys]", "xem log 1 task / log hệ thống"),
+    ("team", "", "chuyển sang tab Đội"),
+    ("board", "", "chuyển sang tab Bảng việc"),
+    ("help", "", "toàn bộ lệnh & phím tắt"),
+    ("quit", "", "thoát"),
+]
+COMMAND_ALIASES = {"h": "help", "?": "help", "t": "task", "flows": "flow", "workflow": "custom",
+                   "workflows": "custom", "agent-moi": "custom", "exit": "quit", "q": "quit"}
+
+
+def suggest_command(cmd: str) -> str | None:
+    """Lệnh gần giống nhất với lệnh gõ sai (vd 'stup' -> 'setup'), hoặc None."""
+    names = [c[0] for c in COMMANDS]
+    pre = [n for n in names if n.startswith(cmd)] if cmd else []
+    if len(pre) == 1:
+        return pre[0]
+    close = difflib.get_close_matches(cmd, names + list(COMMAND_ALIASES), n=1, cutoff=0.6)
+    return COMMAND_ALIASES.get(close[0], close[0]) if close else None
+
+
+def match_commands(query: str) -> list[tuple[str, str, str]]:
+    """Lệnh khớp chữ đang gõ sau '/': bắt đầu bằng query trước, rồi chứa query."""
+    q = query.lower()
+    first = [c for c in COMMANDS if c[0].startswith(q)]
+    if len(q) < 2:  # 1 chữ: chỉ lệnh bắt đầu bằng chữ đó, đỡ nhiễu
+        return first
+    return first + [c for c in COMMANDS if q in c[0] and c not in first]
+
+
+def help_text() -> Text:
+    """HELP có màu: tiêu đề mục đậm, lệnh màu cyan, mô tả thường."""
+    t = Text()
+    for i, line in enumerate(HELP.splitlines()):
+        if i:
+            t.append("\n")
+        if not line.startswith(" "):
+            t.append(line, "bold" if line.endswith(":") else "")
+        elif line[2:3] != " ":  # "  /lệnh …   mô tả"
+            t.append(line[:36], "bold cyan")
+            t.append(line[36:])
+        else:  # dòng mô tả nối tiếp
+            t.append(line)
+    return t
+
+
+def flow_chunks(chunks: list[Text], width: int) -> Text:
+    """Ghép các mảnh thành nhiều dòng, chỉ xuống dòng *giữa* các mảnh (không cắt đôi 1 mảnh)."""
+    out, used = Text(), 0
+    for ch in chunks:
+        w = ch.cell_len
+        if used and width and used + w > width:
+            out.append("\n")
+            used = 0
+        out.append_text(ch)
+        used += w
+    return out
 
 
 def fmt_dur(sec: float) -> str:
@@ -205,6 +301,33 @@ class ChoiceScreen(ModalScreen):
         self.dismiss(RESET if oid == "reset" else self.items[int(oid[1:])])
 
     def action_dismiss_none(self) -> None:
+        self.dismiss(None)
+
+
+class HelpScreen(ModalScreen):
+    """Toàn bộ lệnh & phím tắt trong một bảng nổi cuộn được (/help, F1)."""
+
+    BINDINGS = [Binding("escape", "close", "Đóng", priority=True),
+                Binding("f1", "close", "Đóng", priority=True)]
+    DEFAULT_CSS = """
+    HelpScreen { align: center middle; }
+    #help-box { width: 124; max-width: 100%; height: 90%; border: thick $accent;
+                background: $surface; padding: 0 1; }
+    #help-body { height: 1fr; }
+    #help-foot { height: 1; color: $text-muted; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="help-box"):
+            yield Static(Text("Trợ giúp ateam", "bold"))
+            with VerticalScroll(id="help-body"):
+                yield Static(help_text())
+            yield Static("↑↓ / PgUp PgDn cuộn · Esc hoặc F1 đóng", id="help-foot")
+
+    def on_mount(self) -> None:
+        self.query_one("#help-body").focus()
+
+    def action_close(self) -> None:
         self.dismiss(None)
 
 
@@ -608,13 +731,14 @@ class WorkflowEditScreen(ModalScreen):
     #flow-box .f-input { width: 64; }
     .step-row { height: 3; }
     .step-no { width: 4; padding: 1 0 0 1; text-style: bold; }
-    .step-agent { width: 22; }
+    .step-agent { width: 32; }
     .step-title { width: 22; }
     .step-prompt { width: 1fr; }
     .step-after { width: 12; }
     .step-effort { width: 12; }
     .step-del { width: 5; min-width: 5; }
     #flow-head { height: 1; color: $text-muted; text-style: bold; margin-top: 1; }
+    #flow-head Static { padding: 0 0 0 1; }
     #flow-add { margin-left: 4; }
     """
 
@@ -646,8 +770,10 @@ class WorkflowEditScreen(ModalScreen):
                 yield form_row("Mô tả", Input(id="wf-desc", classes="f-input"), "hiện trong /flow")
                 yield form_row("Review", Checkbox("Trưởng nhóm review khi xong", id="wf-review"),
                                "review có thể giao thêm việc")
-                yield Static(f"{'':4}{'Agent':22}{'Tiêu đề':22}{'Prompt':36}{'Sau bước':12}Effort",
-                             id="flow-head")
+                yield Horizontal(*[Static(label, classes=cls) for label, cls in (
+                    ("", "step-no"), ("Agent", "step-agent"), ("Tiêu đề", "step-title"),
+                    ("Prompt", "step-prompt"), ("Sau bước", "step-after"), ("Effort", "step-effort"),
+                    ("", "step-del"))], id="flow-head")
                 yield Vertical(id="flow-steps")
                 yield Button("+ Thêm bước", id="wf-add")
             with Horizontal(classes="f-buttons"):
@@ -933,7 +1059,8 @@ class CommandInput(Input):
         super().__init__(**kw)
         self.root = root
         self.index = mentions.FileIndex(root)
-        self._span: tuple[int, int] | None = None  # vị trí "@…" đang gõ trong value
+        self._span: tuple[int, int] | None = None  # vị trí "@…" (hoặc "/…") đang gõ trong value
+        self._mode = "file"  # "file": gợi ý @file · "cmd": gợi ý lệnh khi gõ / ở đầu ô
 
     # ------------------------------------------------------------ ảnh
     def insert_mentions(self, paths: list[str]) -> None:
@@ -982,10 +1109,16 @@ class CommandInput(Input):
     def update_mention(self) -> None:
         """Gọi khi nội dung đổi: mở/lọc/đóng danh sách gợi ý theo chữ trước con trỏ."""
         before = self.value[:self.cursor_position]
+        c = re.fullmatch(r"/(\S*)", before)
+        if c and self.cursor_position == len(self.value):
+            self._mode, self._span = "cmd", (0, self.cursor_position)
+            self._fill_commands(c.group(1))
+            return
         m = MENTION_AT_CURSOR.search(before)
         if not m:
             self.close_popup()
             return
+        self._mode = "file"
         self._span = (m.start(), self.cursor_position)
         query = m.group(1) if m.group(1) is not None else m.group(2)
         if self.index.stale():
@@ -997,8 +1130,27 @@ class CommandInput(Input):
         if self._span is not None:
             self.update_mention()
 
+    def _fill_commands(self, query: str) -> None:
+        popup = self.popup
+        found = match_commands(query)
+        if not found:
+            self.close_popup()
+            return
+        popup.clear_options()
+        width = max(len(n) + len(a) for n, a, _d in COMMANDS) + 4
+        for name, args, desc in found:
+            t = Text()
+            t.append("/" + name, "bold cyan")
+            t.append(f" {args}".ljust(width - len(name)), "cyan")
+            t.append(desc, "dim")
+            popup.add_option(Option(t, id=name))
+        popup.highlighted = 0
+        popup.border_title = "/ lệnh"
+        popup.display = True
+
     def _fill(self, query: str) -> None:
         popup = self.popup
+        popup.border_title = "@ file / thư mục"
         found = mentions.search(self.index.entries, query)
         popup.clear_options()
         if found:
@@ -1019,6 +1171,12 @@ class CommandInput(Input):
         if opt.disabled or not opt.id:
             return False
         start, end = self._span
+        if self._mode == "cmd":
+            args = next((a for n, a, _d in COMMANDS if n == opt.id), "")
+            self.value = f"/{opt.id} " if args else f"/{opt.id}"
+            self.cursor_position = len(self.value)
+            self.close_popup()
+            return True
         path = opt.id
         text = mentions.quote(path)
         if path.endswith("/") and text.endswith('"'):
@@ -1042,7 +1200,14 @@ class CommandInput(Input):
             self.screen.focus_next()
 
     async def action_mention_enter(self) -> None:
-        if self.popup_open and self.accept():
+        if self.popup_open and self._mode == "cmd":
+            typed = self.value[1:].lower()
+            known = {n for n, _a, _d in COMMANDS} | set(COMMAND_ALIASES)
+            # gõ đủ tên lệnh rồi Enter -> chạy luôn; chưa đủ -> chèn lệnh đang chọn,
+            # lệnh không cần tham số thì chạy luôn
+            if typed not in known and self.accept() and self.value.endswith(" "):
+                return
+        elif self.popup_open and self.accept():
             return
         self.close_popup()
         res = self.action_submit()
@@ -1124,6 +1289,7 @@ class TeamApp(App):
     #agents { height: auto; padding: 0 1; background: $boost; }
     #goals { height: auto; max-height: 7; padding: 0 1; border-bottom: solid $primary-darken-3; }
     #tasks { height: 1fr; }
+    #tasks-empty { height: 1fr; padding: 1 2; color: $text-muted; }
     #detail { height: auto; max-height: 9; padding: 0 1; background: $boost; }
     #log { height: 1fr; padding: 0 1; }
     #team-grid { layout: grid; grid-size: 2; grid-gutter: 0 1; height: 1fr; }
@@ -1141,6 +1307,7 @@ class TeamApp(App):
     # priority=True: phím tắt vẫn chạy khi con trỏ đang ở ô nhập (Input của Textual tự dùng
     # Ctrl+D, Ctrl+K... để sửa chữ, sẽ nuốt mất phím nếu không ưu tiên)
     BINDINGS = [
+        Binding("f1", "help", "Trợ giúp", priority=True),
         Binding("ctrl+q", "quit", "Thoát", priority=True),
         Binding("ctrl+t", "toggle_tab", "Bảng việc ⇄ Đội", priority=True),
         Binding("ctrl+g", "approve", "Duyệt & chạy", priority=True),
@@ -1172,6 +1339,7 @@ class TeamApp(App):
                         yield Static(id="agents")
                         yield Static(id="goals")
                         yield DataTable(id="tasks", cursor_type="row", zebra_stripes=True)
+                        yield Static(id="tasks-empty")
                     with Vertical(id="right"):
                         yield Static(id="detail")
                         yield RichLog(id="log", wrap=True, markup=False, highlight=False,
@@ -1192,9 +1360,9 @@ class TeamApp(App):
         self.sub_title = str(self.root)
         table = self.query_one("#tasks", DataTable)
         table.add_column("#", key="id", width=4)
-        table.add_column("Agent", key="agent", width=16)
-        table.add_column("Trạng thái", key="status", width=10)
-        table.add_column("⏱", key="time", width=7)
+        table.add_column("Agent", key="agent", width=13)
+        table.add_column("Trạng thái", key="status", width=12)
+        table.add_column("⏱", key="time", width=6)
         table.add_column("Task", key="title")
         self.show_task(SYSTEM)
         self._preload_panes()
@@ -1207,11 +1375,15 @@ class TeamApp(App):
         self.refresh_view()
         self.query_one("#cmd", Input).focus()
         if not self.db.tasks():
-            self.write_sys(HELP)
+            self.write_sys(WELCOME)
         if self.start_setup:
             self.open_setup()
         else:
             self.run_worker(self._discover_missing_models(), exclusive=False)
+
+    def on_resize(self, event: events.Resize) -> None:
+        # terminal hẹp: nới cột bảng việc để cột "Task" (quan trọng nhất) không bị đẩy mất
+        self.query_one("#left").styles.width = "46%" if event.size.width >= 140 else "58%"
 
     def _preload_panes(self) -> None:
         """Nạp phần cuối log của task gần nhất cho mỗi ô agent."""
@@ -1286,11 +1458,13 @@ class TeamApp(App):
                 self.log.error(f"refresh {fn.__name__}: {e!r}")
 
     def _refresh_agents(self) -> None:
-        t = Text()
+        chunks: list[Text] = []
         busy = self.busy_agents()
         for name, a in self.cfg.agents.items():
             if not a.enabled:
                 continue
+            t = Text()
+            chunks.append(t)
             if name == self.cfg.lead:
                 t.append(" ★", "yellow")
             if not a.installed():
@@ -1303,8 +1477,9 @@ class TeamApp(App):
                 t.append(f" ○ {name}", "green")
             t.append(f" ({a.label()}) ", "dim")
         if self.orch.paused:
-            t.append("  ⏸ TẠM DỪNG", "bold yellow")
-        self.query_one("#agents", Static).update(t)
+            chunks.append(Text("  ⏸ TẠM DỪNG (/resume)", "bold yellow"))
+        w = self.query_one("#agents", Static)
+        w.update(flow_chunks(chunks, w.content_region.width))
 
     def _refresh_goals(self) -> None:
         goals = self.db.goals()[-4:]
@@ -1315,7 +1490,9 @@ class TeamApp(App):
             label, style = GOAL_STATUS.get(g.status, (g.status, ""))
             if i:
                 t.append("\n")
-            t.append(f"🎯 #{g.id} ", "bold")
+            busy = g.status in ("planning", "reviewing")
+            t.append(f"{SPIN[self._frame]} " if busy else "🎯 ", "bold magenta" if busy else "")
+            t.append(f"#{g.id} ", "bold")
             if g.workflow:
                 t.append(f"⚙{g.workflow} ", "cyan")
             t.append(f"[{label}", style)
@@ -1323,13 +1500,30 @@ class TeamApp(App):
             t.append(f" {g.text[:80]}")
             if g.summary and g.status in ("done", "incomplete", "failed", "awaiting"):
                 t.append(f"\n   ↳ {g.summary[:160]}", "dim")
+            if g.status == "awaiting":
+                t.append("\n   ↳ Ctrl+G duyệt & chạy · /edit, /assign để sửa trước", "yellow")
         self.query_one("#goals", Static).update(t)
 
     def _refresh_table(self) -> None:
         table = self.query_one("#tasks", DataTable)
         now = time.time()
-        for task in self.db.tasks():
+        tasks = self.db.tasks()
+        empty = self.query_one("#tasks-empty", Static)
+        table.display, empty.display = bool(tasks), not tasks
+        if not tasks:
+            t = Text()
+            t.append("Chưa có task nào.\n\n", "bold")
+            for keys, what in (("Gõ một mục tiêu", "trưởng nhóm lập kế hoạch & chia việc"),
+                               ("/task <agent> <nội dung>", "giao tay cho 1 agent"),
+                               ("/flow <tên> <mục tiêu>", "chạy theo workflow dựng sẵn"),
+                               ("F1", "xem mọi lệnh & phím tắt")):
+                t.append(f"  {keys:27}", "bold cyan")
+                t.append(what + "\n")
+            empty.update(t)
+        for task in tasks:
             label, style = STATUS.get(task.status, (task.status, ""))
+            icon = SPIN[self._frame] if task.status == "running" else STATUS_ICON.get(task.status, "·")
+            label = f"{icon} {label}"
             prefix = "↳ " if task.parent_id else ""
             deps = f" ⟵{','.join(map(str, task.depends_on))}" if task.depends_on else ""
             agent = task.agent + (f"@{task.effort}" if task.effort else "")
@@ -1363,8 +1557,9 @@ class TeamApp(App):
                 d.update(t)
             return
         if self.view_task == SYSTEM:
-            d.update(Text("📜 Log hệ thống — chọn 1 task trong bảng để xem log của nó · "
-                          "Ctrl+T để xem cả đội", "bold"))
+            t = Text("📜 Log hệ thống", "bold")
+            t.append("  ·  chọn 1 task trong bảng để xem log riêng · Ctrl+T: tab Đội", "dim")
+            d.update(t)
             return
         task = self.db.task(self.view_task)
         if not task:
@@ -1413,8 +1608,7 @@ class TeamApp(App):
             t.append(f" ⏳{n_wait}", "cyan" if n_wait else "dim")
             u = usage.get(name)
             if u:
-                t.append(f"   hôm nay {u['runs']} lượt · {fmt_dur(u['secs'])} · "
-                         f"~{(u['prompt_chars'] + u['output_chars']) // 4 // 1000}k token", "dim")
+                t.append(f"   hôm nay {u['runs']} lượt · {fmt_dur(u['secs'])}", "dim")  # token: /usage
             t.append("\n")
             t.append_text(choice_line("model", a.model_choices(), a.model, PANE_MODELS))
             t.append("\n")
@@ -1499,6 +1693,12 @@ class TeamApp(App):
         self._refresh_detail()
 
     # ------------------------------------------------------------------ phím tắt
+    def action_help(self) -> None:
+        if isinstance(self.screen, HelpScreen):  # F1 lần nữa = đóng
+            self.screen.dismiss(None)
+        else:
+            self.push_screen(HelpScreen())
+
     def action_toggle_tab(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
         tabs.active = "tab-team" if tabs.active == "tab-board" else "tab-board"
@@ -1695,7 +1895,8 @@ class TeamApp(App):
             return int(s.lstrip("#"))
 
         if cmd in ("help", "h", "?"):
-            self.write_sys(HELP)
+            self.action_help()
+            return
         elif cmd in ("task", "t"):
             spec, _, prompt = rest.partition(" ")
             m = re.fullmatch(r"([^:@]+)(?::([^@]+))?(?:@(.+))?", spec)
@@ -1840,5 +2041,7 @@ class TeamApp(App):
         elif cmd in ("quit", "exit", "q"):
             self.call_later(self.action_quit)
         else:
-            self.notify(f"Không hiểu lệnh /{cmd} — gõ /help", severity="warning")
+            near = suggest_command(cmd)
+            self.notify(f"Không hiểu lệnh /{cmd}" + (f" — có phải /{near}?" if near else "")
+                        + " · gõ / để xem danh sách, F1 trợ giúp", severity="warning")
         self.refresh_view()
