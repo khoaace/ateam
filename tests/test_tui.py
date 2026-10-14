@@ -602,3 +602,88 @@ def test_tui_vietnamese_input():
         assert box.value == "a"
 
     asyncio.run(main())
+
+
+def test_tui_plan_approval_bar(env, project, monkeypatch):
+    """Kế hoạch nháp hiện khung duyệt ở cả hai tab, focus vào nút duyệt; sửa/bỏ/duyệt từ khung."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import Button, OptionList
+
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import CommandInput, PlanBar, TeamApp
+
+    async def wait_awaiting(app, pilot, gid):
+        for _ in range(60):
+            await pilot.pause(0.25)
+            g = app.db.goal(gid)
+            if g and g.status == "awaiting" and app.query_one("#plan", PlanBar).display:
+                return
+        raise AssertionError("kế hoạch không tới trạng thái chờ duyệt")
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.3)
+            bar = app.query_one("#plan", PlanBar)
+            box = app.query_one("#cmd", CommandInput)
+            assert not bar.display
+            gid = app.orch.new_goal("làm a và b")
+            await wait_awaiting(app, pilot, gid)
+            await pilot.pause(0.3)
+            assert bar.goal_id == gid
+            assert app.focused is app.query_one("#plan-approve", Button)
+            tasks = app.query_one("#plan-tasks", OptionList)
+            assert tasks.option_count == 3
+            text = str(tasks.get_option_at_index(2).prompt)
+            assert "antigravity" in text and "Tổng hợp" in text and "#1" in text
+            # vẫn thấy khung khi sang tab Đội
+            await pilot.press("ctrl+t")
+            await pilot.pause(0.2)
+            assert bar.display and bar.region.height > 0
+            # chọn 1 task → điền sẵn /edit vào ô nhập
+            tasks.focus()
+            await pilot.press("down", "enter")
+            await pilot.pause(0.2)
+            tid = app.db.tasks(goal_id=gid)[1].id
+            assert box.value == f"/edit {tid} tạo file b.txt" and app.focused is box
+            box.insert_text_at_cursor(" kèm test")
+            await pilot.press("enter")
+            await pilot.pause(0.2)
+            assert app.db.task(tid).prompt == "tạo file b.txt kèm test"
+            # nút đổi agent
+            app.query_one("#plan-assign", Button).press()
+            await pilot.pause(0.2)
+            assert box.value.startswith("/assign ")
+            box.value = ""
+            # F2 (thay Ctrl+G, bị terminal VS Code trên Mac chặn) duyệt & chạy từ ô nhập
+            await pilot.press("f2")
+            await pilot.pause(0.3)
+            assert app.db.goal(gid).status == "running"
+            assert not app.db.tasks(goal_id=gid, status="draft")
+            assert not bar.display and app.focused is box
+            # kế hoạch khác: bỏ bằng nút
+            for _ in range(80):
+                await pilot.pause(0.25)
+                if app.db.goal(gid).status in ("done", "incomplete", "awaiting"):
+                    break
+            gid2 = app.orch.new_goal("làm tiếp")
+            await wait_awaiting(app, pilot, gid2)
+            if bar.goal_id != gid2:          # vòng review của mục tiêu đầu có thể tới trước
+                app.run_command(f"/drop {bar.goal_id}")
+                await pilot.pause(0.3)
+            assert bar.goal_id == gid2
+            app.query_one("#plan-discard", Button).press()
+            await pilot.pause(0.3)
+            assert app.db.goal(gid2).status == "cancelled"
+            assert all(t.status == "cancelled" for t in app.db.tasks(goal_id=gid2))
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())

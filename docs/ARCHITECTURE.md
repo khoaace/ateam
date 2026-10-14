@@ -34,8 +34,8 @@ flowchart LR
 stateDiagram-v2
   [*] --> draft: kế hoạch, approve_plan=true
   [*] --> queued: giao tay / kế hoạch không cần duyệt / giao chéo
-  draft --> queued: /go, Ctrl+G (approve)
-  draft --> cancelled: /cancel
+  draft --> queued: /go, F2/Ctrl+G, nút Duyệt & chạy (approve)
+  draft --> cancelled: /cancel, /drop, nút Bỏ kế hoạch (discard_plan)
   queued --> running: tick() — phụ thuộc xong, còn chỗ, agent còn hạn mức
   queued --> blocked: một task phụ thuộc failed/cancelled/blocked/conflict
   queued --> cancelled: /cancel
@@ -65,7 +65,9 @@ Hằng số trạng thái ở đầu `db.py`; `ACTIVE = (draft, queued, running,
 
 `planning` → `awaiting` (có task nháp chờ /go) hoặc `running` → `reviewing` → `done` |
 `incomplete` | quay lại `awaiting`/`running` với `round + 1` nếu review giao thêm việc. `failed` khi
-không lập được kế hoạch. Mục tiêu tạo từ workflow (`run_workflow`, cột `workflow`) bỏ qua `planning`:
+không lập được kế hoạch. `cancelled` khi người dùng bỏ kế hoạch nháp (`discard_plan`). Khi có mục
+tiêu `awaiting`, TUI hiện `PlanBar` (`#plan`, nằm ngoài các tab) cho mục tiêu chờ lâu nhất và chuyển
+focus vào nút duyệt nếu ô nhập đang trống. Mục tiêu tạo từ workflow (`run_workflow`, cột `workflow`) bỏ qua `planning`:
 các bước chèn thẳng qua `_insert_plan(from_user=True)` (giữ effort/model của bước); `workflow.review`
 (nếu đặt) thay `auto_review` khi `_check_goals` quyết định có review không. Task giao tay (`/task`, `ateam add` ngoài agent) không thuộc mục tiêu nào
 nên không được review.

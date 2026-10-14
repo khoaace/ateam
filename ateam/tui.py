@@ -46,7 +46,8 @@ BAR_STYLE = {"running": "magenta", "done": "green", "failed": "red", "cancelled"
              "blocked": "red", "conflict": "yellow", "review": "yellow"}
 GOAL_STATUS = {
     "planning": ("đang lập kế hoạch", "magenta"),
-    "awaiting": ("chờ duyệt (/go)", "yellow"),
+    "awaiting": ("chờ duyệt (F2)", "yellow"),
+    "cancelled": ("đã bỏ", "dim"),
     "running": ("đang làm", "cyan"),
     "reviewing": ("đang review", "magenta"),
     "done": ("hoàn thành", "green"),
@@ -65,12 +66,14 @@ Giao việc:
   /task <agent> <nội dung>          giao tay (vd: /task codex viết test cho utils.py)
   /task <agent>@<effort> <nội dung> giao kèm effort riêng (vd: /task codex@xhigh tìm lỗi deadlock)
   /task <agent>:<model>@<effort> …  giao kèm cả model riêng
-  /go [mục tiêu]                    duyệt kế hoạch nháp và chạy (Ctrl+G)
+  /go [mục tiêu]                    duyệt kế hoạch nháp và chạy (F2 hoặc Ctrl+G, hoặc nút trong khung
+                                    "Duyệt kế hoạch" hiện phía trên ô nhập khi có kế hoạch chờ)
+  /drop [mục tiêu]                  bỏ kế hoạch nháp (huỷ mọi task nháp của nó)
   /assign <task> <agent>            đổi người làm 1 task
   /edit <task> <nội dung>           sửa nội dung task (khi chưa chạy)
   /set <task> effort|model <giá trị>
                                     đổi effort/model riêng cho 1 task ('-' = theo agent)
-  /retry <task>   /cancel <task>    chạy lại (Ctrl+R) / huỷ (Ctrl+K) task
+  /retry <task>   /cancel <task>    chạy lại (F5 hoặc Ctrl+R) / huỷ (Ctrl+K) task
   /review <mục tiêu>                bắt trưởng nhóm review ngay
   /note <nội dung>                  ghi chú chung cho cả đội
 
@@ -116,11 +119,14 @@ Khác:
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
   /team  /board                     chuyển tab Đội / Bảng việc (Ctrl+T)
   /help                             trợ giúp này (F1)
+  F2 = Ctrl+G, F5 = Ctrl+R          dùng F2/F5 khi terminal chặn phím Ctrl (vd terminal trong VS Code/
+                                    Cursor trên Mac: Ctrl+G là Go to Line, Ctrl+R là Run Recent).
+                                    MacBook: giữ fn khi bấm F2/F5
   /quit                             thoát (Ctrl+Q) — agent đang chạy sẽ bị dừng"""
 
 WELCOME = """\
 👋 Chào mừng tới ateam — bắt đầu nhanh:
-  • Gõ một mục tiêu (vd: Thêm trang đăng nhập) → trưởng nhóm lập kế hoạch, Ctrl+G để duyệt & chạy
+  • Gõ một mục tiêu (vd: Thêm trang đăng nhập) → trưởng nhóm lập kế hoạch, Enter (hoặc F2) để duyệt & chạy
   • /task codex viết test cho utils.py → giao tay cho 1 agent
   • Gõ / để xem các lệnh · @ để nhắc file · Ctrl+V dán ảnh
   • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: xem cả đội làm việc"""
@@ -129,6 +135,7 @@ WELCOME = """\
 COMMANDS = [
     ("task", "<agent> <nội dung>", "giao tay cho 1 agent"),
     ("go", "[mục tiêu]", "duyệt kế hoạch nháp và chạy"),
+    ("drop", "[mục tiêu]", "bỏ kế hoạch nháp (huỷ mọi task nháp của nó)"),
     ("flow", "<tên> <mục tiêu>", "chạy mục tiêu theo workflow"),
     ("assign", "<task> <agent>", "đổi người làm 1 task"),
     ("edit", "<task> <nội dung>", "sửa nội dung task chưa chạy"),
@@ -1359,6 +1366,82 @@ class Timeline(Static):
         return out
 
 
+class PlanBar(Vertical):
+    """Khung duyệt kế hoạch: hiện ở cả hai tab khi trưởng nhóm (hoặc workflow) có kế hoạch nháp.
+    Liệt kê task nháp (agent, tiêu đề, phụ thuộc) kèm nút duyệt / sửa / đổi agent / bỏ."""
+
+    BINDINGS = [Binding("escape", "leave", show=False)]
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.goal_id: int | None = None
+        self._sig: tuple = ()
+
+    def compose(self) -> ComposeResult:
+        yield Static(id="plan-head")
+        yield OptionList(id="plan-tasks")
+        with Horizontal(id="plan-buttons"):
+            yield Button("▶ Duyệt & chạy  F2", id="plan-approve", variant="success")
+            yield Button("✎ Sửa task", id="plan-edit")
+            yield Button("⇄ Đổi agent", id="plan-assign")
+            yield Button("✗ Bỏ kế hoạch", id="plan-discard", variant="error")
+        yield Static("Enter trên 1 task: sửa nội dung · Tab: chuyển nút · Esc: về ô nhập",
+                     id="plan-hint")
+
+    def update_plan(self, app: "TeamApp") -> bool:
+        """Vẽ lại theo DB. Trả về True nếu vừa có kế hoạch MỚI cần duyệt (để app chuyển focus)."""
+        waiting = [g for g in app.db.goals() if g.status == "awaiting"]
+        if not waiting:
+            self.goal_id, self._sig = None, ()
+            self.display = False
+            return False
+        g = waiting[0]
+        tasks = app.db.tasks(goal_id=g.id, status="draft")
+        sig = (g.id, g.round, len(waiting),
+               tuple((t.id, t.agent, t.effort, t.title, tuple(t.depends_on), t.prompt) for t in tasks))
+        is_new = g.id != self.goal_id
+        self.goal_id = g.id
+        self.display = True
+        if sig == self._sig:
+            return False
+        self._sig = sig
+        head = Text()
+        head.append("📋 Kế hoạch chờ duyệt ", "bold yellow")
+        head.append(f"#{g.id}", "bold")
+        if g.round > 1:
+            head.append(f" · vòng {g.round}", "yellow")
+        head.append(f" · {len(tasks)} task", "yellow")
+        if len(waiting) > 1:
+            head.append(f" · còn {len(waiting) - 1} kế hoạch khác sau", "dim")
+        head.append(f"\n🎯 {g.text[:150]}", "")
+        self.query_one("#plan-head", Static).update(head)
+        ol = self.query_one("#plan-tasks", OptionList)
+        keep = ol.highlighted
+        ol.clear_options()
+        w = max((len(t.agent) + (len(t.effort) + 1 if t.effort else 0) for t in tasks), default=6)
+        for t in tasks:
+            line = Text()
+            line.append(f"#{t.id:<4}", "bold")
+            agent = t.agent + (f"@{t.effort}" if t.effort else "")
+            line.append(f"{agent:<{w}}  ", "bold cyan")
+            line.append(t.title)
+            if t.depends_on:
+                line.append(f"  ⟵ sau #{', #'.join(map(str, t.depends_on))}", "dim")
+            ol.add_option(Option(line, id=str(t.id)))
+        if tasks:
+            ol.highlighted = min(keep, len(tasks) - 1) if keep is not None and not is_new else 0
+        return is_new
+
+    def selected_task(self) -> int | None:
+        ol = self.query_one("#plan-tasks", OptionList)
+        if ol.highlighted is None or not ol.option_count:
+            return None
+        return int(ol.get_option_at_index(ol.highlighted).id)
+
+    def action_leave(self) -> None:
+        self.app.query_one("#cmd", Input).focus()
+
+
 # ============================================================================ app
 class TeamApp(App):
     TITLE = "AI Team"
@@ -1384,6 +1467,13 @@ class TeamApp(App):
     .pane-log { height: 1fr; padding: 0 1; }
     #timeline { height: auto; max-height: 14; padding: 0 1; border-top: solid $primary-darken-2; }
     #cmd { dock: bottom; margin: 0 0 1 0; }
+    #plan { height: auto; max-height: 20; display: none; border: heavy $warning;
+            border-title-color: $warning; padding: 0 1; background: $boost; }
+    #plan:focus-within { border: heavy $success; }
+    #plan-tasks { height: auto; max-height: 10; border: none; padding: 0; background: $boost; }
+    #plan-buttons { height: auto; margin-top: 1; }
+    #plan-buttons Button { margin-right: 1; min-width: 14; }
+    #plan-hint { color: $text-muted; }
     #mention { dock: bottom; layer: overlay; display: none; height: auto; max-height: 14;
                width: 90; max-width: 100%; margin: 0 0 4 1; border: round $accent;
                background: $panel; }
@@ -1394,8 +1484,10 @@ class TeamApp(App):
         Binding("f1", "help", "Trợ giúp", priority=True),
         Binding("ctrl+q", "quit", "Thoát", priority=True),
         Binding("ctrl+t", "toggle_tab", "Bảng việc ⇄ Đội", priority=True),
-        Binding("ctrl+g", "approve", "Duyệt & chạy", priority=True),
-        Binding("ctrl+r", "retry", "Chạy lại", priority=True),
+        # F2/F5 đứng trước: Ctrl+G (Go to Line) và Ctrl+R (Run Recent Command) bị terminal tích hợp
+        # của VS Code/Cursor trên macOS chặn — footer hiện phím đầu tiên, phím Ctrl vẫn dùng được
+        Binding("f2,ctrl+g", "approve", "Duyệt & chạy", priority=True),
+        Binding("f5,ctrl+r", "retry", "Chạy lại", priority=True),
         Binding("ctrl+k", "cancel_task", "Huỷ task", priority=True),
         Binding("ctrl+d", "diff", "Xem diff", priority=True),
         Binding("ctrl+y", "merge", "Merge", priority=True),
@@ -1435,6 +1527,7 @@ class TeamApp(App):
                             if a.enabled:
                                 yield AgentPane(name)
                     yield Timeline(id="timeline")
+        yield PlanBar(id="plan")
         yield MentionList(id="mention")
         yield CommandInput(self.root, id="cmd",
                            placeholder="Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file")
@@ -1535,7 +1628,8 @@ class TeamApp(App):
             return
         self._frame = (self._frame + 1) % len(SPIN)
         for fn in (self._refresh_agents, self._refresh_goals, self._refresh_table,
-                   self._refresh_detail, self._refresh_panes, self._refresh_timeline):
+                   self._refresh_detail, self._refresh_panes, self._refresh_timeline,
+                   self._refresh_plan):
             try:
                 fn()
             except Exception as e:  # không để lỗi vẽ làm treo app
@@ -1585,7 +1679,7 @@ class TeamApp(App):
             if g.summary and g.status in ("done", "incomplete", "failed", "awaiting"):
                 t.append(f"\n   ↳ {g.summary[:160]}", "dim")
             if g.status == "awaiting":
-                t.append("\n   ↳ Ctrl+G duyệt & chạy · /edit, /assign để sửa trước", "yellow")
+                t.append("\n   ↳ xem khung Duyệt kế hoạch phía dưới · F2 duyệt & chạy", "yellow")
         self.query_one("#goals", Static).update(t)
 
     def _refresh_table(self) -> None:
@@ -1728,6 +1822,57 @@ class TeamApp(App):
             pane.set_class(bool(acts), "busy")
             pane.set_class(not a.installed(), "missing")
 
+    def _refresh_plan(self) -> None:
+        bar = self.query_one("#plan", PlanBar)
+        if not bar.update_plan(self):
+            return
+        bar.border_title = "Duyệt kế hoạch"
+        # kế hoạch mới: đưa con trỏ vào nút "Duyệt & chạy" (Enter là chạy) — trừ khi người dùng
+        # đang gõ dở trong ô nhập hoặc đang mở màn hình khác
+        box = self.query_one("#cmd", Input)
+        if self.screen is self.screen_stack[0] and not box.value:
+            self.query_one("#plan-approve", Button).focus()
+        self.notify(f"📋 Kế hoạch #{bar.goal_id} sẵn sàng — Enter hoặc F2 để duyệt & chạy",
+                    timeout=6)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+        if not bid.startswith("plan-"):
+            return
+        event.stop()
+        bar = self.query_one("#plan", PlanBar)
+        if bid == "plan-approve":
+            self.action_approve()
+        elif bid == "plan-discard":
+            if bar.goal_id is not None:
+                n = self.orch.discard_plan(bar.goal_id)
+                self.notify(f"Đã bỏ kế hoạch #{bar.goal_id} ({n} task nháp)")
+        elif bid in ("plan-edit", "plan-assign"):
+            self.prefill_plan_command(bid[5:], bar.selected_task())
+        self.refresh_view()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id == "plan-tasks" and event.option.id:
+            event.stop()
+            self.prefill_plan_command("edit", int(event.option.id))
+
+    def prefill_plan_command(self, kind: str, tid: int | None) -> None:
+        """Điền sẵn /edit hoặc /assign cho task nháp vào ô nhập để người dùng sửa rồi Enter."""
+        if tid is None:
+            self.notify("Kế hoạch không còn task nào")
+            return
+        task = self.db.task(tid)
+        if not task:
+            return
+        box = self.query_one("#cmd", Input)
+        if kind == "edit":
+            box.value = f"/edit {tid} " + " ".join(task.prompt.split())
+        else:
+            box.value = f"/assign {tid} "
+            self.notify("Agent: " + ", ".join(self.cfg.active_agents()))
+        box.focus()
+        box.cursor_position = len(box.value)
+
     def _refresh_timeline(self) -> None:
         tl = self.query_one("#timeline", Timeline)
         tl.update(tl.build(self))
@@ -1789,9 +1934,16 @@ class TeamApp(App):
         self.refresh_view()
 
     def action_approve(self) -> None:
-        n = self.orch.approve()
+        bar = self.query_one("#plan", PlanBar)
+        gid = bar.goal_id if bar.display else None
+        n = self.orch.approve(gid)
         if not n:
             self.notify("Không có task nháp nào cần duyệt")
+            return
+        self.notify(f"▶ Đã duyệt {n} task" + (f" của kế hoạch #{gid}" if gid else ""))
+        self.refresh_view()
+        if not bar.display:
+            self.query_one("#cmd", Input).focus()
 
     def action_retry(self) -> None:
         tid = self.selected_task()
@@ -2072,6 +2224,14 @@ class TeamApp(App):
         elif cmd == "go":
             n = o.approve(num(rest) if rest else None)
             self.notify(f"Đã duyệt {n} task" if n else "Không có task nháp")
+        elif cmd == "drop":
+            bar = self.query_one("#plan", PlanBar)
+            gid = num(rest) if rest else bar.goal_id
+            g = o.db.goal(gid) if gid is not None else None
+            if not g or g.status != "awaiting":
+                self.notify("Không có kế hoạch nháp nào để bỏ", severity="warning")
+                return
+            self.notify(f"Đã bỏ kế hoạch #{gid} ({o.discard_plan(gid)} task nháp)")
         elif cmd == "assign":
             tid, agent = shlex.split(rest)[:2]
             self.notify(o.assign(num(tid), agent))

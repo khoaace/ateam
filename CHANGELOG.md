@@ -6,7 +6,15 @@
   để bảng mã Unicode tổ hợp gửi chữ và dấu thành các ký tự riêng; terminal vẽ dấu lệch, còn Backspace của
   bộ gõ chỉ xoá một ký tự nên dấu cũ sót lại. Mọi ô nhập giờ gộp chữ về dạng dựng sẵn (NFC) và
   Backspace/Delete xoá trọn một chữ cùng dấu của nó.
-
+- **Khung Duyệt kế hoạch**: khi trưởng nhóm (hoặc workflow, hoặc vòng review) có kế hoạch nháp, một khung
+  viền vàng hiện ngay trên ô nhập ở cả tab Bảng việc và Đội, liệt kê từng task (agent, effort, tiêu đề,
+  phụ thuộc) với nút *Duyệt & chạy*, *Sửa task*, *Đổi agent*, *Bỏ kế hoạch*. Kế hoạch mới tới thì con
+  trỏ nhảy vào nút duyệt (Enter là chạy) nếu bạn không đang gõ dở; Esc quay về ô nhập.
+- Ctrl+G duyệt kế hoạch đang hiện trong khung (trước đây duyệt mọi kế hoạch nháp cùng lúc).
+- Phím thay thế **F2** (= Ctrl+G, duyệt & chạy) và **F5** (= Ctrl+R, chạy lại): terminal tích hợp của
+  VS Code/Cursor trên macOS chặn Ctrl+G (Go to Line) và Ctrl+R (Run Recent Command). Footer và gợi ý
+  giờ hiện F2/F5; phím Ctrl cũ vẫn dùng được.
+- Lệnh mới `/drop [mục tiêu]`: bỏ kế hoạch nháp, huỷ mọi task nháp của nó.
 - **Sửa: mọi task của Codex lỗi ngay** với `error: unexpected argument '--full-auto' found` — Codex 0.152
   đã bỏ cờ này. Lệnh mặc định đổi sang `codex exec --sandbox workspace-write` (cũng chạy trên bản Codex
   cũ). Cấu hình cũ còn `--full-auto` được tự đổi khi đọc; cấu hình chung nâng lên bản 4.
