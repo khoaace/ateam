@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS goals (
     status TEXT NOT NULL DEFAULT 'planning',
     round INTEGER NOT NULL DEFAULT 1,
     summary TEXT,
-    created REAL
+    created REAL,
+    workflow TEXT
 );
 CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,6 +108,7 @@ class Goal:
     round: int
     summary: str | None
     created: float | None
+    workflow: str | None = None
 
 
 class DB:
@@ -124,12 +126,15 @@ class DB:
                          ("head", "TEXT"), ("attempts", "INTEGER")):
             if col not in cols:  # nâng cấp DB cũ
                 self.conn.execute(f"ALTER TABLE tasks ADD COLUMN {col} {typ}")
+        gcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(goals)")}
+        if "workflow" not in gcols:
+            self.conn.execute("ALTER TABLE goals ADD COLUMN workflow TEXT")
 
     # ---------- goals ----------
-    def add_goal(self, text: str) -> int:
+    def add_goal(self, text: str, workflow: str | None = None) -> int:
         cur = self.conn.execute(
-            "INSERT INTO goals(text, status, round, created) VALUES (?, 'planning', 1, ?)",
-            (text, time.time()))
+            "INSERT INTO goals(text, status, round, created, workflow) VALUES (?, 'planning', 1, ?, ?)",
+            (text, time.time(), workflow))
         return int(cur.lastrowid)
 
     def goal(self, gid: int) -> Goal | None:

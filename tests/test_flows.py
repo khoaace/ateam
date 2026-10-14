@@ -197,3 +197,44 @@ def test_models_refresh_asks_cli(env, project):
     r = ateam(env, project, "models")
     assert "xai/grok-5-fast" in r.stdout and "gemini-3-flash" in r.stdout
     assert "claude-opus-5-5" in r.stdout
+
+
+def test_custom_agent_and_workflow_cli(env, project, tmp_path):
+    """Agent tuỳ chỉnh (CLI bất kỳ) + workflow: `ateam flow` tạo task theo bước, không gọi trưởng nhóm."""
+    xdg = tmp_path / "xdg" / "ateam"
+    xdg.mkdir(parents=True)
+    (xdg / "custom.toml").write_text('''
+[agents.mine]
+command = ["mycli", "--headless", "{prompt}"]
+role = "Việc vặt"
+effort_args = ["--think", "{effort}"]
+efforts = ["low", "high"]
+
+[workflows.ship]
+description = "hai bước"
+review = false
+
+[[workflows.ship.steps]]
+agent = "mine"
+title = "Viết {goal}"
+prompt = "làm {goal}"
+
+[[workflows.ship.steps]]
+agent = "mine"
+title = "Kiểm tra"
+prompt = "kiểm tra lại"
+effort = "high"
+''', encoding="utf-8")
+    r = ateam(env, project, "flows")
+    assert "ship  (mine → mine)" in r.stdout, r.stdout
+    r = ateam(env, project, "flow", "-y", "-q", "ship", "tính năng X")
+    assert "=== Mục tiêu #1: done ===" in r.stdout, r.stdout
+    ts = tasks(project)
+    assert [(t.agent, t.title, t.source) for t in ts] == [
+        ("mine", "Viết tính năng X", "workflow"), ("mine", "Kiểm tra", "workflow")]
+    assert ts[1].depends_on == [ts[0].id] and ts[1].effort == "high"
+    assert (project / "steps.txt").read_text().splitlines() == ["Viết tính năng X", "Kiểm tra"]
+    assert "mycli --headless --think high" in (tmp_path / "args.log").read_text()
+    assert not (project / ".ateam/logs/lead.log").exists()  # review = false, không gọi trưởng nhóm
+    r = ateam(env, project, "flow", "-y", "nope", "x", check=False)
+    assert r.returncode == 1 and "Không có workflow 'nope'" in r.stderr

@@ -32,6 +32,9 @@ nhưng chưa có báo cáo chạy thật. Cần xác nhận:
 - [ ] Danh mục model trong `CATALOG` (`config.py`) khớp tên CLI thật nhận (codex `gpt-5.5-codex`,
       alias của claude); định dạng output thật của `agy models` / `opencode models` bóc đúng bằng
       `parse_models` (agy cần đăng nhập, chạy qua pty).
+- [ ] Mẫu agent Gemini CLI (`gemini --approval-mode auto_edit -p …`, `-m`) và Aider
+      (`aider --yes-always --no-auto-commits --message …`, `--model`, `--file`) trong `/custom`
+      (`EXTRA_AGENT_TEMPLATES` ở `config.py`) chưa chạy thử trên CLI thật.
 - [ ] Kế hoạch JSON của Claude thật được bóc ổn định (`.ateam/logs/lead.log` khi lỗi).
 
 ## Backlog tính năng (đã đề xuất với người dùng, chưa làm)
@@ -50,9 +53,8 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
    `opencode run --format json` có phiên bản thoát trước khi in hết sự kiện.
 4. **Nhận việc từ GitHub Issue / Linear** — `ateam issue 123` (dùng `gh issue view --json`) tạo mục
    tiêu; xong thì mở PR (`gh pr create`) với mô tả từ SUMMARY các task.
-5. **Playbook dựng sẵn** — mục tiêu theo mẫu (feature: thiết kế → code → test → review → docs;
-   bugfix: tái hiện → sửa → test chống tái diễn). Gợi ý: thư mục `playbooks/*.toml`, lệnh
-   `/play <tên> <mô tả>` sinh kế hoạch không cần gọi trưởng nhóm.
+5. ~~**Playbook dựng sẵn**~~ — đã làm dưới tên *workflow* (`/custom`, `/flow`, `[workflows.*]`).
+   Còn có thể: workflow riêng theo dự án sửa được trong app (hiện `/custom` chỉ ghi file chung).
 6. **Thông báo** — macOS (`osascript -e 'display notification …'`), Telegram/Slack webhook khi mục
    tiêu xong hoặc task lỗi. Gợi ý: khối `[notify]`, gọi trong `_review` và nhánh `failed` của `_run_task`.
 7. **Agent hỏi lại người dùng** — khối `<<<ASK>>>câu hỏi<<<END>>>` → task chuyển trạng thái `waiting`,

@@ -2,6 +2,16 @@
 
 ## Chưa phát hành
 
+- Thêm **agent và workflow tuỳ chỉnh**: `/custom` (hoặc nút *Agent & workflow tuỳ chỉnh…* ở màn hình
+  thiết lập) mở màn hình quản lý cùng kiểu màn hình thiết lập. Form thêm agent có mẫu (claude, codex,
+  agy, opencode, Gemini CLI, Aider, trống), các ô lệnh/vai trò/model/effort/cú pháp `@file`/dự phòng và
+  dòng xem trước lệnh thật. Agent mới vào đội ngay, không cần mở lại app.
+- Workflow = chuỗi bước dựng sẵn (agent, tiêu đề, prompt có `{goal}`, chạy sau bước nào, effort riêng),
+  chạy bằng `/flow <tên> <mục tiêu>` hoặc `ateam flow <tên> <mục tiêu>` mà không cần trưởng nhóm lập kế
+  hoạch; có mẫu tính năng mới, sửa lỗi, review code. `ateam flows` / `/flow` liệt kê.
+- Lưu ở `~/.config/ateam/custom.toml` (khoá `[agents.*]`, `[workflows.*]` dùng được cả trong file cấu
+  hình); file này không bị thay khi `config.toml` nâng cấp. DB thêm cột `goals.workflow`.
+
 - Thêm màn hình **Thiết lập đội AI** khi mở app lần đầu (mở lại: `/setup` hoặc `ateam setup`): chọn
   agent nào tham gia, trưởng nhóm, model và effort từng agent trong một màn hình; Ctrl+S lưu, Esc bỏ
   qua. Trước khi hiện form, ateam hỏi **song song** các CLI có lệnh liệt kê model (`opencode models`,

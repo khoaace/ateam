@@ -6,12 +6,15 @@ Nguồn cấu hình, ưu tiên tăng dần:
 2. `~/.config/ateam/config.toml` — file chung. Nếu tồn tại, nó **thay hẳn** mặc định (để người dùng
    xoá được agent). Tạo tự động; khi `config_version` < `CONFIG_VERSION` thì sao lưu thành
    `config.v<N>.<epoch>.bak.toml` và ghi bản mặc định mới.
-3. `<dự án>/.ateam/config.toml` — merge sâu lên trên (chỉ cần ghi khoá muốn đổi). Tạo bằng
+3. `~/.config/ateam/custom.toml` — agent (`[agents.<tên>]`) và workflow (`[workflows.<tên>]`) người dùng
+   tự thêm qua `/custom`; merge sâu lên file chung. File riêng nên **không bị thay** khi file chung được
+   nâng cấp. Lỗi cú pháp TOML = bỏ qua cả file.
+4. `<dự án>/.ateam/config.toml` — merge sâu lên trên (chỉ cần ghi khoá muốn đổi). Tạo bằng
    `ateam init --project`.
-4. `~/.config/ateam/state.json` → `agents.<tên>.model|effort|enabled` (đặt bằng `/model`, `/effort`,
+5. `~/.config/ateam/state.json` → `agents.<tên>.model|effort|enabled` (đặt bằng `/model`, `/effort`,
    `ateam set`, màn hình thiết lập `/setup`), `lead` (trưởng nhóm chọn ở `/setup`), `onboarded` (đã qua
    màn hình thiết lập lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`), và `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify`).
-5. Riêng từng task: cột `model`/`effort` (`/task agent:model@effort`, `/set`, kế hoạch của trưởng nhóm).
+6. Riêng từng task: cột `model`/`effort` (`/task agent:model@effort`, `/set`, kế hoạch của trưởng nhóm).
 
 `XDG_CONFIG_HOME` đổi được vị trí thư mục `~/.config`.
 
@@ -69,6 +72,28 @@ Nguồn cấu hình, ưu tiên tăng dần:
 | `file_ref` | theo lệnh | Cách viết file được nhắc bằng `@` trong prompt; `{path}` được thay. Vắng = theo `mentions.SYNTAX`: `"@{path}"` cho `claude`/`agy`/`gemini`, `"{path}"` cho lệnh khác |
 | `file_args` | theo lệnh | Cờ thêm vào lệnh cho mỗi file/thư mục được nhắc (chèn trước prompt). Vắng = `["-f", "{path}"]` cho `opencode`, `[]` cho lệnh khác; `[]` = tắt |
 | `image_args` | theo lệnh | Như `file_args` nhưng cho file ảnh (`.png`, `.jpg`, `.webp`…, gồm ảnh dán bằng Ctrl+V). Vắng = `["--image={path}"]` cho `codex`, lệnh khác dùng `file_args`; `[]` = chỉ ghi đường dẫn trong prompt |
+
+## `[workflows.<tên>]`
+
+Chạy bằng `/flow <tên> <mục tiêu>` hoặc `ateam flow <tên> <mục tiêu>`: tạo mục tiêu (cột `goals.workflow`)
+và chèn các bước thành task qua `_insert_plan` (nguồn `workflow`), không gọi trưởng nhóm lập kế hoạch.
+Duyệt theo `approve_plan` như kế hoạch thường.
+
+| Khoá | Mặc định | Ý nghĩa |
+| --- | --- | --- |
+| `description` | `""` | Mô tả ngắn (hiện ở `/flow`, `/custom`) |
+| `review` | theo `auto_review` | Trưởng nhóm review khi mọi bước xong (có thể giao thêm việc) |
+| `[[…steps]]` | — | Danh sách bước theo thứ tự |
+
+Mỗi bước:
+
+| Khoá | Mặc định | Ý nghĩa |
+| --- | --- | --- |
+| `agent` | `"lead"` | Tên agent; `"lead"` = trưởng nhóm lúc chạy. Agent không có/đang tắt → giao cho trưởng nhóm (như kế hoạch) |
+| `title` | `"Bước N"` | Tiêu đề task; `{goal}` được thay |
+| `prompt` | tiêu đề | Nội dung task; `{goal}` được thay (mục tiêu luôn có trong prompt dù không dùng `{goal}`) |
+| `after` | bước liền trước | Số thứ tự bước (từ 1) phải xong trước; `[]` = chạy ngay |
+| `effort`, `model` | `""` | Riêng cho task của bước này (không bị lọc như effort trưởng nhóm đặt) |
 
 ## Mặc định của 4 agent (config_version 3)
 

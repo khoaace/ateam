@@ -47,6 +47,7 @@ mkdir -p /tmp/cihome && HOME=/tmp/cihome GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_
 | `codex` | Tạo `a.txt`, giao README cho grok (nếu prompt cho phép DELEGATE), để NOTE. Prompt có "VERIFICATION COMMAND" → tạo `fixed.txt`. Làm trưởng nhóm thay khi prompt có "TEAM LEAD". |
 | `opencode` | Tạo `b.txt`, hoặc `README.md` nếu prompt nhắc README. |
 | `agy` | Không in gì nếu stdout không phải tty (như agy thật); in mã ANSI và `\r`. |
+| `mycli` | CLI "tuỳ chỉnh" bất kỳ cho test `/custom` + workflow: ghi tiêu đề task vào `steps.txt` (kiểm tra thứ tự bước). |
 
 Biến điều khiển (đọc trong `_common.sh`): `ATEAM_FAKE_SLOW` (giây giữa các dòng),
 `ATEAM_FAKE_LIMIT_DIR` (có file `<tên>` trong đó → agent đó báo hết hạn mức),

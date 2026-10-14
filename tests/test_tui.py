@@ -283,3 +283,132 @@ def test_tui_paste_image(env, project, monkeypatch):
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
+
+
+def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
+    """/custom: thêm agent từ mẫu, thêm workflow từ mẫu, đội cập nhật ngay; /flow chạy workflow;
+    nút ở màn hình thiết lập mở cùng màn hình và form thiết lập có agent mới."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import Button, Checkbox, Input, Select
+
+    from ateam.config import ensure_global_config, load_config, load_custom
+    from ateam.db import DB
+    from ateam.tui import AgentEditScreen, AgentPane, CustomScreen, SetupScreen, TeamApp, WorkflowEditScreen
+
+    async def wait_for(pilot, cond, n=40):
+        for _ in range(n):
+            await pilot.pause(0.1)
+            if cond():
+                return True
+        return False
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.3)
+            app.run_command("/custom")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
+            await pilot.click("#custom-add-agent")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, AgentEditScreen))
+            ed = app.screen
+            ed.query_one("#ag-template", Select).value = "trống"
+            await pilot.pause(0.2)
+            assert ed.query_one("#ag-name", Input).value == "my-agent"
+            ed.query_one("#ag-name", Input).value = "codex"  # trùng agent có sẵn -> không lưu
+            await pilot.press("ctrl+s")
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, AgentEditScreen)
+            ed.query_one("#ag-name", Input).value = "mine"
+            ed.query_one("#ag-command", Input).value = "mycli --headless {prompt}"
+            ed.query_one("#ag-role", Input).value = "Việc vặt"
+            ed.query_one("#ag-efforts", Input).value = "low, high"
+            ed.query_one("#ag-effort-args", Input).value = "--think {effort}"
+            ed.query_one("#ag-file-args", Input).value = "-"
+            await pilot.pause(0.2)
+            assert "mycli --headless <prompt>" in str(ed.query_one("#agent-preview").render())
+            await pilot.press("ctrl+s")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
+            await pilot.pause(0.3)
+            assert load_custom()["agents"]["mine"] == {
+                "command": ["mycli", "--headless", "{prompt}"], "role": "Việc vặt",
+                "efforts": ["low", "high"], "effort_args": ["--think", "{effort}"], "file_args": []}
+
+            await pilot.click("#custom-add-flow")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, WorkflowEditScreen))
+            wf = app.screen
+            wf.query_one("#wf-template", Select).value = "review-code"
+            await pilot.pause(0.3)
+            assert wf.query_one("#wf-name", Input).value == "review-code"
+            assert len(wf.query(".step-row")) == 2
+            await pilot.click("#wf-add")
+            await pilot.pause(0.3)
+            rows = list(wf.query(".step-row"))
+            assert len(rows) == 3
+            k = rows[2].id[len("wf-step-"):]
+            wf.query_one(f"#wf-agent-{k}", Select).value = "mine"
+            wf.query_one(f"#wf-title-{k}", Input).value = "Tóm tắt"
+            wf.query_one(f"#wf-after-{k}", Input).value = "5"  # sai -> báo lỗi, không lưu
+            await pilot.press("ctrl+s")
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, WorkflowEditScreen)
+            wf.query_one(f"#wf-after-{k}", Input).value = "0"
+            wf.query_one(f"#wf-effort-{k}", Input).value = "high"
+            wf.query_one("#wf-review", Checkbox).value = False
+            app.save_screenshot(str(tmp_path / "workflow.svg"))
+            await pilot.press("ctrl+s")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
+            await pilot.pause(0.3)
+            app.save_screenshot(str(tmp_path / "custom.svg"))
+            await pilot.press("escape")
+            assert await wait_for(pilot, lambda: "mine" in app.cfg.agents and not isinstance(app.screen, CustomScreen))
+            await pilot.pause(0.3)
+            assert app.cfg.custom_agents == {"mine"}
+            assert "review-code" in app.cfg.workflows
+            assert any(p.agent == "mine" for p in app.query(AgentPane))
+            steps = app.cfg.workflows["review-code"].steps
+            assert [s.agent for s in steps] == ["lead", "codex", "mine"]
+            assert steps[2].after == [] and steps[2].effort == "high"
+            assert app.cfg.workflows["review-code"].review is False
+
+            app.run_command("/flow review-code kiểm tra utils")
+            await pilot.pause(0.3)
+            ts = app.db.tasks()
+            assert [(t.agent, t.status) for t in ts] == [("claude", "draft"), ("codex", "draft"),
+                                                        ("mine", "draft")]
+            assert ts[0].title == "Review" and ts[2].depends_on == [] and ts[1].depends_on == [ts[0].id]
+            assert app.db.goal(1).workflow == "review-code"
+            app.run_command("/go")
+            assert await wait_for(pilot, lambda: app.db.goal(1).status in ("done", "incomplete"), 150)
+            assert app.db.goal(1).status == "done"
+            assert "Tóm tắt" in (project / "steps.txt").read_text()
+
+            # màn hình thiết lập: nút mở cùng màn hình; xoá agent tuỳ chỉnh (bấm 2 lần) -> form dựng lại
+            app.open_setup()
+            assert await wait_for(pilot, lambda: isinstance(app.screen, SetupScreen) and app.screen.ready, 200)
+            assert app.screen.query("#setup-on-mine")
+            app.save_screenshot(str(tmp_path / "setup.svg"))
+            await pilot.click("#setup-custom")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
+            await pilot.pause(0.3)
+            dels = [b for b in app.screen.query(Button) if str(b.label) == "Xoá"]
+            await pilot.click("#" + dels[0].id)
+            await pilot.pause(0.2)
+            assert "mine" in load_custom().get("agents", {})
+            await pilot.click("#" + dels[0].id)
+            await pilot.pause(0.3)
+            assert "mine" not in load_custom().get("agents", {})
+            await pilot.press("escape")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, SetupScreen) and app.screen.ready)
+            assert not app.screen.query("#setup-on-mine") and "mine" not in app.cfg.agents
+            await pilot.press("escape")
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())

@@ -22,16 +22,16 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | Đường dẫn | Nội dung |
 | --- | --- |
 | `ateam/cli.py` | Lệnh `ateam` (argparse): `tui` (mặc định), `setup`, `goal`, `add`, `run`, `diff`, `merge`, `reject`, `verify`, `usage`, `cooldown`, `set`, `doctor`, … |
-| `ateam/tui.py` | Giao diện Textual: tab Bảng việc, tab Đội (AgentPane + Timeline), màn hình thiết lập (`SetupScreen`), lệnh `/…`, phím tắt |
+| `ateam/tui.py` | Giao diện Textual: tab Bảng việc, tab Đội (AgentPane + Timeline), màn hình thiết lập (`SetupScreen`), agent/workflow tuỳ chỉnh (`CustomScreen`, `AgentEditScreen`, `WorkflowEditScreen`), lệnh `/…`, phím tắt |
 | `ateam/orchestrator.py` | Lõi: lập kế hoạch, `tick()` lập lịch, `_run_task`, verify, worktree/merge, hạn mức, review |
 | `ateam/runner.py` | `Run`: chạy 1 tiến trình (pipe hoặc pty), stream từng dòng, timeout, huỷ theo process group |
-| `ateam/config.py` | `DEFAULT_CONFIG` (TOML), dataclass `Config`/`AgentConfig`/`VerifyConfig`, `AgentConfig.argv()`, state.json |
+| `ateam/config.py` | `DEFAULT_CONFIG` (TOML), dataclass `Config`/`AgentConfig`/`VerifyConfig`/`Workflow`, `AgentConfig.argv()`, state.json, custom.toml (agent/workflow tuỳ chỉnh, mẫu) |
 | `ateam/db.py` | Schema SQLite + migration cột, `Task`/`Goal`, thống kê `runs` |
 | `ateam/prompts.py` | Prompt gửi trưởng nhóm/thành viên (tiếng Anh) + bóc JSON, DELEGATE, NOTE, SUMMARY |
 | `ateam/mentions.py` | `@file`: gợi ý file/thư mục cho TUI, đổi `@đường/dẫn` sang cú pháp từng CLI (`SYNTAX`) |
 | `ateam/clipboard.py` | Ctrl+V dán ảnh: đọc clipboard (osascript/pngpaste/wl-paste/xclip), lưu `.ateam/images/`, nhận ảnh kéo-thả |
 | `ateam/limits.py` | Nhận diện thông báo hết hạn mức, đoán giờ hồi, lưu cooldown |
-| `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `opencode` |
+| `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `opencode`, `mycli` (agent tuỳ chỉnh) |
 | `site/`, `scripts/build_site.py`, `wrangler.jsonc` | Trang docs + gói zip, deploy Cloudflare Workers |
 | `scripts/get.sh`, `install.sh` | Cài một lệnh từ GitHub; cài vào `~/.ateam/venv` + `~/.local/bin/ateam` |
 | `docs/` | Tài liệu cho người phát triển (xem dưới) |
@@ -40,7 +40,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 
 ```bash
 pip install -e ".[dev]"          # cài từ mã nguồn + pytest
-python -m pytest -q              # ~50s, 33 test, dùng agent giả lập — PHẢI xanh trước khi commit
+python -m pytest -q              # ~70s, 36 test, dùng agent giả lập — PHẢI xanh trước khi commit
 python -m ateam doctor           # xem lệnh thật sẽ chạy cho từng agent
 python -m ateam -C /tmp/demo     # mở TUI trên một thư mục nháp
 python scripts/build_site.py     # dựng trang docs vào dist/
