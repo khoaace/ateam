@@ -1,5 +1,12 @@
 # Changelog
 
+## Chưa phát hành
+
+- Gõ `@` trong ô nhập để chọn file/thư mục của dự án (lọc khi gõ, ↑↓ chọn, Tab/Enter chèn, Esc đóng).
+  Khi chạy, `@đường/dẫn` được đổi sang cú pháp của từng agent: `@path` cho Claude Code và agy, đường
+  dẫn thường cho Codex, đường dẫn + `-f path` cho OpenCode. Khoá mới `file_ref`/`file_args` theo agent
+  để tự chỉnh; `ateam doctor` và `/agents` in cú pháp đang dùng.
+
 ## 0.3.1 — 14/10/2026
 
 - Sửa: phím tắt Ctrl+D, Ctrl+K… không có tác dụng khi con trỏ đang ở ô nhập (mặc định khi mở app) —

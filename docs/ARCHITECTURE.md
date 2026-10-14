@@ -136,6 +136,21 @@ tự chứa `{model}`/`{effort}`, `model_args`/`effort_args` được chèn **ng
 `flag`, dừng đọc cờ ở đối số vị trí đầu tiên). Placeholder rỗng bị bỏ cùng cờ đứng trước nó.
 Thứ tự ưu tiên: model/effort riêng task > `state.json` (đặt trong app) > file cấu hình > mặc định CLI.
 
+## Nhắc file bằng `@` (`mentions.py`)
+
+Dạng chung trong prompt (người dùng gõ, TUI chèn, trưởng nhóm có thể chép vào task): `@đường/dẫn`,
+có dấu cách thì `@"đường dẫn"`. `Orchestrator.argv_for` gọi `mentions.render` ngay trước khi chạy
+agent (cả lượt trưởng nhóm lẫn task/sửa lỗi): mỗi lần nhắc mà đường dẫn có thật (so với thư mục
+task, rồi gốc dự án) được viết lại theo `file_ref` của agent, và `file_args` (vd `-f <path>` của
+OpenCode) được chèn trước prompt bằng `mentions.insert_args`. DB luôn giữ dạng chung, nên đổi người
+làm (`/assign`, dự phòng hạn mức) vẫn ra đúng cú pháp của người mới.
+
+TUI: `CommandInput` (con của `Input`) dò `@…` ngay trước con trỏ ở mỗi `Input.Changed`, lọc
+`FileIndex` (`git ls-files -co --exclude-standard`, không phải repo git thì `os.walk` bỏ thư mục rác;
+làm mới tối đa 20 giây/lần, chạy bất đồng bộ) và hiện `MentionList` (OptionList nổi trên lớp
+`overlay`). Khi danh sách mở, ↑↓/Tab/Enter/Esc thuộc về nó; khi đóng, Enter gửi lệnh và Tab chuyển
+focus như cũ.
+
 ## Hạn mức
 
 `limits.looks_rate_limited(output, rc)` chỉ xét khi agent thất bại hoặc in ≤ 15 dòng (tránh nhầm

@@ -23,6 +23,9 @@ nhưng chưa có báo cáo chạy thật. Cần xác nhận:
       không; nếu không, để `effort` trống cho grok.
 - [ ] Thông báo hết hạn mức thật của từng CLI khớp `LIMIT_RE` và đọc được giờ hồi
       (khi gặp: lấy `ateam log <task>`, thêm mẫu + test).
+- [ ] Cú pháp nhắc file (`mentions.SYNTAX`): Claude Code `-p` có đọc `@file` (và `@"có dấu cách"`)
+      không; `agy` có hiểu `@file` như Gemini CLI không; `opencode run -f <path>` đính được cả thư mục
+      không. Sai thì sửa `SYNTAX` hoặc đặt `file_ref`/`file_args` cho agent đó.
 - [ ] Kế hoạch JSON của Claude thật được bóc ổn định (`.ateam/logs/lead.log` khi lỗi).
 
 ## Backlog tính năng (đã đề xuất với người dùng, chưa làm)

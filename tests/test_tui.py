@@ -52,3 +52,57 @@ def test_tui_smoke(env, project, monkeypatch):
     asyncio.run(main())
     assert (project / "b.txt").exists()
     assert os.environ.get("XDG_CONFIG_HOME") == env["XDG_CONFIG_HOME"]
+
+
+def test_tui_file_mention_popup(env, project, monkeypatch):
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+    (project / "src").mkdir()
+    (project / "src" / "app.py").write_text("")
+    (project / "my docs").mkdir()
+    (project / "my docs" / "plan.md").write_text("")
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import CommandInput, MentionList, TeamApp
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(140, 40)) as pilot:
+            await pilot.pause(0.3)
+            box = app.query_one("#cmd", CommandInput)
+            popup = app.query_one("#mention", MentionList)
+            await pilot.press(*"/task codex@high sửa @ap")
+            await pilot.pause(0.5)
+            assert popup.display
+            await pilot.press("tab")
+            await pilot.pause(0.2)
+            assert box.value == "/task codex@high sửa @src/app.py "
+            assert not popup.display
+            await pilot.press(*"và @my")
+            await pilot.pause(0.3)
+            await pilot.press("enter")          # chọn thư mục: đi vào trong, danh sách vẫn mở
+            await pilot.pause(0.2)
+            assert box.value.endswith('@"my docs/') and popup.display
+            await pilot.press("down", "up", "enter")
+            await pilot.pause(0.2)
+            assert box.value.endswith('và @"my docs/plan.md" ')
+            await pilot.press(*"@")
+            await pilot.pause(0.2)
+            assert popup.display
+            await pilot.press("escape")
+            assert not popup.display
+            await pilot.press("enter")          # danh sách đóng: Enter gửi lệnh như cũ
+            await pilot.pause(0.3)
+            assert box.value == ""
+            t = app.db.tasks()[0]
+            assert t.agent == "codex" and '@src/app.py và @"my docs/plan.md"' in t.prompt
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())

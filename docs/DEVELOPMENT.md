@@ -28,7 +28,7 @@ Bỏ dòng `PATH=…fakebin` để chạy với CLI thật.
 | --- | --- |
 | `tests/test_units.py` | `AgentConfig.argv`, bóc JSON/DELEGATE/NOTE/SUMMARY, nhận diện hết hạn mức, nâng cấp config |
 | `tests/test_flows.py` | Luồng đầu-cuối qua `python -m ateam`: kế hoạch → chạy → giao chéo → review; cờ model/effort; lỗi thiếu CLI / im lặng / timeout / bị chặn; worktree merge + xung đột; chế độ review (diff/merge/reject); verify sửa được / hết lượt / bỏ qua; hết hạn mức + dự phòng; `run` không treo |
-| `tests/test_tui.py` | Mở TUI headless (`App.run_test`), giao task, đổi tab, Ctrl+D, Ctrl+Y, `/usage` |
+| `tests/test_tui.py` | Mở TUI headless (`App.run_test`), giao task, đổi tab, Ctrl+D, Ctrl+Y, `/usage`; danh sách gợi ý `@file` |
 
 Helper trong `tests/conftest.py`: fixture `env` (PATH có fakebin, XDG riêng, thư mục hạn mức,
 file log đối số), `project`, hàm `ateam(env, cwd, *args)`, `git_init`, `write_project_config`, `tasks`.
@@ -50,7 +50,8 @@ mkdir -p /tmp/cihome && HOME=/tmp/cihome GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_
 
 Biến điều khiển (đọc trong `_common.sh`): `ATEAM_FAKE_SLOW` (giây giữa các dòng),
 `ATEAM_FAKE_LIMIT_DIR` (có file `<tên>` trong đó → agent đó báo hết hạn mức),
-`ATEAM_FAKE_ARGS_LOG` (ghi argv trừ prompt, để test cờ). Lưu ý tên file hạn mức của OpenCode là
+`ATEAM_FAKE_ARGS_LOG` (ghi argv trừ prompt, để test cờ), `ATEAM_FAKE_FULL_LOG` (ghi cả prompt, để test
+nội dung prompt, vd cú pháp `@file`). Lưu ý tên file hạn mức của OpenCode là
 `grok` (tên agent trong ateam), không phải `opencode`.
 
 Khi đổi prompt trong `prompts.py`, kiểm tra các chuỗi mà fakebin dò (`Reply with ONLY a JSON array`,

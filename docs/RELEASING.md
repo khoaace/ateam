@@ -56,4 +56,5 @@ Tái hiện lỗi chỉ có trên Ubuntu: chạy test với `HOME` trống và `
 
 Dashboard Cloudflare → Workers & Pages → `ateam` → Deployments → bản build lỗi → log. Lỗi hay gặp:
 placeholder chưa điền trong `site/index.html`, script build đổi tên file, `wrangler.jsonc` sai cú pháp.
+Build cho nhánh PR chạy `npx wrangler preview`, lệnh này bắt buộc `wrangler.jsonc` có khối `"previews": {}`.
 Workers Builds tự chạy `pip install .` vì thấy `pyproject.toml` — bước thừa nhưng vô hại (~10 giây).
