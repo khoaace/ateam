@@ -23,7 +23,7 @@ STATE_FILE = GLOBAL_DIR / "state.json"
 CUSTOM_FILE = GLOBAL_DIR / "custom.toml"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 LEAD_ALIAS = "lead"  # agent của bước workflow = trưởng nhóm hiện tại
-CONFIG_VERSION = 3
+CONFIG_VERSION = 4
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
 
 DEFAULT_CONFIG = """\
@@ -34,7 +34,7 @@ DEFAULT_CONFIG = """\
 #  Model / effort đổi trong app (/model, /effort) được lưu ở ~/.config/ateam/state.json
 #  và ưu tiên hơn giá trị trong file này. Gõ /model <agent> - để quay về giá trị ở đây.
 # ============================================================
-config_version = 3
+config_version = 4
 
 lead = "claude"              # agent làm trưởng nhóm (lập kế hoạch + review)
 max_parallel = 3             # tổng số task chạy song song tối đa
@@ -97,8 +97,9 @@ timeout = 1800
 max_concurrent = 1
 
 [agents.codex]
-# --full-auto: sửa file + chạy lệnh trong sandbox của Codex
-command = ["codex", "exec", "--full-auto", "--skip-git-repo-check", "{prompt}"]
+# --sandbox workspace-write: sửa file + chạy lệnh trong sandbox của Codex (codex exec không hỏi duyệt).
+# Cho ghi/mạng ngoài thư mục làm việc: "danger-full-access" (chỉ repo tin tưởng).
+command = ["codex", "exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "{prompt}"]
 model = ""                   # vd: "gpt-5.5", "gpt-5.5-codex"... (xem trong codex /model)
 effort = ""
 model_args = ["-m", "{model}"]
@@ -656,8 +657,58 @@ def mark_setup_done() -> None:
     save_state(state)
 
 
+# Cờ CLI đã bị bỏ -> cờ thay thế, theo tên lệnh. Áp khi đọc cấu hình để file cũ của người dùng
+# vẫn chạy được. Codex bỏ --full-auto từ 0.152 ("unexpected argument"); --sandbox workspace-write
+# là tương đương và được mọi bản codex exec nhận.
+LEGACY_FLAGS: dict[str, dict[str, list[str]]] = {
+    "codex": {"--full-auto": ["--sandbox", "workspace-write"]},
+}
+
+
+def fix_legacy_flags(command: list[str]) -> list[str]:
+    """Thay cờ đã bị bỏ bằng cờ thay thế; bỏ hẳn nếu lệnh đã có cờ thay thế."""
+    table = LEGACY_FLAGS.get(Path(command[0]).name if command else "", {})
+    if not table or not any(c in table for c in command):
+        return command
+    out: list[str] = []
+    for c in command:
+        new = table.get(c)
+        if new is None:
+            out.append(c)
+        elif new[0] not in command:
+            out += new
+    return out
+
+
+def command_flags(command: list[str]) -> list[str]:
+    """Các cờ (-x / --xyz) trong lệnh, bỏ placeholder và giá trị sau dấu '='."""
+    out = []
+    for c in command[1:]:
+        if c.startswith("-") and len(c) > 1 and "{" not in c:
+            f = c.split("=", 1)[0]
+            if f not in out:
+                out.append(f)
+    return out
+
+
+def help_command(command: list[str]) -> list[str]:
+    """Lệnh xem trợ giúp: tên lệnh + lệnh con (vd `codex exec`, `opencode run`) + --help."""
+    head = command[:1]
+    for c in command[1:]:
+        if c.startswith("-") or "{" in c:
+            break
+        head.append(c)
+    return head + ["--help"]
+
+
+def unknown_flags(command: list[str], help_text: str) -> list[str]:
+    """Cờ trong lệnh mà trang --help không nhắc tới (CLI có thể đã đổi/bỏ cờ)."""
+    return [f for f in command_flags(command)
+            if not re.search(r"(?<![\w-])" + re.escape(f) + r"(?![\w-])", help_text)]
+
+
 def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
-    command = _strs(a.get("command"))
+    command = fix_legacy_flags(_strs(a.get("command")))
     cat = CATALOG.get(Path(command[0]).name if command else "", {})
     models = _strs(a.get("models")) or list(cat.get("models", []))
     seen = [str(m) for m in found or []]  # model thật hỏi được từ CLI đứng trước
@@ -670,7 +721,7 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
         max_concurrent=max(1, int(a.get("max_concurrent", 1))),
         pty=bool(a.get("pty", False)),
         enabled=bool(st.get("enabled", a.get("enabled", True))),
-        plan_command=_strs(a.get("plan_command")) or None,
+        plan_command=fix_legacy_flags(_strs(a.get("plan_command"))) or None,
         model=st.get("model", a.get("model", "")) or "",
         effort=st.get("effort", a.get("effort", "")) or "",
         model_args=_strs(a.get("model_args")),

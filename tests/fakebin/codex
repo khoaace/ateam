@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 # Giả lập Codex: tạo a.txt, giao README cho grok, để lại ghi chú; biết sửa lỗi test
 # (tạo fixed.txt) và biết làm trưởng nhóm dự phòng.
+fake_flags="--sandbox --skip-git-repo-check -m --model -c --config"
 source "$(dirname "$0")/_common.sh"
+# Như codex >= 0.152: --full-auto đã bị bỏ
+for a in "$@"; do
+  if [ "$a" = "--full-auto" ]; then
+    printf "error: unexpected argument '--full-auto' found\n\nUsage: codex exec [OPTIONS] [PROMPT]\n" >&2; exit 2
+  fi
+done
 P="$fake_prompt"
 if fake_limited codex; then echo "ERROR: You've hit your usage limit. Try again in 7 minutes."; exit 1; fi
 if [[ "$P" == *"TEAM LEAD"* && "$P" == *"Reply with ONLY a JSON array"* ]]; then

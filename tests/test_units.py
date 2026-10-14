@@ -291,3 +291,36 @@ def test_custom_agents_and_workflows_file(tmp_path, monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(cfgmod)
+
+
+def test_legacy_codex_full_auto_is_rewritten():
+    from ateam.config import fix_legacy_flags
+    old = ["codex", "exec", "--full-auto", "--skip-git-repo-check", "{prompt}"]
+    assert fix_legacy_flags(old) == ["codex", "exec", "--sandbox", "workspace-write",
+                                     "--skip-git-repo-check", "{prompt}"]
+    # đã có --sandbox thì chỉ bỏ --full-auto; CLI khác không đụng tới
+    assert fix_legacy_flags(["codex", "exec", "--full-auto", "--sandbox", "read-only", "{prompt}"]) == [
+        "codex", "exec", "--sandbox", "read-only", "{prompt}"]
+    assert fix_legacy_flags(["mycli", "--full-auto", "{prompt}"]) == ["mycli", "--full-auto", "{prompt}"]
+
+
+def test_unknown_flags_against_help():
+    from ateam.config import help_command, unknown_flags
+    cmd = ["codex", "exec", "--full-auto", "-c", "x=1", "--skip-git-repo-check", "{prompt}"]
+    assert help_command(cmd) == ["codex", "exec", "--help"]
+    assert help_command(["claude", "-p", "{prompt}"]) == ["claude", "--help"]
+    help_text = "Options:\n  -c, --config <key=value>\n  -s, --sandbox <MODE>\n      --skip-git-repo-check\n"
+    assert unknown_flags(cmd, help_text) == ["--full-auto"]
+    # "-s" không được tính là có mặt nhờ "--skip-…" (so khớp nguyên cờ)
+    assert unknown_flags(["x", "-p", "{prompt}"], "  --print-timeout") == ["-p"]
+
+
+def test_bad_flag_failure_points_to_doctor():
+    from ateam.orchestrator import Orchestrator
+
+    class R:
+        cancelled = timed_out = False
+        output = "error: unexpected argument '--full-auto' found\n\nUsage: codex exec [OPTIONS]"
+    assert Orchestrator._classify(R(), 2) == "badflag"
+    R.output = "boom"
+    assert Orchestrator._classify(R(), 1) == "failed"

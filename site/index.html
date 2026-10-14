@@ -389,7 +389,7 @@ command = "npm test"
 max_fix_attempts = 2
 
 [agents.codex]
-command  = ["codex", "exec", "--full-auto", "--skip-git-repo-check", "{prompt}"]
+command  = ["codex", "exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "{prompt}"]
 model    = "gpt-5.5"
 effort   = "high"
 fallback = ["claude"]

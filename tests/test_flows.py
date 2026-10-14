@@ -238,3 +238,23 @@ effort = "high"
     assert not (project / ".ateam/logs/lead.log").exists()  # review = false, không gọi trưởng nhóm
     r = ateam(env, project, "flow", "-y", "nope", "x", check=False)
     assert r.returncode == 1 and "Không có workflow 'nope'" in r.stderr
+
+
+def test_doctor_flags_unknown_cli_flag_and_old_codex_config_still_runs(env, project):
+    # cấu hình cũ còn --full-auto (codex mới báo "unexpected argument") phải được tự đổi cờ
+    write_project_config(project, """
+[agents.codex]
+command = ["codex", "exec", "--full-auto", "--skip-git-repo-check", "{prompt}"]
+[agents.badcodex]
+command = ["codex", "exec", "--khong-co-co-nay", "{prompt}"]
+enabled = true
+""")
+    r = ateam(env, project, "doctor", check=False)
+    assert r.returncode == 1, r.stdout
+    assert "codex exec --sandbox workspace-write --skip-git-repo-check <prompt>" in r.stdout
+    assert "cờ không thấy trong `codex exec --help`: --khong-co-co-nay" in r.stdout
+    assert "--full-auto" not in r.stdout
+    ateam(env, project, "add", "--to", "codex", "tạo a")
+    ateam(env, project, "run", "-q")
+    assert (project / "a.txt").exists()
+    assert tasks(project)[0].status == "done"

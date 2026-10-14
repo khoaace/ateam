@@ -22,7 +22,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 
 | Khoá | Mặc định | Ý nghĩa |
 | --- | --- | --- |
-| `config_version` | `3` | Phiên bản file; thấp hơn `CONFIG_VERSION` thì được nâng cấp |
+| `config_version` | `4` | Phiên bản file; thấp hơn `CONFIG_VERSION` thì được nâng cấp |
 | `lead` | `"claude"` | Agent làm trưởng nhóm |
 | `max_parallel` | `3` | Tổng số task chạy cùng lúc |
 | `approve_plan` | `true` | Kế hoạch (và task bổ sung sau review) ở `draft`, chờ `/go` |
@@ -100,7 +100,7 @@ Mỗi bước:
 | Agent | command | model_args / effort_args | efforts | fallback |
 | --- | --- | --- | --- | --- |
 | `claude` | `claude -p {prompt} --permission-mode acceptEdits` | `--model` / `--effort` | low, medium, high, max | codex |
-| `codex` | `codex exec --full-auto --skip-git-repo-check {prompt}` | `-m` / `-c model_reasoning_effort="…"` | minimal…xhigh | claude |
+| `codex` | `codex exec --sandbox workspace-write --skip-git-repo-check {prompt}` | `-m` / `-c model_reasoning_effort="…"` | minimal…xhigh | claude |
 | `antigravity` | `agy --mode accept-edits --print-timeout 0 -p {prompt}` (pty) | `--model` / `--effort` | low…max | claude, codex |
 | `grok` | `opencode run {prompt}`, model `xai/grok-build-0.1` | `--model` / `--variant` | low, medium, high | codex |
 

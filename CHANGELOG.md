@@ -1,5 +1,13 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Sửa: mọi task của Codex lỗi ngay** với `error: unexpected argument '--full-auto' found` — Codex 0.152
+  đã bỏ cờ này. Lệnh mặc định đổi sang `codex exec --sandbox workspace-write` (cũng chạy trên bản Codex
+  cũ). Cấu hình cũ còn `--full-auto` được tự đổi khi đọc; cấu hình chung nâng lên bản 4.
+- `ateam doctor` so từng cờ trong `command` với `<lệnh> --help` (vd `codex exec --help`) và báo cờ
+  CLI không còn nhận. Task lỗi vì CLI không nhận cờ thì thông báo lỗi nhắc chạy `ateam doctor`.
+
 ## 0.5.1 — 14/10/2026
 
 - **Gõ `/` ở đầu ô nhập** hiện danh sách lệnh kèm tham số và mô tả, gõ tiếp để lọc; Tab chèn lệnh,

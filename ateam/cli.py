@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 
 from . import __version__, mentions
-from .config import (DEFAULT_CONFIG, GLOBAL_CONFIG, ensure_global_config, load_config,
-                     needs_setup, save_agent_setting)
+from .config import (DEFAULT_CONFIG, GLOBAL_CONFIG, ensure_global_config, help_command,
+                     load_config, needs_setup, save_agent_setting, unknown_flags)
 from .db import DB, QUEUED
 from .orchestrator import SYSTEM, Orchestrator
 
@@ -96,6 +96,12 @@ def cmd_doctor(args) -> int:
         if a.models:
             print(f"     model gợi ý: {', '.join(a.models[:8])}" + (" …" if len(a.models) > 8 else ""))
         print(f"     {' '.join(a.argv('<prompt>'))}")
+        if path:
+            bad = _check_flags(path, a)
+            if bad:
+                ok = ok and not a.enabled
+                print(f"     ✗ cờ không thấy trong `{' '.join(bad[0])}`: {', '.join(bad[1])}"
+                      " — CLI có thể đã đổi cờ; sửa command trong cấu hình")
         print(f"     @file trong prompt → {mentions.describe(a.binary, a.file_ref, a.file_args, a.image_args)}")
     if cfg.lead not in cfg.agents:
         print(f"\n✗ Trưởng nhóm '{cfg.lead}' không có trong [agents].")
@@ -108,6 +114,23 @@ def cmd_doctor(args) -> int:
     print("Thêm agent / workflow riêng: /custom trong app (hoặc nút ở màn hình thiết lập).")
     print("\nMọi thứ sẵn sàng." if ok else "\nCài các CLI còn thiếu hoặc đặt enabled = false cho agent đó trong config.")
     return 0 if ok else 1
+
+
+def _check_flags(path: str, a) -> tuple[list[str], list[str]] | None:
+    """So cờ trong command (và plan_command) với `<lệnh> --help`. Trả (lệnh help, cờ lạ) hoặc None."""
+    for cmd in [a.command] + ([a.plan_command] if a.plan_command else []):
+        hc = help_command(cmd)
+        try:
+            r = subprocess.run([path] + hc[1:], capture_output=True, text=True, timeout=15)
+        except Exception:
+            continue
+        text = (r.stdout or "") + (r.stderr or "")
+        if r.returncode != 0 or "-" not in text:
+            continue  # CLI không có trang --help dùng được: không đoán
+        bad = unknown_flags(cmd, text)
+        if bad:
+            return hc, bad
+    return None
 
 
 def _printer(prefix_task: bool = True):
