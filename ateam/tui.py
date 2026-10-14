@@ -214,6 +214,13 @@ def fmt_dur(sec: float) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
 
+def fmt_tokens(n: int) -> str:
+    """850 · 1.2k · 37k — số token ước tính, không làm tròn mọi thứ nhỏ thành '0k'."""
+    if n < 1000:
+        return str(n)
+    return f"{n / 1000:.1f}k" if n < 10000 else f"{n // 1000}k"
+
+
 def today_start() -> float:
     lt = time.localtime()
     return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))
@@ -1778,7 +1785,7 @@ class TeamApp(App):
                 if not r:
                     continue
                 tok = (r["prompt_chars"] + r["output_chars"]) // 4
-                out.append(f"  {name:12} {r['runs']:>5} {fmt_dur(r['secs']):>10} {tok // 1000:>7}k "
+                out.append(f"  {name:12} {r['runs']:>5} {fmt_dur(r['secs']):>10} {fmt_tokens(tok):>8} "
                            f"{r['failed']:>4} {r['ratelimits']:>6}")
         cds = [f"{a} đến {self.orch.cooldown_label(a)}" for a in self.cfg.agents if self.orch.in_cooldown(a)]
         out.append("Đang tạm nghỉ: " + (", ".join(cds) if cds else "không"))

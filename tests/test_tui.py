@@ -473,7 +473,10 @@ def test_tui_command_popup_help_and_empty_state(env, project, monkeypatch):
 def test_tui_helpers():
     from rich.text import Text
 
-    from ateam.tui import COMMANDS, flow_chunks, help_text, match_commands, suggest_command
+    from ateam.tui import (COMMANDS, flow_chunks, fmt_tokens, help_text, match_commands,
+                           suggest_command)
+
+    assert [fmt_tokens(n) for n in (0, 850, 1234, 37500)] == ["0", "850", "1.2k", "37k"]
 
     assert suggest_command("stup") == "setup"
     assert suggest_command("hlep") == "help"
