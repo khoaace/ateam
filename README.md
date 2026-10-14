@@ -58,6 +58,8 @@ của từng agent. **Ctrl+S** lưu, **Esc** bỏ qua (giữ cấu hình hiện 
   Chọn thư mục thì danh sách đi vào trong thư mục đó. Khi chạy, ateam đổi `@đường/dẫn` sang đúng cú
   pháp của agent nhận việc (xem bảng dưới); `ateam add`/`ateam goal` ngoài dòng lệnh cũng hiểu `@`.
 * Chọn task trong bảng (↑↓) để xem log trực tiếp của nó; **Ctrl+L** về log hệ thống.
+* **Agent & workflow riêng**: `/custom` (hoặc nút *Agent & workflow tuỳ chỉnh…* ở màn hình thiết lập) —
+  xem mục dưới.
 * **Ctrl+R** chạy lại task đang chọn, **Ctrl+K** huỷ, `/note ...` ghi chú cho cả đội, `/help` xem tất cả lệnh.
 * **Ctrl+T** mở tab **Đội** để xem cả 4 agent làm việc cùng lúc.
 
@@ -160,12 +162,65 @@ nội dung yêu cầu...
 được chuyển cho các task phụ thuộc vào nó. Agent nào chạy được lệnh shell cũng có thể gọi
 `ateam add --to <agent> "..."` trực tiếp.
 
+## Agent và workflow tuỳ chỉnh
+
+Gõ `/custom` (hoặc bấm *Agent & workflow tuỳ chỉnh…* ở màn hình thiết lập) để mở màn hình quản lý,
+cùng kiểu với màn hình thiết lập. Mọi thứ lưu ở `~/.config/ateam/custom.toml`, file này **không bị
+thay** khi `config.toml` được nâng cấp lên bản mới.
+
+**Thêm agent**: bất kỳ CLI nào có chế độ headless (nhận prompt, in kết quả rồi thoát). Chọn *Mẫu* để điền
+sẵn (claude, codex, agy, opencode, Gemini CLI, Aider, hoặc trống), rồi sửa: lệnh (`{prompt}` = nội dung
+task), vai trò (trưởng nhóm phân việc dựa vào đây), model mặc định + model gợi ý + cờ truyền model,
+các mức effort + cờ truyền effort, lệnh liệt kê model, cách nhắc file `@` (`@{path}` hay `{path}`, cờ
+đính file như `-f {path}`), agent dự phòng khi hết hạn mức, timeout, pty. Dòng *Lệnh sẽ chạy* ở cuối form
+cho thấy lệnh thật và CLI đã cài chưa. Lưu xong, agent vào đội ngay (ô riêng ở tab Đội, bật/tắt và chọn
+model/effort ở `/setup`, trưởng nhóm thấy nó khi lập kế hoạch).
+
+**Thêm workflow**: chuỗi bước dựng sẵn, chạy không cần trưởng nhóm lập kế hoạch. Mỗi bước gồm agent (hoặc
+*trưởng nhóm*), tiêu đề, prompt (`{goal}` = mục tiêu bạn gõ), *Sau bước* (trống = sau bước liền trước, `0`
+= chạy ngay song song, `1,2` = sau bước 1 và 2) và effort riêng. Có mẫu *tính năng mới* (thiết kế → code →
+test), *sửa lỗi* (tái hiện → sửa → test chống tái diễn), *review code*. Tick *Trưởng nhóm review khi
+xong* để trưởng nhóm review và giao thêm việc như mục tiêu thường.
+
+```
+/flow                                  xem các workflow
+/flow tinh-nang thêm đăng nhập Google  tạo mục tiêu theo workflow (các bước ở trạng thái nháp → /go)
+ateam flow -y tinh-nang "thêm đăng nhập Google"   chạy ngoài app
+ateam flows                            liệt kê workflow
+```
+
+Sửa tay cũng được (`/custom` đọc lại file):
+
+```toml
+# ~/.config/ateam/custom.toml
+[agents.aider]
+command = ["aider", "--yes-always", "--no-auto-commits", "--message", "{prompt}"]
+model_args = ["--model", "{model}"]
+file_args = ["--file", "{path}"]
+role = "Sửa code theo yêu cầu cụ thể."
+
+[workflows.sua-loi]
+description = "tái hiện → sửa → test"
+review = true
+
+[[workflows.sua-loi.steps]]
+agent = "codex"
+title = "Tái hiện lỗi"
+prompt = "Tìm nguyên nhân và cách tái hiện lỗi: {goal}. Chưa sửa code."
+
+[[workflows.sua-loi.steps]]
+agent = "lead"                     # trưởng nhóm hiện tại
+title = "Sửa lỗi"
+prompt = "Sửa lỗi theo phân tích ở bước trước: {goal}"
+effort = "high"
+```
+
 ## Cấu hình
 
 `~/.config/ateam/config.toml` (tạo tự động), ghi đè riêng cho từng dự án bằng `ateam init --project`
 → `.ateam/config.toml`. Có thể đổi trưởng nhóm, vai trò từng agent, lệnh chạy, timeout, số task song song.
 
-Thêm agent mới chỉ cần một khối:
+Thêm agent mới: dùng `/custom` (mục trên), hoặc một khối trong file cấu hình:
 
 ```toml
 [agents.gemini]

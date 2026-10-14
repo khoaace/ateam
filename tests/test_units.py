@@ -176,3 +176,47 @@ def test_save_setup_only_stores_differences(tmp_path, monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(cfgmod)
+
+
+def test_custom_agents_and_workflows_file(tmp_path, monkeypatch):
+    """custom.toml: ghi/đọc lại đúng, gộp vào đội, giữ nguyên khi config.toml được nâng cấp."""
+    import importlib
+
+    import ateam.config as cfgmod
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfgmod = importlib.reload(cfgmod)
+    try:
+        cfgmod.ensure_global_config()
+        cfgmod.save_custom_item("agents", "my ai", {
+            "command": ["mycli", "--go", "{prompt}"], "role": 'viết "nhanh"\nvà gọn',
+            "model_args": ["--model", "{model}"], "efforts": [], "file_args": [], "pty": True})
+        cfgmod.save_custom_item("workflows", "feat", {
+            "description": "d", "review": False,
+            "steps": [{"agent": "lead", "title": "Thiết kế {goal}", "prompt": "nghĩ về {goal}"},
+                      {"agent": "my ai", "title": "Code", "prompt": "code"},
+                      {"agent": "codex", "title": "Song song", "prompt": "x", "after": []},
+                      {"agent": "grok", "title": "Cuối", "prompt": "y", "after": [2, 3], "effort": "high"}]})
+        raw = cfgmod.load_custom()
+        assert raw["agents"]["my ai"]["role"] == 'viết "nhanh"\nvà gọn'
+        c = cfgmod.load_config(tmp_path / "proj")
+        assert "my ai" in c.agents and c.custom_agents == {"my ai"}
+        a = c.agents["my ai"]
+        assert a.pty and a.efforts == [] and a.file_args == []
+        assert a.argv("P", model="m1") == ["mycli", "--go", "--model", "m1", "P"]
+        plan = c.workflows["feat"].plan("G", c.lead)
+        assert [p["agent"] for p in plan] == ["claude", "my ai", "codex", "grok"]
+        assert plan[0]["title"] == "Thiết kế G" and plan[0]["prompt"] == "nghĩ về G"
+        assert [p["depends_on"] for p in plan] == [[], [1], [], [2, 3]]
+        assert plan[3]["effort"] == "high" and c.workflows["feat"].review is False
+        # đổi tên rồi xoá
+        cfgmod.save_custom_item("workflows", "feat2", cfgmod.workflow_to_dict(c.workflows["feat"]), "feat")
+        assert list(cfgmod.load_config(tmp_path / "proj").workflows) == ["feat2"]
+        cfgmod.save_custom_item("workflows", "feat2", None)
+        assert not cfgmod.load_config(tmp_path / "proj").workflows
+        # config.toml cũ bị thay khi nâng cấp, agent tuỳ chỉnh vẫn còn
+        cfgmod.GLOBAL_CONFIG.write_text('config_version = 1\nlead = "claude"\n')
+        assert cfgmod.ensure_global_config()
+        assert "my ai" in cfgmod.load_config(tmp_path / "proj").agents
+    finally:
+        monkeypatch.undo()
+        importlib.reload(cfgmod)

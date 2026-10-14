@@ -12,15 +12,17 @@ from pathlib import Path
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input, OptionList,
                              RichLog, Select, Static, TabbedContent, TabPane)
 from textual.widgets.option_list import Option
 
 from . import mentions
-from .config import (AgentConfig, Config, describe_models, load_config, load_state, mark_setup_done,
-                     save_project_setting, save_setup)
+from .config import (CUSTOM_FILE, LEAD_ALIAS, NAME_RE, WORKFLOW_TEMPLATES, AgentConfig, Config,
+                     Workflow, WorkflowStep, agent_from_dict, agent_templates, describe_models,
+                     load_config, load_custom, load_state, mark_setup_done, save_custom_item,
+                     save_project_setting, save_setup, workflow_to_dict)
 from .db import DB
 from .orchestrator import SYSTEM, Orchestrator
 
@@ -92,6 +94,11 @@ Model & effort của từng agent (được lưu lại cho lần sau):
   /models <agent> làm mới           hỏi CLI danh sách model thật (opencode models, agy models)
   /agents                           xem model, effort, mức effort hợp lệ của từng agent
   /setup                            mở lại màn hình thiết lập: bật/tắt agent, trưởng nhóm, model, effort
+
+Agent & workflow tuỳ chỉnh:
+  /custom                           thêm/sửa/xoá agent riêng (CLI bất kỳ) và workflow (chuỗi bước dựng sẵn)
+  /flow <tên> <mục tiêu>            chạy mục tiêu theo workflow — các bước thành task ngay, không cần lập kế hoạch
+  /flow                             xem các workflow đang có
 
 Khác:
   /pause  /resume                   tạm dừng / tiếp tục nhận task mới
@@ -236,6 +243,7 @@ class SetupScreen(ModalScreen):
             yield Static(id="setup-status")
             yield Vertical(id="setup-rows")
             with Horizontal(id="setup-buttons"):
+                yield Button("Agent & workflow tuỳ chỉnh…", id="setup-custom")
                 yield Button("Bỏ qua (Esc)", id="setup-skip")
                 yield Button("Lưu & bắt đầu (Ctrl+S)", id="setup-save", variant="primary",
                              disabled=True)
@@ -327,6 +335,40 @@ class SetupScreen(ModalScreen):
             self.action_save()
         elif event.button.id == "setup-skip":
             self.action_skip()
+        elif event.button.id == "setup-custom" and self.ready:
+            keep = self.choices()
+            self.app.push_screen(CustomScreen(self.orch.root, self.cfg),
+                                 lambda changed: self._custom_done(changed, keep))
+
+    async def _custom_done(self, changed: bool, keep: dict) -> None:
+        """Quay lại từ màn hình tuỳ chỉnh: nạp lại đội rồi dựng lại form, giữ lựa chọn đang dở."""
+        if not changed:
+            return
+        await self.app.reload_custom()
+        for n, a in self.cfg.agents.items():
+            if a.models_command and a.installed() and n not in self.fetch:
+                self.fetch[n] = "chưa hỏi danh sách model (/models " + n + " làm mới)"
+            elif not a.installed():
+                self.fetch[n] = f"chưa cài '{a.binary}'"
+            elif n not in self.fetch:
+                self.fetch[n] = f"danh mục có sẵn ({len(a.models)} model)" if a.models else "CLI tự chọn"
+        for n in [n for n in self.fetch if n not in self.cfg.agents]:
+            del self.fetch[n]
+        self.ready = False
+        await self.query_one("#setup-rows", Vertical).remove_children()
+        await self._build_form()
+        if keep["lead"] in self.cfg.agents:
+            self.query_one("#setup-lead", Select).value = keep["lead"]
+        for n, ch in keep["agents"].items():
+            if n not in self.cfg.agents or not self.cfg.agents[n].installed():
+                continue
+            self.query_one("#" + safe_id(n, "setup-on-"), Checkbox).value = bool(ch.get("enabled"))
+            for key in ("model", "effort"):
+                w = self.query("#" + safe_id(n, f"setup-{key}-"))
+                if key in ch and w and isinstance(w.first(), Select):
+                    v = ch[key] or RESET
+                    if any(v == val for _, val in w.first()._options):
+                        w.first().value = v
 
     def action_save(self) -> None:
         if not self.ready:
@@ -340,6 +382,520 @@ class SetupScreen(ModalScreen):
 
     def action_skip(self) -> None:
         self.dismiss(None)
+
+
+# --------------------------------------------------------------------------- agent & workflow tuỳ chỉnh
+FORM_CSS = """
+    #{box} { width: 120; max-width: 100%; height: auto; max-height: 95%; border: thick $accent;
+             background: $surface; padding: 0 1; }
+    #{box} .f-scroll { height: auto; max-height: 34; }
+    #{box} .f-row { height: 3; }
+    #{box} .f-label { width: 20; padding: 1 0 0 1; text-style: bold; }
+    #{box} .f-input { width: 54; }
+    #{box} .f-hint { width: 1fr; height: 3; padding: 1 0 0 1; color: $text-muted;
+                     text-wrap: nowrap; text-overflow: ellipsis; }
+    #{box} .f-section { height: 1; margin-top: 1; color: $text-muted; text-style: bold; }
+    #{box} .f-buttons { height: auto; align: right middle; }
+    #{box} .f-buttons Button { margin-left: 2; }
+"""
+
+
+def form_row(label: str, widget, hint: str = "") -> Horizontal:
+    return Horizontal(Static(label, classes="f-label"), widget, Static(hint, classes="f-hint"),
+                      classes="f-row")
+
+
+def _csv(text: str) -> list[str]:
+    return [x.strip() for x in text.replace(";", ",").split(",") if x.strip()]
+
+
+def _argv_text(v) -> str:
+    """argv -> chuỗi để sửa trong ô nhập; chỉ đặt trong nháy khi cần ({prompt} giữ nguyên cho dễ đọc)."""
+    if not isinstance(v, list):
+        return str(v or "")
+    return " ".join(x if x and not re.search(r"[\s'\"\\]", x) else shlex.quote(x) for x in map(str, v))
+
+
+class AgentEditScreen(ModalScreen):
+    """Form thêm/sửa 1 agent tuỳ chỉnh. Trả về (tên, thân TOML, tên cũ) hoặc None (Esc)."""
+
+    BINDINGS = [Binding("escape", "cancel", "Huỷ", priority=True),
+                Binding("ctrl+s", "save", "Lưu", priority=True)]
+    DEFAULT_CSS = "AgentEditScreen { align: center middle; }" + FORM_CSS.replace("{box}", "agent-box") + """
+    #agent-preview { height: auto; padding: 0 1; background: $boost; margin-top: 1; }
+    """
+    FIELDS = [  # (id, nhãn, gợi ý, khoá TOML, kiểu: argv | csv | text | int)
+        ("command", "Lệnh", "bắt buộc; {prompt} = nội dung task", "command", "argv"),
+        ("role", "Vai trò", "trưởng nhóm phân việc dựa vào đây", "role", "text"),
+        ("model", "Model mặc định", "trống = để CLI tự chọn", "model", "text"),
+        ("models", "Model gợi ý", "cách nhau dấu phẩy", "models", "csv"),
+        ("model-args", "Cờ model", "vd: --model {model}", "model_args", "argv"),
+        ("efforts", "Mức effort", "vd: low, medium, high · '-' = không có", "efforts", "csv"),
+        ("effort", "Effort mặc định", "trống = để CLI tự chọn", "effort", "text"),
+        ("effort-args", "Cờ effort", "vd: --effort {effort}", "effort_args", "argv"),
+        ("models-command", "Lệnh liệt kê model", "vd: mycli models (tuỳ chọn)", "models_command", "argv"),
+        ("file-ref", "Nhắc file @", "vd: @{path} hoặc {path} · trống = theo lệnh", "file_ref", "text"),
+        ("file-args", "Cờ đính file", "vd: -f {path} · trống = theo lệnh · '-' = tắt", "file_args", "argv"),
+        ("fallback", "Dự phòng", "agent thay khi hết hạn mức, cách nhau dấu phẩy", "fallback", "csv"),
+        ("timeout", "Timeout (giây)", "mặc định 1800", "timeout", "int"),
+        ("max-concurrent", "Số task cùng lúc", "mặc định 1", "max_concurrent", "int"),
+    ]
+
+    def __init__(self, cfg: Config, name: str | None = None, raw: dict | None = None):
+        super().__init__()
+        self.cfg, self.old_name, self.raw = cfg, name, dict(raw or {})
+        self.templates = agent_templates()
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="agent-box"):
+            yield Static(Text("Sửa agent " + self.old_name if self.old_name else "Thêm agent tuỳ chỉnh",
+                              "bold"))
+            yield Static(Text("Bất kỳ CLI nào có chế độ headless (nhận prompt, in kết quả rồi thoát). "
+                              "Chọn mẫu để điền sẵn, Ctrl+S lưu, Esc huỷ.", "dim"))
+            with VerticalScroll(classes="f-scroll"):
+                yield form_row("Mẫu", Select([(k, k) for k in self.templates], prompt="(chọn để điền sẵn)",
+                                             id="ag-template", classes="f-input"),
+                               "điền sẵn lệnh, cờ model/effort, cú pháp file")
+                yield form_row("Tên", Input(self.old_name or "", placeholder="vd: gemini, aider-fast",
+                                            id="ag-name", classes="f-input"),
+                               "chữ, số, - và _")
+                for fid, label, hint, _k, _t in self.FIELDS:
+                    yield form_row(label, Input(id=f"ag-{fid}", classes="f-input"), hint)
+                yield form_row("Tuỳ chọn", Horizontal(
+                    Checkbox("Chạy trong terminal giả (pty)", id="ag-pty"),
+                    Checkbox("Chạy lệnh kiểm tra sau task", True, id="ag-verify"),
+                    classes="f-input"), "pty cần cho CLI chỉ in khi có terminal (vd agy)")
+            yield Static(id="agent-preview")
+            with Horizontal(classes="f-buttons"):
+                yield Button("Huỷ (Esc)", id="ag-cancel")
+                yield Button("Lưu (Ctrl+S)", id="ag-save", variant="primary")
+
+    def on_mount(self) -> None:
+        self.fill(self.raw)
+        self.query_one("#ag-name" if not self.old_name else "#ag-command", Input).focus()
+
+    def fill(self, raw: dict) -> None:
+        for fid, _l, _h, key, kind in self.FIELDS:
+            v = raw.get(key)
+            if v is None:
+                text = ""
+            elif kind == "argv":
+                text = "-" if key == "file_args" and v == [] else _argv_text(v)
+            elif kind == "csv":
+                text = "-" if v == [] else ", ".join(map(str, v if isinstance(v, list) else [v]))
+            else:
+                text = str(v)
+            self.query_one(f"#ag-{fid}", Input).value = text
+        self.query_one("#ag-pty", Checkbox).value = bool(raw.get("pty", False))
+        self.query_one("#ag-verify", Checkbox).value = bool(raw.get("verify", True))
+        self.update_preview()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id != "ag-template" or event.value not in self.templates:
+            return
+        self.fill(self.templates[event.value])
+        name = self.query_one("#ag-name", Input)
+        if not name.value.strip():
+            base = str(event.value).split()[0]
+            base = "my-agent" if base == "trống" else base
+            n, i = base, 2
+            while n in self.cfg.agents:
+                n, i = f"{base}-{i}", i + 1
+            name.value = n
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self.update_preview()
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        self.update_preview()
+
+    def body(self) -> dict:
+        """Đọc form thành dict như trong TOML (chỉ những khoá có điền). Lỗi -> ValueError."""
+        out: dict = {}
+        for fid, label, _h, key, kind in self.FIELDS:
+            text = self.query_one(f"#ag-{fid}", Input).value.strip()
+            if not text:
+                continue
+            if kind == "argv":
+                if key == "file_args" and text == "-":
+                    out[key] = []
+                    continue
+                try:
+                    out[key] = shlex.split(text)
+                except ValueError:
+                    raise ValueError(f"{label}: thiếu dấu nháy đóng")
+            elif kind == "csv":
+                out[key] = [] if text == "-" else _csv(text)
+            elif kind == "int":
+                if not text.isdigit() or int(text) < 1:
+                    raise ValueError(f"{label}: phải là số nguyên dương")
+                out[key] = int(text)
+            else:
+                out[key] = text
+        if self.query_one("#ag-pty", Checkbox).value:
+            out["pty"] = True
+        if not self.query_one("#ag-verify", Checkbox).value:
+            out["verify"] = False
+        return out
+
+    def update_preview(self) -> None:
+        t = Text()
+        try:
+            body = self.body()
+            name = self.query_one("#ag-name", Input).value.strip() or "agent"
+            a = agent_from_dict(name, body)
+            if not a.command:
+                t.append("Nhập lệnh để xem trước.", "dim")
+            else:
+                t.append("Lệnh sẽ chạy: ", "bold")
+                t.append(" ".join(a.argv("<prompt>", model=a.model or None, effort=a.effort or None)))
+                t.append("\n@file → ", "bold")
+                t.append(mentions.describe(a.binary, a.file_ref, a.file_args))
+                t.append("   ")
+                t.append(f"✓ đã cài '{a.binary}'" if a.installed() else f"✗ chưa cài '{a.binary}'",
+                         "green" if a.installed() else "yellow")
+                if not any("{prompt}" in c for c in a.command):
+                    t.append("\n⚠ lệnh không có {prompt}: prompt sẽ được thêm vào cuối", "yellow")
+        except ValueError as e:
+            t.append(f"⚠ {e}", "yellow")
+        self.query_one("#agent-preview", Static).update(t)
+
+    def validate(self) -> tuple[str, dict]:
+        name = self.query_one("#ag-name", Input).value.strip()
+        if not NAME_RE.match(name) or name == LEAD_ALIAS:
+            raise ValueError("Tên chỉ gồm chữ, số, - và _ (không dùng 'lead')")
+        if name in self.cfg.agents and name != self.old_name:
+            raise ValueError(f"Đã có agent '{name}' — chọn tên khác")
+        body = self.body()
+        if not body.get("command"):
+            raise ValueError("Cần nhập lệnh chạy agent")
+        bad = [f for f in body.get("fallback", []) if f not in self.cfg.agents or f == name]
+        if bad:
+            raise ValueError(f"Dự phòng không có trong đội: {', '.join(bad)}")
+        return name, body
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "ag-save":
+            self.action_save()
+        elif event.button.id == "ag-cancel":
+            self.action_cancel()
+
+    def action_save(self) -> None:
+        try:
+            name, body = self.validate()
+        except ValueError as e:
+            self.notify(str(e), severity="error")
+            return
+        self.dismiss((name, body, self.old_name))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class WorkflowEditScreen(ModalScreen):
+    """Form thêm/sửa 1 workflow: danh sách bước (agent, tiêu đề, prompt, chạy sau bước nào, effort).
+    Trả về (tên, thân TOML, tên cũ) hoặc None (Esc)."""
+
+    BINDINGS = [Binding("escape", "cancel", "Huỷ", priority=True),
+                Binding("ctrl+s", "save", "Lưu", priority=True)]
+    DEFAULT_CSS = "WorkflowEditScreen { align: center middle; }" + FORM_CSS.replace("{box}", "flow-box") + """
+    #flow-steps { height: auto; }
+    #flow-box .f-input { width: 64; }
+    .step-row { height: 3; }
+    .step-no { width: 4; padding: 1 0 0 1; text-style: bold; }
+    .step-agent { width: 22; }
+    .step-title { width: 22; }
+    .step-prompt { width: 1fr; }
+    .step-after { width: 12; }
+    .step-effort { width: 12; }
+    .step-del { width: 5; min-width: 5; }
+    #flow-head { height: 1; color: $text-muted; text-style: bold; margin-top: 1; }
+    #flow-add { margin-left: 4; }
+    """
+
+    def __init__(self, cfg: Config, name: str | None = None, raw: dict | None = None):
+        super().__init__()
+        self.cfg, self.old_name, self.raw = cfg, name, dict(raw or {})
+        self.n = 0  # bộ đếm id hàng (không phải số thứ tự bước)
+
+    def agent_options(self, extra: str = "") -> list[tuple[str, str]]:
+        opts = [(f"★ trưởng nhóm ({self.cfg.lead})", LEAD_ALIAS)] + [(n, n) for n in self.cfg.agents]
+        if extra and extra not in (LEAD_ALIAS, *self.cfg.agents):
+            opts.append((f"{extra} (không có trong đội)", extra))
+        return opts
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="flow-box"):
+            yield Static(Text("Sửa workflow " + self.old_name if self.old_name else "Thêm workflow", "bold"))
+            yield Static(Text("Chuỗi bước dựng sẵn, chạy bằng /flow <tên> <mục tiêu> — không cần trưởng "
+                              "nhóm lập kế hoạch. {goal} trong tiêu đề/prompt = mục tiêu bạn gõ. "
+                              "'Sau bước': trống = sau bước liền trước, 0 = chạy ngay, 1,2 = sau bước 1 và 2.",
+                              "dim"))
+            with VerticalScroll(classes="f-scroll"):
+                yield form_row("Mẫu", Select([(f"{k} — {v['description']}", k)
+                                              for k, v in WORKFLOW_TEMPLATES.items()],
+                                             prompt="(chọn để điền sẵn)", id="wf-template",
+                                             classes="f-input"), "thay toàn bộ các bước")
+                yield form_row("Tên", Input(self.old_name or "", placeholder="vd: tinh-nang, sua-loi",
+                                            id="wf-name", classes="f-input"), "chữ, số, - và _")
+                yield form_row("Mô tả", Input(id="wf-desc", classes="f-input"), "hiện trong /flow")
+                yield form_row("Review", Checkbox("Trưởng nhóm review khi xong", id="wf-review"),
+                               "review có thể giao thêm việc")
+                yield Static(f"{'':4}{'Agent':22}{'Tiêu đề':22}{'Prompt':36}{'Sau bước':12}Effort",
+                             id="flow-head")
+                yield Vertical(id="flow-steps")
+                yield Button("+ Thêm bước", id="wf-add")
+            with Horizontal(classes="f-buttons"):
+                yield Button("Huỷ (Esc)", id="wf-cancel")
+                yield Button("Lưu (Ctrl+S)", id="wf-save", variant="primary")
+
+    async def on_mount(self) -> None:
+        await self.fill(self.raw)
+        self.query_one("#wf-name" if not self.old_name else "#wf-desc", Input).focus()
+
+    def step_row(self, st: dict) -> Horizontal:
+        self.n += 1
+        k = self.n
+        agent = str(st.get("agent") or LEAD_ALIAS)
+        after = st.get("after")
+        after_text = "" if after is None else ("0" if after == [] else
+                                               ",".join(map(str, after if isinstance(after, list) else [after])))
+        return Horizontal(
+            Static("", classes="step-no"),
+            Select(self.agent_options(agent), value=agent, allow_blank=False, classes="step-agent",
+                   id=f"wf-agent-{k}"),
+            Input(str(st.get("title") or ""), placeholder="tiêu đề", classes="step-title", id=f"wf-title-{k}"),
+            Input(str(st.get("prompt") or ""), placeholder="việc cần làm, có thể dùng {goal}",
+                  classes="step-prompt", id=f"wf-prompt-{k}"),
+            Input(after_text, placeholder="trước", classes="step-after", id=f"wf-after-{k}"),
+            Input(str(st.get("effort") or ""), placeholder="effort", classes="step-effort",
+                  id=f"wf-effort-{k}"),
+            Button("✕", classes="step-del", id=f"wf-del-{k}"),
+            classes="step-row", id=f"wf-step-{k}")
+
+    def renumber(self) -> None:
+        for i, row in enumerate(self.query(".step-row"), 1):
+            row.query_one(".step-no", Static).update(f"{i}.")
+
+    async def fill(self, raw: dict) -> None:
+        self.query_one("#wf-desc", Input).value = str(raw.get("description") or "")
+        rv = raw.get("review")
+        self.query_one("#wf-review", Checkbox).value = self.cfg.auto_review if rv is None else bool(rv)
+        box = self.query_one("#flow-steps", Vertical)
+        await box.remove_children()
+        steps = raw.get("steps") or [{"agent": LEAD_ALIAS}]
+        await box.mount_all([self.step_row(st) for st in steps])
+        self.renumber()
+
+    async def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id != "wf-template" or event.value not in WORKFLOW_TEMPLATES:
+            return
+        tpl = WORKFLOW_TEMPLATES[event.value]
+        member = next((n for n in self.cfg.active_agents() if n != self.cfg.lead), LEAD_ALIAS)
+        raw = dict(tpl, steps=[dict(st, agent=member if st["agent"] == "*" else st["agent"])
+                               for st in tpl["steps"]])
+        await self.fill(raw)
+        name = self.query_one("#wf-name", Input)
+        if not name.value.strip():
+            name.value = str(event.value)
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+        if bid == "wf-add":
+            await self.query_one("#flow-steps", Vertical).mount(self.step_row({}))
+            self.renumber()
+        elif bid.startswith("wf-del-"):
+            if len(self.query(".step-row")) <= 1:
+                self.notify("Workflow cần ít nhất 1 bước", severity="warning")
+                return
+            await self.query_one(f"#wf-step-{bid[7:]}").remove()
+            self.renumber()
+        elif bid == "wf-save":
+            self.action_save()
+        elif bid == "wf-cancel":
+            self.action_cancel()
+
+    def validate(self) -> tuple[str, dict]:
+        name = self.query_one("#wf-name", Input).value.strip()
+        if not NAME_RE.match(name):
+            raise ValueError("Tên chỉ gồm chữ, số, - và _")
+        if name in self.cfg.workflows and name != self.old_name:
+            raise ValueError(f"Đã có workflow '{name}' — chọn tên khác")
+        steps = []
+        for i, row in enumerate(self.query(".step-row"), 1):
+            k = (row.id or "")[len("wf-step-"):]
+            agent = str(row.query_one(f"#wf-agent-{k}", Select).value)
+            title = row.query_one(f"#wf-title-{k}", Input).value.strip()
+            prompt = row.query_one(f"#wf-prompt-{k}", Input).value.strip()
+            if not (title or prompt):
+                raise ValueError(f"Bước {i}: cần tiêu đề hoặc prompt")
+            after_text = row.query_one(f"#wf-after-{k}", Input).value.strip()
+            after: list[int] | None = None
+            if after_text in ("0", "-"):
+                after = []
+            elif after_text:
+                parts = _csv(after_text)
+                if not all(p.isdigit() and 0 < int(p) < i for p in parts):
+                    raise ValueError(f"Bước {i}: 'Sau bước' phải là số bước đứng trước (1…{i - 1})")
+                after = [int(p) for p in parts]
+            effort = row.query_one(f"#wf-effort-{k}", Input).value.strip().lower()
+            steps.append(WorkflowStep(agent=agent, title=title, prompt=prompt, after=after, effort=effort))
+        if not steps:
+            raise ValueError("Workflow cần ít nhất 1 bước")
+        wf = Workflow(name=name, description=self.query_one("#wf-desc", Input).value.strip(),
+                      steps=steps, review=self.query_one("#wf-review", Checkbox).value)
+        return name, workflow_to_dict(wf)
+
+    def action_save(self) -> None:
+        try:
+            name, body = self.validate()
+        except ValueError as e:
+            self.notify(str(e), severity="error")
+            return
+        self.dismiss((name, body, self.old_name))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class CustomScreen(ModalScreen):
+    """Quản lý agent và workflow tuỳ chỉnh (/custom, hoặc nút ở màn hình thiết lập).
+    Mỗi lần lưu ghi ngay vào custom.toml. Trả về True nếu có thay đổi."""
+
+    BINDINGS = [Binding("escape", "close", "Đóng", priority=True)]
+    DEFAULT_CSS = "CustomScreen { align: center middle; }" + FORM_CSS.replace("{box}", "custom-box") + """
+    .c-row { height: 3; }
+    .c-name { width: 22; padding: 1 0 0 1; text-style: bold; }
+    .c-info { width: 1fr; height: 3; padding: 1 0 0 1; color: $text-muted;
+              text-wrap: nowrap; text-overflow: ellipsis; }
+    .c-row Button { min-width: 8; margin-left: 1; }
+    .c-empty { height: 1; padding: 0 1; color: $text-muted; }
+    #custom-agents, #custom-flows { height: auto; }
+    #custom-box Button.c-add { margin: 0 0 0 1; }
+    """
+
+    def __init__(self, root: Path, cfg: Config):
+        super().__init__()
+        self.root, self.cfg = root, cfg
+        self.changed = False
+        self.ids: dict[str, tuple[str, str]] = {}  # id nút -> (hành động, tên)
+        self.armed: str | None = None  # nút xoá đang chờ bấm lần 2
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="custom-box"):
+            yield Static(Text("Agent & workflow tuỳ chỉnh", "bold"))
+            yield Static(Text("Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc theo vai "
+                              "trò, bật/tắt ở /setup). Workflow chạy bằng /flow <tên> <mục tiêu>. "
+                              f"Lưu ở {CUSTOM_FILE}", "dim"))
+            with VerticalScroll(classes="f-scroll"):
+                yield Static("Agent tuỳ chỉnh", classes="f-section")
+                yield Vertical(id="custom-agents")
+                yield Button("+ Thêm agent", id="custom-add-agent", classes="c-add")
+                yield Static("Workflow", classes="f-section")
+                yield Vertical(id="custom-flows")
+                yield Button("+ Thêm workflow", id="custom-add-flow", classes="c-add")
+            with Horizontal(classes="f-buttons"):
+                yield Button("Xong (Esc)", id="custom-close", variant="primary")
+
+    async def on_mount(self) -> None:
+        await self.refill()
+        self.query_one("#custom-add-agent", Button).focus()
+
+    async def refill(self) -> None:
+        self.cfg = load_config(self.root)
+        self.ids.clear()
+        self.armed = None
+        n = 0
+
+        def btn(label: str, action: str, name: str, variant: str = "default") -> Button:
+            nonlocal n
+            n += 1
+            bid = f"c-btn-{n}"
+            self.ids[bid] = (action, name)
+            return Button(label, id=bid, variant=variant)
+
+        rows = []
+        for name in sorted(self.cfg.custom_agents):
+            a = self.cfg.agents[name]
+            ok = "✓" if a.installed() else "✗ chưa cài"
+            rows.append(Horizontal(Static(name, classes="c-name"),
+                                   Static(f"{ok} · {' '.join(a.argv('<prompt>'))}", classes="c-info"),
+                                   btn("Sửa", "edit-agent", name), btn("Xoá", "del-agent", name, "error"),
+                                   classes="c-row"))
+        if not rows:
+            rows = [Static("Chưa có. Bấm '+ Thêm agent' để thêm CLI bất kỳ (Gemini, Aider, script riêng…).",
+                           classes="c-empty")]
+        box = self.query_one("#custom-agents", Vertical)
+        await box.remove_children()
+        await box.mount_all(rows)
+
+        rows = []
+        for name, w in self.cfg.workflows.items():
+            info = f"{len(w.steps)} bước: {w.summary()}" + (f" · {w.description}" if w.description else "")
+            rows.append(Horizontal(Static(name, classes="c-name"), Static(info, classes="c-info"),
+                                   btn("Sửa", "edit-flow", name), btn("Xoá", "del-flow", name, "error"),
+                                   classes="c-row"))
+        if not rows:
+            rows = [Static("Chưa có. Bấm '+ Thêm workflow' (có mẫu: tính năng mới, sửa lỗi, review).",
+                           classes="c-empty")]
+        box = self.query_one("#custom-flows", Vertical)
+        await box.remove_children()
+        await box.mount_all(rows)
+
+    async def _saved(self, kind: str, result) -> None:
+        if not result:
+            return
+        name, body, old = result
+        save_custom_item(kind, name, body, old)
+        self.changed = True
+        self.notify(f"Đã lưu {'agent' if kind == 'agents' else 'workflow'} '{name}'")
+        await self.refill()
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+        if bid == "custom-close":
+            self.action_close()
+            return
+        if bid == "custom-add-agent":
+            self.app.push_screen(AgentEditScreen(self.cfg), lambda r: self._saved("agents", r))
+            return
+        if bid == "custom-add-flow":
+            self.app.push_screen(WorkflowEditScreen(self.cfg), lambda r: self._saved("workflows", r))
+            return
+        action, name = self.ids.get(bid, ("", ""))
+        custom = load_custom()
+        if action == "edit-agent":
+            raw = (custom.get("agents") or {}).get(name, {})
+            self.app.push_screen(AgentEditScreen(self.cfg, name, raw), lambda r: self._saved("agents", r))
+        elif action == "edit-flow":
+            raw = (custom.get("workflows") or {}).get(name)
+            old: str | None = name
+            if raw is None:  # workflow ghi trong config.toml / file dự án: lưu thành bản sao
+                raw, old = workflow_to_dict(self.cfg.workflows[name]), None
+                self.notify(f"'{name}' nằm trong file cấu hình — lưu sẽ tạo bản sao với tên mới.")
+            self.app.push_screen(WorkflowEditScreen(self.cfg, old, raw),
+                                 lambda r: self._saved("workflows", r))
+        elif action in ("del-agent", "del-flow"):
+            kind = "agents" if action == "del-agent" else "workflows"
+            if kind == "agents" and name == self.cfg.lead:
+                self.notify(f"'{name}' đang là trưởng nhóm — đổi trưởng nhóm ở /setup trước.",
+                            severity="error")
+                return
+            if name not in (custom.get(kind) or {}):
+                self.notify(f"'{name}' nằm trong file cấu hình khác ({', '.join(map(str, self.cfg.sources))})"
+                            " — sửa file đó để xoá.", severity="warning")
+                return
+            if self.armed != bid:  # bấm lần 2 mới xoá
+                self.armed = bid
+                event.button.label = "Chắc chưa?"
+                return
+            save_custom_item(kind, name, None)
+            self.changed = True
+            self.notify(f"Đã xoá '{name}'")
+            await self.refill()
+
+    def action_close(self) -> None:
+        self.dismiss(self.changed)
 
 
 class MentionList(OptionList):
@@ -721,6 +1277,8 @@ class TeamApp(App):
             if i:
                 t.append("\n")
             t.append(f"🎯 #{g.id} ", "bold")
+            if g.workflow:
+                t.append(f"⚙{g.workflow} ", "cyan")
             t.append(f"[{label}", style)
             t.append(f" · vòng {g.round}]" if g.round > 1 else "]", style)
             t.append(f" {g.text[:80]}")
@@ -1036,6 +1594,46 @@ class TeamApp(App):
                       "Đổi lại: /setup, /model, /effort.")
         self.refresh_view()
 
+    def open_custom(self) -> None:
+        async def done(changed) -> None:
+            if changed:
+                await self.reload_custom()
+        self.push_screen(CustomScreen(self.root, self.cfg), done)
+
+    async def reload_custom(self) -> None:
+        """Đọc lại custom.toml: thêm/bớt/sửa agent tuỳ chỉnh và workflow ngay, không cần mở lại app."""
+        fresh = load_config(self.root)
+        before = set(self.cfg.agents)
+        for n in [n for n in self.cfg.agents if n not in fresh.agents]:
+            del self.cfg.agents[n]
+        for n, a in fresh.agents.items():
+            if n not in self.cfg.agents or n in self.cfg.custom_agents or n in fresh.custom_agents:
+                self.cfg.agents[n] = a  # agent có sẵn giữ nguyên đối tượng (model/effort đang dùng)
+        self.cfg.custom_agents = fresh.custom_agents
+        self.cfg.workflows = fresh.workflows
+        if self.cfg.lead not in self.cfg.agents:
+            self.cfg.lead = fresh.lead
+        await self._rebuild_panes()
+        added, removed = set(self.cfg.agents) - before, before - set(self.cfg.agents)
+        msg = (f"⚙ Đã cập nhật agent/workflow tuỳ chỉnh. Agent: {', '.join(self.cfg.agents)}"
+               + (f" (mới: {', '.join(sorted(added))})" if added else "")
+               + (f" (đã xoá: {', '.join(sorted(removed))})" if removed else "")
+               + f". Workflow: {', '.join(self.cfg.workflows) or '(chưa có)'}.")
+        self.orch.log(msg)
+        self.refresh_view()
+
+    def flows_text(self) -> str:
+        if not self.cfg.workflows:
+            return "Chưa có workflow nào. Tạo bằng /custom → '+ Thêm workflow' (có mẫu sẵn)."
+        lines = []
+        for n, w in self.cfg.workflows.items():
+            lines.append(f"⚙ {n}  ({w.summary()})" + (f" — {w.description}" if w.description else ""))
+            for i, st in enumerate(w.steps, 1):
+                lines.append(f"   {i}. [{st.agent}{('@' + st.effort) if st.effort else ''}] "
+                             f"{st.title or st.prompt[:50]}")
+        lines.append("Chạy: /flow <tên> <mục tiêu>   ·   sửa: /custom")
+        return "\n".join(lines)
+
     async def _rebuild_panes(self) -> None:
         grid = self.query_one("#team-grid", Vertical)
         await grid.remove_children()
@@ -1177,6 +1775,7 @@ class TeamApp(App):
             for n, a in self.cfg.agents.items():
                 st = "✓" if a.installed() else "✗ chưa cài"
                 lead = " ★ trưởng nhóm" if n == self.cfg.lead else ""
+                lead += " · tuỳ chỉnh (/custom)" if n in self.cfg.custom_agents else ""
                 lines.append(f"{n:12} {st}{lead}\n   model/effort: {a.label()}"
                              + (f"   (effort hợp lệ: {', '.join(a.efforts)})" if a.efforts else "")
                              + f"\n   lệnh: {' '.join(a.argv('<prompt>'))}"
@@ -1186,6 +1785,19 @@ class TeamApp(App):
         elif cmd == "setup":
             self.open_setup()
             return
+        elif cmd in ("custom", "agent-moi", "workflow", "workflows"):
+            self.open_custom()
+            return
+        elif cmd in ("flow", "flows"):
+            name, _, goal = rest.partition(" ")
+            if not name or not goal.strip():
+                if name and name not in self.cfg.workflows:
+                    self.notify(f"Không có workflow '{name}'", severity="warning")
+                self.write_sys(self.flows_text())
+                return
+            res = o.run_workflow(name, goal.strip())
+            if isinstance(res, str):
+                self.notify(res, severity="warning")
         elif cmd in ("quit", "exit", "q"):
             self.call_later(self.action_quit)
         else:

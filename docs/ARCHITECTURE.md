@@ -65,7 +65,9 @@ Hằng số trạng thái ở đầu `db.py`; `ACTIVE = (draft, queued, running,
 
 `planning` → `awaiting` (có task nháp chờ /go) hoặc `running` → `reviewing` → `done` |
 `incomplete` | quay lại `awaiting`/`running` với `round + 1` nếu review giao thêm việc. `failed` khi
-không lập được kế hoạch. Task giao tay (`/task`, `ateam add` ngoài agent) không thuộc mục tiêu nào
+không lập được kế hoạch. Mục tiêu tạo từ workflow (`run_workflow`, cột `workflow`) bỏ qua `planning`:
+các bước chèn thẳng qua `_insert_plan(from_user=True)` (giữ effort/model của bước); `workflow.review`
+(nếu đặt) thay `auto_review` khi `_check_goals` quyết định có review không. Task giao tay (`/task`, `ateam add` ngoài agent) không thuộc mục tiêu nào
 nên không được review.
 
 ### Khác

@@ -227,7 +227,29 @@ class Orchestrator:
             self.lead_busy.discard(gid)
             self.emit("changed")
 
-    def _insert_plan(self, gid: int, plan: list[dict], source: str) -> list[int]:
+    def run_workflow(self, name: str, text: str) -> int | str:
+        """Tạo mục tiêu từ workflow dựng sẵn: các bước thành task ngay, không gọi trưởng nhóm.
+        Trả về id mục tiêu, hoặc chuỗi lỗi."""
+        wf = self.cfg.workflows.get(name)
+        if not wf:
+            return f"Không có workflow '{name}'. Có: {', '.join(self.cfg.workflows) or '(chưa có)'}"
+        if not wf.steps:
+            return f"Workflow '{name}' chưa có bước nào"
+        gid = self.db.add_goal(text, workflow=name)
+        self.log(f"🎯 Mục tiêu #{gid} theo workflow '{name}': {text}")
+        ids = self._insert_plan(gid, wf.plan(text, self.cfg.lead), source="workflow", from_user=True)
+        if self.cfg.approve_plan:
+            self.db.update_goal(gid, status="awaiting")
+            self.log(f"📋 {len(ids)} bước ở trạng thái NHÁP — gõ /go {gid} để chạy.")
+        else:
+            self.db.update_goal(gid, status="running")
+            self.log(f"📋 {len(ids)} bước — bắt đầu chạy.")
+        self.emit("changed")
+        return gid
+
+    def _insert_plan(self, gid: int, plan: list[dict], source: str,
+                     from_user: bool = False) -> list[int]:
+        """from_user: kế hoạch do người dùng viết (workflow) — giữ effort/model của từng bước."""
         agents = self.cfg.active_agents()
         status = DRAFT if self.cfg.approve_plan else QUEUED
         id_map: dict = {}
@@ -240,10 +262,11 @@ class Orchestrator:
             title = str(item.get("title") or f"Task {i}").strip()
             prompt = str(item.get("prompt") or title).strip()
             effort = str(item.get("effort") or "").strip().lower()
-            if not self.cfg.lead_sets_effort or effort not in agents[agent].efforts:
+            if not from_user and (not self.cfg.lead_sets_effort or effort not in agents[agent].efforts):
                 effort = ""
+            model = str(item.get("model") or "").strip() if from_user else ""
             tid = self.db.add_task(agent, title, prompt, goal_id=gid, status=status, source=source,
-                                   effort=effort or None)
+                                   effort=effort or None, model=model or None)
             id_map[item.get("id", i)] = tid
             id_map[str(item.get("id", i))] = tid
             created.append((tid, item.get("depends_on") or []))
@@ -500,7 +523,9 @@ class Orchestrator:
                 continue
             if not tasks:
                 continue
-            if self.cfg.auto_review:
+            wf = self.cfg.workflows.get(g.workflow or "")
+            review = wf.review if wf and wf.review is not None else self.cfg.auto_review
+            if review:
                 self.lead_busy.add(g.id)
                 self._spawn(self._review(g.id))
             else:

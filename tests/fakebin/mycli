@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Giả lập một CLI tuỳ chỉnh bất kỳ (agent người dùng tự thêm qua /custom): ghi tên bước vào
+# steps.txt để test kiểm tra thứ tự các bước của workflow.
+source "$(dirname "$0")/_common.sh"
+P="$fake_prompt"
+step="$(printf '%s\n' "$P" | sed -n 's/^YOUR TASK (#[0-9]*): //p' | head -1)"
+echo "mycli: $step"
+echo "$step" >> steps.txt
+echo "SUMMARY: mycli xong $step"

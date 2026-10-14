@@ -18,6 +18,11 @@ except ModuleNotFoundError:  # pragma: no cover
 GLOBAL_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "ateam"
 GLOBAL_CONFIG = GLOBAL_DIR / "config.toml"
 STATE_FILE = GLOBAL_DIR / "state.json"
+# Agent và workflow người dùng tự thêm (màn hình /custom). File riêng để không mất khi config.toml
+# được nâng cấp lên bản mới.
+CUSTOM_FILE = GLOBAL_DIR / "custom.toml"
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+LEAD_ALIAS = "lead"  # agent của bước workflow = trưởng nhóm hiện tại
 CONFIG_VERSION = 3
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
 
@@ -248,6 +253,45 @@ class AgentConfig:
 
 
 @dataclass
+class WorkflowStep:
+    agent: str = LEAD_ALIAS          # tên agent, hoặc "lead" = trưởng nhóm lúc chạy
+    title: str = ""
+    prompt: str = ""                 # {goal} = mục tiêu người dùng gõ
+    after: list[int] | None = None   # số thứ tự bước (từ 1) phải xong trước; None = bước liền trước
+    effort: str = ""
+    model: str = ""
+
+
+@dataclass
+class Workflow:
+    """Quy trình dựng sẵn: chuỗi bước cố định, chạy bằng /flow <tên> <mục tiêu> (không cần trưởng
+    nhóm lập kế hoạch)."""
+    name: str
+    description: str = ""
+    steps: list[WorkflowStep] = field(default_factory=list)
+    review: bool | None = None       # None = theo auto_review
+
+    def plan(self, goal: str, lead: str) -> list[dict]:
+        """Đổi thành kế hoạch cùng dạng JSON trưởng nhóm trả về (để dùng chung _insert_plan)."""
+        out = []
+        for i, st in enumerate(self.steps, 1):
+            after = [i - 1] if st.after is None and i > 1 else list(st.after or [])
+            out.append({
+                "id": i,
+                "agent": lead if st.agent in ("", LEAD_ALIAS) else st.agent,
+                "title": (st.title or f"Bước {i}").replace("{goal}", goal),
+                "prompt": (st.prompt or st.title or goal).replace("{goal}", goal),
+                "depends_on": [a for a in after if 0 < a < i],
+                "effort": st.effort,
+                "model": st.model,
+            })
+        return out
+
+    def summary(self) -> str:
+        return " → ".join(st.agent or LEAD_ALIAS for st in self.steps) or "(chưa có bước)"
+
+
+@dataclass
 class VerifyConfig:
     command: str = ""
     timeout: int = 600
@@ -271,6 +315,8 @@ class Config:
     cooldown_minutes: int = 30
     lead_fallback: list[str] = field(default_factory=list)
     agents: dict[str, AgentConfig] = field(default_factory=dict)
+    workflows: dict[str, Workflow] = field(default_factory=dict)
+    custom_agents: set[str] = field(default_factory=set)  # tên agent lấy từ custom.toml
     sources: list[Path] = field(default_factory=list)
     notices: list[str] = field(default_factory=list)
 
@@ -386,6 +432,184 @@ def _strs(v) -> list[str]:
     return [str(x) for x in v]
 
 
+# ---------------------------------------------------------------- agent / workflow tuỳ chỉnh
+# Mẫu để điền sẵn form "Thêm agent" (dạng thô như trong file TOML). 4 mẫu đầu lấy từ DEFAULT_CONFIG.
+EXTRA_AGENT_TEMPLATES: dict[str, dict] = {
+    "gemini": {  # Gemini CLI — cờ chưa kiểm chứng trên CLI thật
+        "command": ["gemini", "--approval-mode", "auto_edit", "-p", "{prompt}"],
+        "model_args": ["-m", "{model}"],
+        "role": "Nghiên cứu, đọc codebase lớn, tài liệu.",
+    },
+    "aider": {  # Aider — cờ chưa kiểm chứng trên CLI thật
+        "command": ["aider", "--yes-always", "--no-auto-commits", "--message", "{prompt}"],
+        "model_args": ["--model", "{model}"],
+        "file_args": ["--file", "{path}"],
+        "role": "Sửa code theo yêu cầu cụ thể.",
+    },
+    "trống": {"command": ["ten-lenh", "{prompt}"]},
+}
+
+
+def agent_templates() -> dict[str, dict]:
+    out = {f"{n} ({' '.join(_strs(a.get('command'))[:1])})": dict(a)
+           for n, a in tomllib.loads(DEFAULT_CONFIG)["agents"].items()}
+    out.update(EXTRA_AGENT_TEMPLATES)
+    return out
+
+
+# Mẫu workflow. agent "*" = thành viên đầu tiên đang bật khác trưởng nhóm (điền lúc chọn mẫu).
+WORKFLOW_TEMPLATES: dict[str, dict] = {
+    "tinh-nang": {
+        "description": "Tính năng mới: thiết kế → viết code → viết test",
+        "review": True,
+        "steps": [
+            {"agent": LEAD_ALIAS, "title": "Thiết kế",
+             "prompt": "Đọc codebase và viết thiết kế ngắn cho: {goal}. Chưa sửa code; liệt kê các "
+                       "file cần đổi và cách kiểm tra."},
+            {"agent": "*", "title": "Viết code", "prompt": "Làm {goal} theo thiết kế ở bước trước."},
+            {"agent": "*", "title": "Viết test",
+             "prompt": "Viết/cập nhật test cho {goal} và chạy cho tới khi xanh."},
+        ],
+    },
+    "sua-loi": {
+        "description": "Sửa lỗi: tái hiện → sửa → test chống tái diễn",
+        "review": True,
+        "steps": [
+            {"agent": "*", "title": "Tái hiện lỗi",
+             "prompt": "Tìm nguyên nhân và cách tái hiện lỗi: {goal}. Chưa sửa code."},
+            {"agent": "*", "title": "Sửa lỗi", "prompt": "Sửa lỗi theo phân tích ở bước trước: {goal}"},
+            {"agent": "*", "title": "Test chống tái diễn",
+             "prompt": "Thêm test tái hiện lỗi '{goal}' và chắc chắn nó xanh sau khi sửa."},
+        ],
+    },
+    "review-code": {
+        "description": "Trưởng nhóm review, thành viên sửa theo góp ý",
+        "review": False,
+        "steps": [
+            {"agent": LEAD_ALIAS, "title": "Review",
+             "prompt": "Review code liên quan tới: {goal}. Liệt kê vấn đề cụ thể (file:dòng), chưa sửa."},
+            {"agent": "*", "title": "Sửa theo review", "prompt": "Sửa các vấn đề review ở bước trước."},
+        ],
+    },
+}
+
+
+def load_custom() -> dict:
+    """Nội dung custom.toml ({"agents": {...}, "workflows": {...}}); lỗi cú pháp = rỗng."""
+    try:
+        return tomllib.loads(CUSTOM_FILE.read_text(encoding="utf-8"))
+    except Exception:  # chưa có file hoặc lỗi cú pháp
+        return {}
+
+
+def _toml_key(k: str) -> str:
+    return k if re.fullmatch(r"[A-Za-z0-9_-]+", k) else json.dumps(k, ensure_ascii=False)
+
+
+def _toml_value(v) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, (list, tuple)):
+        return "[" + ", ".join(_toml_value(x) for x in v) + "]"
+    # chuỗi TOML cơ bản dùng cùng quy tắc thoát ký tự với JSON
+    return json.dumps(str(v), ensure_ascii=False)
+
+
+def dump_toml(data: dict, prefix: str = "") -> str:
+    """Ghi dict ra TOML (đủ cho custom.toml: chuỗi, số, bool, list, bảng, mảng bảng)."""
+    lines: list[str] = []
+    scal = {k: v for k, v in data.items() if not isinstance(v, dict)
+            and not (isinstance(v, list) and v and all(isinstance(x, dict) for x in v))}
+    for k, v in scal.items():
+        if v is None:
+            continue
+        lines.append(f"{_toml_key(k)} = {_toml_value(v)}")
+    out = "\n".join(lines)
+    for k, v in data.items():
+        key = f"{prefix}.{_toml_key(k)}" if prefix else _toml_key(k)
+        if isinstance(v, dict):
+            body = dump_toml(v, key)
+            has_scalars = any(not isinstance(x, dict) for x in v.values())
+            out += ("\n\n" if out else "") + (f"[{key}]\n" if has_scalars or not v else "") + body
+        elif isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
+            for item in v:
+                out += ("\n\n" if out else "") + f"[[{key}]]\n" + dump_toml(item, key)
+    return out.strip("\n") + ("\n" if not prefix else "")
+
+
+CUSTOM_HEADER = """\
+# Agent và workflow tuỳ chỉnh của ateam. Sửa trong app: /custom (hoặc nút ở màn hình /setup).
+# File này được giữ nguyên khi config.toml nâng cấp lên bản mới.
+"""
+
+
+def save_custom(data: dict) -> None:
+    GLOBAL_DIR.mkdir(parents=True, exist_ok=True)
+    clean = {k: v for k, v in data.items() if v}
+    CUSTOM_FILE.write_text(CUSTOM_HEADER + "\n" + dump_toml(clean), encoding="utf-8")
+
+
+def save_custom_item(kind: str, name: str, body: dict | None, old_name: str | None = None) -> None:
+    """Thêm/sửa (body là dict) hoặc xoá (body None) một agent/workflow trong custom.toml.
+
+    kind = "agents" hoặc "workflows"; old_name khác name = đổi tên."""
+    data = load_custom()
+    sect = data.setdefault(kind, {})
+    if old_name and old_name != name:
+        sect.pop(old_name, None)
+    if body is None:
+        sect.pop(name, None)
+    else:
+        sect[name] = {k: v for k, v in body.items() if v is not None}
+    save_custom(data)
+
+
+def agent_to_dict(a: AgentConfig) -> dict:
+    """Dạng ghi vào custom.toml; bỏ các khoá đang ở giá trị mặc định cho file gọn."""
+    d: dict = {"command": list(a.command), "role": a.role}
+    for k in ("model", "effort", "models_filter", "file_ref"):
+        if getattr(a, k):
+            d[k] = getattr(a, k)
+    for k in ("model_args", "effort_args", "efforts", "models", "models_command", "fallback"):
+        if getattr(a, k):
+            d[k] = list(getattr(a, k))
+    if a.file_args is not None:
+        d["file_args"] = list(a.file_args)
+    if a.plan_command:
+        d["plan_command"] = list(a.plan_command)
+    if a.timeout != 1800:
+        d["timeout"] = a.timeout
+    if a.max_concurrent != 1:
+        d["max_concurrent"] = a.max_concurrent
+    if a.pty:
+        d["pty"] = True
+    if not a.verify:
+        d["verify"] = False
+    return d
+
+
+def workflow_to_dict(w: Workflow) -> dict:
+    d: dict = {}
+    if w.description:
+        d["description"] = w.description
+    if w.review is not None:
+        d["review"] = w.review
+    steps = []
+    for st in w.steps:
+        s: dict = {"agent": st.agent or LEAD_ALIAS, "title": st.title, "prompt": st.prompt}
+        if st.after is not None:
+            s["after"] = list(st.after)
+        if st.effort:
+            s["effort"] = st.effort
+        if st.model:
+            s["model"] = st.model
+        steps.append(s)
+    d["steps"] = steps
+    return d
+
+
 def needs_setup() -> bool:
     """Chưa chạy màn hình thiết lập lần đầu (chọn agent, model, effort)."""
     return not load_state().get("onboarded")
@@ -429,12 +653,73 @@ def mark_setup_done() -> None:
     save_state(state)
 
 
+def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
+    command = _strs(a.get("command"))
+    cat = CATALOG.get(Path(command[0]).name if command else "", {})
+    models = _strs(a.get("models")) or list(cat.get("models", []))
+    seen = [str(m) for m in found or []]  # model thật hỏi được từ CLI đứng trước
+    models = seen + [m for m in models if m not in seen]
+    return AgentConfig(
+        name=name,
+        command=command,
+        role=a.get("role", ""),
+        timeout=int(a.get("timeout", 1800)),
+        max_concurrent=max(1, int(a.get("max_concurrent", 1))),
+        pty=bool(a.get("pty", False)),
+        enabled=bool(st.get("enabled", a.get("enabled", True))),
+        plan_command=_strs(a.get("plan_command")) or None,
+        model=st.get("model", a.get("model", "")) or "",
+        effort=st.get("effort", a.get("effort", "")) or "",
+        model_args=_strs(a.get("model_args")),
+        effort_args=_strs(a.get("effort_args")),
+        efforts=_strs(a["efforts"]) if "efforts" in a else list(cat.get("efforts", [])),
+        models=models,
+        models_command=_strs(a.get("models_command")) or (
+            command[:1] + cat["models_command"][1:] if cat.get("models_command") else []),
+        models_filter=str(a.get("models_filter", "") or ""),
+        fallback=_strs(a.get("fallback")),
+        verify=bool(a.get("verify", True)),
+        file_ref=str(a.get("file_ref", "") or ""),
+        file_args=_strs(a["file_args"]) if "file_args" in a else None,
+    )
+
+
+def agent_from_dict(name: str, body: dict) -> AgentConfig:
+    """AgentConfig từ một bảng [agents.<tên>] (không áp state.json) — dùng để xem trước trong form."""
+    return _agent_from(name, body, {}, [])
+
+
+def _workflow_from(name: str, w: dict) -> Workflow:
+    steps = []
+    for st in w.get("steps") or []:
+        if not isinstance(st, dict):
+            continue
+        after = st.get("after")
+        if isinstance(after, (int, str)) and not isinstance(after, bool):
+            after = [after]
+        steps.append(WorkflowStep(
+            agent=str(st.get("agent", "") or LEAD_ALIAS).strip(),
+            title=str(st.get("title", "") or "").strip(),
+            prompt=str(st.get("prompt", "") or "").strip(),
+            after=None if after is None else [int(x) for x in after if str(x).strip().isdigit()],
+            effort=str(st.get("effort", "") or "").strip(),
+            model=str(st.get("model", "") or "").strip(),
+        ))
+    review = w.get("review")
+    return Workflow(name=name, description=str(w.get("description", "") or ""), steps=steps,
+                    review=None if review is None else bool(review))
+
+
 def load_config(root: Path, with_state: bool = True) -> Config:
     data: dict = tomllib.loads(DEFAULT_CONFIG)
     sources: list[Path] = []
     if GLOBAL_CONFIG.exists():
         data = tomllib.loads(GLOBAL_CONFIG.read_text(encoding="utf-8"))
         sources.append(GLOBAL_CONFIG)
+    custom = load_custom()
+    if custom:
+        data = _merge(data, {k: custom[k] for k in ("agents", "workflows") if k in custom})
+        sources.append(CUSTOM_FILE)
     project = root / ".ateam" / "config.toml"
     if project.exists():
         data = _merge(data, tomllib.loads(project.read_text(encoding="utf-8")))
@@ -445,35 +730,10 @@ def load_config(root: Path, with_state: bool = True) -> Config:
 
     agents: dict[str, AgentConfig] = {}
     for name, a in (data.get("agents") or {}).items():
-        st = state.get(name, {})
-        command = _strs(a.get("command"))
-        cat = CATALOG.get(Path(command[0]).name if command else "", {})
-        models = _strs(a.get("models")) or list(cat.get("models", []))
-        seen = [str(m) for m in found.get(name) or []]  # model thật hỏi được từ CLI đứng trước
-        models = seen + [m for m in models if m not in seen]
-        agents[name] = AgentConfig(
-            name=name,
-            command=command,
-            role=a.get("role", ""),
-            timeout=int(a.get("timeout", 1800)),
-            max_concurrent=max(1, int(a.get("max_concurrent", 1))),
-            pty=bool(a.get("pty", False)),
-            enabled=bool(st.get("enabled", a.get("enabled", True))),
-            plan_command=_strs(a.get("plan_command")) or None,
-            model=st.get("model", a.get("model", "")) or "",
-            effort=st.get("effort", a.get("effort", "")) or "",
-            model_args=_strs(a.get("model_args")),
-            effort_args=_strs(a.get("effort_args")),
-            efforts=_strs(a["efforts"]) if "efforts" in a else list(cat.get("efforts", [])),
-            models=models,
-            models_command=_strs(a.get("models_command")) or (
-                command[:1] + cat["models_command"][1:] if cat.get("models_command") else []),
-            models_filter=str(a.get("models_filter", "") or ""),
-            fallback=_strs(a.get("fallback")),
-            verify=bool(a.get("verify", True)),
-            file_ref=str(a.get("file_ref", "") or ""),
-            file_args=_strs(a["file_args"]) if "file_args" in a else None,
-        )
+        if isinstance(a, dict):
+            agents[name] = _agent_from(name, a, state.get(name, {}), found.get(name) or [])
+    workflows = {n: _workflow_from(n, w) for n, w in (data.get("workflows") or {}).items()
+                 if isinstance(w, dict)}
     v = data.get("verify") or {}
     pstate = load_project_state(root)
     verify = VerifyConfig(
@@ -499,5 +759,7 @@ def load_config(root: Path, with_state: bool = True) -> Config:
         cooldown_minutes=max(1, int(lim.get("cooldown_minutes", 30))),
         lead_fallback=_strs(lim.get("lead_fallback")),
         agents=agents,
+        workflows=workflows,
+        custom_agents={n for n in (custom.get("agents") or {}) if n in agents},
         sources=sources,
     )

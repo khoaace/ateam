@@ -87,6 +87,7 @@ def cmd_doctor(args) -> int:
         else:
             ok = ok and not a.enabled
         state = "" if a.enabled else " (đang tắt)"
+        state += " (tuỳ chỉnh)" if name in cfg.custom_agents else ""
         print(f" {flag} {name:12} {a.binary:10} {ver}{state}")
         if a.fallback:
             print(f"     dự phòng khi hết hạn mức: {', '.join(a.fallback)}")
@@ -101,7 +102,10 @@ def cmd_doctor(args) -> int:
         ok = False
     if shutil.which("git") is None:
         print("\n⚠ Chưa có git — chế độ worktree sẽ không dùng được.")
+    if cfg.workflows:
+        print(f"\nWorkflow: {', '.join(cfg.workflows)}  (xem: ateam flows)")
     print("\nChọn agent, model, effort: ateam setup (hoặc /setup trong app).")
+    print("Thêm agent / workflow riêng: /custom trong app (hoặc nút ở màn hình thiết lập).")
     print("\nMọi thứ sẵn sàng." if ok else "\nCài các CLI còn thiếu hoặc đặt enabled = false cho agent đó trong config.")
     return 0 if ok else 1
 
@@ -128,7 +132,13 @@ def cmd_goal(args) -> int:
     async def main() -> int:
         orch = Orchestrator(root, cfg, db, on_event=_printer(not args.quiet))
         await orch.setup()
-        gid = orch.new_goal(" ".join(args.text))
+        if getattr(args, "workflow", None):
+            gid = orch.run_workflow(args.workflow, " ".join(args.text))
+            if isinstance(gid, str):
+                print("✗ " + gid, file=sys.stderr)
+                return 1
+        else:
+            gid = orch.new_goal(" ".join(args.text))
         while orch.lead_busy:
             await asyncio.sleep(0.3)
         g = db.goal(gid)
@@ -160,6 +170,23 @@ def cmd_goal(args) -> int:
         return 0 if g.status == "done" else 2
 
     return asyncio.run(main())
+
+
+def cmd_flows(args) -> int:
+    root = find_root(args.dir)
+    setup_config()
+    cfg = load_config(root)
+    if not cfg.workflows:
+        print("Chưa có workflow nào. Tạo trong app: /custom (hoặc nút ở màn hình `ateam setup`).")
+        return 0
+    for n, w in cfg.workflows.items():
+        print(f"{n}  ({w.summary()})" + (f" — {w.description}" if w.description else ""))
+        for i, st in enumerate(w.steps, 1):
+            after = "" if st.after is None else (
+                f" (sau bước {', '.join(map(str, st.after))})" if st.after else " (chạy ngay)")
+            print(f"  {i}. [{st.agent}{('@' + st.effort) if st.effort else ''}] {st.title}{after}")
+    print("\nChạy: ateam flow <tên> \"mục tiêu\"   ·   trong app: /flow <tên> <mục tiêu>")
+    return 0
 
 
 def cmd_add(args) -> int:
@@ -345,6 +372,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("text", nargs="+")
     s.add_argument("-y", "--yes", action="store_true", help="không hỏi duyệt kế hoạch")
     s.add_argument("-q", "--quiet", action="store_true", help="không in log chi tiết của agent")
+    s = sub.add_parser("flow", help="chạy mục tiêu theo workflow tuỳ chỉnh (không cần giao diện)")
+    s.add_argument("workflow")
+    s.add_argument("text", nargs="+")
+    s.add_argument("-y", "--yes", action="store_true", help="tự duyệt các bước")
+    s.add_argument("-q", "--quiet", action="store_true")
+    sub.add_parser("flows", help="liệt kê workflow tuỳ chỉnh")
     s = sub.add_parser("add", help="thêm 1 task vào bảng (agent cũng gọi được lệnh này)")
     s.add_argument("--to", required=True, help="tên agent")
     s.add_argument("--title")
@@ -382,7 +415,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
     handlers = {None: cmd_tui, "tui": cmd_tui, "setup": cmd_tui, "init": cmd_init, "doctor": cmd_doctor,
-                "goal": cmd_goal, "add": cmd_add, "note": cmd_note, "list": cmd_list,
+                "goal": cmd_goal, "flow": cmd_goal, "flows": cmd_flows, "add": cmd_add, "note": cmd_note, "list": cmd_list,
                 "log": cmd_log, "run": cmd_run, "set": cmd_set, "models": cmd_models, "diff": cmd_diff,
                 "merge": cmd_merge, "reject": cmd_reject, "verify": cmd_verify,
                 "usage": cmd_usage, "cooldown": cmd_cooldown}
