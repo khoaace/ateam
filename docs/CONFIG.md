@@ -62,6 +62,8 @@ Nguồn cấu hình, ưu tiên tăng dần:
 | `pty` | `false` | Chạy trong pseudo-terminal (cần cho `agy`) |
 | `plan_command` | — | argv riêng khi agent lập kế hoạch/review (vd chế độ chỉ đọc) |
 | `enabled` | `true` | `false` = tạm tắt |
+| `file_ref` | theo lệnh | Cách viết file được nhắc bằng `@` trong prompt; `{path}` được thay. Vắng = theo `mentions.SYNTAX`: `"@{path}"` cho `claude`/`agy`/`gemini`, `"{path}"` cho lệnh khác |
+| `file_args` | theo lệnh | Cờ thêm vào lệnh cho mỗi file/thư mục được nhắc (chèn trước prompt). Vắng = `["-f", "{path}"]` cho `opencode`, `[]` cho lệnh khác; `[]` = tắt |
 
 ## Mặc định của 4 agent (config_version 3)
 

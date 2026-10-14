@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import re
 import shlex
 import time
@@ -12,9 +13,11 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import (DataTable, Footer, Header, Input, RichLog, Static, TabbedContent,
-                             TabPane)
+from textual.widgets import (DataTable, Footer, Header, Input, OptionList, RichLog, Static,
+                             TabbedContent, TabPane)
+from textual.widgets.option_list import Option
 
+from . import mentions
 from .config import Config, save_project_setting
 from .db import DB
 from .orchestrator import SYSTEM, Orchestrator
@@ -58,6 +61,11 @@ Giao việc:
   /retry <task>   /cancel <task>    chạy lại (Ctrl+R) / huỷ (Ctrl+K) task
   /review <mục tiêu>                bắt trưởng nhóm review ngay
   /note <nội dung>                  ghi chú chung cho cả đội
+
+Nhắc file / thư mục:
+  gõ @ trong ô nhập                 hiện danh sách file/thư mục của dự án, gõ tiếp để lọc
+                                    ↑↓ chọn · Tab/Enter chèn · Esc đóng (chọn thư mục để đi vào trong)
+                                    khi chạy, @đường-dẫn được đổi sang cú pháp của từng agent (xem /agents)
 
 Kiểm tra & duyệt code:
   /verify <lệnh>                    lệnh kiểm tra sau mỗi task cho dự án này (vd: /verify npm test)
@@ -119,6 +127,122 @@ class AgentPane(Vertical):
     @property
     def body(self) -> RichLog:
         return self.query_one(".pane-log", RichLog)
+
+
+class MentionList(OptionList):
+    """Danh sách gợi ý file/thư mục nổi phía trên ô nhập khi gõ @."""
+
+    can_focus = False
+
+    def on_mount(self) -> None:
+        self.border_title = "@ file / thư mục"
+        self.border_subtitle = "↑↓ chọn · Tab/Enter chèn · Esc đóng"
+
+
+# @ ở đầu ô nhập hoặc sau khoảng trắng / mở ngoặc, tới con trỏ: @abc hoặc @"có dấu cách
+MENTION_AT_CURSOR = re.compile(r'(?:^|(?<=[\s(\[{\'`]))@(?:"([^"]*)|([^\s"\'`]*))$')
+
+
+class CommandInput(Input):
+    """Ô nhập lệnh, có gợi ý file/thư mục khi gõ @."""
+
+    BINDINGS = [
+        Binding("up", "mention_move(-1)", show=False),
+        Binding("down", "mention_move(1)", show=False),
+        Binding("tab", "mention_accept", show=False),
+        Binding("enter", "mention_enter", show=False),
+        Binding("escape", "mention_close", show=False),
+    ]
+
+    def __init__(self, root: Path, **kw):
+        super().__init__(**kw)
+        self.index = mentions.FileIndex(root)
+        self._span: tuple[int, int] | None = None  # vị trí "@…" đang gõ trong value
+
+    @property
+    def popup(self) -> MentionList:
+        return self.app.query_one("#mention", MentionList)
+
+    @property
+    def popup_open(self) -> bool:
+        return self.popup.display
+
+    def close_popup(self) -> None:
+        self.popup.display = False
+        self._span = None
+
+    def update_mention(self) -> None:
+        """Gọi khi nội dung đổi: mở/lọc/đóng danh sách gợi ý theo chữ trước con trỏ."""
+        before = self.value[:self.cursor_position]
+        m = MENTION_AT_CURSOR.search(before)
+        if not m:
+            self.close_popup()
+            return
+        self._span = (m.start(), self.cursor_position)
+        query = m.group(1) if m.group(1) is not None else m.group(2)
+        if self.index.stale():
+            self.run_worker(self._reload(), exclusive=True, group="mention-index")
+        self._fill(query)
+
+    async def _reload(self) -> None:
+        await self.index.refresh()
+        if self._span is not None:
+            self.update_mention()
+
+    def _fill(self, query: str) -> None:
+        popup = self.popup
+        found = mentions.search(self.index.entries, query)
+        popup.clear_options()
+        if found:
+            popup.add_options([Option(Text("📁 " + e, "bold cyan") if e.endswith("/")
+                                      else Text("   " + e), id=e) for e in found])
+            popup.highlighted = 0
+        else:
+            msg = "đang đọc danh sách file…" if not self.index.loaded_at else "không có file nào khớp"
+            popup.add_option(Option(Text(msg, "dim"), disabled=True))
+        popup.display = True
+
+    def accept(self) -> bool:
+        """Chèn mục đang chọn. Thư mục: giữ danh sách mở để đi vào trong."""
+        popup = self.popup
+        if self._span is None or popup.highlighted is None:
+            return False
+        opt = popup.get_option_at_index(popup.highlighted)
+        if opt.disabled or not opt.id:
+            return False
+        start, end = self._span
+        path = opt.id
+        text = mentions.quote(path)
+        if path.endswith("/") and text.endswith('"'):
+            text = text[:-1]  # @"thư mục có dấu cách/ — để gõ tiếp vào trong
+        if not path.endswith("/"):
+            text += " "
+        self.value = self.value[:start] + text + self.value[end:]
+        self.cursor_position = start + len(text)
+        self.update_mention()
+        return True
+
+    def action_mention_move(self, delta: int) -> None:
+        if self.popup_open:
+            if delta < 0:
+                self.popup.action_cursor_up()
+            else:
+                self.popup.action_cursor_down()
+
+    def action_mention_accept(self) -> None:
+        if not (self.popup_open and self.accept()):
+            self.screen.focus_next()
+
+    async def action_mention_enter(self) -> None:
+        if self.popup_open and self.accept():
+            return
+        self.close_popup()
+        res = self.action_submit()
+        if inspect.isawaitable(res):
+            await res
+
+    def action_mention_close(self) -> None:
+        self.close_popup()
 
 
 class Timeline(Static):
@@ -183,6 +307,7 @@ class TeamApp(App):
     TITLE = "AI Team"
     ENABLE_COMMAND_PALETTE = False
     CSS = """
+    Screen { layers: base overlay; }
     #tabs { height: 1fr; }
     TabPane { padding: 0; }
     #board { height: 1fr; }
@@ -201,6 +326,9 @@ class TeamApp(App):
     .pane-log { height: 1fr; padding: 0 1; }
     #timeline { height: auto; max-height: 14; padding: 0 1; border-top: solid $primary-darken-2; }
     #cmd { dock: bottom; margin: 0 0 1 0; }
+    #mention { dock: bottom; layer: overlay; display: none; height: auto; max-height: 14;
+               width: 90; max-width: 100%; margin: 0 0 4 1; border: round $accent;
+               background: $panel; }
     """
     # priority=True: phím tắt vẫn chạy khi con trỏ đang ở ô nhập (Input của Textual tự dùng
     # Ctrl+D, Ctrl+K... để sửa chữ, sẽ nuốt mất phím nếu không ưu tiên)
@@ -246,7 +374,9 @@ class TeamApp(App):
                             if a.enabled:
                                 yield AgentPane(name)
                     yield Timeline(id="timeline")
-        yield Input(id="cmd", placeholder="Nhập mục tiêu cho trưởng nhóm, hoặc /help")
+        yield MentionList(id="mention")
+        yield CommandInput(self.root, id="cmd",
+                           placeholder="Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -596,6 +726,10 @@ class TeamApp(App):
         self.exit()
 
     # ------------------------------------------------------------------ ô lệnh
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if isinstance(event.input, CommandInput):
+            event.input.update_mention()
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
         event.input.value = ""
@@ -755,7 +889,9 @@ class TeamApp(App):
                 lead = " ★ trưởng nhóm" if n == self.cfg.lead else ""
                 lines.append(f"{n:12} {st}{lead}\n   model/effort: {a.label()}"
                              + (f"   (effort hợp lệ: {', '.join(a.efforts)})" if a.efforts else "")
-                             + f"\n   lệnh: {' '.join(a.argv('<prompt>'))}\n   vai trò: {a.role}")
+                             + f"\n   lệnh: {' '.join(a.argv('<prompt>'))}"
+                             + f"\n   @file → {mentions.describe(a.binary, a.file_ref, a.file_args)}"
+                             + f"\n   vai trò: {a.role}")
             self.write_sys("\n".join(lines))
         elif cmd in ("quit", "exit", "q"):
             self.call_later(self.action_quit)

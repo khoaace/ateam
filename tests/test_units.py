@@ -77,3 +77,35 @@ def test_old_global_config_is_upgraded_with_backup(tmp_path, monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(cfgmod)
+
+
+def test_mentions_render_per_agent(tmp_path):
+    from ateam import mentions
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("")
+    roots = [tmp_path]
+    text = "sửa @src/app.py. Email a@b.com, @property, (@src/) và codex@xhigh"
+    out, extra = mentions.render(text, "claude", roots)
+    assert out == text and extra == []
+    out, extra = mentions.render(text, "/usr/local/bin/codex", roots)
+    assert out == "sửa src/app.py. Email a@b.com, @property, (src/) và codex@xhigh"
+    assert extra == []
+    out, extra = mentions.render(text, "opencode", roots)
+    assert out.startswith("sửa src/app.py.") and extra == ["-f", "src/app.py", "-f", "src/"]
+    # ghi đè trong config: file_args = [] tắt cờ, file_ref tuỳ ý
+    out, extra = mentions.render("@src/app.py", "opencode", roots, file_ref="`{path}`", file_args=[])
+    assert out == "`src/app.py`" and extra == []
+    assert mentions.insert_args(["claude", "-p", "P", "--x"], "P", ["-a"]) == ["claude", "-a", "-p", "P", "--x"]
+    assert mentions.insert_args(["opencode", "run", "P"], "P", ["-f", "a"]) == ["opencode", "run", "-f", "a", "P"]
+
+
+def test_mentions_search_ranking():
+    from ateam import mentions
+    entries = mentions.with_dirs(["README.md", "ateam/tui.py", "ateam/config.py", "tests/test_tui.py",
+                                  "docs/CONFIG.md"])
+    assert entries[:3] == ["ateam/", "docs/", "tests/"]
+    assert mentions.search(entries, "")[:3] == ["ateam/", "docs/", "tests/"]
+    assert mentions.search(entries, "tui")[0] == "ateam/tui.py"
+    assert mentions.search(entries, "ateam/") == ["ateam/config.py", "ateam/tui.py"]
+    assert mentions.search(entries, "atcfg")[0] == "ateam/config.py"   # khớp rải rác
+    assert mentions.search(entries, "zzz") == []

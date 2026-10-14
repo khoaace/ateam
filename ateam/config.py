@@ -148,6 +148,8 @@ class AgentConfig:
     efforts: list[str] = field(default_factory=list)
     fallback: list[str] = field(default_factory=list)
     verify: bool = True
+    file_ref: str = ""                        # "" = theo mentions.SYNTAX của lệnh
+    file_args: list[str] | None = None        # None = theo mentions.SYNTAX của lệnh
 
     @property
     def binary(self) -> str:
@@ -338,6 +340,8 @@ def load_config(root: Path) -> Config:
             efforts=_strs(a.get("efforts")),
             fallback=_strs(a.get("fallback")),
             verify=bool(a.get("verify", True)),
+            file_ref=str(a.get("file_ref", "") or ""),
+            file_args=_strs(a["file_args"]) if "file_args" in a else None,
         )
     v = data.get("verify") or {}
     pstate = load_project_state(root)

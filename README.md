@@ -47,6 +47,10 @@ ateam
 * **Gõ một câu bình thường** → giao mục tiêu cho trưởng nhóm. Kế hoạch hiện ra ở trạng thái *nháp*;
   xem, sửa (`/assign`, `/edit`, `/cancel`) rồi **Ctrl+G** hoặc `/go` để chạy.
 * **Giao tay**: `/task codex viết unit test cho utils.py`
+* **Nhắc file/thư mục bằng `@`**: gõ `@` trong ô nhập để hiện danh sách file và thư mục của dự án, gõ
+  tiếp để lọc (khớp cả rải rác, vd `@atcfg` → `ateam/config.py`), ↑↓ chọn, Tab/Enter chèn, Esc đóng.
+  Chọn thư mục thì danh sách đi vào trong thư mục đó. Khi chạy, ateam đổi `@đường/dẫn` sang đúng cú
+  pháp của agent nhận việc (xem bảng dưới); `ateam add`/`ateam goal` ngoài dòng lệnh cũng hiểu `@`.
 * Chọn task trong bảng (↑↓) để xem log trực tiếp của nó; **Ctrl+L** về log hệ thống.
 * **Ctrl+R** chạy lại task đang chọn, **Ctrl+K** huỷ, `/note ...` ghi chú cho cả đội, `/help` xem tất cả lệnh.
 * **Ctrl+T** mở tab **Đội** để xem cả 4 agent làm việc cùng lúc.
@@ -60,6 +64,20 @@ ateam add --to grok "Viết docstring cho src/api.py"     # thêm task
 ateam run                                               # chạy hết task đang chờ
 ateam list   /   ateam log 3   /   ateam log sys
 ```
+
+### `@file` được truyền cho từng agent thế nào
+
+| Agent (lệnh) | Trong prompt | Cờ thêm vào lệnh |
+| --- | --- | --- |
+| claude | `@src/app.py` (Claude Code tự đọc file) | — |
+| antigravity (`agy`) | `@src/app.py` | — |
+| codex | `src/app.py` (`codex exec` không có cú pháp `@`) | — |
+| grok (`opencode run`) | `src/app.py` | `-f src/app.py` (đính kèm file) |
+| CLI khác | `src/app.py` | — |
+
+Chỉ đổi khi đường dẫn có thật trong dự án, nên `a@b.com`, `@property`, `codex@xhigh` giữ nguyên.
+Đường dẫn có dấu cách viết `@"thư mục/file.md"`. Đổi cú pháp cho một agent bằng `file_ref` /
+`file_args` trong config (xem `docs/CONFIG.md`); `ateam doctor` và `/agents` in cú pháp đang dùng.
 
 ## Xem tiến trình từng agent — tab "Đội" (Ctrl+T)
 

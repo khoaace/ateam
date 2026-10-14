@@ -155,3 +155,27 @@ def test_run_exits_when_only_cooldown_tasks_left(env, project, tmp_path):
     r = ateam(env, project, "run", "-q", timeout=60)  # không được treo
     assert tasks(project)[0].status == "queued"
     assert "hết hạn mức" in r.stdout
+
+
+def test_file_mentions_use_each_agent_syntax(env, project, tmp_path):
+    (project / "src").mkdir()
+    (project / "src" / "app.py").write_text("x = 1\n")
+    (project / "my docs").mkdir()
+    (project / "my docs" / "plan.md").write_text("plan\n")
+    full = tmp_path / "full.log"
+    env = dict(env, ATEAM_FAKE_FULL_LOG=str(full))
+
+    def run_for(agent: str) -> str:
+        if full.exists():
+            full.unlink()
+        ateam(env, project, "add", "--to", agent, 'đọc @src/app.py và @"my docs/plan.md", bỏ qua @nope')
+        ateam(env, project, "run", "-q")
+        return full.read_text()
+
+    out = run_for("claude")
+    assert '@src/app.py và @"my docs/plan.md", bỏ qua @nope' in out, out
+    out = run_for("codex")
+    assert "đọc src/app.py và my docs/plan.md, bỏ qua @nope" in out, out
+    out = run_for("grok")
+    assert "-f src/app.py -f my docs/plan.md" in out and "đọc src/app.py và" in out, out
+    assert "-f" in (tmp_path / "args.log").read_text()

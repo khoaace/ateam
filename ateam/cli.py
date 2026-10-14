@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import __version__
+from . import __version__, mentions
 from .config import (DEFAULT_CONFIG, GLOBAL_CONFIG, ensure_global_config, load_config,
                      save_agent_setting)
 from .db import DB, QUEUED
@@ -92,6 +92,7 @@ def cmd_doctor(args) -> int:
         print(f"     model/effort: {a.label()}"
               + (f"   (effort hợp lệ: {', '.join(a.efforts)})" if a.efforts else ""))
         print(f"     {' '.join(a.argv('<prompt>'))}")
+        print(f"     @file trong prompt → {mentions.describe(a.binary, a.file_ref, a.file_args)}")
     if cfg.lead not in cfg.agents:
         print(f"\n✗ Trưởng nhóm '{cfg.lead}' không có trong [agents].")
         ok = False
