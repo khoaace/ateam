@@ -1,0 +1,183 @@
+"""Prompt gửi cho trưởng nhóm và các thành viên, cùng các hàm tách kết quả."""
+
+from __future__ import annotations
+
+import json
+import re
+
+from .config import Config
+
+
+def roster(cfg: Config, with_effort: bool = False) -> str:
+    lines = []
+    for n, a in cfg.active_agents().items():
+        line = f'- "{n}": {a.role or "general"}'
+        if with_effort and a.efforts:
+            line += f"  [effort levels: {', '.join(a.efforts)}]"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+TASK_SCHEMA = (
+    '[{"id": 1, "agent": "<member name>", "title": "<short title>", '
+    '"prompt": "<detailed, self-contained instructions>", "depends_on": [<ids>]}]'
+)
+
+
+def effort_hint(cfg: Config) -> str:
+    if not cfg.lead_sets_effort:
+        return ""
+    return ('\nOptionally add "effort" to a task (one of that member\'s effort levels) when it clearly '
+            'needs more or less reasoning than usual; omit it otherwise.')
+
+
+def plan_prompt(cfg: Config, goal: str, cwd: str, notes: str) -> str:
+    return f"""You are the TEAM LEAD of a team of AI coding agents working in: {cwd}
+
+Team members (name: strengths):
+{roster(cfg, cfg.lead_sets_effort)}
+
+GOAL from the user:
+{goal}
+
+{('Shared team notes:' + chr(10) + notes) if notes else ''}
+
+Break the goal into a SMALL number (1-8) of concrete tasks and assign each to the best member
+(you may assign tasks to yourself, "{cfg.lead}"). Each prompt must be self-contained: the member
+only sees its own task, the goal and results of tasks it depends on. Use "depends_on" when a task
+needs another task's output; otherwise tasks run in parallel, so parallel tasks must not edit the
+same files. Write titles and prompts in the same language as the goal.
+You may inspect the project to plan, but DO NOT modify any files now.{effort_hint(cfg)}
+
+Reply with ONLY a JSON array, no other text:
+{TASK_SCHEMA}"""
+
+
+def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: str,
+                goal: str | None, deps: list[tuple[int, str, str, str]], notes: str,
+                cwd: str, can_delegate: bool) -> str:
+    others = [n for n in cfg.active_agents() if n != agent]
+    parts = [
+        f'You are "{agent}", a member of an AI agent team (team lead: "{cfg.lead}").',
+        f"Working directory: {cwd}",
+    ]
+    if goal:
+        parts.append(f"\nOVERALL TEAM GOAL:\n{goal}")
+    parts.append(f"\nYOUR TASK (#{task_id}): {title}\n{prompt}")
+    if deps:
+        parts.append("\nRESULTS OF TASKS YOU DEPEND ON:")
+        for did, dagent, dtitle, dres in deps:
+            parts.append(f"--- #{did} by {dagent}: {dtitle} ---\n{dres or '(no summary)'}")
+    if notes:
+        parts.append(f"\nSHARED TEAM NOTES:\n{notes}")
+    rules = [
+        "\nRULES:",
+        "- Do your task yourself and stay within its scope.",
+    ]
+    if can_delegate and others:
+        rules += [
+            f"- If part of the work is clearly better done by another member ({', '.join(others)}),"
+            " delegate it by printing this block (it will run after you finish):",
+            '<<<DELEGATE to="MEMBER_NAME" title="short title">>>',
+            "full self-contained instructions",
+            "<<<END>>>",
+        ]
+    rules += [
+        "- To leave information for the whole team, print: <<<NOTE>>>your note<<<END>>>",
+        "- End your answer with a line starting with 'SUMMARY:' followed by a concise summary:"
+        " what you did, files changed, and anything teammates need to know.",
+    ]
+    parts.extend(rules)
+    return "\n".join(parts)
+
+
+def review_prompt(cfg: Config, goal: str, round_no: int, results: str, cwd: str) -> str:
+    return f"""You are the TEAM LEAD of a team of AI coding agents working in: {cwd}
+
+Team members:
+{roster(cfg, cfg.lead_sets_effort)}
+
+GOAL:
+{goal}
+
+Review round {round_no} of {cfg.max_rounds}. Results of the tasks so far:
+{results}
+
+You may inspect the project files to verify the work, but DO NOT modify any files.
+Decide whether the goal is fully achieved. If not, create follow-up tasks (fix problems, missing
+parts). Write in the same language as the goal.{effort_hint(cfg)}
+
+Reply with ONLY a JSON object, no other text:
+{{"done": true|false, "summary": "<short assessment for the user>", "new_tasks": {TASK_SCHEMA}}}"""
+
+
+# ---------------- tách kết quả ----------------
+
+def extract_json(text: str, kind: type):
+    """Tìm giá trị JSON đầu tiên có kiểu `kind` (list hoặc dict) trong văn bản."""
+    candidates: list[str] = []
+    for m in re.finditer(r"```(?:json)?\s*(.*?)```", text, re.S):
+        candidates.append(m.group(1))
+    candidates.append(text)
+    opener = "[" if kind is list else "{"
+    dec = json.JSONDecoder()
+    for cand in candidates:
+        for i, ch in enumerate(cand):
+            if ch != opener:
+                continue
+            try:
+                val, _ = dec.raw_decode(cand[i:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(val, kind):
+                if kind is list and val and not all(isinstance(x, dict) for x in val):
+                    continue
+                return val
+    return None
+
+
+DELEGATE_RE = re.compile(
+    r'<<<DELEGATE\s+to="([^"]+)"(?:\s+title="([^"]*)")?\s*>>>\s*(.*?)\s*<<<END>>>', re.S)
+NOTE_RE = re.compile(r"<<<NOTE>>>\s*(.*?)\s*<<<END>>>", re.S)
+
+
+def parse_delegations(text: str) -> list[tuple[str, str, str]]:
+    return [(m.group(1).strip(), (m.group(2) or "").strip(), m.group(3).strip())
+            for m in DELEGATE_RE.finditer(text)]
+
+
+def parse_notes(text: str) -> list[str]:
+    return [m.group(1).strip() for m in NOTE_RE.finditer(text) if m.group(1).strip()]
+
+
+def extract_summary(text: str, limit: int = 2500) -> str:
+    idx = text.rfind("SUMMARY:")
+    if idx >= 0:
+        s = text[idx + len("SUMMARY:"):].strip()
+    else:
+        s = text.strip()
+        s = s[-limit:]
+    s = DELEGATE_RE.sub("", NOTE_RE.sub("", s)).strip()
+    return s[:limit]
+
+
+def fix_prompt(*, agent: str, task_id: int, title: str, prompt: str, command: str, rc: int,
+               output: str, attempt: int, max_attempts: int, cwd: str,
+               original_agent: str) -> str:
+    who = "you" if agent == original_agent else f'"{original_agent}"'
+    return f"""You are "{agent}", a member of an AI agent team. Working directory: {cwd}
+
+Task #{task_id} ("{title}") was just implemented by {who}, but the project's verification command
+fails. Fix attempt {attempt} of {max_attempts}.
+
+ORIGINAL TASK:
+{prompt}
+
+VERIFICATION COMMAND: {command}
+EXIT CODE: {rc}
+OUTPUT (last lines):
+{output}
+
+Fix the code so the verification command passes. Do not delete or weaken tests to make them pass,
+unless a test is clearly wrong — then say why. Run the command yourself if you can.
+End your answer with a line starting with 'SUMMARY:' describing what you fixed."""

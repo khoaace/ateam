@@ -1,0 +1,14 @@
+{
+  // Trang docs + file tải ateam, deploy lên Cloudflare Workers (static assets).
+  // `npx wrangler deploy` tự chạy build.command trước để dựng dist/.
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ateam",
+  "compatibility_date": "2026-10-14",
+  "build": {
+    "command": "python3 scripts/build_site.py"
+  },
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page"
+  }
+}

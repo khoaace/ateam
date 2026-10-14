@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ateam — đội AI agent trong terminal</title>
+<meta name="description" content="ateam điều phối Claude Code, Codex, Antigravity và Grok làm việc như một đội: chia việc, chạy song song, tự test, duyệt diff trước khi merge.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232F4BE0'/%3E%3Crect x='6' y='8' width='14' height='4' rx='2' fill='%23fff'/%3E%3Crect x='10' y='14' width='16' height='4' rx='2' fill='%23fff' opacity='.75'/%3E%3Crect x='6' y='20' width='10' height='4' rx='2' fill='%23fff' opacity='.5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F2F4F8;
+  --surface: #FFFFFF;
+  --ink: #172033;
+  --muted: #5B6577;
+  --line: #D5DAE3;
+  --accent: #2F4BE0;
+  --accent-ink: #FFFFFF;
+  --code-bg: #E8ECF3;
+  --claude: #7C3AED;
+  --codex: #0E9F6E;
+  --agy: #2563EB;
+  --grok: #E11D48;
+  --track: #E6EAF1;
+  --radius-s: 6px;
+  --radius-m: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10151F;
+    --surface: #171E2B;
+    --ink: #E7EBF3;
+    --muted: #98A2B5;
+    --line: #2A3344;
+    --accent: #6D83FF;
+    --accent-ink: #0B1020;
+    --code-bg: #1F2737;
+    --claude: #A78BFA;
+    --codex: #34D399;
+    --agy: #60A5FA;
+    --grok: #FB7185;
+    --track: #1F2737;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+code, pre, kbd { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.86em; }
+:not(pre) > code { background: var(--code-bg); padding: 0.1em 0.38em; border-radius: 4px; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0.05em 0.4em; background: var(--surface); }
+
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+.prose { max-width: 68ch; }
+
+/* ---------- top bar ---------- */
+.topbar { border-bottom: 1px solid var(--line); background: var(--bg); position: sticky; top: 0; z-index: 10; }
+.topbar .wrap { display: flex; align-items: center; gap: 28px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
+.brand svg { width: 26px; height: 26px; }
+.topbar nav { display: flex; gap: 22px; margin-left: auto; font-size: 15px; }
+.topbar nav a { color: var(--muted); text-decoration: none; }
+.topbar nav a:hover { color: var(--ink); }
+@media (max-width: 760px) { .topbar nav a.optional { display: none; } }
+
+/* ---------- hero ---------- */
+.hero { padding: 72px 0 40px; }
+.hero h1 {
+  font-size: clamp(38px, 6vw, 68px);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  font-weight: 800;
+  margin: 0 0 22px;
+  max-width: 15ch;
+}
+.hero .lede { font-size: 19px; color: var(--muted); max-width: 56ch; margin: 0 0 30px; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 13px 20px; border-radius: var(--radius-m);
+  font: inherit; font-weight: 600; font-size: 16px; text-decoration: none; cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+.btn-ghost:hover { border-color: var(--muted); }
+.btn small { font-weight: 400; opacity: 0.8; font-size: 13px; }
+
+/* ---------- board (the one memorable thing) ---------- */
+.board {
+  margin-top: 52px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px 22px 18px;
+}
+.board-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.board-head strong { font-size: 15px; }
+.board-head span { color: var(--muted); font-size: 14px; }
+.lane { display: grid; grid-template-columns: 132px 1fr; align-items: center; gap: 14px; padding: 7px 0; }
+.lane + .lane { border-top: 1px dashed var(--line); }
+.who { font-weight: 600; font-size: 15px; display: grid; grid-template-columns: 10px auto; column-gap: 8px; align-items: center; line-height: 1.25; }
+.who i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); display: inline-block; flex: none; }
+.who em { grid-column: 2; font-style: normal; font-weight: 400; color: var(--muted); font-size: 12px; }
+.track { position: relative; height: 34px; background: var(--track); border-radius: var(--radius-s); overflow: hidden; }
+.bar {
+  position: absolute; top: 4px; bottom: 4px;
+  left: var(--x); width: var(--w);
+  background: var(--c); color: #fff;
+  border-radius: 5px;
+  font-size: 12.5px; font-weight: 600; line-height: 26px;
+  padding: 0 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transform-origin: left center;
+  animation: grow 0.9s cubic-bezier(.3,.7,.2,1) both;
+  animation-delay: var(--d);
+}
+.bar.lead { background: repeating-linear-gradient(135deg, var(--c) 0 8px, color-mix(in srgb, var(--c) 78%, #fff) 8px 16px); }
+.bar.fix { background: color-mix(in srgb, var(--c) 70%, #000); }
+.bar.wait { background: transparent; color: var(--c); border: 2px dashed var(--c); line-height: 22px; }
+@media (prefers-color-scheme: dark) { .bar { color: #0B1020; } .bar.wait { color: var(--c); } }
+@keyframes grow { from { transform: scaleX(0); opacity: 0.2; } to { transform: scaleX(1); opacity: 1; } }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 14px; padding-left: 146px; color: var(--muted); font-size: 13px; }
+.legend b { display: inline-block; width: 18px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; background: var(--muted); }
+.legend .l-lead { background: repeating-linear-gradient(135deg, var(--muted) 0 4px, var(--track) 4px 8px); }
+.legend .l-fix { background: var(--ink); }
+.legend .l-wait { background: transparent; border: 2px dashed var(--muted); }
+@media (max-width: 640px) {
+  .lane { grid-template-columns: 1fr; gap: 6px; }
+  .legend { padding-left: 0; }
+  .bar { font-size: 11px; padding: 0 6px; }
+}
+@media (prefers-reduced-motion: reduce) { .bar { animation: none; } }
+
+/* ---------- sections ---------- */
+section.block { padding: 64px 0 8px; }
+section.block > .wrap > h2 {
+  font-size: clamp(26px, 3.4vw, 34px); letter-spacing: -0.02em; line-height: 1.15;
+  margin: 0 0 12px; font-weight: 750;
+}
+.intro { color: var(--muted); margin: 0 0 28px; max-width: 62ch; }
+h3 { font-size: 19px; margin: 0 0 6px; letter-spacing: -0.01em; }
+
+/* install */
+.install-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 860px) { .install-grid { grid-template-columns: minmax(0, 1fr); } }
+.cmd {
+  position: relative; background: var(--code-bg); border-radius: var(--radius-m);
+  padding: 16px 64px 16px 18px; margin: 10px 0 18px; overflow-x: auto;
+}
+.cmd pre { margin: 0; white-space: pre; line-height: 1.7; }
+.copy {
+  position: absolute; top: 10px; right: 10px;
+  font: 500 13px "Be Vietnam Pro", sans-serif; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer;
+}
+.copy:hover { border-color: var(--muted); }
+.req { margin: 0; padding-left: 20px; color: var(--muted); }
+.req li { margin: 4px 0; }
+.req strong { color: var(--ink); font-weight: 600; }
+
+/* flow: real sequence -> numbered */
+.flow { list-style: none; counter-reset: s; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 2px solid var(--ink); }
+.flow li { counter-increment: s; padding: 18px 20px 22px 0; border-bottom: 1px solid var(--line); }
+.flow li::before { content: counter(s); display: block; font-weight: 800; font-size: 34px; line-height: 1; color: var(--accent); margin-bottom: 10px; letter-spacing: -0.03em; }
+.flow p { margin: 0; color: var(--muted); font-size: 15.5px; }
+@media (max-width: 860px) { .flow { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .flow { grid-template-columns: 1fr; } }
+
+/* features as a definition list */
+.features { display: grid; grid-template-columns: 1fr 1fr; gap: 26px 48px; margin: 0; }
+.features div { border-left: 3px solid var(--fc, var(--line)); padding-left: 16px; }
+.features dt { font-weight: 650; font-size: 17.5px; margin-bottom: 4px; }
+.features dd { margin: 0; color: var(--muted); font-size: 15.5px; }
+@media (max-width: 760px) { .features { grid-template-columns: 1fr; } }
+
+/* tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; background: color-mix(in srgb, var(--surface) 70%, var(--bg)); }
+tr:last-child td { border-bottom: 0; }
+td code { white-space: nowrap; }
+.two-tables { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 860px) { .two-tables { grid-template-columns: minmax(0, 1fr); } }
+
+.config pre { margin: 0; background: var(--code-bg); border-radius: var(--radius-m); padding: 18px 20px; overflow-x: auto; line-height: 1.65; }
+.config .c { color: var(--muted); }
+
+footer { margin-top: 80px; border-top: 1px solid var(--line); padding: 28px 0 48px; color: var(--muted); font-size: 14.5px; }
+.foot-links { display: flex; gap: 20px; }
+footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><rect x="6" y="8" width="14" height="4" rx="2" fill="#fff"/><rect x="10" y="14" width="16" height="4" rx="2" fill="#fff" opacity=".75"/><rect x="6" y="20" width="10" height="4" rx="2" fill="#fff" opacity=".5"/></svg>
+      ateam
+    </a>
+    <nav aria-label="Mục lục">
+      <a href="#cai-dat">Cài đặt</a>
+      <a class="optional" href="#cach-hoat-dong">Cách hoạt động</a>
+      <a class="optional" href="#lenh">Lệnh</a>
+      <a class="optional" href="#cau-hinh">Cấu hình</a>
+      <a href="https://github.com/khoaace/ateam">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <h1>Một đội AI agent làm việc trong terminal của bạn.</h1>
+      <p class="lede">ateam điều phối Claude Code, Codex, Antigravity và Grok như một đội: trưởng nhóm chia việc, các agent làm song song và giao việc cho nhau, tự chạy test, rồi chờ bạn duyệt diff trước khi merge.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="/{{ZIP_NAME}}" download>Tải ateam {{VERSION}} <small>{{ZIP_SIZE}}</small></a>
+        <a class="btn btn-ghost" href="#cai-dat">Cài bằng một lệnh</a>
+        <a class="btn btn-ghost" href="https://github.com/khoaace/ateam">Mã nguồn trên GitHub</a>
+      </div>
+
+      <div class="board" role="img" aria-label="Ví dụ tab Đội: claude lập kế hoạch rồi review, codex viết API và tự sửa khi test fail, antigravity đọc tài liệu và làm UI, grok viết test và README">
+        <div class="board-head">
+          <strong>Mục tiêu: thêm đăng nhập bằng Google</strong>
+          <span>4 agent, 18 phút</span>
+        </div>
+        <div class="lane" style="--c: var(--claude)">
+          <div class="who"><i></i>claude <em>trưởng nhóm</em></div>
+          <div class="track">
+            <span class="bar lead" style="--x:0%;--w:11%;--d:.1s">Kế hoạch</span>
+            <span class="bar lead" style="--x:82%;--w:12%;--d:2.6s">Review</span>
+          </div>
+        </div>
+        <div class="lane" style="--c: var(--codex)">
+          <div class="who"><i></i>codex <em>xhigh</em></div>
+          <div class="track">
+            <span class="bar" style="--x:12%;--w:30%;--d:.6s">#1 API đăng nhập OAuth</span>
+            <span class="bar fix" style="--x:43%;--w:15%;--d:1.6s">test fail → tự sửa</span>
+            <span class="bar wait" style="--x:59%;--w:14%;--d:2.1s">chờ duyệt</span>
+          </div>
+        </div>
+        <div class="lane" style="--c: var(--agy)">
+          <div class="who"><i></i>antigravity</div>
+          <div class="track">
+            <span class="bar" style="--x:12%;--w:22%;--d:.75s">#2 Đọc tài liệu Google</span>
+            <span class="bar" style="--x:60%;--w:20%;--d:2.2s">#4 Nút đăng nhập</span>
+          </div>
+        </div>
+        <div class="lane" style="--c: var(--grok)">
+          <div class="who"><i></i>grok <em>dự phòng: codex</em></div>
+          <div class="track">
+            <span class="bar" style="--x:12%;--w:17%;--d:.9s">#3 Viết test</span>
+            <span class="bar" style="--x:30%;--w:16%;--d:1.4s">↳ README</span>
+          </div>
+        </div>
+        <div class="legend">
+          <span><b style="background:var(--codex)"></b>task</span>
+          <span><b class="l-lead"></b>trưởng nhóm lập kế hoạch / review</span>
+          <span><b class="l-fix"></b>sửa sau khi test fail</span>
+          <span><b class="l-wait"></b>chờ bạn duyệt merge</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="cai-dat">
+    <div class="wrap">
+      <h2>Cài đặt</h2>
+      <p class="intro">Chạy trên macOS và Linux. Một lệnh là xong; nâng cấp cũng chạy lại đúng lệnh đó.</p>
+      <div class="install-grid">
+        <div>
+          <h3>Cài bằng một lệnh</h3>
+          <div class="cmd"><pre id="oneliner">curl -fsSL https://raw.githubusercontent.com/khoaace/ateam/main/scripts/get.sh | bash</pre><button class="copy" data-copy="oneliner">Sao chép</button></div>
+          <h3>Hoặc từ file đã tải</h3>
+          <div class="cmd"><pre id="manual">cd ~/Downloads && unzip -o {{ZIP_NAME}} && cd ateam && ./install.sh
+ateam doctor</pre><button class="copy" data-copy="manual">Sao chép</button></div>
+          <p class="prose">Mở dự án và gõ <code>ateam</code>. Lệnh <code>ateam doctor</code> cho biết agent nào đã sẵn sàng và đúng lệnh sẽ chạy cho từng agent.</p>
+        </div>
+        <div>
+          <h3>Cần có</h3>
+          <ul class="req">
+            <li><strong>Python 3.9+</strong> — <code>brew install python</code> nếu thiếu</li>
+            <li><strong>git</strong> cho chế độ worktree và xem diff</li>
+            <li><strong>Ít nhất một agent CLI đã đăng nhập</strong>: <code>claude</code>, <code>codex</code>, <code>agy</code>, <code>opencode</code>, hoặc bất kỳ CLI nào có chế độ headless</li>
+          </ul>
+          <p class="prose" style="color:var(--muted);margin-top:16px">ateam dùng gói đăng ký sẵn có của từng CLI, không cần API key riêng. Mọi dữ liệu của dự án nằm trong thư mục <code>.ateam/</code>, đã tự gitignore.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="cach-hoat-dong">
+    <div class="wrap">
+      <h2>Một mục tiêu đi qua đội như thế nào</h2>
+      <p class="intro">Bạn chỉ cần gõ một câu. Phần còn lại diễn ra trên bảng việc chung, và bạn chen vào bất cứ bước nào.</p>
+      <ol class="flow">
+        <li><h3>Giao mục tiêu</h3><p>Gõ yêu cầu như viết ticket: kết quả cần có và cách kiểm tra.</p></li>
+        <li><h3>Trưởng nhóm lập kế hoạch</h3><p>Chia thành 1–8 task, chọn agent, thứ tự phụ thuộc và effort cho từng task.</p></li>
+        <li><h3>Bạn duyệt</h3><p>Đổi người làm, sửa, huỷ task nháp, rồi <kbd>Ctrl</kbd>+<kbd>G</kbd> để chạy.</p></li>
+        <li><h3>Các agent làm song song</h3><p>Task chạy khi task trước xong; agent có thể giao phần việc hợp với thành viên khác.</p></li>
+        <li><h3>Kiểm tra và duyệt</h3><p>Test fail thì tự giao sửa. Ở chế độ review, bạn xem diff rồi merge hoặc trả lại kèm góp ý.</p></li>
+        <li><h3>Trưởng nhóm review</h3><p>Đủ thì đóng mục tiêu; còn thiếu thì giao thêm việc, tối đa 3 vòng.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="block" id="tinh-nang">
+    <div class="wrap">
+      <h2>Có gì trong ateam</h2>
+      <p class="intro">Những thứ bạn sẽ dùng mỗi ngày khi để nhiều agent cùng làm một repo.</p>
+      <dl class="features">
+        <div style="--fc: var(--claude)"><dt>Tab Đội, xem cả 4 agent cùng lúc</dt><dd>Mỗi agent một ô log trực tiếp, task đang làm, thời gian chạy, cảnh báo khi im lặng quá lâu, và timeline ai làm gì lúc nào.</dd></div>
+        <div style="--fc: var(--codex)"><dt>Tự chạy test, fail thì tự sửa</dt><dd><code>/verify npm test</code> một lần cho mỗi dự án. Task đổi code mà test fail sẽ được giao sửa kèm log lỗi, tối đa 2 lần.</dd></div>
+        <div style="--fc: var(--agy)"><dt>Duyệt diff trước khi merge</dt><dd>Mỗi task một git worktree riêng. <kbd>Ctrl</kbd>+<kbd>D</kbd> xem diff, <kbd>Ctrl</kbd>+<kbd>Y</kbd> merge, <code>/reject</code> kèm góp ý để làm lại.</dd></div>
+        <div style="--fc: var(--grok)"><dt>Hết hạn mức thì đổi người</dt><dd>Agent báo rate limit được cho nghỉ đến giờ hồi; task tự chuyển sang agent dự phòng, kể cả vai trưởng nhóm.</dd></div>
+        <div><dt>Model và effort cho từng agent, từng task</dt><dd><code>/model claude opus</code>, <code>/effort codex xhigh</code>, hoặc <code>/task codex@xhigh …</code> cho riêng một việc khó.</dd></div>
+        <div><dt>Thêm agent bằng vài dòng cấu hình</dt><dd>Bất kỳ CLI nào chạy headless đều vào đội được: Gemini CLI, Cursor CLI, Aider… chỉ cần khai báo lệnh và cờ model.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="block" id="lenh">
+    <div class="wrap">
+      <h2>Lệnh hay dùng</h2>
+      <p class="intro">Gõ <code>/help</code> trong app để xem đủ. Mọi lệnh đều có bản dòng lệnh, ví dụ <code>ateam goal</code>, <code>ateam diff 3</code>, <code>ateam usage</code>.</p>
+      <div class="two-tables">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Lệnh trong app</th><th>Tác dụng</th></tr></thead>
+            <tbody>
+              <tr><td><em>câu bình thường</em></td><td>Giao mục tiêu cho trưởng nhóm</td></tr>
+              <tr><td><code>/task codex@xhigh …</code></td><td>Giao tay một task, kèm effort riêng</td></tr>
+              <tr><td><code>/assign 3 grok</code></td><td>Đổi người làm task 3</td></tr>
+              <tr><td><code>/verify pytest -q</code></td><td>Lệnh kiểm tra sau mỗi task của dự án</td></tr>
+              <tr><td><code>/diff 3</code> · <code>/merge 3</code></td><td>Xem thay đổi · merge task chờ duyệt</td></tr>
+              <tr><td><code>/reject 3 thiếu xử lý lỗi</code></td><td>Trả lại task kèm góp ý để làm lại</td></tr>
+              <tr><td><code>/model claude opus</code></td><td>Model mặc định của một agent</td></tr>
+              <tr><td><code>/note API chạy cổng 8080</code></td><td>Ghi chú mọi agent đều đọc</td></tr>
+              <tr><td><code>/usage</code></td><td>Lượt chạy, thời gian, hết hạn mức</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Phím</th><th>Tác dụng</th></tr></thead>
+            <tbody>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>T</kbd></td><td>Bảng việc ⇄ Đội</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td>Duyệt và chạy kế hoạch</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>Xem diff task đang chọn</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Merge task đang chọn</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>R</kbd></td><td>Chạy lại task</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Huỷ task</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>Q</kbd></td><td>Thoát</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block config" id="cau-hinh">
+    <div class="wrap">
+      <h2>Cấu hình</h2>
+      <p class="intro">File chung ở <code>~/.config/ateam/config.toml</code>; mỗi dự án ghi đè bằng <code>.ateam/config.toml</code> (tạo bằng <code>ateam init --project</code>).</p>
+<pre><code><span class="c"># chạy song song an toàn: mỗi task một nhánh, chờ bạn duyệt</span>
+isolation = "worktree"
+merge = "review"
+
+[verify]
+command = "npm test"
+max_fix_attempts = 2
+
+[agents.codex]
+command  = ["codex", "exec", "--full-auto", "--skip-git-repo-check", "{prompt}"]
+model    = "gpt-5.5"
+effort   = "high"
+fallback = ["claude"]
+role     = "Viết code, sửa bug, chạy test, refactor."
+
+<span class="c"># thêm bất kỳ CLI headless nào</span>
+[agents.gemini]
+command    = ["gemini", "--yolo", "-p", "{prompt}"]
+model_args = ["--model", "{model}"]
+role       = "Đọc codebase lớn, viết tài liệu."</code></pre>
+    </div>
+  </section>
+
+  <section class="block" id="su-co">
+    <div class="wrap">
+      <h2>Khi có gì đó không chạy</h2>
+      <p class="intro">Bắt đầu bằng <code>ateam log &lt;số task&gt;</code>: dòng đầu ghi agent, model, effort và thư mục làm việc.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Dấu hiệu</th><th>Thường do</th><th>Cách xử lý</th></tr></thead>
+          <tbody>
+            <tr><td>Agent không in ra gì</td><td>CLI chưa đăng nhập hoặc cần terminal thật</td><td>Chạy thử CLI đó một lần; giữ <code>pty = true</code> cho agy</td></tr>
+            <tr><td>Task xong mà không file nào đổi</td><td>CLI từ chối sửa file khi chạy headless</td><td>Thêm cờ cho phép sửa: <code>acceptEdits</code>, <code>--mode accept-edits</code>…</td></tr>
+            <tr><td>Thoát với mã 1 ngay khi chạy</td><td>Sai tên model hoặc mức effort</td><td><code>/agents</code> xem lệnh thật; <code>/model codex -</code> để về mặc định</td></tr>
+            <tr><td>Hết hạn mức nhưng báo lỗi thường</td><td>Câu thông báo của CLI chưa được nhận diện</td><td>Gửi log lên GitHub Issues để thêm mẫu nhận diện</td></tr>
+            <tr><td>Task xung đột khi merge</td><td>Hai task sửa cùng chỗ, hoặc bạn đang sửa dở file đó</td><td><code>git merge ateam/t&lt;số&gt;</code> rồi tự xử lý, hoặc <code>/retry</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>ateam {{VERSION}}, cập nhật {{BUILD_DATE}}</span>
+    <span class="foot-links"><a href="https://github.com/khoaace/ateam">GitHub</a><a href="https://github.com/khoaace/ateam/issues">Báo lỗi</a><a href="/{{ZIP_NAME}}" download>Tải .zip</a></span>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll('.copy').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var text = document.getElementById(btn.dataset.copy).innerText;
+    var done = function () { btn.textContent = 'Đã sao chép'; setTimeout(function () { btn.textContent = 'Sao chép'; }, 1600); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(text); done(); });
+    } else { fallback(text); done(); }
+  });
+});
+function fallback(text) {
+  var t = document.createElement('textarea'); t.value = text; document.body.appendChild(t);
+  t.select(); try { document.execCommand('copy'); } catch (e) {} document.body.removeChild(t);
+}
+</script>
+</body>
+</html>
