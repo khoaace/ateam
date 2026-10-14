@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import re
 import shutil
 import time
 from pathlib import Path
@@ -20,6 +21,9 @@ from .runner import Run
 
 SYSTEM = 0  # id "task" của log hệ thống
 MAX_DELEGATIONS_PER_TASK = 5
+# CLI báo không nhận cờ (clap, argparse, commander, yargs…) -> gợi ý chạy `ateam doctor`
+BAD_FLAG_RE = re.compile(r"unexpected argument '-|unrecognized (?:argument|option)|unknown (?:option|flag|argument)"
+                         r"|no such option", re.I)
 
 
 class Orchestrator:
@@ -650,6 +654,8 @@ class Orchestrator:
             return "timeout"
         if limits.looks_rate_limited(run.output, rc):
             return "ratelimit"
+        if rc != 0 and BAD_FLAG_RE.search(run.output):
+            return "badflag"
         if rc != 0:
             return "failed"
         if not run.output.strip():
@@ -844,6 +850,8 @@ class Orchestrator:
             "cancelled": (CANCELLED, "Bị huỷ"),
             "timeout": (FAILED, f"Quá thời gian ({a.timeout}s)"),
             "failed": (FAILED, f"Thoát với mã {rc}"),
+            "badflag": (FAILED, f"{a.binary} không nhận một cờ trong lệnh (CLI có thể đã đổi phiên bản)"
+                                " — chạy `ateam doctor` rồi sửa command trong cấu hình"),
             "empty": (FAILED, "Agent không in ra gì (kiểm tra đăng nhập / quyền / pty)"),
             "ratelimit": (FAILED, f"{a.name} hết hạn mức"),
         }[res]
