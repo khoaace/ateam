@@ -1,5 +1,7 @@
 # AI Team (`ateam`)
 
+**Trang docs và tải về:** https://ateam.khoaace.workers.dev
+
 Công cụ terminal giúp **Claude Code, Codex, Antigravity và Grok (qua OpenCode)** làm việc như một đội:
 một agent làm **trưởng nhóm** (mặc định Claude) lập kế hoạch và chia việc, các agent khác làm song song,
 **giao việc cho nhau**, ghi chú chung, và trưởng nhóm **review** rồi giao thêm việc cho đến khi xong.

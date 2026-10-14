@@ -4,6 +4,8 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "ateam",
   "compatibility_date": "2026-10-14",
+  "workers_dev": true,
+  "preview_urls": false,
   "build": {
     "command": "python3 scripts/build_site.py"
   },
