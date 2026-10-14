@@ -26,6 +26,9 @@ nhưng chưa có báo cáo chạy thật. Cần xác nhận:
 - [ ] Cú pháp nhắc file (`mentions.SYNTAX`): Claude Code `-p` có đọc `@file` (và `@"có dấu cách"`)
       không; `agy` có hiểu `@file` như Gemini CLI không; `opencode run -f <path>` đính được cả thư mục
       không. Sai thì sửa `SYNTAX` hoặc đặt `file_ref`/`file_args` cho agent đó.
+- [ ] Ảnh dán bằng Ctrl+V: `osascript` đọc được ảnh chụp màn hình trên macOS thật (và Ctrl+V tới được
+      app trong Terminal/iTerm/Ghostty); `claude -p` có xem được ảnh qua `@ảnh` không; `codex exec
+      --image=a.png "…"` không nuốt prompt; `agy` nhận `@ảnh`. Sai thì đặt `image_args`/`file_ref`.
 - [ ] Danh mục model trong `CATALOG` (`config.py`) khớp tên CLI thật nhận (codex `gpt-5.5-codex`,
       alias của claude); định dạng output thật của `agy models` / `opencode models` bóc đúng bằng
       `parse_models` (agy cần đăng nhập, chạy qua pty).

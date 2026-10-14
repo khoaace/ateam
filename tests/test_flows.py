@@ -174,6 +174,11 @@ def test_file_mentions_use_each_agent_syntax(env, project, tmp_path):
 
     out = run_for("claude")
     assert '@src/app.py và @"my docs/plan.md", bỏ qua @nope' in out, out
+    (project / "shot.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    ateam(env, project, "add", "--to", "codex", "làm giống @shot.png")
+    ateam(env, project, "run", "-q")
+    assert "--image=shot.png" in full.read_text() and "làm giống shot.png" in full.read_text()
+    full.unlink()
     out = run_for("codex")
     assert "đọc src/app.py và my docs/plan.md, bỏ qua @nope" in out, out
     out = run_for("grok")

@@ -95,7 +95,7 @@ def cmd_doctor(args) -> int:
         if a.models:
             print(f"     model gợi ý: {', '.join(a.models[:8])}" + (" …" if len(a.models) > 8 else ""))
         print(f"     {' '.join(a.argv('<prompt>'))}")
-        print(f"     @file trong prompt → {mentions.describe(a.binary, a.file_ref, a.file_args)}")
+        print(f"     @file trong prompt → {mentions.describe(a.binary, a.file_ref, a.file_args, a.image_args)}")
     if cfg.lead not in cfg.agents:
         print(f"\n✗ Trưởng nhóm '{cfg.lead}' không có trong [agents].")
         ok = False

@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from rich.text import Text
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -18,7 +19,7 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
                              RichLog, Select, Static, TabbedContent, TabPane)
 from textual.widgets.option_list import Option
 
-from . import mentions
+from . import clipboard, mentions
 from .config import (AgentConfig, Config, describe_models, load_config, load_state, mark_setup_done,
                      save_project_setting, save_setup)
 from .db import DB
@@ -70,6 +71,9 @@ Nhắc file / thư mục:
   gõ @ trong ô nhập                 hiện danh sách file/thư mục của dự án, gõ tiếp để lọc
                                     ↑↓ chọn · Tab/Enter chèn · Esc đóng (chọn thư mục để đi vào trong)
                                     khi chạy, @đường-dẫn được đổi sang cú pháp của từng agent (xem /agents)
+  Ctrl+V trong ô nhập               dán ảnh từ clipboard (lưu vào .ateam/images, chèn @ảnh);
+                                    kéo-thả file ảnh vào terminal cũng thành @ảnh. Mỗi agent nhận ảnh
+                                    theo cách CLI đó hỗ trợ (codex: --image, opencode: -f)
 
 Kiểm tra & duyệt code:
   /verify <lệnh>                    lệnh kiểm tra sau mỗi task cho dự án này (vd: /verify npm test)
@@ -357,7 +361,7 @@ MENTION_AT_CURSOR = re.compile(r'(?:^|(?<=[\s(\[{\'`]))@(?:"([^"]*)|([^\s"\'`]*)
 
 
 class CommandInput(Input):
-    """Ô nhập lệnh, có gợi ý file/thư mục khi gõ @."""
+    """Ô nhập lệnh, có gợi ý file/thư mục khi gõ @ và dán ảnh bằng Ctrl+V."""
 
     BINDINGS = [
         Binding("up", "mention_move(-1)", show=False),
@@ -365,12 +369,46 @@ class CommandInput(Input):
         Binding("tab", "mention_accept", show=False),
         Binding("enter", "mention_enter", show=False),
         Binding("escape", "mention_close", show=False),
+        Binding("ctrl+v", "paste_image", show=False),
     ]
 
     def __init__(self, root: Path, **kw):
         super().__init__(**kw)
+        self.root = root
         self.index = mentions.FileIndex(root)
         self._span: tuple[int, int] | None = None  # vị trí "@…" đang gõ trong value
+
+    # ------------------------------------------------------------ ảnh
+    def insert_mentions(self, paths: list[str]) -> None:
+        """Chèn `@ảnh` tại con trỏ (có dấu cách ngăn với chữ đứng trước/sau)."""
+        before = self.value[:self.cursor_position]
+        text = " ".join(mentions.quote(clipboard.shorten(Path(p), self.root)) for p in paths) + " "
+        if before and not before[-1].isspace():
+            text = " " + text
+        self.insert_text_at_cursor(text)
+        self.close_popup()
+
+    def action_paste_image(self) -> None:
+        self.run_worker(self._paste_image(), exclusive=True, group="paste-image")
+
+    async def _paste_image(self) -> None:
+        path, why = await clipboard.grab_image(self.root / ".ateam" / "images")
+        if path:
+            self.insert_mentions([str(path)])
+            self.app.notify(f"Đã dán ảnh {clipboard.shorten(path, self.root)}", timeout=3)
+        elif self.app.clipboard:
+            self.action_paste()  # chữ đã copy trong app (Ctrl+C / Ctrl+X) như Ctrl+V cũ
+        else:
+            self.app.notify(f"Không dán được ảnh: {why}. Dán chữ bằng Cmd+V.",
+                            severity="warning", timeout=4)
+
+    async def _on_paste(self, event: events.Paste) -> None:
+        # kéo-thả ảnh vào terminal = dán đường dẫn của nó -> đổi thành @ảnh để agent nhận được ảnh
+        found = clipboard.dropped_images(event.text)
+        if found:
+            event.prevent_default()
+            event.stop()
+            self.insert_mentions(found)
 
     @property
     def popup(self) -> MentionList:
@@ -1180,7 +1218,7 @@ class TeamApp(App):
                 lines.append(f"{n:12} {st}{lead}\n   model/effort: {a.label()}"
                              + (f"   (effort hợp lệ: {', '.join(a.efforts)})" if a.efforts else "")
                              + f"\n   lệnh: {' '.join(a.argv('<prompt>'))}"
-                             + f"\n   @file → {mentions.describe(a.binary, a.file_ref, a.file_args)}"
+                             + f"\n   @file → {mentions.describe(a.binary, a.file_ref, a.file_args, a.image_args)}"
                              + f"\n   vai trò: {a.role}")
             self.write_sys("\n".join(lines))
         elif cmd == "setup":
