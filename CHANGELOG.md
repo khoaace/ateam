@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.5.1 — 14/10/2026
 
 - **Gõ `/` ở đầu ô nhập** hiện danh sách lệnh kèm tham số và mô tả, gõ tiếp để lọc; Tab chèn lệnh,
   Enter chạy luôn với lệnh không cần tham số. Gõ sai lệnh thì gợi ý lệnh gần nhất (`/stup` → `/setup`).
