@@ -1,5 +1,14 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Khung Duyệt kế hoạch**: khi trưởng nhóm (hoặc workflow, hoặc vòng review) có kế hoạch nháp, một khung
+  viền vàng hiện ngay trên ô nhập ở cả tab Bảng việc và Đội, liệt kê từng task (agent, effort, tiêu đề,
+  phụ thuộc) với nút *Duyệt & chạy*, *Sửa task*, *Đổi agent*, *Bỏ kế hoạch*. Kế hoạch mới tới thì con
+  trỏ nhảy vào nút duyệt (Enter là chạy) nếu bạn không đang gõ dở; Esc quay về ô nhập.
+- Ctrl+G duyệt kế hoạch đang hiện trong khung (trước đây duyệt mọi kế hoạch nháp cùng lúc).
+- Lệnh mới `/drop [mục tiêu]`: bỏ kế hoạch nháp, huỷ mọi task nháp của nó.
+
 ## 0.5.1 — 14/10/2026
 
 - **Gõ `/` ở đầu ô nhập** hiện danh sách lệnh kèm tham số và mô tả, gõ tiếp để lọc; Tab chèn lệnh,

@@ -50,8 +50,10 @@ model thật, rồi cho bạn chọn trong một màn hình: agent nào tham gia
 của từng agent. **Ctrl+S** lưu, **Esc** bỏ qua (giữ cấu hình hiện tại). Mở lại bất cứ lúc nào bằng
 `/setup` trong app hoặc `ateam setup`.
 
-* **Gõ một câu bình thường** → giao mục tiêu cho trưởng nhóm. Kế hoạch hiện ra ở trạng thái *nháp*;
-  xem, sửa (`/assign`, `/edit`, `/cancel`) rồi **Ctrl+G** hoặc `/go` để chạy.
+* **Gõ một câu bình thường** → giao mục tiêu cho trưởng nhóm. Kế hoạch hiện ra ở trạng thái *nháp*
+  trong khung **Duyệt kế hoạch** ngay trên ô nhập (thấy ở cả tab Bảng việc và Đội): danh sách task kèm
+  agent và phụ thuộc, con trỏ đặt sẵn ở nút *Duyệt & chạy* nên chỉ cần **Enter** (hoặc **Ctrl+G** /
+  `/go`). Enter trên một task để sửa nội dung, nút *Đổi agent*, *Bỏ kế hoạch* (`/drop`); Esc về ô nhập.
 * **Giao tay**: `/task codex viết unit test cho utils.py`
 * **Nhắc file/thư mục bằng `@`**: gõ `@` trong ô nhập để hiện danh sách file và thư mục của dự án, gõ
   tiếp để lọc (khớp cả rải rác, vd `@atcfg` → `ateam/config.py`), ↑↓ chọn, Tab/Enter chèn, Esc đóng.

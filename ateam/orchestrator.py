@@ -220,7 +220,7 @@ class Orchestrator:
             if self.cfg.approve_plan:
                 self.db.update_goal(gid, status="awaiting")
                 self.log(f"📋 Kế hoạch #{gid}: {len(ids)} task ở trạng thái NHÁP. "
-                         f"Sửa bằng /assign, /edit, /cancel rồi gõ /go {gid} để chạy.")
+                         f"Duyệt bằng /go {gid} (trong TUI: Ctrl+G); sửa trước bằng /edit, /assign, /cancel.")
             else:
                 self.db.update_goal(gid, status="running")
                 self.log(f"📋 Kế hoạch #{gid}: {len(ids)} task — bắt đầu chạy.")
@@ -288,6 +288,20 @@ class Orchestrator:
                 self.db.update_goal(g.id, status="running")
         if n:
             self.log(f"▶ Đã duyệt {n} task.")
+        self.emit("changed")
+        return n
+
+    def discard_plan(self, gid: int) -> int:
+        """Bỏ kế hoạch nháp của mục tiêu: huỷ mọi task nháp, mục tiêu thành "đã huỷ"."""
+        g = self.db.goal(gid)
+        if not g or g.status != "awaiting":
+            return 0
+        n = 0
+        for t in self.db.tasks(goal_id=gid, status=DRAFT):
+            self.db.update_task(t.id, status=CANCELLED, finished=time.time())
+            n += 1
+        self.db.update_goal(gid, status="cancelled", summary="Người dùng bỏ kế hoạch")
+        self.log(f"✗ Đã bỏ kế hoạch #{gid} ({n} task nháp).")
         self.emit("changed")
         return n
 
