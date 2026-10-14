@@ -81,7 +81,7 @@ Chỉ đổi khi đường dẫn có thật trong dự án, nên `a@b.com`, `@pr
 
 ## Xem tiến trình từng agent — tab "Đội" (Ctrl+T)
 
-Mỗi agent một ô: model · effort đang dùng, số task ✓ xong / ✗ lỗi / ⏳ chờ, task đang chạy kèm
+Mỗi agent một ô: model · effort đang dùng (và danh sách model/effort agent đó hỗ trợ), số task ✓ xong / ✗ lỗi / ⏳ chờ, task đang chạy kèm
 thời gian chạy, số dòng output, dòng mới nhất, cảnh báo *im lặng* nếu quá 60 giây không có output,
 và log trực tiếp (mỗi lần chạy có vạch ▶ bắt đầu / ■ kết thúc). Bên dưới là **timeline**: mỗi agent
 một hàng, mỗi task một đoạn màu (tím = đang chạy, xanh = xong, đỏ = lỗi, vàng = trưởng nhóm đang lập
@@ -97,8 +97,14 @@ Trong app (được lưu lại cho lần sau, ở `~/.config/ateam/state.json`):
 /model antigravity <tên>       /effort antigravity high      (xem tên: agy models)
 /model grok xai/grok-4.7       /effort grok high             (OpenCode gọi là --variant)
 /model codex -                 quay về mặc định
+/model claude   /effort codex  mở bảng chọn từ danh sách agent đó hỗ trợ
+/models                        xem model + effort mỗi agent hỗ trợ (● = đang dùng)
+/models grok làm mới           hỏi CLI danh sách model thật (opencode models, agy models)
 /agents                        xem tất cả + mức effort hợp lệ
 ```
+
+Tab Đội cũng hiện danh sách model/effort trong ô từng agent; bấm vào tiêu đề ô để chọn model rồi
+effort. Ngoài app: `ateam models [agent] [--refresh]`.
 
 Riêng cho 1 task: `/task codex@xhigh tìm lỗi deadlock`, `/task claude:opus@max thiết kế lại module auth`,
 hoặc sửa task đang chờ: `/set 7 effort high`. Trưởng nhóm cũng tự chọn effort cho từng task khi lập kế

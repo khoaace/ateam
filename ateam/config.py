@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -68,6 +69,9 @@ lead_fallback = ["codex"]    # ai lập kế hoạch/review thay khi trưởng n
 #   model_args    cờ thêm vào khi có model  ({model} được thay)
 #   effort_args   cờ thêm vào khi có effort ({effort} được thay)
 #   efforts       các mức effort hợp lệ (dùng để kiểm tra và gợi ý)
+#   models        model gợi ý trong /model và tab Đội (vắng = danh mục có sẵn của ateam)
+#   models_command  lệnh liệt kê model thật của CLI (vd ["opencode", "models"]);
+#                 models_filter: chỉ giữ model chứa chữ này (vắng = tên agent nếu có model khớp)
 #   role          thế mạnh -> trưởng nhóm dựa vào đây để phân việc
 #   timeout       giây;  max_concurrent: số task cùng lúc;  pty: chạy trong terminal giả
 #   fallback      agent thay thế khi agent này hết hạn mức
@@ -131,6 +135,49 @@ max_concurrent = 1
 """
 
 
+# Danh mục model/effort có sẵn, theo tên lệnh của CLI. Dùng khi file cấu hình không ghi
+# `models` / `efforts` / `models_command`. Model chỉ là gợi ý: /model vẫn nhận tên bất kỳ.
+CATALOG: dict[str, dict] = {
+    "claude": {
+        "models": ["opus", "sonnet", "haiku", "opusplan", "claude-opus-5-5", "claude-sonnet-5-5",
+                   "claude-haiku-5-5", "claude-fable-5-1"],
+        "efforts": ["low", "medium", "high", "max"],
+    },
+    "codex": {
+        "models": ["gpt-5.5", "gpt-5.5-codex"],
+        "efforts": ["minimal", "low", "medium", "high", "xhigh"],
+    },
+    "agy": {
+        "models": [],
+        "efforts": ["low", "medium", "high", "xhigh", "max"],
+        "models_command": ["agy", "models"],
+    },
+    "opencode": {
+        "models": ["xai/grok-build-0.1", "xai/grok-4.7"],
+        "efforts": ["low", "medium", "high"],
+        "models_command": ["opencode", "models"],
+    },
+}
+MODEL_RE = re.compile(r"^[A-Za-z0-9][\w.:/@\[\]+-]*$")
+
+
+def parse_models(output: str, filt: str = "") -> list[str]:
+    """Bóc tên model từ output của lệnh liệt kê (mỗi dòng một model, lấy cột đầu)."""
+    out: list[str] = []
+    for line in output.splitlines():
+        line = line.strip().lstrip("-*•").strip()
+        if not line or line.endswith(":") or line.startswith("#"):
+            continue
+        tok = line.split()[0]
+        if not MODEL_RE.match(tok) or tok.lower() in ("model", "models", "name", "id"):
+            continue
+        if filt and filt.lower() not in tok.lower():
+            continue
+        if tok not in out:
+            out.append(tok)
+    return out
+
+
 @dataclass
 class AgentConfig:
     name: str
@@ -146,6 +193,9 @@ class AgentConfig:
     model_args: list[str] = field(default_factory=list)
     effort_args: list[str] = field(default_factory=list)
     efforts: list[str] = field(default_factory=list)
+    models: list[str] = field(default_factory=list)
+    models_command: list[str] = field(default_factory=list)
+    models_filter: str = ""
     fallback: list[str] = field(default_factory=list)
     verify: bool = True
     file_ref: str = ""                        # "" = theo mentions.SYNTAX của lệnh
@@ -162,6 +212,10 @@ class AgentConfig:
         m = (model if model is not None else self.model) or "mặc định"
         e = effort if effort is not None else self.effort
         return f"{m}" + (f" · {e}" if e else "")
+
+    def model_choices(self) -> list[str]:
+        """Model gợi ý; model đang dùng (nếu là tên ngoài danh sách) đứng đầu."""
+        return ([self.model] if self.model and self.model not in self.models else []) + self.models
 
     def argv(self, prompt: str, *, model: str | None = None, effort: str | None = None,
              plan: bool = False) -> list[str]:
@@ -224,6 +278,23 @@ class Config:
         return {n: a for n, a in self.agents.items() if a.enabled}
 
 
+def describe_models(cfg: Config, only: str | None = None) -> str:
+    """Danh sách model & effort mỗi agent hỗ trợ, đánh dấu ● cái đang dùng."""
+    lines = []
+    for n, a in cfg.agents.items():
+        if only and n != only:
+            continue
+        lines.append(f"{n}  ({a.binary})  đang dùng: {a.label()}")
+        models = a.model_choices()
+        lines.append("  model:  " + (" · ".join(("●" if m == a.model else "") + m for m in models)
+                                     if models else "(để CLI tự chọn)"))
+        lines.append("  effort: " + (" · ".join(("●" if e == a.effort else "") + e for e in a.efforts)
+                                     if a.efforts else "(không có)"))
+        if a.models_command:
+            lines.append(f"  danh sách thật: {' '.join(a.models_command)}  (làm mới: /models {n} làm mới)")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------- file cấu hình
 def ensure_global_config() -> list[str]:
     """Tạo file cấu hình chung; nâng cấp file cũ (sao lưu lại). Trả về thông báo cho người dùng."""
@@ -268,8 +339,14 @@ def save_agent_setting(agent: str, key: str, value: str | None) -> None:
         entry[key] = value
     if not entry:
         agents.pop(agent, None)
-    GLOBAL_DIR.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    save_state(state)
+
+
+def save_found_models(agent: str, models: list[str]) -> None:
+    """Lưu danh sách model lấy được từ CLI (models_command) để lần sau mở app có ngay."""
+    state = load_state()
+    state.setdefault("models_found", {})[agent] = models
+    save_state(state)
 
 
 def load_project_state(root: Path) -> dict:
@@ -319,14 +396,21 @@ def load_config(root: Path) -> Config:
     if project.exists():
         data = _merge(data, tomllib.loads(project.read_text(encoding="utf-8")))
         sources.append(project)
-    state = load_state().get("agents", {})
+    full_state = load_state()
+    state = full_state.get("agents", {})
+    found = full_state.get("models_found", {})
 
     agents: dict[str, AgentConfig] = {}
     for name, a in (data.get("agents") or {}).items():
         st = state.get(name, {})
+        command = _strs(a.get("command"))
+        cat = CATALOG.get(Path(command[0]).name if command else "", {})
+        models = _strs(a.get("models")) or list(cat.get("models", []))
+        seen = [str(m) for m in found.get(name) or []]  # model thật hỏi được từ CLI đứng trước
+        models = seen + [m for m in models if m not in seen]
         agents[name] = AgentConfig(
             name=name,
-            command=_strs(a.get("command")),
+            command=command,
             role=a.get("role", ""),
             timeout=int(a.get("timeout", 1800)),
             max_concurrent=max(1, int(a.get("max_concurrent", 1))),
@@ -337,7 +421,11 @@ def load_config(root: Path) -> Config:
             effort=st.get("effort", a.get("effort", "")) or "",
             model_args=_strs(a.get("model_args")),
             effort_args=_strs(a.get("effort_args")),
-            efforts=_strs(a.get("efforts")),
+            efforts=_strs(a["efforts"]) if "efforts" in a else list(cat.get("efforts", [])),
+            models=models,
+            models_command=_strs(a.get("models_command")) or (
+                command[:1] + cat["models_command"][1:] if cat.get("models_command") else []),
+            models_filter=str(a.get("models_filter", "") or ""),
             fallback=_strs(a.get("fallback")),
             verify=bool(a.get("verify", True)),
             file_ref=str(a.get("file_ref", "") or ""),

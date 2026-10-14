@@ -26,6 +26,9 @@ nhưng chưa có báo cáo chạy thật. Cần xác nhận:
 - [ ] Cú pháp nhắc file (`mentions.SYNTAX`): Claude Code `-p` có đọc `@file` (và `@"có dấu cách"`)
       không; `agy` có hiểu `@file` như Gemini CLI không; `opencode run -f <path>` đính được cả thư mục
       không. Sai thì sửa `SYNTAX` hoặc đặt `file_ref`/`file_args` cho agent đó.
+- [ ] Danh mục model trong `CATALOG` (`config.py`) khớp tên CLI thật nhận (codex `gpt-5.5-codex`,
+      alias của claude); định dạng output thật của `agy models` / `opencode models` bóc đúng bằng
+      `parse_models` (agy cần đăng nhập, chạy qua pty).
 - [ ] Kế hoạch JSON của Claude thật được bóc ổn định (`.ateam/logs/lead.log` khi lỗi).
 
 ## Backlog tính năng (đã đề xuất với người dùng, chưa làm)
@@ -66,6 +69,7 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
 - `max_concurrent > 1` cho cùng agent ở chế độ shared dễ ghi đè lẫn nhau.
 - Token ở `/usage` chỉ là ước tính từ độ dài prompt/output.
 - Chưa có Windows (dùng `pty`, `fcntl`, `os.killpg`).
-- CI: một lần (14/10/2026) job macOS + Python 3.13 hỏng ngẫu nhiên rồi qua ở 3 lượt chạy sau; chưa biết
-  test nào. Nếu lặp lại, annotation `pytest` của job sẽ nêu tên test (xem `docs/RELEASING.md`) — nghi
-  các test phụ thuộc thời gian (`test_tui_smoke`, `test_worktree_conflict`).
+- CI: job macOS + Python 3.13 từng hỏng ngẫu nhiên. Lần 14/10/2026 trên PR #2 bắt được nguyên nhân:
+  `agy` giả lập in qua pty rồi thoát ngay, macOS bỏ phần output chưa đọc khi phía slave đóng hết
+  → mất sạch output. `Run._run_pty` giờ giữ slave mở tới khi tiến trình thoát rồi đọc nốt. Nếu còn
+  hỏng, annotation `pytest` của job sẽ nêu tên test (xem `docs/RELEASING.md`).

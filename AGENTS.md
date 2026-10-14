@@ -39,7 +39,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 
 ```bash
 pip install -e ".[dev]"          # cài từ mã nguồn + pytest
-python -m pytest -q              # ~40s, 23 test, dùng agent giả lập — PHẢI xanh trước khi commit
+python -m pytest -q              # ~45s, 27 test, dùng agent giả lập — PHẢI xanh trước khi commit
 python -m ateam doctor           # xem lệnh thật sẽ chạy cho từng agent
 python -m ateam -C /tmp/demo     # mở TUI trên một thư mục nháp
 python scripts/build_site.py     # dựng trang docs vào dist/

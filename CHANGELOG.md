@@ -1,11 +1,20 @@
 # Changelog
 
-## Chưa phát hành
+## 0.4.0 — 14/10/2026
 
 - Gõ `@` trong ô nhập để chọn file/thư mục của dự án (lọc khi gõ, ↑↓ chọn, Tab/Enter chèn, Esc đóng).
   Khi chạy, `@đường/dẫn` được đổi sang cú pháp của từng agent: `@path` cho Claude Code và agy, đường
   dẫn thường cho Codex, đường dẫn + `-f path` cho OpenCode. Khoá mới `file_ref`/`file_args` theo agent
   để tự chỉnh; `ateam doctor` và `/agents` in cú pháp đang dùng.
+- Thêm: xem model và effort mỗi agent hỗ trợ. Tab Đội hiện danh sách ngay trong ô từng agent (mục đang
+  dùng tô đậm); `/model <agent>` và `/effort <agent>` (không kèm giá trị) hoặc bấm vào tiêu đề ô agent
+  mở bảng chọn; lựa chọn được lưu và đi thẳng vào cờ CLI như `/model <agent> <tên>`.
+- Thêm `/models [agent]`, `ateam models [agent] [--refresh]`. Danh mục model/effort có sẵn cho
+  claude, codex, agy, opencode; với `opencode models` / `agy models`, ateam hỏi CLI danh sách thật
+  (lần đầu mở app, hoặc `/models <agent> làm mới`) và lưu vào `state.json`.
+- Khoá cấu hình mới (không bắt buộc): `models`, `models_command`, `models_filter`.
+- Trang docs: thêm khối `previews` vào `wrangler.jsonc` để Workers Builds dựng được bản xem trước cho
+  nhánh PR.
 
 ## 0.3.1 — 14/10/2026
 
