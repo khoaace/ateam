@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Giả lập Antigravity CLI: như agy thật, KHÔNG in gì khi stdout không phải terminal
+# (ateam phải chạy nó qua pty). In mã màu ANSI và \r để kiểm tra phần làm sạch output.
+if [ ! -t 1 ]; then exit 0; fi
+source "$(dirname "$0")/_common.sh"
+P="$fake_prompt"
+printf '\033[32mantigravity\033[0m đang đọc...\r\n'
+printf 'loading 10%%\rloading 100%%\n'
+if [[ "$P" == *"#1 by codex"* ]]; then echo "thấy kết quả task 1"; fi
+echo "SUMMARY: đọc xong; ghi chú UTF-8 có trong prompt: $(echo "$P" | grep -c 'UTF-8')"

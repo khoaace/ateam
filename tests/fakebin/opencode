@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Giả lập OpenCode chạy Grok: tạo b.txt, hoặc README.md nếu được giao viết README.
+source "$(dirname "$0")/_common.sh"
+P="$fake_prompt"
+if fake_limited grok; then echo "Error: 429 Too Many Requests — rate limit exceeded"; exit 1; fi
+for i in 1 2; do echo "opencode bước $i"; fake_sleep; done
+if [[ "$P" == *"README"* ]]; then echo readme > README.md; echo "SUMMARY: viết README"; exit 0; fi
+echo b > b.txt
+echo "SUMMARY: tạo b.txt"

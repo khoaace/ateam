@@ -202,15 +202,17 @@ class TeamApp(App):
     #timeline { height: auto; max-height: 14; padding: 0 1; border-top: solid $primary-darken-2; }
     #cmd { dock: bottom; margin: 0 0 1 0; }
     """
+    # priority=True: phím tắt vẫn chạy khi con trỏ đang ở ô nhập (Input của Textual tự dùng
+    # Ctrl+D, Ctrl+K... để sửa chữ, sẽ nuốt mất phím nếu không ưu tiên)
     BINDINGS = [
-        Binding("ctrl+q", "quit", "Thoát"),
-        Binding("ctrl+t", "toggle_tab", "Bảng việc ⇄ Đội"),
-        Binding("ctrl+g", "approve", "Duyệt & chạy"),
-        Binding("ctrl+r", "retry", "Chạy lại"),
-        Binding("ctrl+k", "cancel_task", "Huỷ task"),
-        Binding("ctrl+d", "diff", "Xem diff"),
-        Binding("ctrl+y", "merge", "Merge"),
-        Binding("ctrl+l", "syslog", "Log hệ thống"),
+        Binding("ctrl+q", "quit", "Thoát", priority=True),
+        Binding("ctrl+t", "toggle_tab", "Bảng việc ⇄ Đội", priority=True),
+        Binding("ctrl+g", "approve", "Duyệt & chạy", priority=True),
+        Binding("ctrl+r", "retry", "Chạy lại", priority=True),
+        Binding("ctrl+k", "cancel_task", "Huỷ task", priority=True),
+        Binding("ctrl+d", "diff", "Xem diff", priority=True),
+        Binding("ctrl+y", "merge", "Merge", priority=True),
+        Binding("ctrl+l", "syslog", "Log hệ thống", priority=True),
     ]
 
     def __init__(self, root: Path, cfg: Config, db: DB):

@@ -1,0 +1,176 @@
+# Kiến trúc ateam
+
+Tài liệu này mô tả ateam chạy thế nào ở mức đủ để sửa code an toàn. Tên hàm/biến khớp với code ở
+phiên bản 0.3.1; nếu thấy lệch, code là chuẩn và hãy sửa tài liệu này.
+
+## Tổng quan
+
+```mermaid
+flowchart LR
+  U[Người dùng] -->|mục tiêu / lệnh| TUI[tui.py · TeamApp]
+  U -->|ateam goal/add/run…| CLI[cli.py]
+  TUI --> O[orchestrator.py · Orchestrator]
+  CLI --> O
+  O <--> DB[(.ateam/team.db\nSQLite WAL)]
+  O -->|Run| R[runner.py]
+  R -->|pipe hoặc pty| A1[claude] & A2[codex] & A3[agy] & A4[opencode]
+  A2 -. ateam add / note .-> DB
+  O -->|git worktree / merge| G[(git repo)]
+  O -->|sự kiện log/activity/changed| TUI
+```
+
+- **Một vòng lặp asyncio** duy nhất (của Textual khi chạy TUI, hoặc `asyncio.run` trong CLI) chạy
+  `Orchestrator.run_forever()` / `run_until_idle()`, mỗi ~0,5–0,7 giây gọi `tick()`.
+- **DB là nguồn sự thật.** Trạng thái task chỉ đổi qua `DB.update_task`. TUI đọc lại DB mỗi 0,5 giây
+  nên thấy cả thay đổi từ tiến trình khác (vd agent gọi `ateam add`). SQLite chạy WAL +
+  `busy_timeout` để nhiều tiến trình ghi được.
+- **Agent là tiến trình con** chạy headless; ateam không gọi API mô hình nào trực tiếp.
+
+## Thực thể và trạng thái
+
+### Task (`tasks`)
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft: kế hoạch, approve_plan=true
+  [*] --> queued: giao tay / kế hoạch không cần duyệt / giao chéo
+  draft --> queued: /go, Ctrl+G (approve)
+  draft --> cancelled: /cancel
+  queued --> running: tick() — phụ thuộc xong, còn chỗ, agent còn hạn mức
+  queued --> blocked: một task phụ thuộc failed/cancelled/blocked/conflict
+  queued --> cancelled: /cancel
+  running --> done
+  running --> failed: thoát ≠ 0, timeout, không in gì, verify vẫn fail
+  running --> cancelled: /cancel, Ctrl+K
+  running --> queued: hết hạn mức (có thể đổi sang agent dự phòng)
+  running --> review: worktree + merge="review"
+  running --> conflict: worktree, merge tự động thất bại
+  review --> done: /merge, Ctrl+Y
+  review --> queued: /reject kèm góp ý
+  review --> cancelled: /reject không góp ý, /cancel
+  conflict --> done: /merge (thử lại)
+  failed --> queued: /retry
+  blocked --> queued: /retry task gây chặn
+```
+
+Cột đáng chú ý: `depends_on` (JSON list id), `depth` (số tầng giao chéo), `source`
+(`user` | `plan` | `review` | `cli` | `delegate:<agent>`), `model`/`effort` (ghi đè riêng task),
+`branch`/`base`/`head` (worktree, dùng cho diff), `attempts` (số lần sửa sau khi verify fail),
+`result` (SUMMARY đã bóc), `error`.
+
+Hằng số trạng thái ở đầu `db.py`; `ACTIVE = (draft, queued, running, review)` — mục tiêu chưa
+được review khi còn task ở các trạng thái này.
+
+### Mục tiêu (`goals`)
+
+`planning` → `awaiting` (có task nháp chờ /go) hoặc `running` → `reviewing` → `done` |
+`incomplete` | quay lại `awaiting`/`running` với `round + 1` nếu review giao thêm việc. `failed` khi
+không lập được kế hoạch. Task giao tay (`/task`, `ateam add` ngoài agent) không thuộc mục tiêu nào
+nên không được review.
+
+### Khác
+
+- `notes`: ghi chú chung; 15 ghi chú mới nhất được chèn vào prompt mọi task sau.
+- `runs`: mỗi lượt gọi agent/test một dòng (`kind` = `task` | `fix` | `lead` | `test`, `status` =
+  `ok` | `failed` | `timeout` | `empty` | `ratelimit` | `cancelled`), dùng cho `/usage`.
+
+## Vòng đời một mục tiêu
+
+1. `new_goal(text)` → `_plan(gid)` gọi `_call_lead(plan_prompt)`.
+2. `_call_lead` thử trưởng nhóm rồi lần lượt `cfg.lead_fallback`, bỏ qua agent đang cooldown; một lượt
+   chạy là `_lead_once` (ghi `logs/lead.log`, `lead_spans` cho timeline).
+3. `extract_json(out, list)` → `_insert_plan`: agent lạ thì giao cho trưởng nhóm; `effort` chỉ nhận
+   nếu nằm trong `efforts` của agent và `lead_sets_effort`; map id cục bộ → id DB cho `depends_on`.
+4. Task ở `draft` (chờ `approve`) hoặc `queued`.
+5. `tick()` chạy task; khi mọi task của mục tiêu ra khỏi `ACTIVE`, `_check_goals` gọi `_review`
+   (nếu `auto_review`) → JSON `{done, summary, new_tasks}` → kết thúc hoặc thêm vòng (tối đa `max_rounds`).
+
+## `tick()` — luật lập lịch
+
+Với mỗi task `queued` theo thứ tự id:
+
+1. Agent không còn trong cấu hình → `failed`.
+2. Có phụ thuộc lỗi (`failed`/`cancelled`/`blocked`/`conflict`/mất) → `blocked`.
+3. Còn phụ thuộc chưa `done` → chờ (kể cả phụ thuộc đang `review`).
+4. `paused` hoặc đã đủ `max_parallel` → chờ.
+5. Agent đang cooldown → chuyển sang `pick_fallback(agent)` nếu có, không thì chờ.
+6. Agent đã chạy đủ `max_concurrent` → chờ.
+7. Chưa cài lệnh → `failed`.
+8. Đặt `running` *ngay* (chống chạy trùng), `self.runs[tid] = None`, spawn `_run_task`.
+
+`is_idle()` (dùng cho `ateam run`/`goal`): không có gì đang chạy, trưởng nhóm rảnh, và mọi task
+`queued` còn lại đều chỉ đang chờ hạn mức hồi hoặc chờ người duyệt — để lệnh headless không treo.
+
+## `_run_task(tid)` từng bước
+
+1. Worktree (nếu bật): `_wt_prepare` tạo `.ateam/worktrees/t<id>` trên nhánh `ateam/t<id>` từ HEAD,
+   lưu `base`.
+2. Dựng prompt (`task_prompt`): mục tiêu, task, SUMMARY của task phụ thuộc, ghi chú chung, luật
+   DELEGATE/NOTE/SUMMARY (chỉ cho giao chéo nếu `depth < max_delegation_depth`).
+3. Nếu có verify và `only_when_changed`: lấy `_fingerprint` (HEAD + `git diff HEAD` + file chưa track).
+4. `_run_agent(kind="task")` → `Run` → phân loại `_classify`: cancelled / timeout / ratelimit / failed
+   / empty / ok.
+5. `ratelimit`: `_set_cooldown`, chọn agent dự phòng, task quay về `queued`.
+6. Vòng verify: nếu không đổi file thì bỏ qua; chạy `/bin/sh -c <command>` trong thư mục task;
+   fail thì `fix_prompt` (kèm 120 dòng cuối) cho `fix_agent` hoặc chính agent đó, tối đa
+   `max_fix_attempts`.
+7. Ghi NOTE vào `notes`; SUMMARY của lượt đầu (+ tóm tắt lượt sửa) vào `result`.
+8. Worktree: `_wt_finish` commit nhánh, xoá worktree, rồi merge tự động (`--no-ff`, có khoá
+   `_merge_lock`) hoặc để `review`. Nhánh rỗng bị xoá; nhánh lỗi được giữ để xem.
+9. `done` → `_delegations` tạo task cho các khối DELEGATE (tối đa 5/task). Ở chế độ review, việc này
+   hoãn tới lúc `/merge` (đọc lại từ log task).
+
+## Chạy tiến trình (`runner.Run`)
+
+- `stdin` là `/dev/null` (hoặc pty), `start_new_session=True` để huỷ cả cây tiến trình bằng
+  `killpg` (SIGTERM, 5 giây sau SIGKILL).
+- `pty=True`: mở pseudo-terminal 220×50 — cần cho `agy`, vốn không in gì khi stdout không phải tty.
+- Mỗi dòng qua `clean_line`: bỏ mã ANSI, xử lý `\r` (spinner), bỏ ký tự điều khiển.
+- Timeout bằng `asyncio.wait_for`; mã 124 khi quá giờ.
+
+## Dựng lệnh agent (`AgentConfig.argv`)
+
+`command` chứa `{prompt}` (không có thì prompt được nối cuối). Nếu có model/effort và `command` không
+tự chứa `{model}`/`{effort}`, `model_args`/`effort_args` được chèn **ngay trước** phần tử chứa
+`{prompt}` — hoặc trước `-p`/`--print`/`--prompt` nếu cờ đó đứng ngay trước prompt (vài CLI dùng Go
+`flag`, dừng đọc cờ ở đối số vị trí đầu tiên). Placeholder rỗng bị bỏ cùng cờ đứng trước nó.
+Thứ tự ưu tiên: model/effort riêng task > `state.json` (đặt trong app) > file cấu hình > mặc định CLI.
+
+## Hạn mức
+
+`limits.looks_rate_limited(output, rc)` chỉ xét khi agent thất bại hoặc in ≤ 15 dòng (tránh nhầm
+với code nói về "rate limit"), tìm mẫu trong 30 dòng cuối. `reset_time` đọc giờ hồi từ
+`|<epoch>` (Claude), `try again in N minutes`, `resets at 3pm`; không có thì `cooldown_minutes`.
+Cooldown lưu ở `~/.config/ateam/state.json` (`cooldown`), dùng chung mọi dự án.
+
+## Giao tiếp với TUI
+
+`Orchestrator.emit(kind, **data)` gọi `on_event` đồng bộ trong cùng vòng lặp:
+
+| kind | data | TUI làm gì |
+| --- | --- | --- |
+| `log` | `task_id` (0 = hệ thống), `line`, `agent?`, `raw?` | ghi vào log đang xem và ô agent |
+| `activity` | `agent`, `start` hoặc `end` (dict: task_id, title, label, started, lines, last_line, last_at, status) | vạch ▶/■ trong ô agent |
+| `changed` | — | vẽ lại bảng, mục tiêu, ô agent |
+
+`self.activity[agent]` giữ các hoạt động đang chạy (nhiều nếu `max_concurrent > 1`); `lead_spans`
+cho timeline. TUI chỉ đọc hai cấu trúc này, không sửa.
+
+## Môi trường truyền cho agent
+
+`ATEAM_DB`, `ATEAM_ROOT`, `ATEAM_TASK_ID`, `ATEAM_AGENT` — để agent tự gọi `ateam add --to …`
+(task con có `parent_id`, `depth + 1`, cùng mục tiêu) hoặc `ateam note "…"`.
+
+## File trên đĩa
+
+| Đường dẫn | Nội dung |
+| --- | --- |
+| `~/.config/ateam/config.toml` | cấu hình chung (tự tạo, tự nâng cấp theo `CONFIG_VERSION`) |
+| `~/.config/ateam/state.json` | model/effort chọn trong app (`agents`), `cooldown` |
+| `<dự án>/.ateam/config.toml` | ghi đè theo dự án (merge sâu lên file chung) |
+| `<dự án>/.ateam/state.json` | `verify_command` đặt bằng `/verify` |
+| `<dự án>/.ateam/team.db` | bảng việc |
+| `<dự án>/.ateam/logs/` | `system.log`, `lead.log`, `t<id>.log` |
+| `<dự án>/.ateam/worktrees/` | worktree tạm của task (chế độ worktree) |
+| `<dự án>/.ateam/.gitignore` | `*` — cả thư mục không vào git |
+| `~/.ateam/venv`, `~/.local/bin/ateam` | bản cài bằng `install.sh` |

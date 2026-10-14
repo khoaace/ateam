@@ -1,0 +1,36 @@
+# Changelog
+
+## 0.3.1 — 14/10/2026
+
+- Sửa: phím tắt Ctrl+D, Ctrl+K… không có tác dụng khi con trỏ đang ở ô nhập (mặc định khi mở app) —
+  ô nhập của Textual nuốt phím. Các phím tắt của app giờ có `priority=True`.
+- Thêm bộ test tự động (19 test, agent giả lập trong `tests/fakebin`) và CI GitHub Actions
+  (Ubuntu + macOS, Python 3.9 và 3.13).
+- Thêm tài liệu cho người phát triển và AI agent: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `docs/`.
+- Bỏ hàm thừa `runner.build_argv`.
+
+## 0.3.0 — 14/10/2026
+
+- Tự kiểm tra sau mỗi task: `[verify]`, `/verify <lệnh>`; test fail thì giao sửa kèm log (tối đa
+  `max_fix_attempts`), bỏ qua khi task không đổi file.
+- Chế độ worktree `merge = "review"`: task dừng ở "chờ duyệt"; `/diff` (Ctrl+D), `/merge` (Ctrl+Y),
+  `/reject <task> [góp ý]`; CLI `ateam diff|merge|reject`.
+- Hạn mức: nhận diện thông báo rate limit/usage limit, tạm nghỉ đến giờ hồi, chuyển task sang
+  `fallback`, trưởng nhóm dự phòng `lead_fallback`; `/usage`, `/cooldown`, `ateam usage|cooldown`.
+- Bảng `runs` thống kê lượt chạy; cột task `base`, `head`, `attempts`.
+- Cấu hình lên `config_version = 3` (file cũ được sao lưu và thay).
+- Trang docs + gói tải trên Cloudflare Workers; cài một lệnh qua `scripts/get.sh`.
+
+## 0.2.0 — 14/10/2026
+
+- Tab "Đội" (Ctrl+T): ô log trực tiếp cho từng agent, task đang chạy, thời gian, cảnh báo im lặng,
+  timeline Gantt.
+- Model và effort theo agent (`/model`, `/effort`, `ateam set`, lưu ở `state.json`) và theo task
+  (`/task agent:model@effort`, `/set`); trưởng nhóm tự chọn effort (`lead_sets_effort`).
+- Cấu hình `config_version = 2` với `model_args`/`effort_args`/`efforts`; agy chạy với
+  `--mode accept-edits --print-timeout 0`; grok dùng `opencode run` + `model`.
+
+## 0.1.0 — 14/10/2026
+
+- Bản đầu: TUI Textual, bảng việc SQLite, trưởng nhóm lập kế hoạch/review, phụ thuộc, giao việc chéo
+  (`<<<DELEGATE>>>`), ghi chú (`<<<NOTE>>>`), chế độ shared/worktree, CLI headless, `install.sh`.

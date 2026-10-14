@@ -20,12 +20,6 @@ def clean_line(s: str) -> str:
     return "".join(ch for ch in s if ch == "\t" or ch >= " " or ch == "\n").rstrip()
 
 
-def build_argv(command: list[str], prompt: str) -> list[str]:
-    if any("{prompt}" in c for c in command):
-        return [c.replace("{prompt}", prompt) for c in command]
-    return [*command, prompt]
-
-
 class Run:
     """Một lần chạy agent. Gọi `await run.start()`; `run.cancel()` để dừng."""
 

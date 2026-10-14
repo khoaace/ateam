@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Giả lập Codex: tạo a.txt, giao README cho grok, để lại ghi chú; biết sửa lỗi test
+# (tạo fixed.txt) và biết làm trưởng nhóm dự phòng.
+source "$(dirname "$0")/_common.sh"
+P="$fake_prompt"
+if fake_limited codex; then echo "ERROR: You've hit your usage limit. Try again in 7 minutes."; exit 1; fi
+if [[ "$P" == *"TEAM LEAD"* && "$P" == *"Reply with ONLY a JSON array"* ]]; then
+  echo '[{"id":1,"agent":"grok","title":"Kế hoạch do codex lập","prompt":"tạo file b.txt","depends_on":[]}]'; exit 0
+fi
+if [[ "$P" == *"TEAM LEAD"* ]]; then echo '{"done": true, "summary": "codex review: ok", "new_tasks": []}'; exit 0; fi
+if [[ "$P" == *"VERIFICATION COMMAND"* ]]; then echo "codex: sửa lỗi test"; touch fixed.txt; echo "SUMMARY: thêm fixed.txt"; exit 0; fi
+for i in 1 2 3; do echo "codex bước $i"; fake_sleep; done
+if [[ "$P" == *"README"* ]]; then echo readme > README.md; echo "SUMMARY: viết README"; exit 0; fi
+echo a > a.txt
+if [[ "$P" == *"DELEGATE"* ]]; then
+cat <<'D'
+<<<DELEGATE to="grok" title="Viết README cho a">>>
+Viết README.md mô tả a.txt
+<<<END>>>
+D
+fi
+echo "<<<NOTE>>>a.txt dùng UTF-8<<<END>>>"
+echo "SUMMARY: tạo a.txt"

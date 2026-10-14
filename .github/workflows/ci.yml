@@ -1,0 +1,26 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.9", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Cài đặt
+        run: pip install -e ".[dev]"
+      - name: Chạy test (agent giả lập trong tests/fakebin)
+        run: python -m pytest -q tests
+      - name: Dựng thử trang docs
+        run: python scripts/build_site.py

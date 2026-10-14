@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ateam"
-version = "0.3.0"
+version = "0.3.1"
 description = "Điều phối Claude Code, Codex, Antigravity, Grok (OpenCode)... làm việc như một đội"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -13,8 +13,14 @@ dependencies = [
     "tomli>=2.0; python_version < '3.11'",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
 [project.scripts]
 ateam = "ateam.cli:main"
 
 [tool.setuptools]
 packages = ["ateam"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

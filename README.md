@@ -177,3 +177,14 @@ npx wrangler deploy        # tự chạy python3 scripts/build_site.py trước
 ```
 
 Khi repo được nối với Workers Builds, mỗi lần push lên `main` sẽ tự build và deploy lại.
+
+## Phát triển
+
+Đọc `AGENTS.md` trước (điểm vào cho cả người lẫn AI agent), rồi `docs/`:
+[kiến trúc](docs/ARCHITECTURE.md), [phát triển & test](docs/DEVELOPMENT.md),
+[cấu hình](docs/CONFIG.md), [quyết định thiết kế](docs/DECISIONS.md), [lộ trình](docs/ROADMAP.md),
+[phát hành](docs/RELEASING.md). Lịch sử thay đổi: [CHANGELOG.md](CHANGELOG.md).
+
+```bash
+pip install -e ".[dev]" && python -m pytest -q
+```
