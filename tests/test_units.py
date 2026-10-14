@@ -176,3 +176,74 @@ def test_save_setup_only_stores_differences(tmp_path, monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(cfgmod)
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+
+
+def test_mentions_images_per_agent(tmp_path):
+    from ateam import mentions
+    (tmp_path / "shot.png").write_bytes(PNG)
+    (tmp_path / "a.py").write_text("")
+    roots = [tmp_path]
+    text = "xem @shot.png và @a.py"
+    assert mentions.render(text, "claude", roots) == (text, [])
+    out, extra = mentions.render(text, "codex", roots)
+    assert out == "xem shot.png và a.py" and extra == ["--image=shot.png"]   # chỉ ảnh mới có --image
+    out, extra = mentions.render(text, "opencode", roots)
+    assert extra == ["-f", "shot.png", "-f", "a.py"]                       # opencode -f nhận cả ảnh
+    out, extra = mentions.render(text, "opencode", roots, image_args=["--img", "{path}"])
+    assert extra == ["--img", "shot.png", "-f", "a.py"]
+    assert "ảnh: a.png + --image=a.png" in mentions.describe("codex")
+    assert "ảnh" not in mentions.describe("claude")
+    # ảnh nằm ở thư mục dự án nhưng không có trong worktree -> đường dẫn tuyệt đối
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    (tmp_path / ".ateam" / "images").mkdir(parents=True)
+    (tmp_path / ".ateam" / "images" / "p.png").write_bytes(PNG)
+    out, extra = mentions.render("@.ateam/images/p.png", "codex", [wt, tmp_path])
+    full = str(tmp_path / ".ateam" / "images" / "p.png")
+    assert out == full and extra == ["--image=" + full]
+
+
+def test_dropped_images(tmp_path):
+    from ateam import clipboard
+    a = tmp_path / "Ảnh chụp 1.png"
+    a.write_bytes(PNG)
+    b = tmp_path / "b.jpg"
+    b.write_bytes(b"\xff\xd8\xff\xe0")
+    (tmp_path / "c.txt").write_text("")
+    esc = str(a).replace(" ", "\\ ")
+    assert clipboard.dropped_images(f"{esc} '{b}' ") == [str(a), str(b)]
+    assert clipboard.dropped_images("file://" + str(b)) == [str(b)]
+    assert clipboard.dropped_images(str(tmp_path / "c.txt")) is None     # không phải ảnh
+    assert clipboard.dropped_images(str(tmp_path / "nope.png")) is None  # không tồn tại
+    assert clipboard.dropped_images("chữ thường") is None
+    assert clipboard.shorten(a, tmp_path) == "Ảnh chụp 1.png"
+
+
+def test_grab_image_from_clipboard(tmp_path, monkeypatch):
+    import asyncio
+    import os
+    from ateam import clipboard
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    state = tmp_path / "clip"
+    # xclip giả: TARGETS -> danh sách kiểu; -t image/png -> nội dung file $state
+    (bin_ / "xclip").write_text(
+        '#!/usr/bin/env bash\n'
+        f'S="{state}"\n'
+        '[ -f "$S" ] || exit 1\n'
+        'if [[ "$*" == *TARGETS* ]]; then echo "TARGETS"; echo "image/png"; exit 0; fi\n'
+        'cat "$S"\n')
+    (bin_ / "xclip").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(clipboard, "methods", lambda: ["xclip"])
+    folder = tmp_path / ".ateam" / "images"
+    path, why = asyncio.run(clipboard.grab_image(folder))
+    assert path is None and why == "clipboard không có ảnh"
+    state.write_bytes(PNG)
+    path, why = asyncio.run(clipboard.grab_image(folder))
+    assert path and path.parent == folder and path.read_bytes() == PNG and why == ""
+    state.write_bytes(b"not an image")
+    assert asyncio.run(clipboard.grab_image(folder))[0] is None

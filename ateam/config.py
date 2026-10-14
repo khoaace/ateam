@@ -200,6 +200,7 @@ class AgentConfig:
     verify: bool = True
     file_ref: str = ""                        # "" = theo mentions.SYNTAX của lệnh
     file_args: list[str] | None = None        # None = theo mentions.SYNTAX của lệnh
+    image_args: list[str] | None = None       # None = theo mentions.IMAGE_ARGS (vắng thì như file_args)
 
     @property
     def binary(self) -> str:
@@ -473,6 +474,7 @@ def load_config(root: Path, with_state: bool = True) -> Config:
             verify=bool(a.get("verify", True)),
             file_ref=str(a.get("file_ref", "") or ""),
             file_args=_strs(a["file_args"]) if "file_args" in a else None,
+            image_args=_strs(a["image_args"]) if "image_args" in a else None,
         )
     v = data.get("verify") or {}
     pstate = load_project_state(root)

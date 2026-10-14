@@ -29,6 +29,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/db.py` | Schema SQLite + migration cột, `Task`/`Goal`, thống kê `runs` |
 | `ateam/prompts.py` | Prompt gửi trưởng nhóm/thành viên (tiếng Anh) + bóc JSON, DELEGATE, NOTE, SUMMARY |
 | `ateam/mentions.py` | `@file`: gợi ý file/thư mục cho TUI, đổi `@đường/dẫn` sang cú pháp từng CLI (`SYNTAX`) |
+| `ateam/clipboard.py` | Ctrl+V dán ảnh: đọc clipboard (osascript/pngpaste/wl-paste/xclip), lưu `.ateam/images/`, nhận ảnh kéo-thả |
 | `ateam/limits.py` | Nhận diện thông báo hết hạn mức, đoán giờ hồi, lưu cooldown |
 | `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `opencode` |
 | `site/`, `scripts/build_site.py`, `wrangler.jsonc` | Trang docs + gói zip, deploy Cloudflare Workers |
@@ -39,7 +40,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 
 ```bash
 pip install -e ".[dev]"          # cài từ mã nguồn + pytest
-python -m pytest -q              # ~50s, 29 test, dùng agent giả lập — PHẢI xanh trước khi commit
+python -m pytest -q              # ~50s, 33 test, dùng agent giả lập — PHẢI xanh trước khi commit
 python -m ateam doctor           # xem lệnh thật sẽ chạy cho từng agent
 python -m ateam -C /tmp/demo     # mở TUI trên một thư mục nháp
 python scripts/build_site.py     # dựng trang docs vào dist/
