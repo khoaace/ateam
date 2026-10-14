@@ -8,8 +8,9 @@ Nguồn cấu hình, ưu tiên tăng dần:
    `config.v<N>.<epoch>.bak.toml` và ghi bản mặc định mới.
 3. `<dự án>/.ateam/config.toml` — merge sâu lên trên (chỉ cần ghi khoá muốn đổi). Tạo bằng
    `ateam init --project`.
-4. `~/.config/ateam/state.json` → `agents.<tên>.model|effort` (đặt bằng `/model`, `/effort`,
-   `ateam set`), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`), và `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify`).
+4. `~/.config/ateam/state.json` → `agents.<tên>.model|effort|enabled` (đặt bằng `/model`, `/effort`,
+   `ateam set`, màn hình thiết lập `/setup`), `lead` (trưởng nhóm chọn ở `/setup`), `onboarded` (đã qua
+   màn hình thiết lập lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`), và `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify`).
 5. Riêng từng task: cột `model`/`effort` (`/task agent:model@effort`, `/set`, kế hoạch của trưởng nhóm).
 
 `XDG_CONFIG_HOME` đổi được vị trí thư mục `~/.config`.
@@ -56,7 +57,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 | `model_args`, `effort_args` | `[]` | Cờ chèn trước prompt khi có model/effort (`{model}`, `{effort}` được thay) |
 | `efforts` | danh mục | Mức effort hợp lệ (kiểm tra, gợi ý, bảng chọn, giới hạn lựa chọn của trưởng nhóm). Vắng = theo `CATALOG`; `[]` = không có |
 | `models` | danh mục | Model gợi ý cho bảng chọn `/model`, tab Đội, `/models`. Vắng = `CATALOG` trong `config.py` theo tên lệnh (`claude`, `codex`, `agy`, `opencode`). Chỉ là gợi ý: tên ngoài danh sách vẫn đặt được |
-| `models_command` | danh mục | argv liệt kê model thật (`opencode models`, `agy models`); chạy lần đầu mở app hoặc `/models <agent> làm mới`, kết quả lưu ở `state.json` và đứng trước `models` |
+| `models_command` | danh mục | argv liệt kê model thật (`opencode models`, `agy models`); chạy song song ở màn hình thiết lập (`/setup`, lần đầu mở app), khi mở app mà chưa có kết quả, hoặc `/models <agent> làm mới`, kết quả lưu ở `state.json` và đứng trước `models` |
 | `models_filter` | `""` | Chỉ giữ model chứa chữ này. Vắng: nếu có model chứa tên agent (vd `grok`) thì chỉ giữ các model đó |
 | `fallback` | `[]` | Agent thay thế khi agent này hết hạn mức (theo thứ tự) |
 | `verify` | `true` | `false` = không chạy `[verify]` sau task của agent này |

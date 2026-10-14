@@ -145,3 +145,34 @@ def test_catalog_fills_models_and_efforts(tmp_path, monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(cfgmod)
+
+
+def test_save_setup_only_stores_differences(tmp_path, monkeypatch):
+    import importlib
+
+    import ateam.config as cfgmod
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfgmod = importlib.reload(cfgmod)
+    try:
+        cfgmod.ensure_global_config()
+        assert cfgmod.needs_setup()
+        cfgmod.save_setup(tmp_path, "codex", {
+            "claude": {"enabled": True, "model": "opus", "effort": None},
+            "grok": {"enabled": False, "model": "xai/grok-build-0.1", "effort": "high"},
+            "codex": {"enabled": True, "model": None, "effort": None},
+        })
+        st = cfgmod.load_state()
+        assert st["onboarded"] and st["lead"] == "codex"
+        # giá trị trùng file cấu hình (enabled = true, model mặc định của grok) không ghi vào state
+        assert st["agents"] == {"claude": {"model": "opus"}, "grok": {"enabled": False, "effort": "high"}}
+        c = cfgmod.load_config(tmp_path)
+        assert c.lead == "codex" and c.agents["claude"].model == "opus"
+        assert not c.agents["grok"].enabled and c.agents["grok"].effort == "high"
+        assert not cfgmod.needs_setup()
+        # chọn lại trưởng nhóm như file cấu hình -> xoá khỏi state
+        cfgmod.save_setup(tmp_path, "claude", {"grok": {"enabled": True}})
+        st = cfgmod.load_state()
+        assert "lead" not in st and st["agents"]["grok"] == {"effort": "high"}
+    finally:
+        monkeypatch.undo()
+        importlib.reload(cfgmod)

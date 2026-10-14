@@ -1,4 +1,4 @@
-"""Cấu hình: mặc định < ~/.config/ateam/config.toml < .ateam/config.toml < state.json (model/effort chọn trong app)."""
+"""Cấu hình: mặc định < ~/.config/ateam/config.toml < .ateam/config.toml < state.json (lựa chọn trong app)."""
 
 from __future__ import annotations
 
@@ -386,7 +386,50 @@ def _strs(v) -> list[str]:
     return [str(x) for x in v]
 
 
-def load_config(root: Path) -> Config:
+def needs_setup() -> bool:
+    """Chưa chạy màn hình thiết lập lần đầu (chọn agent, model, effort)."""
+    return not load_state().get("onboarded")
+
+
+def save_setup(root: Path, lead: str, agents: dict[str, dict]) -> None:
+    """Lưu kết quả màn hình thiết lập vào state.json.
+
+    agents = {tên: {"enabled": bool, "model": str|None, "effort": str|None}}; model/effort None
+    hoặc "" = theo file cấu hình. Giá trị trùng với file cấu hình thì không ghi (để sửa file vẫn
+    có tác dụng)."""
+    base = load_config(root, with_state=False)
+    state = load_state()
+    st_agents = state.setdefault("agents", {})
+    for name, ch in agents.items():
+        a = base.agents.get(name)
+        if not a:
+            continue
+        entry = st_agents.setdefault(name, {})
+        for key in ("enabled", "model", "effort"):
+            if key not in ch:
+                continue
+            v = ch[key]
+            if v in (None, "") or v == getattr(a, key):
+                entry.pop(key, None)
+            else:
+                entry[key] = v
+        if not entry:
+            st_agents.pop(name, None)
+    if lead and lead != base.lead and lead in base.agents:
+        state["lead"] = lead
+    else:
+        state.pop("lead", None)
+    state["onboarded"] = 1
+    save_state(state)
+
+
+def mark_setup_done() -> None:
+    state = load_state()
+    state["onboarded"] = 1
+    save_state(state)
+
+
+def load_config(root: Path, with_state: bool = True) -> Config:
     data: dict = tomllib.loads(DEFAULT_CONFIG)
     sources: list[Path] = []
     if GLOBAL_CONFIG.exists():
@@ -396,7 +439,7 @@ def load_config(root: Path) -> Config:
     if project.exists():
         data = _merge(data, tomllib.loads(project.read_text(encoding="utf-8")))
         sources.append(project)
-    full_state = load_state()
+    full_state = load_state() if with_state else {}
     state = full_state.get("agents", {})
     found = full_state.get("models_found", {})
 
@@ -415,7 +458,7 @@ def load_config(root: Path) -> Config:
             timeout=int(a.get("timeout", 1800)),
             max_concurrent=max(1, int(a.get("max_concurrent", 1))),
             pty=bool(a.get("pty", False)),
-            enabled=bool(a.get("enabled", True)),
+            enabled=bool(st.get("enabled", a.get("enabled", True))),
             plan_command=_strs(a.get("plan_command")) or None,
             model=st.get("model", a.get("model", "")) or "",
             effort=st.get("effort", a.get("effort", "")) or "",
@@ -441,8 +484,9 @@ def load_config(root: Path) -> Config:
         only_when_changed=bool(v.get("only_when_changed", True)),
     )
     lim = data.get("limits") or {}
+    lead = full_state.get("lead")
     return Config(
-        lead=data.get("lead", "claude"),
+        lead=lead if lead in agents else data.get("lead", "claude"),
         max_parallel=max(1, int(data.get("max_parallel", 3))),
         approve_plan=bool(data.get("approve_plan", True)),
         auto_review=bool(data.get("auto_review", True)),

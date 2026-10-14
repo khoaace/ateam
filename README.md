@@ -44,6 +44,12 @@ cd ~/code/du-an-cua-ban
 ateam
 ```
 
+**Lần đầu mở app** sẽ hiện màn hình *Thiết lập đội AI*: ateam hỏi song song các CLI có lệnh liệt kê
+model (`opencode models`, `agy models`; Claude Code và Codex dùng danh mục có sẵn) để bảng chọn có sẵn
+model thật, rồi cho bạn chọn trong một màn hình: agent nào tham gia, ai làm trưởng nhóm, model và effort
+của từng agent. **Ctrl+S** lưu, **Esc** bỏ qua (giữ cấu hình hiện tại). Mở lại bất cứ lúc nào bằng
+`/setup` trong app hoặc `ateam setup`.
+
 * **Gõ một câu bình thường** → giao mục tiêu cho trưởng nhóm. Kế hoạch hiện ra ở trạng thái *nháp*;
   xem, sửa (`/assign`, `/edit`, `/cancel`) rồi **Ctrl+G** hoặc `/go` để chạy.
 * **Giao tay**: `/task codex viết unit test cho utils.py`
@@ -101,6 +107,7 @@ Trong app (được lưu lại cho lần sau, ở `~/.config/ateam/state.json`):
 /models                        xem model + effort mỗi agent hỗ trợ (● = đang dùng)
 /models grok làm mới           hỏi CLI danh sách model thật (opencode models, agy models)
 /agents                        xem tất cả + mức effort hợp lệ
+/setup                         chọn lại tất cả trong một màn hình (bật/tắt agent, trưởng nhóm, model, effort)
 ```
 
 Tab Đội cũng hiện danh sách model/effort trong ô từng agent; bấm vào tiêu đề ô để chọn model rồi
