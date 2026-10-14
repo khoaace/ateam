@@ -52,7 +52,7 @@ của từng agent. **Ctrl+S** lưu, **Esc** bỏ qua (giữ cấu hình hiện 
 
 * **Gõ một câu bình thường** → giao mục tiêu cho trưởng nhóm. Kế hoạch hiện ra ở trạng thái *nháp*
   trong khung **Duyệt kế hoạch** ngay trên ô nhập (thấy ở cả tab Bảng việc và Đội): danh sách task kèm
-  agent và phụ thuộc, con trỏ đặt sẵn ở nút *Duyệt & chạy* nên chỉ cần **Enter** (hoặc **Ctrl+G** /
+  agent và phụ thuộc, con trỏ đặt sẵn ở nút *Duyệt & chạy* nên chỉ cần **Enter** (hoặc **F2** / **Ctrl+G** /
   `/go`). Enter trên một task để sửa nội dung, nút *Đổi agent*, *Bỏ kế hoạch* (`/drop`); Esc về ô nhập.
 * **Giao tay**: `/task codex viết unit test cho utils.py`
 * **Nhắc file/thư mục bằng `@`**: gõ `@` trong ô nhập để hiện danh sách file và thư mục của dự án, gõ
@@ -62,7 +62,7 @@ của từng agent. **Ctrl+S** lưu, **Esc** bỏ qua (giữ cấu hình hiện 
 * Chọn task trong bảng (↑↓) để xem log trực tiếp của nó; **Ctrl+L** về log hệ thống.
 * **Agent & workflow riêng**: `/custom` (hoặc nút *Agent & workflow tuỳ chỉnh…* ở màn hình thiết lập) —
   xem mục dưới.
-* **Ctrl+R** chạy lại task đang chọn, **Ctrl+K** huỷ, `/note ...` ghi chú cho cả đội. Gõ `/` ở đầu ô nhập để xem danh sách lệnh kèm mô tả; **F1** (hoặc `/help`) mở bảng trợ giúp đầy đủ.
+* **F5** (hoặc **Ctrl+R**) chạy lại task đang chọn, **Ctrl+K** huỷ, `/note ...` ghi chú cho cả đội. Gõ `/` ở đầu ô nhập để xem danh sách lệnh kèm mô tả; **F1** (hoặc `/help`) mở bảng trợ giúp đầy đủ.
 * **Ctrl+T** mở tab **Đội** để xem cả 4 agent làm việc cùng lúc.
 
 Không cần giao diện:

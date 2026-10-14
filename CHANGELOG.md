@@ -7,6 +7,9 @@
   phụ thuộc) với nút *Duyệt & chạy*, *Sửa task*, *Đổi agent*, *Bỏ kế hoạch*. Kế hoạch mới tới thì con
   trỏ nhảy vào nút duyệt (Enter là chạy) nếu bạn không đang gõ dở; Esc quay về ô nhập.
 - Ctrl+G duyệt kế hoạch đang hiện trong khung (trước đây duyệt mọi kế hoạch nháp cùng lúc).
+- Phím thay thế **F2** (= Ctrl+G, duyệt & chạy) và **F5** (= Ctrl+R, chạy lại): terminal tích hợp của
+  VS Code/Cursor trên macOS chặn Ctrl+G (Go to Line) và Ctrl+R (Run Recent Command). Footer và gợi ý
+  giờ hiện F2/F5; phím Ctrl cũ vẫn dùng được.
 - Lệnh mới `/drop [mục tiêu]`: bỏ kế hoạch nháp, huỷ mọi task nháp của nó.
 
 ## 0.5.1 — 14/10/2026

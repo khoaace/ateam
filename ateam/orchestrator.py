@@ -220,7 +220,7 @@ class Orchestrator:
             if self.cfg.approve_plan:
                 self.db.update_goal(gid, status="awaiting")
                 self.log(f"📋 Kế hoạch #{gid}: {len(ids)} task ở trạng thái NHÁP. "
-                         f"Duyệt bằng /go {gid} (trong TUI: Ctrl+G); sửa trước bằng /edit, /assign, /cancel.")
+                         f"Duyệt bằng /go {gid} (trong TUI: F2 hoặc Ctrl+G); sửa trước bằng /edit, /assign, /cancel.")
             else:
                 self.db.update_goal(gid, status="running")
                 self.log(f"📋 Kế hoạch #{gid}: {len(ids)} task — bắt đầu chạy.")

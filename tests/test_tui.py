@@ -553,9 +553,8 @@ def test_tui_plan_approval_bar(env, project, monkeypatch):
             await pilot.pause(0.2)
             assert box.value.startswith("/assign ")
             box.value = ""
-            # Enter trên nút đang focus = duyệt & chạy
-            app.query_one("#plan-approve", Button).focus()
-            await pilot.press("enter")
+            # F2 (thay Ctrl+G, bị terminal VS Code trên Mac chặn) duyệt & chạy từ ô nhập
+            await pilot.press("f2")
             await pilot.pause(0.3)
             assert app.db.goal(gid).status == "running"
             assert not app.db.tasks(goal_id=gid, status="draft")

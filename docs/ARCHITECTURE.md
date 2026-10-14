@@ -34,7 +34,7 @@ flowchart LR
 stateDiagram-v2
   [*] --> draft: kế hoạch, approve_plan=true
   [*] --> queued: giao tay / kế hoạch không cần duyệt / giao chéo
-  draft --> queued: /go, Ctrl+G, nút Duyệt & chạy (approve)
+  draft --> queued: /go, F2/Ctrl+G, nút Duyệt & chạy (approve)
   draft --> cancelled: /cancel, /drop, nút Bỏ kế hoạch (discard_plan)
   queued --> running: tick() — phụ thuộc xong, còn chỗ, agent còn hạn mức
   queued --> blocked: một task phụ thuộc failed/cancelled/blocked/conflict

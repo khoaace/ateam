@@ -45,7 +45,7 @@ BAR_STYLE = {"running": "magenta", "done": "green", "failed": "red", "cancelled"
              "blocked": "red", "conflict": "yellow", "review": "yellow"}
 GOAL_STATUS = {
     "planning": ("đang lập kế hoạch", "magenta"),
-    "awaiting": ("chờ duyệt (Ctrl+G)", "yellow"),
+    "awaiting": ("chờ duyệt (F2)", "yellow"),
     "cancelled": ("đã bỏ", "dim"),
     "running": ("đang làm", "cyan"),
     "reviewing": ("đang review", "magenta"),
@@ -65,14 +65,14 @@ Giao việc:
   /task <agent> <nội dung>          giao tay (vd: /task codex viết test cho utils.py)
   /task <agent>@<effort> <nội dung> giao kèm effort riêng (vd: /task codex@xhigh tìm lỗi deadlock)
   /task <agent>:<model>@<effort> …  giao kèm cả model riêng
-  /go [mục tiêu]                    duyệt kế hoạch nháp và chạy (Ctrl+G, hoặc nút trong khung
+  /go [mục tiêu]                    duyệt kế hoạch nháp và chạy (F2 hoặc Ctrl+G, hoặc nút trong khung
                                     "Duyệt kế hoạch" hiện phía trên ô nhập khi có kế hoạch chờ)
   /drop [mục tiêu]                  bỏ kế hoạch nháp (huỷ mọi task nháp của nó)
   /assign <task> <agent>            đổi người làm 1 task
   /edit <task> <nội dung>           sửa nội dung task (khi chưa chạy)
   /set <task> effort|model <giá trị>
                                     đổi effort/model riêng cho 1 task ('-' = theo agent)
-  /retry <task>   /cancel <task>    chạy lại (Ctrl+R) / huỷ (Ctrl+K) task
+  /retry <task>   /cancel <task>    chạy lại (F5 hoặc Ctrl+R) / huỷ (Ctrl+K) task
   /review <mục tiêu>                bắt trưởng nhóm review ngay
   /note <nội dung>                  ghi chú chung cho cả đội
 
@@ -117,11 +117,14 @@ Khác:
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
   /team  /board                     chuyển tab Đội / Bảng việc (Ctrl+T)
   /help                             trợ giúp này (F1)
+  F2 = Ctrl+G, F5 = Ctrl+R          dùng F2/F5 khi terminal chặn phím Ctrl (vd terminal trong VS Code/
+                                    Cursor trên Mac: Ctrl+G là Go to Line, Ctrl+R là Run Recent).
+                                    MacBook: giữ fn khi bấm F2/F5
   /quit                             thoát (Ctrl+Q) — agent đang chạy sẽ bị dừng"""
 
 WELCOME = """\
 👋 Chào mừng tới ateam — bắt đầu nhanh:
-  • Gõ một mục tiêu (vd: Thêm trang đăng nhập) → trưởng nhóm lập kế hoạch, Ctrl+G để duyệt & chạy
+  • Gõ một mục tiêu (vd: Thêm trang đăng nhập) → trưởng nhóm lập kế hoạch, Enter (hoặc F2) để duyệt & chạy
   • /task codex viết test cho utils.py → giao tay cho 1 agent
   • Gõ / để xem các lệnh · @ để nhắc file · Ctrl+V dán ảnh
   • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: xem cả đội làm việc"""
@@ -1301,7 +1304,7 @@ class PlanBar(Vertical):
         yield Static(id="plan-head")
         yield OptionList(id="plan-tasks")
         with Horizontal(id="plan-buttons"):
-            yield Button("▶ Duyệt & chạy  Ctrl+G", id="plan-approve", variant="success")
+            yield Button("▶ Duyệt & chạy  F2", id="plan-approve", variant="success")
             yield Button("✎ Sửa task", id="plan-edit")
             yield Button("⇄ Đổi agent", id="plan-assign")
             yield Button("✗ Bỏ kế hoạch", id="plan-discard", variant="error")
@@ -1404,8 +1407,10 @@ class TeamApp(App):
         Binding("f1", "help", "Trợ giúp", priority=True),
         Binding("ctrl+q", "quit", "Thoát", priority=True),
         Binding("ctrl+t", "toggle_tab", "Bảng việc ⇄ Đội", priority=True),
-        Binding("ctrl+g", "approve", "Duyệt & chạy", priority=True),
-        Binding("ctrl+r", "retry", "Chạy lại", priority=True),
+        # F2/F5 đứng trước: Ctrl+G (Go to Line) và Ctrl+R (Run Recent Command) bị terminal tích hợp
+        # của VS Code/Cursor trên macOS chặn — footer hiện phím đầu tiên, phím Ctrl vẫn dùng được
+        Binding("f2,ctrl+g", "approve", "Duyệt & chạy", priority=True),
+        Binding("f5,ctrl+r", "retry", "Chạy lại", priority=True),
         Binding("ctrl+k", "cancel_task", "Huỷ task", priority=True),
         Binding("ctrl+d", "diff", "Xem diff", priority=True),
         Binding("ctrl+y", "merge", "Merge", priority=True),
@@ -1597,7 +1602,7 @@ class TeamApp(App):
             if g.summary and g.status in ("done", "incomplete", "failed", "awaiting"):
                 t.append(f"\n   ↳ {g.summary[:160]}", "dim")
             if g.status == "awaiting":
-                t.append("\n   ↳ xem khung Duyệt kế hoạch phía dưới · Ctrl+G duyệt & chạy", "yellow")
+                t.append("\n   ↳ xem khung Duyệt kế hoạch phía dưới · F2 duyệt & chạy", "yellow")
         self.query_one("#goals", Static).update(t)
 
     def _refresh_table(self) -> None:
@@ -1750,7 +1755,7 @@ class TeamApp(App):
         box = self.query_one("#cmd", Input)
         if self.screen is self.screen_stack[0] and not box.value:
             self.query_one("#plan-approve", Button).focus()
-        self.notify(f"📋 Kế hoạch #{bar.goal_id} sẵn sàng — Enter hoặc Ctrl+G để duyệt & chạy",
+        self.notify(f"📋 Kế hoạch #{bar.goal_id} sẵn sàng — Enter hoặc F2 để duyệt & chạy",
                     timeout=6)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
