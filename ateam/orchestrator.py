@@ -14,8 +14,8 @@ from . import limits
 from . import mentions
 from . import prompts as P
 from .config import AgentConfig, Config
-from .db import (ACTIVE, BLOCKED, CANCELLED, CONFLICT, DB, DONE, DRAFT, FAILED, FINISHED_BAD,
-                 QUEUED, REVIEW, RUNNING, Task)
+from .db import (ACTIVE, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
+                 FINISHED_BAD, QUEUED, REVIEW, RUNNING, Task)
 from .runner import Run
 
 SYSTEM = 0  # id "task" của log hệ thống
@@ -36,6 +36,7 @@ class Orchestrator:
             gi.write_text("*\n")
         self.runs: dict[int, Run] = {}
         self.lead_busy: set[int] = set()  # goal đang được lập kế hoạch / review
+        self.compacting = False  # /compact đang chạy
         self.paused = False
         self.use_worktree = False
         self._git_ident: list[str] | None = None  # None = chưa kiểm tra
@@ -433,6 +434,46 @@ class Orchestrator:
     def note(self, text: str, author: str = "user") -> None:
         self.db.add_note(author, text)
         self.log(f"📝 Ghi chú ({author}): {text}")
+
+    def compact_sources(self) -> tuple[str, str, str]:
+        """Ghi chú, mục tiêu và log hệ thống kể từ lần /compact trước — thứ sẽ được tóm tắt."""
+        since = self.db.last_compact()
+        goals = "\n".join(f"#{g.id} [{g.status}] {g.text}" + (f" — {g.summary}" if g.summary else "")
+                          for g in self.db.goals()[-12:] if (g.created or 0) >= since)
+        log = ""
+        p = self.logs / "system.log"
+        if p.exists():
+            lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+            log = "\n".join(lines[-60:])
+        return self.notes_text(), goals, log
+
+    async def compact(self, focus: str = "") -> tuple[bool, str]:
+        """/compact: trưởng nhóm tóm tắt ghi chú + mục tiêu + log thành 1 ghi chú ngắn; prompt sau chỉ
+        mang bản tóm tắt này (cùng ghi chú mới hơn) thay vì cả chuỗi ghi chú cũ. Trả về (thành công, lời nhắn)."""
+        if self.compacting:
+            return False, "Đang thu gọn ngữ cảnh rồi, chờ chút…"
+        notes, goals, log = self.compact_sources()
+        if not notes and not goals:
+            return False, "Chưa có ghi chú hay mục tiêu nào để thu gọn."
+        self.compacting = True
+        try:
+            self.log(f"🗜 {self.cfg.lead} đang thu gọn ngữ cảnh…")
+            out = await self._call_lead(P.compact_prompt(notes=notes, goals=goals, log=log, focus=focus,
+                                                         cwd=str(self.root)), "Thu gọn ngữ cảnh")
+            summary = P.extract_summary(out) if out and "SUMMARY:" in out else ""
+            if not summary:
+                self.log("✗ Không thu gọn được: trưởng nhóm không trả về dòng SUMMARY: "
+                         "(xem .ateam/logs/lead.log). Ghi chú cũ vẫn giữ nguyên.")
+                return False, "Không thu gọn được — ghi chú cũ vẫn giữ nguyên"
+            self.db.add_note(COMPACT_AUTHOR, summary)
+            before = len(notes) + len(goals)
+            self.log(f"🗜 Đã thu gọn ngữ cảnh: ~{before} → {len(summary)} ký tự. Bản tóm tắt:")
+            for line in summary.splitlines():
+                self.log("   " + line)
+            return True, f"Đã thu gọn ngữ cảnh (~{before} → {len(summary)} ký tự)"
+        finally:
+            self.compacting = False
+            self.emit("changed")
 
     def force_review(self, gid: int) -> str:
         g = self.db.goal(gid)

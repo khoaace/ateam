@@ -1,5 +1,15 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Sửa lỗi** `Lỗi: not enough values to unpack (expected at least 2, got 0)` khi gõ `/se` (hoặc `/set`)
+  rồi Enter: danh sách gợi ý chèn `/set `, Enter lần nữa chạy `/set` không có tham số. Giờ gõ đủ tên một
+  lệnh bắt buộc tham số rồi Enter chỉ chèn dấu cách chờ gõ tiếp; lệnh thiếu/sai tham số (`/set`, `/assign 3`,
+  `/retry abc`, …) hiện cách dùng kèm gợi ý lệnh cùng tiền tố (`/set` → *hay ý bạn là /setup?*) thay vì lỗi.
+- **`/compact [trọng tâm]`** (và `ateam compact`): trưởng nhóm tóm tắt ghi chú chung, mục tiêu gần đây và
+  log hệ thống thành một ghi chú ngắn; prompt gửi agent về sau chỉ mang bản tóm tắt này cùng ghi chú mới
+  hơn, thay vì cả chuỗi ghi chú cũ.
+
 ## 0.5.1 — 14/10/2026
 
 - **Gõ `/` ở đầu ô nhập** hiện danh sách lệnh kèm tham số và mô tả, gõ tiếp để lọc; Tab chèn lệnh,

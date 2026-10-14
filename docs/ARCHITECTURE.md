@@ -72,7 +72,10 @@ nên không được review.
 
 ### Khác
 
-- `notes`: ghi chú chung; 15 ghi chú mới nhất được chèn vào prompt mọi task sau.
+- `notes`: ghi chú chung; 15 ghi chú mới nhất được chèn vào prompt mọi task sau, tính từ ghi chú
+  `author = "compact"` mới nhất. `/compact` (`Orchestrator.compact`) gửi ghi chú + mục tiêu từ lần thu gọn
+  trước + 60 dòng cuối `system.log` cho trưởng nhóm (`compact_prompt`), lấy phần sau `SUMMARY:` làm ghi
+  chú `compact` mới; ghi chú cũ vẫn nằm trong DB nhưng không còn vào prompt.
 - `runs`: mỗi lượt gọi agent/test một dòng (`kind` = `task` | `fix` | `lead` | `test`, `status` =
   `ok` | `failed` | `timeout` | `empty` | `ratelimit` | `cancelled`), dùng cho `/usage`.
 
