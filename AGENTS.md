@@ -21,8 +21,8 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 
 | Đường dẫn | Nội dung |
 | --- | --- |
-| `ateam/cli.py` | Lệnh `ateam` (argparse): `tui` (mặc định), `goal`, `add`, `run`, `diff`, `merge`, `reject`, `verify`, `usage`, `cooldown`, `set`, `doctor`, … |
-| `ateam/tui.py` | Giao diện Textual: tab Bảng việc, tab Đội (AgentPane + Timeline), lệnh `/…`, phím tắt |
+| `ateam/cli.py` | Lệnh `ateam` (argparse): `tui` (mặc định), `setup`, `goal`, `add`, `run`, `diff`, `merge`, `reject`, `verify`, `usage`, `cooldown`, `set`, `doctor`, … |
+| `ateam/tui.py` | Giao diện Textual: tab Bảng việc, tab Đội (AgentPane + Timeline), màn hình thiết lập (`SetupScreen`), lệnh `/…`, phím tắt |
 | `ateam/orchestrator.py` | Lõi: lập kế hoạch, `tick()` lập lịch, `_run_task`, verify, worktree/merge, hạn mức, review |
 | `ateam/runner.py` | `Run`: chạy 1 tiến trình (pipe hoặc pty), stream từng dòng, timeout, huỷ theo process group |
 | `ateam/config.py` | `DEFAULT_CONFIG` (TOML), dataclass `Config`/`AgentConfig`/`VerifyConfig`, `AgentConfig.argv()`, state.json |
@@ -39,7 +39,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 
 ```bash
 pip install -e ".[dev]"          # cài từ mã nguồn + pytest
-python -m pytest -q              # ~45s, 27 test, dùng agent giả lập — PHẢI xanh trước khi commit
+python -m pytest -q              # ~50s, 29 test, dùng agent giả lập — PHẢI xanh trước khi commit
 python -m ateam doctor           # xem lệnh thật sẽ chạy cho từng agent
 python -m ateam -C /tmp/demo     # mở TUI trên một thư mục nháp
 python scripts/build_site.py     # dựng trang docs vào dist/

@@ -343,6 +343,21 @@ class Orchestrator:
         self.emit("changed")
         return f"{agent}: tìm thấy {len(found)} model"
 
+    async def discover_all(self, names: list[str] | None = None, timeout: float = 20,
+                           on_done=None) -> dict[str, str]:
+        """Hỏi song song mọi agent đã cài có models_command. on_done(agent, msg) gọi khi từng cái xong."""
+        names = [n for n in (names if names is not None else list(self.cfg.agents))
+                 if n in self.cfg.agents and self.cfg.agents[n].models_command
+                 and self.cfg.agents[n].installed()]
+
+        async def one(n: str) -> tuple[str, str]:
+            msg = await self.discover_models(n, timeout=timeout)
+            if on_done:
+                on_done(n, msg)
+            return n, msg
+
+        return dict(await asyncio.gather(*(one(n) for n in names)))
+
     def edit(self, tid: int, prompt: str) -> str:
         t = self.db.task(tid)
         if not t:

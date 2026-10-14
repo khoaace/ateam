@@ -288,7 +288,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
           <h3>Hoặc từ file đã tải</h3>
           <div class="cmd"><pre id="manual">cd ~/Downloads && unzip -o {{ZIP_NAME}} && cd ateam && ./install.sh
 ateam doctor</pre><button class="copy" data-copy="manual">Sao chép</button></div>
-          <p class="prose">Mở dự án và gõ <code>ateam</code>. Lệnh <code>ateam doctor</code> cho biết agent nào đã sẵn sàng và đúng lệnh sẽ chạy cho từng agent.</p>
+          <p class="prose">Mở dự án và gõ <code>ateam</code>. Lần đầu mở, ateam hỏi sẵn danh sách model của từng CLI rồi hiện một màn hình để chọn agent, trưởng nhóm, model và effort (mở lại bằng <code>/setup</code>). Lệnh <code>ateam doctor</code> cho biết agent nào đã sẵn sàng và đúng lệnh sẽ chạy cho từng agent.</p>
         </div>
         <div>
           <h3>Cần có</h3>
@@ -349,6 +349,7 @@ ateam doctor</pre><button class="copy" data-copy="manual">Sao chép</button></di
               <tr><td><code>/verify pytest -q</code></td><td>Lệnh kiểm tra sau mỗi task của dự án</td></tr>
               <tr><td><code>/diff 3</code> · <code>/merge 3</code></td><td>Xem thay đổi · merge task chờ duyệt</td></tr>
               <tr><td><code>/reject 3 thiếu xử lý lỗi</code></td><td>Trả lại task kèm góp ý để làm lại</td></tr>
+              <tr><td><code>/setup</code></td><td>Chọn agent, trưởng nhóm, model và effort trong một màn hình</td></tr>
               <tr><td><code>/model claude opus</code></td><td>Model mặc định của một agent</td></tr>
               <tr><td><code>/note API chạy cổng 8080</code></td><td>Ghi chú mọi agent đều đọc</td></tr>
               <tr><td><code>/usage</code></td><td>Lượt chạy, thời gian, hết hạn mức</td></tr>

@@ -28,7 +28,7 @@ Bỏ dòng `PATH=…fakebin` để chạy với CLI thật.
 | --- | --- |
 | `tests/test_units.py` | `AgentConfig.argv`, bóc JSON/DELEGATE/NOTE/SUMMARY, nhận diện hết hạn mức, nâng cấp config |
 | `tests/test_flows.py` | Luồng đầu-cuối qua `python -m ateam`: kế hoạch → chạy → giao chéo → review; cờ model/effort; lỗi thiếu CLI / im lặng / timeout / bị chặn; worktree merge + xung đột; chế độ review (diff/merge/reject); verify sửa được / hết lượt / bỏ qua; hết hạn mức + dự phòng; `run` không treo |
-| `tests/test_tui.py` | Mở TUI headless (`App.run_test`), giao task, đổi tab, Ctrl+D, Ctrl+Y, `/usage`; danh sách gợi ý `@file` |
+| `tests/test_tui.py` | Mở TUI headless (`App.run_test`), giao task, đổi tab, Ctrl+D, Ctrl+Y, `/usage`; danh sách gợi ý `@file`; màn hình thiết lập (`TeamApp(..., setup=True)`) hỏi model từ CLI giả lập rồi lưu |
 
 Helper trong `tests/conftest.py`: fixture `env` (PATH có fakebin, XDG riêng, thư mục hạn mức,
 file log đối số), `project`, hàm `ateam(env, cwd, *args)`, `git_init`, `write_project_config`, `tasks`.

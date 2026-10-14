@@ -1,5 +1,15 @@
 # Changelog
 
+## Chưa phát hành
+
+- Thêm màn hình **Thiết lập đội AI** khi mở app lần đầu (mở lại: `/setup` hoặc `ateam setup`): chọn
+  agent nào tham gia, trưởng nhóm, model và effort từng agent trong một màn hình; Ctrl+S lưu, Esc bỏ
+  qua. Trước khi hiện form, ateam hỏi **song song** các CLI có lệnh liệt kê model (`opencode models`,
+  `agy models`, tối đa 20 giây) để bảng chọn có sẵn model thật; lỗi hoặc hết giờ thì dùng danh mục có sẵn.
+- Lựa chọn lưu ở `state.json` (`agents.<tên>.enabled`, `lead`, `onboarded`); chỉ ghi giá trị khác file
+  cấu hình, nên sửa file vẫn có tác dụng.
+- `ateam models --refresh` và lần hỏi model khi mở app giờ chạy song song.
+
 ## 0.4.0 — 14/10/2026
 
 - Gõ `@` trong ô nhập để chọn file/thư mục của dự án (lọc khi gõ, ↑↓ chọn, Tab/Enter chèn, Esc đóng).

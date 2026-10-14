@@ -160,3 +160,73 @@ def test_tui_model_effort_picker(env, project, monkeypatch):
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
+
+
+def test_tui_setup_screen(env, project, monkeypatch):
+    """Màn hình thiết lập lần đầu: hỏi sẵn model từ CLI, chọn trưởng nhóm/model/effort, tắt agent."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import Checkbox, Select
+
+    from ateam.config import ensure_global_config, load_config, load_state, needs_setup
+    from ateam.db import DB
+    from ateam.tui import RESET, AgentPane, SetupScreen, TeamApp
+
+    async def main():
+        ensure_global_config()
+        assert needs_setup()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"), setup=True)
+        async with app.run_test(size=(160, 48)) as pilot:
+            for _ in range(80):
+                await pilot.pause(0.25)
+                if isinstance(app.screen, SetupScreen) and app.screen.ready:
+                    break
+            scr = app.screen
+            assert isinstance(scr, SetupScreen) and scr.ready
+            await pilot.pause(0.3)
+            # model hỏi được từ CLI giả lập đã có sẵn trong bảng chọn
+            grok = scr.query_one("#setup-model-grok", Select)
+            assert "xai/grok-5-fast" in [v for _, v in grok._options]
+            agy = scr.query_one("#setup-model-antigravity", Select)
+            assert "gemini-3-pro" in [v for _, v in agy._options]
+            scr.query_one("#setup-lead", Select).value = "codex"
+            scr.query_one("#setup-effort-claude", Select).value = "high"
+            scr.query_one("#setup-model-codex", Select).value = "gpt-5.5"
+            grok.value = "xai/grok-5-fast"
+            scr.query_one("#setup-on-antigravity", Checkbox).value = False
+            await pilot.press("ctrl+s")
+            await pilot.pause(0.5)
+            assert not isinstance(app.screen, SetupScreen)
+            assert app.cfg.lead == "codex"
+            assert app.cfg.agents["claude"].effort == "high"
+            assert app.cfg.agents["grok"].model == "xai/grok-5-fast"
+            assert not app.cfg.agents["antigravity"].enabled
+            assert len(app.query(AgentPane)) == 3
+            # mở lại bằng /setup, rồi Esc = giữ nguyên
+            app.run_command("/setup")
+            for _ in range(40):
+                await pilot.pause(0.25)
+                if isinstance(app.screen, SetupScreen) and app.screen.ready:
+                    break
+            assert app.screen.query_one("#setup-lead", Select).value == "codex"
+            assert app.screen.query_one("#setup-model-claude", Select).value == RESET
+            await pilot.press("escape")
+            await pilot.pause(0.3)
+            assert app.cfg.lead == "codex"
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+    st = load_state()
+    assert st["onboarded"] and st["lead"] == "codex"
+    assert st["agents"]["antigravity"] == {"enabled": False}
+    assert st["agents"]["claude"] == {"effort": "high"}
+    assert "grok" in st["models_found"] and "antigravity" in st["models_found"]
+    cfg = load_config(project)
+    assert cfg.lead == "codex" and not cfg.agents["antigravity"].enabled
+    assert not needs_setup()

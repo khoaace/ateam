@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import __version__, mentions
 from .config import (DEFAULT_CONFIG, GLOBAL_CONFIG, ensure_global_config, load_config,
-                     save_agent_setting)
+                     needs_setup, save_agent_setting)
 from .db import DB, QUEUED
 from .orchestrator import SYSTEM, Orchestrator
 
@@ -43,7 +43,8 @@ def cmd_tui(args) -> int:
     cfg = load_config(root)
     cfg.notices = notes
     from .tui import TeamApp
-    TeamApp(root, cfg, open_db(root)).run()
+    # Lần đầu mở app (hoặc `ateam setup`): màn hình chọn agent/model/effort, hỏi sẵn model của CLI
+    TeamApp(root, cfg, open_db(root), setup=args.cmd == "setup" or needs_setup()).run()
     return 0
 
 
@@ -100,6 +101,7 @@ def cmd_doctor(args) -> int:
         ok = False
     if shutil.which("git") is None:
         print("\n⚠ Chưa có git — chế độ worktree sẽ không dùng được.")
+    print("\nChọn agent, model, effort: ateam setup (hoặc /setup trong app).")
     print("\nMọi thứ sẵn sàng." if ok else "\nCài các CLI còn thiếu hoặc đặt enabled = false cho agent đó trong config.")
     return 0 if ok else 1
 
@@ -255,9 +257,9 @@ def cmd_models(args) -> int:
         return 1
     if args.refresh:
         orch = Orchestrator(root, cfg, open_db(root))
-        for n, a in cfg.agents.items():
-            if (not args.agent or n == args.agent) and a.models_command:
-                print(asyncio.run(orch.discover_models(n)))
+        names = [args.agent] if args.agent else None
+        for n, msg in asyncio.run(orch.discover_all(names)).items():
+            print(msg)
     print(describe_models(cfg, args.agent))
     print("Đặt: ateam set <agent> --model <tên> --effort <mức>")
     return 0
@@ -335,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd")
 
     sub.add_parser("tui", help="mở giao diện terminal (mặc định)")
+    sub.add_parser("setup", help="mở giao diện ở màn hình thiết lập: agent, trưởng nhóm, model, effort")
     s = sub.add_parser("init", help="tạo file cấu hình")
     s.add_argument("--project", action="store_true", help="tạo thêm .ateam/config.toml cho dự án")
     sub.add_parser("doctor", help="kiểm tra các agent đã cài chưa")
@@ -378,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("-q", "--quiet", action="store_true")
 
     args = p.parse_args(argv)
-    handlers = {None: cmd_tui, "tui": cmd_tui, "init": cmd_init, "doctor": cmd_doctor,
+    handlers = {None: cmd_tui, "tui": cmd_tui, "setup": cmd_tui, "init": cmd_init, "doctor": cmd_doctor,
                 "goal": cmd_goal, "add": cmd_add, "note": cmd_note, "list": cmd_list,
                 "log": cmd_log, "run": cmd_run, "set": cmd_set, "models": cmd_models, "diff": cmd_diff,
                 "merge": cmd_merge, "reject": cmd_reject, "verify": cmd_verify,

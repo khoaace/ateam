@@ -14,12 +14,13 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import (DataTable, Footer, Header, Input, OptionList, RichLog, Static,
-                             TabbedContent, TabPane)
+from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input, OptionList,
+                             RichLog, Select, Static, TabbedContent, TabPane)
 from textual.widgets.option_list import Option
 
 from . import mentions
-from .config import AgentConfig, Config, describe_models, load_state, save_project_setting
+from .config import (AgentConfig, Config, describe_models, load_config, load_state, mark_setup_done,
+                     save_project_setting, save_setup)
 from .db import DB
 from .orchestrator import SYSTEM, Orchestrator
 
@@ -90,6 +91,7 @@ Model & effort của từng agent (được lưu lại cho lần sau):
   /models [agent]                   xem model & effort mỗi agent hỗ trợ
   /models <agent> làm mới           hỏi CLI danh sách model thật (opencode models, agy models)
   /agents                           xem model, effort, mức effort hợp lệ của từng agent
+  /setup                            mở lại màn hình thiết lập: bật/tắt agent, trưởng nhóm, model, effort
 
 Khác:
   /pause  /resume                   tạm dừng / tiếp tục nhận task mới
@@ -110,8 +112,8 @@ def today_start() -> float:
     return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))
 
 
-def safe_id(name: str) -> str:
-    return "pane-" + re.sub(r"[^A-Za-z0-9_-]", "_", name)
+def safe_id(name: str, prefix: str = "pane-") -> str:
+    return prefix + re.sub(r"[^A-Za-z0-9_-]", "_", name)
 
 
 # ============================================================================ widgets
@@ -192,6 +194,151 @@ class ChoiceScreen(ModalScreen):
         self.dismiss(RESET if oid == "reset" else self.items[int(oid[1:])])
 
     def action_dismiss_none(self) -> None:
+        self.dismiss(None)
+
+
+class SetupScreen(ModalScreen):
+    """Thiết lập lần đầu (hoặc /setup): bật agent nào, trưởng nhóm, model và effort từng agent.
+
+    Trước khi hiện form, hỏi song song các CLI có lệnh liệt kê model (opencode models, agy models)
+    để bảng chọn có sẵn model thật; CLI khác dùng danh mục có sẵn. Trả về dict lựa chọn, hoặc
+    None nếu bỏ qua (Esc)."""
+
+    BINDINGS = [Binding("escape", "skip", "Bỏ qua", priority=True),
+                Binding("ctrl+s", "save", "Lưu", priority=True)]
+    DEFAULT_CSS = """
+    SetupScreen { align: center middle; }
+    #setup-box { width: 110; max-width: 100%; height: auto; max-height: 95%; border: thick $accent;
+                 background: $surface; padding: 0 1; }
+    #setup-rows { height: auto; max-height: 32; }
+    .setup-row, #setup-lead-row { height: 3; }
+    .setup-row Checkbox { width: 22; }
+    .setup-model { width: 42; }
+    .setup-effort { width: 18; }
+    .setup-note { width: 1fr; height: 3; padding: 1 0 0 1; color: $text-muted;
+                  text-wrap: nowrap; text-overflow: ellipsis; }
+    #setup-head { height: 1; color: $text-muted; text-style: bold; margin-top: 1; }
+    #setup-lead-row > Static { width: 22; padding: 1 0 0 1; }
+    #setup-lead { width: 42; }
+    #setup-buttons { height: auto; align: right middle; }
+    #setup-buttons Button { margin-left: 2; }
+    """
+
+    def __init__(self, cfg: Config, orch: Orchestrator, timeout: float = 20):
+        super().__init__()
+        self.cfg, self.orch, self.timeout = cfg, orch, timeout
+        self.fetch: dict[str, str] = {}
+        self.ready = False
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="setup-box"):
+            yield Static(Text("Thiết lập đội AI", "bold"))
+            yield Static(id="setup-status")
+            yield Vertical(id="setup-rows")
+            with Horizontal(id="setup-buttons"):
+                yield Button("Bỏ qua (Esc)", id="setup-skip")
+                yield Button("Lưu & bắt đầu (Ctrl+S)", id="setup-save", variant="primary",
+                             disabled=True)
+
+    def on_mount(self) -> None:
+        for n, a in self.cfg.agents.items():
+            if a.models_command and a.installed():
+                self.fetch[n] = "đang hỏi…"
+            elif not a.installed():
+                self.fetch[n] = f"chưa cài '{a.binary}'"
+            else:
+                self.fetch[n] = f"danh mục có sẵn ({len(a.models)} model)" if a.models else "CLI tự chọn"
+        self._show_status()
+        self.run_worker(self._prefetch(), exclusive=True)
+
+    def _show_status(self) -> None:
+        t = Text("Đang lấy danh sách model từ các CLI…\n" if not self.ready else
+                 "Chọn agent tham gia, model và effort. Tab/↑↓ để di chuyển, Enter để mở bảng chọn.\n",
+                 "yellow" if not self.ready else "dim")
+        for n, msg in self.fetch.items():
+            t.append(f"  {n}: ", "bold")
+            t.append(msg + "\n", "dim")
+        self.query_one("#setup-status", Static).update(t)
+
+    async def _prefetch(self) -> None:
+        def done(n: str, msg: str) -> None:
+            a = self.cfg.agents[n]
+            ok = msg.startswith(f"{n}: tìm thấy")
+            self.fetch[n] = (f"{len(a.models)} model" + (" (hỏi từ CLI)" if ok else "")
+                             + ("" if ok else f" — {msg.split(': ', 1)[-1]}, dùng danh mục có sẵn"))
+            self._show_status()
+        try:
+            await self.orch.discover_all(timeout=self.timeout, on_done=done)
+        except Exception as e:  # không bao giờ chặn màn hình thiết lập
+            self.orch.log(f"⚠ Không hỏi được danh sách model: {e}")
+        await self._build_form()
+
+    async def _build_form(self) -> None:
+        rows = self.query_one("#setup-rows", Vertical)
+        installed = [n for n, a in self.cfg.agents.items() if a.installed()]
+        lead = self.cfg.lead if self.cfg.lead in installed else (installed[0] if installed else self.cfg.lead)
+        lead_opts = [(n + ("" if n in installed else "  (chưa cài)"), n) for n in self.cfg.agents]
+        widgets = [Horizontal(Static("★ Trưởng nhóm"),
+                              Select(lead_opts, value=lead, allow_blank=False, id="setup-lead"),
+                              Static("lập kế hoạch & review", classes="setup-note"),
+                              id="setup-lead-row"),
+                   Static(f"{'  Agent (bật/tắt)':22}{'Model':42}{'Effort':18}Vai trò", id="setup-head")]
+        for n, a in self.cfg.agents.items():
+            ok = a.installed()
+            box = Checkbox(n, value=ok and (a.enabled or n == lead), disabled=not ok,
+                           id=safe_id(n, "setup-on-"))
+            models = [(m, m) for m in a.model_choices()] + [("(mặc định)", RESET)]
+            model = Select(models, value=a.model if a.model else RESET, allow_blank=False,
+                           disabled=not ok, classes="setup-model", id=safe_id(n, "setup-model-"))
+            row = [box, model]
+            if a.efforts:
+                extra = [a.effort] if a.effort and a.effort not in a.efforts else []  # giữ mức tự đặt
+                effs = [(e, e) for e in extra + a.efforts] + [("(mặc định)", RESET)]
+                row.append(Select(effs, value=a.effort or RESET,
+                                  allow_blank=False, disabled=not ok, classes="setup-effort",
+                                  id=safe_id(n, "setup-effort-")))
+            else:
+                row.append(Static("effort: (không có)", classes="setup-effort setup-note"))
+            row.append(Static(a.role if ok else f"✗ chưa cài lệnh '{a.binary}'", classes="setup-note"))
+            widgets.append(Horizontal(*row, classes="setup-row"))
+        await rows.mount_all(widgets)
+        self.query_one("#setup-save", Button).disabled = False
+        self.ready = True
+        self._show_status()
+        self.query_one("#setup-lead", Select).focus()
+
+    def choices(self) -> dict:
+        out: dict = {"lead": self.query_one("#setup-lead", Select).value, "agents": {}}
+        for n, a in self.cfg.agents.items():
+            m = self.query_one("#" + safe_id(n, "setup-model-"), Select).value
+            ch = {"enabled": self.query_one("#" + safe_id(n, "setup-on-"), Checkbox).value,
+                  "model": None if m == RESET else m}
+            effs = self.query("#" + safe_id(n, "setup-effort-"))
+            if effs and isinstance(effs.first(), Select):
+                e = effs.first().value
+                ch["effort"] = None if e == RESET else e
+            if not a.installed():
+                ch = {"enabled": a.enabled}  # không đụng tới agent chưa cài
+            out["agents"][n] = ch
+        return out
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "setup-save":
+            self.action_save()
+        elif event.button.id == "setup-skip":
+            self.action_skip()
+
+    def action_save(self) -> None:
+        if not self.ready:
+            return
+        ch = self.choices()
+        lead = self.cfg.agents.get(ch["lead"])
+        if not lead or not lead.installed() or not ch["agents"][ch["lead"]].get("enabled"):
+            self.notify(f"Trưởng nhóm '{ch['lead']}' phải được bật (và đã cài).", severity="error")
+            return
+        self.dismiss(ch)
+
+    def action_skip(self) -> None:
         self.dismiss(None)
 
 
@@ -409,9 +556,10 @@ class TeamApp(App):
         Binding("ctrl+l", "syslog", "Log hệ thống", priority=True),
     ]
 
-    def __init__(self, root: Path, cfg: Config, db: DB):
+    def __init__(self, root: Path, cfg: Config, db: DB, setup: bool = False):
         super().__init__()
         self.root, self.cfg, self.db = root, cfg, db
+        self.start_setup = setup
         self.orch = Orchestrator(root, cfg, db, on_event=self.on_orch_event)
         self.view_task = SYSTEM
         self._rows: dict[int, tuple] = {}
@@ -460,12 +608,15 @@ class TeamApp(App):
             self.orch.log("ℹ " + n)
         self._booted = True
         self._loop_task = asyncio.get_running_loop().create_task(self.orch.run_forever())
-        self.run_worker(self._discover_missing_models(), exclusive=False)
         self.set_interval(0.5, self.refresh_view)
         self.refresh_view()
         self.query_one("#cmd", Input).focus()
         if not self.db.tasks():
             self.write_sys(HELP)
+        if self.start_setup:
+            self.open_setup()
+        else:
+            self.run_worker(self._discover_missing_models(), exclusive=False)
 
     def _preload_panes(self) -> None:
         """Nạp phần cuối log của task gần nhất cho mỗi ô agent."""
@@ -859,12 +1010,37 @@ class TeamApp(App):
         self.push_screen(ChoiceScreen(title, items, current, "mặc định trong config / CLI"), done)
 
     async def _discover_missing_models(self) -> None:
-        """Lần đầu mở app: hỏi các CLI có lệnh liệt kê model (opencode models, agy models)."""
+        """Hỏi (song song) các CLI có lệnh liệt kê model mà chưa từng hỏi (opencode models, agy models)."""
         found = load_state().get("models_found", {})
-        for n, a in self.cfg.active_agents().items():
-            if a.models_command and n not in found and a.installed():
-                msg = await self.orch.discover_models(n)
-                self.orch.log("⚙ " + msg)
+        await self.orch.discover_all([n for n in self.cfg.active_agents() if n not in found],
+                                     on_done=lambda _n, msg: self.orch.log("⚙ " + msg))
+
+    def open_setup(self) -> None:
+        self.push_screen(SetupScreen(self.cfg, self.orch), self._setup_done)
+
+    async def _setup_done(self, result) -> None:
+        if result is None:
+            mark_setup_done()
+            self.orch.log("ℹ Bỏ qua thiết lập. Mở lại bất cứ lúc nào bằng /setup (hoặc `ateam setup`).")
+            return
+        save_setup(self.root, result["lead"], result["agents"])
+        fresh = load_config(self.root)
+        self.cfg.lead = fresh.lead
+        for n, a in self.cfg.agents.items():
+            f = fresh.agents.get(n)
+            if f:
+                a.enabled, a.model, a.effort = f.enabled, f.model, f.effort
+        await self._rebuild_panes()
+        on = [f"{n} ({a.label()})" for n, a in self.cfg.active_agents().items()]
+        self.orch.log(f"⚙ Đã lưu thiết lập. Trưởng nhóm: {self.cfg.lead}. Đội: {', '.join(on)}. "
+                      "Đổi lại: /setup, /model, /effort.")
+        self.refresh_view()
+
+    async def _rebuild_panes(self) -> None:
+        grid = self.query_one("#team-grid", Vertical)
+        await grid.remove_children()
+        await grid.mount_all([AgentPane(n) for n, a in self.cfg.agents.items() if a.enabled])
+        self._preload_panes()
 
     def _check_effort(self, agent: str, effort: str | None) -> None:
         a = self.cfg.agents[agent]
@@ -1007,6 +1183,9 @@ class TeamApp(App):
                              + f"\n   @file → {mentions.describe(a.binary, a.file_ref, a.file_args)}"
                              + f"\n   vai trò: {a.role}")
             self.write_sys("\n".join(lines))
+        elif cmd == "setup":
+            self.open_setup()
+            return
         elif cmd in ("quit", "exit", "q"):
             self.call_later(self.action_quit)
         else:
