@@ -5,8 +5,7 @@
   "name": "ateam",
   "compatibility_date": "2026-10-14",
   "workers_dev": true,
-  // true: khớp cài đặt Preview trên Cloudflare, để Workers Builds dựng bản xem trước cho nhánh PR
-  "preview_urls": true,
+  "preview_urls": false,
   "build": {
     "command": "python3 scripts/build_site.py"
   },
