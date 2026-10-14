@@ -5,8 +5,7 @@
   "name": "ateam",
   "compatibility_date": "2026-10-14",
   "workers_dev": true,
-  // true: nhánh khác main (PR) được Workers Builds dựng bản xem trước; false làm bản build đó lỗi
-  "preview_urls": true,
+  "preview_urls": false,
   "build": {
     "command": "python3 scripts/build_site.py"
   },
