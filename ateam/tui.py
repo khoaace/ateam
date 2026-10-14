@@ -8,6 +8,7 @@ import inspect
 import re
 import shlex
 import time
+import unicodedata
 from pathlib import Path
 
 from rich.text import Text
@@ -258,6 +259,57 @@ def safe_id(name: str, prefix: str = "pane-") -> str:
 
 
 # ============================================================================ widgets
+class TextInput(Input):
+    """Ô nhập gõ tiếng Việt không lỗi dấu.
+
+    Bộ gõ (OpenKey/EVKey… để "Unicode tổ hợp", hoặc gửi dấu thành ký tự riêng) có thể đưa vào
+    chữ dạng tách rời "e" + dấu mũ U+0302 + dấu nặng U+0323. Terminal vẽ dấu rời lệch khỏi chữ
+    ("lỗi font"), còn Backspace của Input chỉ xoá một code point nên khi bộ gõ xoá chữ cũ để thay
+    chữ mới thì dấu sót lại. Vì vậy sau mỗi lần sửa ta gộp về dạng dựng sẵn (NFC), và Backspace/Delete
+    xoá trọn một chữ cùng các dấu đi kèm.
+    """
+
+    def _compose_nfc(self) -> None:
+        value, cur = self.value, self.cursor_position
+        before = unicodedata.normalize("NFC", value[:cur])
+        after = unicodedata.normalize("NFC", value[cur:])
+        if before + after != value:
+            self.value = before + after
+            self.cursor_position = len(before)
+
+    def replace(self, text: str, start: int, end: int) -> None:
+        super().replace(text, start, end)
+        self._compose_nfc()
+
+    def insert_text_at_cursor(self, text: str) -> None:
+        super().insert_text_at_cursor(text)
+        self._compose_nfc()
+
+    def _no_selection(self) -> bool:
+        sel = getattr(self, "selection", None)  # Textual cũ chưa có chọn vùng trong Input
+        return sel is None or sel.is_empty
+
+    def action_delete_left(self) -> None:
+        cur = self.cursor_position
+        if self._no_selection() and cur > 0:
+            start = cur - 1
+            while start > 0 and unicodedata.combining(self.value[start]):
+                start -= 1
+            self.delete(start, cur)
+        else:
+            super().action_delete_left()
+
+    def action_delete_right(self) -> None:
+        cur, value = self.cursor_position, self.value
+        if self._no_selection() and cur < len(value):
+            end = cur + 1
+            while end < len(value) and unicodedata.combining(value[end]):
+                end += 1
+            self.delete(cur, end)
+        else:
+            super().action_delete_right()
+
+
 class AgentPane(Vertical):
     """Một ô trong tab Đội: tiêu đề trạng thái + log trực tiếp của 1 agent."""
 
@@ -618,11 +670,11 @@ class AgentEditScreen(ModalScreen):
                 yield form_row("Mẫu", Select([(k, k) for k in self.templates], prompt="(chọn để điền sẵn)",
                                              id="ag-template", classes="f-input"),
                                "điền sẵn lệnh, cờ model/effort, cú pháp file")
-                yield form_row("Tên", Input(self.old_name or "", placeholder="vd: gemini, aider-fast",
+                yield form_row("Tên", TextInput(self.old_name or "", placeholder="vd: gemini, aider-fast",
                                             id="ag-name", classes="f-input"),
                                "chữ, số, - và _")
                 for fid, label, hint, _k, _t in self.FIELDS:
-                    yield form_row(label, Input(id=f"ag-{fid}", classes="f-input"), hint)
+                    yield form_row(label, TextInput(id=f"ag-{fid}", classes="f-input"), hint)
                 yield form_row("Tuỳ chọn", Horizontal(
                     Checkbox("Chạy trong terminal giả (pty)", id="ag-pty"),
                     Checkbox("Chạy lệnh kiểm tra sau task", True, id="ag-verify"),
@@ -799,9 +851,9 @@ class WorkflowEditScreen(ModalScreen):
                                               for k, v in WORKFLOW_TEMPLATES.items()],
                                              prompt="(chọn để điền sẵn)", id="wf-template",
                                              classes="f-input"), "thay toàn bộ các bước")
-                yield form_row("Tên", Input(self.old_name or "", placeholder="vd: tinh-nang, sua-loi",
+                yield form_row("Tên", TextInput(self.old_name or "", placeholder="vd: tinh-nang, sua-loi",
                                             id="wf-name", classes="f-input"), "chữ, số, - và _")
-                yield form_row("Mô tả", Input(id="wf-desc", classes="f-input"), "hiện trong /flow")
+                yield form_row("Mô tả", TextInput(id="wf-desc", classes="f-input"), "hiện trong /flow")
                 yield form_row("Review", Checkbox("Trưởng nhóm review khi xong", id="wf-review"),
                                "review có thể giao thêm việc")
                 yield Horizontal(*[Static(label, classes=cls) for label, cls in (
@@ -829,11 +881,11 @@ class WorkflowEditScreen(ModalScreen):
             Static("", classes="step-no"),
             Select(self.agent_options(agent), value=agent, allow_blank=False, classes="step-agent",
                    id=f"wf-agent-{k}"),
-            Input(str(st.get("title") or ""), placeholder="tiêu đề", classes="step-title", id=f"wf-title-{k}"),
-            Input(str(st.get("prompt") or ""), placeholder="việc cần làm, có thể dùng {goal}",
+            TextInput(str(st.get("title") or ""), placeholder="tiêu đề", classes="step-title", id=f"wf-title-{k}"),
+            TextInput(str(st.get("prompt") or ""), placeholder="việc cần làm, có thể dùng {goal}",
                   classes="step-prompt", id=f"wf-prompt-{k}"),
-            Input(after_text, placeholder="trước", classes="step-after", id=f"wf-after-{k}"),
-            Input(str(st.get("effort") or ""), placeholder="effort", classes="step-effort",
+            TextInput(after_text, placeholder="trước", classes="step-after", id=f"wf-after-{k}"),
+            TextInput(str(st.get("effort") or ""), placeholder="effort", classes="step-effort",
                   id=f"wf-effort-{k}"),
             Button("✕", classes="step-del", id=f"wf-del-{k}"),
             classes="step-row", id=f"wf-step-{k}")
@@ -1077,7 +1129,7 @@ class MentionList(OptionList):
 MENTION_AT_CURSOR = re.compile(r'(?:^|(?<=[\s(\[{\'`]))@(?:"([^"]*)|([^\s"\'`]*))$')
 
 
-class CommandInput(Input):
+class CommandInput(TextInput):
     """Ô nhập lệnh, có gợi ý file/thư mục khi gõ @ và dán ảnh bằng Ctrl+V."""
 
     BINDINGS = [

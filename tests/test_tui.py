@@ -563,6 +563,47 @@ def test_tui_missing_args_show_usage_and_compact(env, project, monkeypatch):
     asyncio.run(main())
 
 
+def test_tui_vietnamese_input():
+    """Bộ gõ tiếng Việt: dấu tổ hợp gộp về NFC, Backspace của bộ gõ xoá trọn chữ cũ."""
+    from textual.app import App
+    from textual._xterm_parser import XTermParser
+
+    from ateam.tui import CommandInput, TextInput
+
+    assert issubclass(CommandInput, TextInput)
+
+    class Demo(App):
+        def compose(self):
+            yield TextInput(id="i")
+
+    async def typed(raw: str) -> TextInput:
+        app = Demo()
+        async with app.run_test() as pilot:
+            box = app.query_one(TextInput)
+            box.focus()
+            # đi qua bộ đọc phím của Textual như byte thật từ terminal (pilot.press làm rơi dấu tổ hợp)
+            for event in XTermParser().feed(raw):
+                app._driver.send_message(event)
+                await pilot.pause()
+            return box
+
+    async def main():
+        # dấu gửi thành ký tự riêng (Unicode tổ hợp) -> chữ dựng sẵn
+        box = await typed("Việt Nam")
+        assert box.value == "Việt Nam" and box.cursor_position == len("Việt Nam")
+        # bộ gõ kiểu EVKey/OpenKey: xoá chữ cũ bằng Backspace rồi gửi chữ mới
+        box = await typed("Vie\x7fê\x7fệt")
+        assert box.value == "Việt"
+        # như trên nhưng chữ mới ở dạng tổ hợp: một Backspace phải xoá cả chữ lẫn dấu
+        box = await typed("Vie\x7fê\x7fệt")
+        assert box.value == "Việt"
+        # dấu không gộp được vào chữ trước vẫn bị xoá cùng chữ đó
+        box = await typed("ax́\x7f")
+        assert box.value == "a"
+
+    asyncio.run(main())
+
+
 def test_tui_plan_approval_bar(env, project, monkeypatch):
     """Kế hoạch nháp hiện khung duyệt ở cả hai tab, focus vào nút duyệt; sửa/bỏ/duyệt từ khung."""
     for k, v in env.items():

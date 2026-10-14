@@ -2,6 +2,10 @@
 
 ## Chưa phát hành
 
+- **Sửa: gõ tiếng Việt trong ô nhập bị lỗi font** (dấu rời khỏi chữ, sót dấu khi bộ gõ sửa chữ). Bộ gõ
+  để bảng mã Unicode tổ hợp gửi chữ và dấu thành các ký tự riêng; terminal vẽ dấu lệch, còn Backspace của
+  bộ gõ chỉ xoá một ký tự nên dấu cũ sót lại. Mọi ô nhập giờ gộp chữ về dạng dựng sẵn (NFC) và
+  Backspace/Delete xoá trọn một chữ cùng dấu của nó.
 - **Khung Duyệt kế hoạch**: khi trưởng nhóm (hoặc workflow, hoặc vòng review) có kế hoạch nháp, một khung
   viền vàng hiện ngay trên ô nhập ở cả tab Bảng việc và Đội, liệt kê từng task (agent, effort, tiêu đề,
   phụ thuộc) với nút *Duyệt & chạy*, *Sửa task*, *Đổi agent*, *Bỏ kế hoạch*. Kế hoạch mới tới thì con
