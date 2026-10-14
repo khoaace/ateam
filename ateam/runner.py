@@ -96,7 +96,8 @@ class Run:
         self.proc = await asyncio.create_subprocess_exec(
             *self.argv, cwd=self.cwd, env=env, stdin=slave, stdout=slave, stderr=slave,
             start_new_session=True)
-        os.close(slave)
+        # Giữ slave mở tới khi tiến trình thoát: trên macOS, đóng hết phía slave làm mất phần
+        # output còn nằm trong pty chưa kịp đọc (agent in nhanh rồi thoát -> mất sạch output).
         loop = asyncio.get_running_loop()
         q: asyncio.Queue[bytes | None] = asyncio.Queue()
 
@@ -126,21 +127,29 @@ class Run:
                     self._emit_text(buf, dec.decode(data))
                 else:
                     get.cancel()
-                    # tiến trình đã thoát: đọc nốt phần còn lại tối đa 1 giây
-                    try:
-                        while True:
-                            data = await asyncio.wait_for(q.get(), 1.0)
-                            if data is None:
-                                break
+                    # tiến trình đã thoát: lấy phần đã đọc trong hàng đợi, rồi đọc thẳng
+                    # những gì còn trong pty (slave vẫn mở nên dữ liệu chưa bị bỏ)
+                    loop.remove_reader(master)
+                    while not q.empty():
+                        data = q.get_nowait()
+                        if data:
                             self._emit_text(buf, dec.decode(data))
-                    except asyncio.TimeoutError:
-                        pass
+                    os.set_blocking(master, False)
+                    for _ in range(10000):  # chặn trên phòng tiến trình con còn ghi liên tục
+                        try:
+                            data = os.read(master, 4096)
+                        except OSError:  # BlockingIOError = hết dữ liệu; EIO = đã đóng
+                            break
+                        if not data:
+                            break
+                        self._emit_text(buf, dec.decode(data))
                     break
         finally:
             try:
                 loop.remove_reader(master)
             except Exception:
                 pass
+            os.close(slave)
             os.close(master)
         self._emit_text(buf, dec.decode(b"", final=True), final=True)
         return await wait_task
