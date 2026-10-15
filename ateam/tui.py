@@ -23,7 +23,7 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
                              RichLog, Select, Static, TabbedContent, TabPane)
 from textual.widgets.option_list import Option
 
-from . import clipboard, diffview, mentions
+from . import clipboard, diffview, mentions, shell, update
 from .config import (CUSTOM_FILE, LEAD_ALIAS, NAME_RE, WORKFLOW_TEMPLATES, AgentConfig, Config,
                      Workflow, WorkflowStep, agent_from_dict, agent_templates, describe_models,
                      load_config, load_custom, load_state, mark_setup_done, save_custom_item,
@@ -101,7 +101,9 @@ Kiểm tra & duyệt code:
   /reject <task> [góp ý]            từ chối; có góp ý thì giao làm lại kèm góp ý đó
 
 Hạn mức:
-  /usage                            thống kê lượt chạy, thời gian, token ước tính theo agent
+  /usage                            thống kê lượt chạy, thời gian, token ước tính theo agent, rồi hỏi
+                                    hạn mức thật từ từng CLI (claude/agy: /usage, opencode stats, codex)
+  /update                           kiểm tra và cập nhật ateam lên bản mới nhất (mở lại app sau đó)
   /cooldown <agent> <phút>          cho agent tạm nghỉ (vd khi bạn biết nó sắp hết hạn mức)
   /cooldown <agent> off             cho agent làm việc lại ngay
 
@@ -126,7 +128,13 @@ Khác:
   /clear                            dọn task & mục tiêu đã kết thúc khỏi bảng (nút 🗑 trên bảng)
   /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
-  /team  /board                     chuyển tab Đội / Bảng việc (Ctrl+T)
+  /team  /board  /term              chuyển tab Đội / Bảng việc / Terminal (Ctrl+T xoay vòng)
+
+Lệnh terminal (tab 💻 Terminal):
+  !<lệnh>                           chạy lệnh trong thư mục dự án, vd !yarn dev, !make test
+  !                                 gợi ý script package.json, target Makefile, lệnh gần đây (Enter chạy)
+  /sh <lệnh>                        như !<lệnh>
+  /stop [số]                        dừng lệnh đang chọn (nút ■ Dừng / ↻ Chạy lại / ✗ Xoá trong tab)
   /help                             trợ giúp này (F1)
   F2 = Ctrl+G, F5 = Ctrl+R          dùng F2/F5 khi terminal chặn phím Ctrl (vd terminal trong VS Code/
                                     Cursor trên Mac: Ctrl+G là Go to Line, Ctrl+R là Run Recent).
@@ -138,7 +146,8 @@ WELCOME = """\
   • Gõ một mục tiêu (vd: Thêm trang đăng nhập) → trưởng nhóm lập kế hoạch, Enter (hoặc F2) để duyệt & chạy
   • /task codex viết test cho utils.py → giao tay cho 1 agent
   • Gõ / để xem các lệnh · @ để nhắc file · Ctrl+V dán ảnh
-  • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: xem cả đội làm việc"""
+  • !yarn dev → chạy lệnh terminal (gõ ! để xem gợi ý) · tab 💻 Terminal
+  • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: đổi tab (Bảng việc / Đội / Terminal)"""
 
 # lệnh cho bảng gợi ý khi gõ "/" (tên, tham số, mô tả ngắn) — giữ khớp với TeamApp.run_command
 COMMANDS = [
@@ -146,6 +155,9 @@ COMMANDS = [
     ("go", "[mục tiêu]", "duyệt kế hoạch nháp và chạy"),
     ("drop", "[mục tiêu]", "bỏ kế hoạch nháp (huỷ mọi task nháp của nó)"),
     ("goal", "<mục tiêu>", "trưởng nhóm lập kế hoạch (bỏ qua workflow mặc định)"),
+    ("sh", "<lệnh>", "chạy lệnh terminal (như !lệnh), vd /sh yarn dev"),
+    ("stop", "[số]", "dừng lệnh terminal đang chọn (hoặc lệnh số đó)"),
+    ("term", "", "mở tab Terminal (lệnh đang chạy)"),
     ("flow", "<tên> <mục tiêu>", "chạy mục tiêu theo workflow"),
     ("assign", "<task> <agent>", "đổi người làm 1 task"),
     ("edit", "<task> <nội dung>", "sửa nội dung task chưa chạy"),
@@ -164,7 +176,8 @@ COMMANDS = [
     ("agents", "", "cấu hình, lệnh chạy của từng agent"),
     ("setup", "", "màn hình thiết lập đội"),
     ("custom", "", "agent & workflow tuỳ chỉnh"),
-    ("usage", "", "thống kê lượt chạy, thời gian, token"),
+    ("usage", "", "thống kê lượt chạy + hạn mức còn lại báo bởi từng CLI"),
+    ("update", "", "cập nhật ateam lên bản mới nhất"),
     ("cooldown", "<agent> <phút|off>", "cho agent tạm nghỉ"),
     ("compact", "[trọng tâm]", "tóm tắt ngữ cảnh chung cho prompt gọn lại"),
     ("clear", "", "dọn task & mục tiêu đã kết thúc khỏi bảng việc"),
@@ -364,7 +377,8 @@ class LogStyler:
     Có trạng thái vì vài khối kéo dài nhiều dòng: prompt mà codex in lại (ẩn đi), khối NOTE/DELEGATE.
     `style(line)` trả None nghĩa là bỏ dòng đó."""
 
-    def __init__(self) -> None:
+    def __init__(self, task_headers: bool = True) -> None:
+        self.task_headers = task_headers  # dòng "$ agent · task · …" của ateam (tắt cho log lệnh terminal)
         self.codex = False      # đang ở header của codex
         self.echo = False       # đang ở đoạn codex in lại prompt
         self.block = ""         # "note" | "delegate" khi đang trong khối nhiều dòng
@@ -400,7 +414,7 @@ class LogStyler:
                     and not RUST_LOG_RE.match(s):
                 return None
             self.echo = False
-        if s.startswith("$ "):  # tiêu đề mỗi lượt chạy: "$ agent · task · model · effort · thư mục"
+        if self.task_headers and s.startswith("$ "):  # tiêu đề lượt chạy: "$ agent · task · model · effort · thư mục"
             self.codex, self.block = False, ""
             parts = s[2:].split(" · ")
             t = Text()
@@ -1461,6 +1475,7 @@ class CommandInput(TextInput):
         self.index = mentions.FileIndex(root)
         self._span: tuple[int, int] | None = None  # vị trí "@…" (hoặc "/…") đang gõ trong value
         self._mode = "file"  # "file": gợi ý @file · "cmd": gợi ý lệnh khi gõ / ở đầu ô · "agent": /task <agent>
+        self._picked = False  # đã dùng ↑↓ chọn trong danh sách kể từ lần gõ cuối
 
     # ------------------------------------------------------------ ảnh
     def insert_mentions(self, paths: list[str]) -> None:
@@ -1504,15 +1519,22 @@ class CommandInput(TextInput):
 
     def close_popup(self) -> None:
         self.popup.display = False
+        self.popup.border_subtitle = "↑↓ chọn · Tab/Enter chèn · Esc đóng"
         self._span = None
 
     def update_mention(self) -> None:
         """Gọi khi nội dung đổi: mở/lọc/đóng danh sách gợi ý theo chữ trước con trỏ."""
+        self._picked = False
         before = self.value[:self.cursor_position]
         c = re.fullmatch(r"/(\S*)", before)
         if c and self.cursor_position == len(self.value):
             self._mode, self._span = "cmd", (0, self.cursor_position)
             self._fill_commands(c.group(1))
+            return
+        sh = re.fullmatch(r"!(.*)", before)
+        if sh and self.cursor_position == len(self.value):
+            self._mode, self._span = "shell", (0, self.cursor_position)
+            self._fill_shell(sh.group(1))
             return
         a = re.fullmatch(r"/(?:task|t) ([^\s:@]*)", before)
         if a and self.cursor_position == len(self.value):
@@ -1551,6 +1573,30 @@ class CommandInput(TextInput):
             popup.add_option(Option(t, id=name))
         popup.highlighted = 0
         popup.border_title = "/ lệnh"
+        popup.display = True
+
+    def _fill_shell(self, query: str) -> None:
+        """Gợi ý cho !: lệnh gần đây, script package.json, target Makefile."""
+        items = shell.project_scripts(self.root)
+        q = query.strip().lower()
+        found = [it for it in items if it[0].lower().startswith(q)]
+        found += [it for it in items if it not in found and (q in it[0].lower() or q in it[1].lower())]
+        if not found or (len(found) == 1 and found[0][0] == query.strip()):
+            self.close_popup()
+            return
+        popup = self.popup
+        popup.clear_options()
+        width = min(36, max(len(c) for c, _d in found[:30]) + 2)
+        room = min(90, self.app.size.width - 1) - 8
+        for cmd, desc in found[:30]:
+            t = Text()
+            t.append(cmd.ljust(width), "bold cyan")
+            t.append(desc, "dim")
+            t.truncate(max(room, width), overflow="ellipsis")
+            popup.add_option(Option(t, id=cmd))
+        popup.highlighted = 0
+        popup.border_title = "! lệnh terminal"
+        popup.border_subtitle = "↑↓ chọn rồi Enter chạy · Tab chèn để sửa · Esc đóng"
         popup.display = True
 
     def _fill_agents(self, query: str) -> None:
@@ -1607,6 +1653,11 @@ class CommandInput(TextInput):
             self.cursor_position = len(self.value)
             self.close_popup()
             return True
+        if self._mode == "shell":
+            self.value = "!" + opt.id
+            self.cursor_position = len(self.value)
+            self.close_popup()
+            return True
         if self._mode == "agent":
             self.value = self.value[:start] + opt.id + " " + self.value[end:]
             self.cursor_position = start + len(opt.id) + 1
@@ -1625,6 +1676,7 @@ class CommandInput(TextInput):
 
     def action_mention_move(self, delta: int) -> None:
         if self.popup_open:
+            self._picked = True  # người dùng tự chọn gợi ý: Enter ở chế độ ! chạy gợi ý đó
             if delta < 0:
                 self.popup.action_cursor_up()
             else:
@@ -1647,6 +1699,10 @@ class CommandInput(TextInput):
                 return
             if typed not in known and self.accept() and self.value.endswith(" "):
                 return
+        elif self.popup_open and self._mode == "shell":
+            # Enter chạy đúng lệnh đã gõ; chỉ khi ô còn trống ("!") hoặc đã ↑↓ chọn thì chạy gợi ý
+            if self._picked or not self.value[1:].strip():
+                self.accept()
         elif self.popup_open and self.accept():
             return
         self.close_popup()
@@ -1977,6 +2033,15 @@ class TeamApp(App):
     #goals { height: auto; max-height: 7; padding: 0 1; border-bottom: solid $primary-darken-3; }
     #tasks { height: 1fr; }
     #board-tools { height: 1; align: right top; display: none; }
+    #term { height: 1fr; }
+    #jobs-side { width: 34%; min-width: 30; max-width: 70; border-right: solid $primary-darken-2; }
+    #jobs { height: 1fr; border: none; }
+    #jobs-empty { height: 1fr; padding: 1 2; color: $text-muted; }
+    #jobs-buttons { height: auto; }
+    #jobs-buttons Button { min-width: 10; margin-right: 1; }
+    #job-view { width: 1fr; }
+    #job-head { height: auto; padding: 0 1; background: $boost; }
+    #job-log { height: 1fr; }
     #board-clear { height: 1; min-width: 0; border: none; padding: 0 1; margin: 0 1 0 0; }
     #tasks-empty { height: 1fr; padding: 1 2; color: $text-muted; }
     #detail { height: auto; max-height: 9; padding: 0 1; background: $boost; }
@@ -2008,7 +2073,7 @@ class TeamApp(App):
     BINDINGS = [
         Binding("f1", "help", "Trợ giúp", priority=True),
         Binding("ctrl+q", "quit", "Thoát", priority=True),
-        Binding("ctrl+t", "toggle_tab", "Bảng việc ⇄ Đội", priority=True),
+        Binding("ctrl+t", "toggle_tab", "Đổi tab", priority=True),
         # F2/F5 đứng trước: Ctrl+G (Go to Line) và Ctrl+R (Run Recent Command) bị terminal tích hợp
         # của VS Code/Cursor trên macOS chặn — footer hiện phím đầu tiên, phím Ctrl vẫn dùng được
         Binding("f2,ctrl+g", "approve", "Duyệt & chạy", priority=True),
@@ -2026,6 +2091,9 @@ class TeamApp(App):
         self.orch = Orchestrator(root, cfg, db, on_event=self.on_orch_event)
         self.view_task = SYSTEM
         self.log_styler = LogStyler()  # trạng thái tô màu của log đang xem (#log)
+        self.shell = shell.ShellManager(root, on_event=self.on_shell_event)  # lệnh terminal (!lệnh)
+        self.view_job: int | None = None
+        self.job_styler = LogStyler(task_headers=False)
         self._rows: dict[int, tuple] = {}
         self._loop_task: asyncio.Task | None = None
         self._frame = 0
@@ -2055,6 +2123,19 @@ class TeamApp(App):
                             if a.enabled:
                                 yield AgentPane(name)
                     yield Timeline(id="timeline")
+            with TabPane("💻 Terminal", id="tab-term"):
+                with Horizontal(id="term"):
+                    with Vertical(id="jobs-side"):
+                        yield OptionList(id="jobs")
+                        yield Static(id="jobs-empty")
+                        with Horizontal(id="jobs-buttons"):
+                            yield Button("■ Dừng", id="job-stop", variant="error")
+                            yield Button("↻ Chạy lại", id="job-restart")
+                            yield Button("✗ Xoá", id="job-remove")
+                    with Vertical(id="job-view"):
+                        yield Static(id="job-head")
+                        yield RichLog(id="job-log", wrap=True, markup=False, highlight=False,
+                                      max_lines=5000, min_width=1)
         yield PlanBar(id="plan")
         yield MentionList(id="mention")
         yield CommandInput(self.root, id="cmd",
@@ -2155,6 +2236,108 @@ class TeamApp(App):
         self.notify(f"🗑 Đã dọn {n_tasks} task" + (f", {n_goals} mục tiêu" if n_goals else ""))
         self.refresh_view()
 
+    # ------------------------------------------------------------------ lệnh terminal
+    def run_shell(self, cmd: str) -> None:
+        cmd = cmd.strip()
+        if not cmd:
+            self.notify("Gõ lệnh sau dấu !, vd !yarn dev (gõ ! để xem gợi ý)", severity="warning")
+            return
+        job = self.shell.start(cmd)
+        self.query_one("#tabs", TabbedContent).active = "tab-term"
+        self.show_job(job.id)
+        self.refresh_view()
+
+    def selected_job(self) -> "shell.ShellJob | None":
+        return self.shell.jobs.get(self.view_job) if self.view_job is not None else None
+
+    def show_job(self, jid: int) -> None:
+        self.view_job = jid
+        log = self.query_one("#job-log", RichLog)
+        log.clear()
+        self.job_styler = LogStyler(task_headers=False)
+        job = self.shell.jobs.get(jid)
+        if job:
+            for line in styled_lines("\n".join(job.lines), self.job_styler):
+                log.write(line)
+        self._refresh_jobs()
+
+    def on_shell_event(self, kind: str, job, line: str) -> None:
+        if kind == "line" and job.id == self.view_job:
+            styled = self.job_styler.style(line)
+            if styled is not None:
+                self.query_one("#job-log", RichLog).write(styled)
+        elif kind == "exit":
+            if job.id == self.view_job:
+                ok = job.status == "done"
+                self.query_one("#job-log", RichLog).write(Text(
+                    f"── {'✓ xong' if ok else '■ đã dừng' if job.status == 'stopped' else '✗ lỗi'}"
+                    f" (mã {job.rc}) sau {fmt_dur(job.finished - job.started)} ──",
+                    "green" if ok else "dim" if job.status == "stopped" else "bold red"))
+            if job.status == "failed":
+                self.notify(f"✗ Lệnh lỗi (mã {job.rc}): {job.cmd}", severity="warning", timeout=5)
+        if kind != "line":
+            self.refresh_view()
+
+    def _job_label(self, job) -> Text:
+        icon, style = {"running": (SPIN[self._frame], f"bold {RUNNING}"), "done": ("✓", "green"),
+                       "failed": ("✗", "bold red"), "stopped": ("■", "dim")}[job.status]
+        t = Text()
+        t.append(f"{icon} ", style)
+        t.append(f"#{job.id} ", "dim")
+        t.append(job.cmd, "bold" if job.alive else "")
+        if job.ports:
+            t.append("  " + " ".join(f":{p}" for p in job.ports), "cyan")
+        t.append(f"  {fmt_dur((job.finished or time.time()) - job.started)}", "dim")
+        return t
+
+    def _refresh_jobs(self) -> None:
+        jobs = list(self.shell.jobs.values())
+        ol = self.query_one("#jobs", OptionList)
+        empty = self.query_one("#jobs-empty", Static)
+        ol.display, empty.display = bool(jobs), not jobs
+        self.query_one("#jobs-buttons").display = bool(jobs)
+        if not jobs:
+            t = Text("Chưa chạy lệnh nào.\n\n", "bold")
+            t.append("Gõ ", "")
+            t.append("!lệnh", "bold cyan")
+            t.append(" ở ô nhập, vd ")
+            t.append("!yarn dev", "bold cyan")
+            t.append(".\nGõ ")
+            t.append("!", "bold cyan")
+            t.append(" để xem gợi ý script của dự án (package.json, Makefile, lệnh gần đây).\n\n")
+            t.append("Lệnh chạy trong thư mục dự án, nhiều lệnh song song được; thoát app (Ctrl+Q) "
+                     "sẽ dừng mọi lệnh đang chạy.", "dim")
+            empty.update(t)
+            self.query_one("#job-head", Static).update(Text("💻 Terminal", "bold"))
+            return
+        if self.view_job not in self.shell.jobs:
+            self.view_job = jobs[-1].id
+            self.show_job(self.view_job)
+            return
+        ids = [str(j.id) for j in jobs]
+        current = [o.id for o in (ol.get_option_at_index(i) for i in range(ol.option_count))]
+        if current != ids:
+            ol.clear_options()
+            ol.add_options([Option(self._job_label(j), id=str(j.id)) for j in jobs])
+        else:
+            for i, j in enumerate(jobs):
+                ol.replace_option_prompt_at_index(i, self._job_label(j))
+        idx = ids.index(str(self.view_job))
+        if ol.highlighted != idx:
+            ol.highlighted = idx
+        job = self.shell.jobs[self.view_job]
+        head = Text()
+        head.append(f"$ {job.cmd}", "bold")
+        label = {"running": ("đang chạy", RUNNING), "done": ("xong", "green"),
+                 "failed": (f"lỗi (mã {job.rc})", "bold red"), "stopped": ("đã dừng", "dim")}[job.status]
+        head.append(f"   {label[0]}", label[1])
+        head.append(f" · {fmt_dur((job.finished or time.time()) - job.started)}", "dim")
+        for p in job.ports:
+            head.append("   ")
+            head.append(f"http://localhost:{p}", "underline cyan")
+        self.query_one("#job-head", Static).update(head)
+        self.query_one("#job-stop", Button).disabled = not job.alive
+
     def write_sys(self, text: str) -> None:
         self.query_one("#tabs", TabbedContent).active = "tab-board"
         if self.view_task != SYSTEM:
@@ -2173,7 +2356,7 @@ class TeamApp(App):
         self._frame = (self._frame + 1) % len(SPIN)
         for fn in (self._refresh_agents, self._refresh_goals, self._refresh_table,
                    self._refresh_detail, self._refresh_panes, self._refresh_timeline,
-                   self._refresh_plan):
+                   self._refresh_plan, self._refresh_jobs):
             try:
                 fn()
             except Exception as e:  # không để lỗi vẽ làm treo app
@@ -2200,6 +2383,11 @@ class TeamApp(App):
             t.append(f" ({a.label()}) ", "dim")
         if self.orch.paused:
             chunks.append(Text("  ⏸ TẠM DỪNG (/resume)", "bold yellow"))
+        jobs = self.shell.running()
+        if jobs:
+            ports = sorted({p for j in jobs for p in j.ports})
+            chunks.append(Text(f"  💻 {len(jobs)} lệnh đang chạy" + (
+                " (" + ", ".join(f":{p}" for p in ports) + ")" if ports else "") + " · Ctrl+T", RUNNING))
         w = self.query_one("#agents", Static)
         w.update(flow_chunks(chunks, w.content_region.width))
 
@@ -2383,6 +2571,19 @@ class TeamApp(App):
             event.stop()
             self.clear_board()
             return
+        if bid.startswith("job-"):
+            event.stop()
+            job = self.selected_job()
+            if job is None:
+                return
+            if bid == "job-stop" and not self.shell.stop(job):
+                self.notify("Lệnh này đã dừng")
+            elif bid == "job-restart":
+                self.show_job(self.shell.restart(job).id)
+            elif bid == "job-remove" and not self.shell.remove(job):
+                self.notify("Đang chạy — Dừng trước rồi mới xoá", severity="warning")
+            self.refresh_view()
+            return
         if not bid.startswith("plan-"):
             return
         event.stop()
@@ -2398,6 +2599,15 @@ class TeamApp(App):
         self.refresh_view()
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option_list.id == "jobs" and event.option.id:
+            event.stop()
+            ol = event.option_list
+            # dựng lại danh sách sinh sự kiện "chọn dòng 0" đến trễ: bỏ qua nếu không còn là dòng đang chọn
+            if ol.highlighted is None or ol.get_option_at_index(ol.highlighted).id != event.option.id:
+                return
+            if int(event.option.id) != self.view_job:
+                self.show_job(int(event.option.id))
+            return
         if event.option_list.id == "plan-tasks":
             event.stop()
             self.query_one("#plan", PlanBar).show_detail(self)
@@ -2474,7 +2684,8 @@ class TeamApp(App):
 
     def action_toggle_tab(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
-        tabs.active = "tab-team" if tabs.active == "tab-board" else "tab-board"
+        order = ["tab-board", "tab-team", "tab-term"]
+        tabs.active = order[(order.index(tabs.active) + 1) % len(order)] if tabs.active in order else order[0]
         self.refresh_view()
 
     def action_approve(self) -> None:
@@ -2522,6 +2733,7 @@ class TeamApp(App):
         self.show_task(SYSTEM)
 
     async def action_quit(self) -> None:
+        self.shell.stop_all()  # không để lại dev server mồ côi sau khi thoát
         for run in list(self.orch.runs.values()):
             if run is not None:
                 run.cancel()
@@ -2560,6 +2772,9 @@ class TeamApp(App):
         event.input.value = ""
         if not text:
             return
+        if text.startswith("!"):  # lệnh terminal: !yarn dev
+            self.run_shell(text[1:])
+            return
         if not text.startswith("/"):
             self.start_goal(text, self.cfg.default_workflow)
             return
@@ -2588,6 +2803,23 @@ class TeamApp(App):
         out.append("Đang tạm nghỉ: " + (", ".join(cds) if cds else "không"))
         out.append("(~token = ước tính từ độ dài prompt và output, chưa gồm file agent tự đọc)")
         return "\n".join(out)
+
+    async def _cli_usage(self) -> None:
+        """Hỏi song song hạn mức của từng agent bằng chính CLI của nó, in vào log hệ thống khi xong."""
+        names = list(self.cfg.active_agents())
+        self.write_sys(f"\nĐang hỏi hạn mức từ CLI của {', '.join(names)}…")
+
+        def done(name: str, cmd: str, lines: list[str]) -> None:
+            self.write_sys(f"\n📊 {name}" + (f"  ({cmd})" if cmd else "") + "\n"
+                           + "\n".join("  " + ln for ln in lines))
+        await self.orch.usage_all(names, on_done=done)
+
+    async def _self_update(self) -> None:
+        self.notify("Đang kiểm tra bản mới…", timeout=3)
+        ok, msg = await update.run_update(lambda line: self.orch.log("  " + line))
+        self.orch.log(("✓ " if ok else "ℹ ") + msg)
+        self.notify(msg, severity="information" if ok else "warning", timeout=12)
+        self.show_task(SYSTEM)
 
     def models_text(self, only: str | None = None) -> str:
         return (describe_models(self.cfg, only) + "\nChọn: /model <agent>, /effort <agent> hoặc bấm vào "
@@ -2785,6 +3017,9 @@ class TeamApp(App):
                 o.log(f"⚙ Kiểm tra sau mỗi task: `{rest}` (sửa tối đa {v.max_fix_attempts} lần)")
         elif cmd == "usage":
             self.write_sys(self.usage_text())
+            self.run_worker(self._cli_usage(), exclusive=True, group="cli-usage")
+        elif cmd == "update":
+            self.run_worker(self._self_update(), exclusive=True, group="self-update")
         elif cmd == "cooldown":
             parts = rest.split()
             if not parts:
@@ -2858,6 +3093,17 @@ class TeamApp(App):
             return
         elif cmd == "goal":
             self.start_goal(rest.strip())
+        elif cmd == "sh":
+            self.run_shell(rest)
+        elif cmd == "stop":
+            job = self.shell.jobs.get(num(rest)) if rest.strip() else self.selected_job()
+            if not job or not self.shell.stop(job):
+                self.notify("Không có lệnh nào đang chạy để dừng", severity="warning")
+            else:
+                self.notify(f"■ Đã dừng: {job.cmd}")
+        elif cmd == "term":
+            self.query_one("#tabs", TabbedContent).active = "tab-term"
+            self.refresh_view()
         elif cmd in ("flow", "flows"):
             name, _, goal = rest.partition(" ")
             if not name or not goal.strip():

@@ -183,6 +183,16 @@ với code nói về "rate limit"), tìm mẫu trong 30 dòng cuối. `reset_tim
 `|<epoch>` (Claude), `try again in N minutes`, `resets at 3pm`; không có thì `cooldown_minutes`.
 Cooldown lưu ở `~/.config/ateam/state.json` (`cooldown`), dùng chung mọi dự án.
 
+## Lệnh terminal (`!lệnh`)
+
+`shell.ShellManager` (một instance trong `TeamApp`, tách khỏi Orchestrator — lệnh của người dùng không phải
+task): mỗi `!lệnh` là một `ShellJob` chạy `$SHELL -lc <lệnh>` qua `Run(use_pty=True, timeout=10 ngày)` trong
+thư mục dự án, ghi `.ateam/logs/sh<id>.log`, giữ 5000 dòng cuối trong bộ nhớ, bắt port bằng `PORT_RE`.
+Sự kiện `on_event("line"|"exit"|"changed", job, line)` → `TeamApp.on_shell_event` vẽ tab Terminal (`#jobs`,
+`#job-log` qua `LogStyler(task_headers=False)`). `action_quit` gọi `stop_all()` (killpg) trước khi thoát.
+Gợi ý `!` (`CommandInput` chế độ `shell`) lấy từ `shell.project_scripts`; lệnh gần đây ở `recent_commands`
+trong `.ateam/state.json` của dự án. Enter chạy lệnh đã gõ, chỉ chạy gợi ý khi ô trống hoặc đã ↑↓ chọn.
+
 ## Xem diff
 
 `Orchestrator.diff_files(tid)` chạy `git -c core.quotePath=false diff -M --no-color` (worktree: `base..head`

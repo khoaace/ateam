@@ -373,7 +373,24 @@ def cmd_usage(args) -> int:
     cds = load_cooldowns()
     print("Đang tạm nghỉ: " + (", ".join(f"{a} đến {_t.strftime('%H:%M %d/%m', _t.localtime(t))}"
                                          for a, t in cds.items()) or "không"))
+    if args.local:
+        return 0
+    # hạn mức thật do CLI của từng agent báo (song song, in theo thứ tự xong trước)
+    orch = _orch(args)
+
+    def done(name: str, cmd: str, lines: list[str]) -> None:
+        print(f"\n📊 {name}" + (f"  ({cmd})" if cmd else ""))
+        for ln in lines:
+            print("  " + ln)
+    asyncio.run(orch.usage_all(on_done=done))
     return 0
+
+
+def cmd_update(args) -> int:
+    from .update import run_update
+    ok, msg = asyncio.run(run_update(print, force=args.force))
+    print(("✓ " if ok else "ℹ ") + msg)
+    return 0 if ok or "mới nhất" in msg else 1
 
 
 def cmd_cooldown(args) -> int:
@@ -440,7 +457,10 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("feedback", nargs="*")
     s = sub.add_parser("verify", help="đặt lệnh kiểm tra sau mỗi task cho dự án (off = tắt)")
     s.add_argument("command", nargs="*")
-    sub.add_parser("usage", help="thống kê lượt chạy và hạn mức theo agent")
+    s = sub.add_parser("usage", help="thống kê lượt chạy và hạn mức theo agent (hỏi cả CLI của từng agent)")
+    s.add_argument("--local", action="store_true", help="chỉ thống kê của ateam, không hỏi các CLI")
+    s = sub.add_parser("update", help="cập nhật ateam lên bản mới nhất")
+    s.add_argument("--force", action="store_true", help="cài lại kể cả khi đã là bản mới nhất")
     s = sub.add_parser("cooldown", help="cho agent tạm nghỉ N phút, hoặc 'off'")
     s.add_argument("agent")
     s.add_argument("minutes", nargs="?")
@@ -453,7 +473,7 @@ def main(argv: list[str] | None = None) -> int:
                 "compact": cmd_compact, "list": cmd_list,
                 "log": cmd_log, "run": cmd_run, "set": cmd_set, "models": cmd_models, "diff": cmd_diff,
                 "merge": cmd_merge, "reject": cmd_reject, "verify": cmd_verify,
-                "usage": cmd_usage, "cooldown": cmd_cooldown}
+                "usage": cmd_usage, "update": cmd_update, "cooldown": cmd_cooldown}
     try:
         return handlers[args.cmd](args)
     except KeyboardInterrupt:

@@ -69,3 +69,74 @@ def save_cooldown(agent: str, until: float | None) -> None:
         cd[agent] = until
     st["cooldown"] = cd
     save_state(st)
+
+
+def _window(minutes) -> str:
+    try:
+        m = int(minutes)
+    except (TypeError, ValueError):
+        return "?"
+    if m % 10080 == 0:
+        return f"{m // 10080} tuần" if m > 10080 else "tuần"
+    if m % 1440 == 0:
+        return f"{m // 1440} ngày"
+    if m % 60 == 0:
+        return f"{m // 60} giờ"
+    return f"{m} phút"
+
+
+def codex_rate_limits(home=None, max_files: int = 30) -> list[str] | None:
+    """Hạn mức Codex lấy từ ảnh chụp `rate_limits` mà codex ghi vào file phiên (sự kiện token_count) —
+    codex không có lệnh headless nào in hạn mức mà không gọi model. None nếu chưa có phiên nào."""
+    import json
+    import os
+    from pathlib import Path
+    root = Path(home or os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "sessions"
+    try:
+        files = sorted(root.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)[:max_files]
+    except OSError:
+        return None
+    for f in files:
+        snap, when = None, None
+        try:
+            for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                if '"rate_limits"' not in line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except ValueError:
+                    continue
+                rl = (ev.get("payload") or {}).get("rate_limits")
+                if isinstance(rl, dict):
+                    snap, when = rl, ev.get("timestamp")
+        except OSError:
+            continue
+        if not snap:
+            continue
+        out = []
+        if snap.get("plan_type"):
+            out.append(f"Gói: {snap['plan_type']}")
+        for key, label in (("primary", "Hạn mức chính"), ("secondary", "Hạn mức phụ")):
+            w = snap.get(key)
+            if not isinstance(w, dict):
+                continue
+            used = w.get("used_percent")
+            line = f"{label} ({_window(w.get('window_minutes'))}): đã dùng {used:g}%" if isinstance(
+                used, (int, float)) else f"{label}: ?"
+            if w.get("resets_at"):
+                line += " · hồi lúc " + time.strftime("%H:%M %d/%m", time.localtime(int(w["resets_at"])))
+            out.append(line)
+        cr = snap.get("credits")
+        if isinstance(cr, dict) and (cr.get("has_credits") or cr.get("unlimited")):
+            out.append("Credits: " + ("không giới hạn" if cr.get("unlimited") else str(cr.get("balance"))))
+        if snap.get("rate_limit_reached_type"):
+            out.append(f"⚠ Đang chạm hạn mức: {snap['rate_limit_reached_type']}")
+        if when:
+            try:
+                t = dt.datetime.fromisoformat(str(when).replace("Z", "+00:00")).timestamp()
+                out.append("(số liệu lúc " + time.strftime("%H:%M %d/%m", time.localtime(t))
+                           + " — lần chạy codex gần nhất)")
+            except ValueError:
+                pass
+        return out
+    return None

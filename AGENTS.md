@@ -28,6 +28,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/config.py` | `DEFAULT_CONFIG` (TOML), dataclass `Config`/`AgentConfig`/`VerifyConfig`/`Workflow`, `AgentConfig.argv()`, state.json, custom.toml (agent/workflow tuỳ chỉnh, mẫu) |
 | `ateam/db.py` | Schema SQLite + migration cột, `Task`/`Goal`, thống kê `runs` |
 | `ateam/prompts.py` | Prompt gửi trưởng nhóm/thành viên (tiếng Anh) + bóc JSON, DELEGATE, NOTE, SUMMARY |
+| `ateam/shell.py` | Lệnh terminal của người dùng (`!lệnh`, tab 💻 Terminal): `ShellManager` chạy qua `Run` (pty, huỷ process group), gợi ý script package.json/Makefile, bắt port |
 | `ateam/diffview.py` | Màn hình diff kiểu VS Code: bóc `git diff`, ghép dòng hai cột, tô cú pháp (pygments qua rich) và chữ đổi trong dòng; `DiffScreen` ở `tui.py` dùng |
 | `ateam/mentions.py` | `@file`: gợi ý file/thư mục cho TUI, đổi `@đường/dẫn` sang cú pháp từng CLI (`SYNTAX`) |
 | `ateam/clipboard.py` | Ctrl+V dán ảnh: đọc clipboard (osascript/pngpaste/wl-paste/xclip), lưu `.ateam/images/`, nhận ảnh kéo-thả |

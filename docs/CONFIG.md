@@ -61,6 +61,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 | `model_args`, `effort_args` | `[]` | Cờ chèn trước prompt khi có model/effort (`{model}`, `{effort}` được thay) |
 | `efforts` | danh mục | Mức effort hợp lệ (kiểm tra, gợi ý, bảng chọn, giới hạn lựa chọn của trưởng nhóm). Vắng = theo `CATALOG`; `[]` = không có |
 | `models` | danh mục | Model gợi ý cho bảng chọn `/model`, tab Đội, `/models`. Vắng = `CATALOG` trong `config.py` theo tên lệnh (`claude`, `codex`, `agy`, `opencode`). Chỉ là gợi ý: tên ngoài danh sách vẫn đặt được |
+| `usage_command` | danh mục | argv in hạn mức/usage của CLI cho `/usage`: `claude -p /usage`, `agy -p /usage` (qua pty nếu `pty = true`), `opencode stats --days 7`; tối đa 20 dòng. Vắng với `codex` = đọc `rate_limits` trong file phiên mới nhất ở `$CODEX_HOME/sessions` (mặc định `~/.codex`) |
 | `models_command` | danh mục | argv liệt kê model thật (`opencode models`, `agy models`, `codex debug models`; output dạng chữ mỗi dòng một model, hoặc JSON `{"models": [{"slug", "visibility"}]}` thì bỏ model `hide`); chạy song song ở màn hình thiết lập (`/setup`, lần đầu mở app), khi mở app mà chưa có kết quả, hoặc `/models <agent> làm mới`, kết quả lưu ở `state.json` và đứng trước `models` |
 | `models_filter` | `""` | Chỉ giữ model chứa chữ này. Vắng: nếu có model chứa tên agent (vd `grok`) thì chỉ giữ các model đó |
 | `fallback` | `[]` | Agent thay thế khi agent này hết hạn mức (theo thứ tự) |

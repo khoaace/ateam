@@ -26,6 +26,10 @@ ateam doctor
 
 Hoặc tải file `.zip` từ trang docs, rồi chạy `./install.sh` trong thư mục giải nén.
 
+**Cập nhật**: gõ `/update` trong app (hoặc `ateam update`) — ateam so phiên bản với trang docs, có bản mới
+thì chạy lại lệnh cài ở trên; xong thoát rồi mở lại app. Bản cài từ mã nguồn (`pip install -e`) thì cập
+nhật bằng `git pull`.
+
 ## Cài đặt từ mã nguồn (macOS)
 
 ```bash
@@ -151,6 +155,19 @@ Sau mỗi task có thay đổi file, ateam chạy lệnh kiểm tra trong đúng
 kèm log lỗi (mặc định chính agent đó, tối đa 2 lần; đổi bằng `[verify] fix_agent`, `max_fix_attempts`).
 Vẫn fail thì task báo lỗi. Agent chỉ đọc/nghiên cứu có thể đặt `verify = false`.
 
+## Chạy lệnh terminal (dev server, test, build…)
+
+Gõ `!` rồi lệnh ở ô nhập, ví dụ `!yarn dev`, `!make test` (hoặc `/sh yarn dev`). Lệnh chạy trong thư mục
+dự án, output hiện trực tiếp ở tab **💻 Terminal** (Ctrl+T xoay vòng Bảng việc → Đội → Terminal):
+danh sách lệnh bên trái (đang chạy / ✓ xong / ✗ lỗi / ■ đã dừng, port phát hiện được như `:3000`),
+output của lệnh đang chọn bên phải kèm link `http://localhost:<port>`, nút **■ Dừng**, **↻ Chạy lại**, **✗ Xoá**.
+Nhiều lệnh chạy song song được; thanh agent ở tab Bảng việc nhắc khi còn lệnh đang chạy.
+
+Gõ `!` để xem gợi ý: lệnh chạy gần đây, script trong `package.json` (tự dùng `pnpm`/`yarn`/`bun`/`npm` theo
+lockfile), target trong `Makefile`. ↑↓ chọn rồi Enter chạy, Tab điền vào ô để sửa; Enter khi đã gõ lệnh thì
+chạy đúng lệnh đã gõ. `/stop [số]` dừng lệnh. Thoát app (Ctrl+Q) sẽ dừng mọi lệnh đang chạy. Log đầy đủ ở
+`.ateam/logs/sh<số>.log`.
+
 ## Xem diff và duyệt merge (chế độ worktree)
 
 Đặt `merge = "review"`: task xong (và qua kiểm tra) dừng ở trạng thái **chờ duyệt**.
@@ -168,7 +185,11 @@ Task phụ thuộc chỉ chạy sau khi task trước được merge. Ngoài app
 Khi một agent báo hết hạn mức (rate limit / usage limit), ateam cho nó tạm nghỉ đến lúc hạn mức hồi
 (đọc từ thông báo của CLI, không có thì 30 phút) và chuyển task sang agent trong `fallback` của nó.
 Trưởng nhóm hết hạn mức thì `lead_fallback` lập kế hoạch/review thay. `/usage` (hoặc `ateam usage`) xem số
-lượt, thời gian, token ước tính theo agent; `/cooldown codex 60` cho nghỉ tay, `/cooldown codex off` để bỏ.
+lượt, thời gian, token ước tính theo agent, rồi hỏi song song **hạn mức thật** từ CLI của từng agent:
+Claude Code `claude -p /usage` (% phiên/tuần đã dùng, giờ hồi), Antigravity `agy -p /usage` (quota còn lại
+theo nhóm model), OpenCode `opencode stats --days 7` (token, chi phí), Codex đọc ảnh chụp hạn mức trong file
+phiên gần nhất (`~/.codex/sessions`; codex không có lệnh xem hạn mức mà không gọi model). `ateam usage --local`
+bỏ phần hỏi CLI; `/cooldown codex 60` cho nghỉ tay, `/cooldown codex off` để bỏ.
 
 ## Các agent giao việc cho nhau thế nào?
 

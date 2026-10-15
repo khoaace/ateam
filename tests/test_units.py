@@ -499,3 +499,50 @@ def test_diffview_render_fits_width():
     fd = added_file("a.py", "x = 1\ny = 2")
     assert (fd.status, fd.added) == ("A", 2)
     assert added_file("a.bin", None).binary
+
+
+def test_self_update(monkeypatch):
+    """/update: đã mới nhất -> không làm gì; cài từ mã nguồn -> chỉ dẫn git pull; có bản mới -> chạy get.sh."""
+    import asyncio
+
+    from ateam import __version__, update
+
+    async def latest_same():
+        return __version__
+
+    async def latest_new():
+        return "99.0.0"
+
+    lines = []
+    monkeypatch.setattr(update, "latest_version", latest_same)
+    assert asyncio.run(update.run_update(lines.append)) == (False, f"Đang dùng bản mới nhất ({__version__}).")
+    monkeypatch.setattr(update, "latest_version", latest_new)
+    monkeypatch.setattr(update, "editable_source", lambda: Path("/src/ateam"))
+    ok, msg = asyncio.run(update.run_update(lines.append))
+    assert not ok and "git -C /src/ateam pull" in msg and not lines
+    monkeypatch.setattr(update, "editable_source", lambda: None)
+    monkeypatch.setattr(update, "UPDATE_CMD", ["bash", "-c", "echo '→ Tải ateam'; echo '✓ Xong.'"])
+    ok, msg = asyncio.run(update.run_update(lines.append))
+    assert ok and "99.0.0" in msg and lines[-2:] == ["→ Tải ateam", "✓ Xong."]
+    monkeypatch.setattr(update, "UPDATE_CMD", ["bash", "-c", "exit 3"])
+    ok, msg = asyncio.run(update.run_update(lines.append))
+    assert not ok and "mã thoát 3" in msg
+    assert update.parse_version("0.10.0") > update.parse_version("0.9.9")
+
+
+def test_shell_project_scripts_and_ports(tmp_path):
+    """Gợi ý cho !: lệnh gần đây trước, script package.json theo lockfile, target Makefile; bắt port."""
+    import json
+
+    from ateam.shell import find_ports, project_scripts
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"dev": "next dev -p 3000", "lint": "eslint"}}))
+    assert [c for c, _ in project_scripts(tmp_path, [])] == ["npm run dev", "npm run lint"]
+    (tmp_path / "yarn.lock").write_text("")
+    (tmp_path / "pnpm-lock.yaml").write_text("")   # pnpm ưu tiên hơn yarn
+    (tmp_path / "Makefile").write_text(".PHONY: test\nCC := gcc\ntest: build\n\tpytest\nbuild:\n\tcc\n%.o: %.c\n")
+    got = project_scripts(tmp_path, ["make test", "ls -la"])
+    assert [c for c, _ in got] == ["make test", "ls -la", "pnpm dev", "pnpm lint", "make build"]
+    assert dict(got)["pnpm dev"] == "next dev -p 3000" and dict(got)["make test"] == "chạy gần đây"
+    assert find_ports("  - Local:        http://localhost:3000") == [3000]
+    assert find_ports("ready - started server on 0.0.0.0:5173, url: http://127.0.0.1:5173") == [5173]
+    assert find_ports("Listening on port 8080") == [8080] and find_ports("version 1.2.3") == []

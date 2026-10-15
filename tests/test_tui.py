@@ -924,3 +924,144 @@ def test_tui_diff_screen_shared_mode_and_vscode(env, project, monkeypatch, tmp_p
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
+
+
+def test_tui_usage_and_update_commands(env, project, monkeypatch):
+    """/usage in thêm hạn mức do từng CLI báo; /update có bản mới thì chạy lệnh cài và nhắc mở lại app."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import RichLog
+
+    from ateam import update
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import TeamApp
+
+    async def newer():
+        return "99.0.0"
+    monkeypatch.setattr(update, "latest_version", newer)
+    monkeypatch.setattr(update, "editable_source", lambda: None)
+    monkeypatch.setattr(update, "UPDATE_CMD", ["bash", "-c", "echo '→ Tải ateam (main)'"])
+
+    def log_text(app) -> str:
+        return "\n".join("".join(seg.text for seg in strip) for strip in app.query_one("#log", RichLog).lines)
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.3)
+            app.run_command("/usage")
+            for _ in range(60):
+                await pilot.pause(0.25)
+                if all(f"📊 {n}" in log_text(app) for n in ("claude", "codex", "antigravity", "grok")):
+                    break
+            text = log_text(app)
+            assert "Hôm nay:" in text and "Current session: 41% used" in text, text
+            assert "Weekly Limit Remaining" in text and "Chưa có phiên codex" in text
+            app.run_command("/update")
+            for _ in range(40):
+                await pilot.pause(0.25)
+                if "Đã cập nhật lên 99.0.0" in (project / ".ateam/logs/system.log").read_text():
+                    break
+            sys_log = (project / ".ateam/logs/system.log").read_text()
+            assert "→ Tải ateam (main)" in sys_log and "Đã cập nhật lên 99.0.0" in sys_log
+            assert "mở lại" in sys_log
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+
+
+def test_tui_terminal_tab(env, project, monkeypatch):
+    """!lệnh chạy trong tab Terminal: gợi ý script, output trực tiếp, dừng / lỗi / chạy lại / xoá,
+    thoát app dừng mọi lệnh đang chạy."""
+    import json
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv("SHELL", "/bin/sh")
+    git_init(project)
+    (project / "package.json").write_text(json.dumps({"scripts": {"dev": "echo dev"}}))
+    (project / "yarn.lock").write_text("")
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import OptionList, RichLog, TabbedContent
+
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import CommandInput, MentionList, TeamApp
+
+    def job_log(app) -> str:
+        return "\n".join("".join(seg.text for seg in strip) for strip in app.query_one("#job-log", RichLog).lines)
+
+    async def wait(pilot, cond, n=60):
+        for _ in range(n):
+            await pilot.pause(0.1)
+            if cond():
+                return True
+        return False
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(150, 40)) as pilot:
+            await pilot.pause(0.3)
+            box = app.query_one("#cmd", CommandInput)
+            popup = app.query_one("#mention", MentionList)
+            await pilot.press("!")
+            await pilot.pause(0.2)
+            assert popup.display and popup.get_option_at_index(0).id == "yarn dev"
+            await pilot.press("escape")
+            box.value = ""
+            # gõ đúng lệnh trùng một phần với gợi ý: Enter chạy lệnh đã gõ, không chạy gợi ý
+            await pilot.press(*"!yarn")
+            await pilot.pause(0.1)
+            assert popup.display
+            await pilot.press("tab")                     # Tab: điền gợi ý để sửa
+            assert box.value == "!yarn dev" and not popup.display
+            box.value = ""
+            # lệnh chạy lâu: sang tab Terminal, thấy output, bắt port
+            box.value = "!echo 'xin chào'; echo 'Local: http://localhost:4321'; sleep 30"
+            await pilot.press("enter")
+            assert await wait(pilot, lambda: "xin chào" in job_log(app))
+            assert app.query_one("#tabs", TabbedContent).active == "tab-term"
+            job = app.selected_job()
+            assert job.alive and job.ports == [4321]
+            assert await wait(pilot, lambda: "1 lệnh đang chạy (:4321)" in str(app.query_one("#agents").render()))
+            app.run_command("/stop")
+            assert await wait(pilot, lambda: job.rc is not None)
+            assert job.status == "stopped"
+            # lệnh lỗi
+            app.run_command("/sh exit 3")
+            assert await wait(pilot, lambda: app.selected_job().rc is not None)
+            failed = app.selected_job()
+            await pilot.pause(0.2)
+            head = str(app.query_one("#job-head").render())
+            assert (failed.status, failed.rc) == ("failed", 3) and "lỗi (mã 3)" in head, (failed.status, failed.rc, head)
+            # chạy lại -> job mới; xoá job đã xong
+            await pilot.click("#job-restart")
+            assert await wait(pilot, lambda: len(app.shell.jobs) == 3 and app.selected_job().rc is not None)
+            removed = app.selected_job()
+            await pilot.click("#job-remove")
+            assert await wait(pilot, lambda: removed.id not in app.shell.jobs)
+            assert await wait(pilot, lambda: app.query_one("#jobs", OptionList).option_count == 2)
+            # thoát app: dừng mọi lệnh đang chạy
+            box.focus()  # vừa bấm nút Xoá: focus đang ở nút
+            box.value = "!sleep 30"
+            await pilot.press("enter")
+            assert await wait(pilot, lambda: any(j.cmd == "sleep 30" and j.alive for j in app.shell.jobs.values()))
+            sleeper = next(j for j in app.shell.jobs.values() if j.cmd == "sleep 30")
+            await pilot.press("ctrl+q")
+        return sleeper
+
+    sleeper = asyncio.run(main())
+    assert sleeper.status == "stopped"
+    assert (project / ".ateam" / "logs" / "sh1.log").read_text().startswith("$ echo 'xin chào'")

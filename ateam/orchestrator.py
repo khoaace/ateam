@@ -421,6 +421,45 @@ class Orchestrator:
             msg += f" ⚠ model đang chọn '{a.model}' không có trong danh sách — chọn lại: /model {agent}"
         return msg
 
+    async def agent_usage(self, agent: str, timeout: float = 60) -> tuple[str, list[str]]:
+        """Hạn mức / usage do chính CLI của agent báo: (lệnh đã dùng, các dòng kết quả)."""
+        a = self.cfg.agents.get(agent)
+        if not a:
+            return "", [f"Không có agent '{agent}'"]
+        if not a.usage_command:
+            if Path(a.binary).name == "codex":
+                lines = limits.codex_rate_limits()
+                return "~/.codex/sessions", lines or ["Chưa có phiên codex nào ghi hạn mức — chạy 1 task codex trước."]
+            return "", ["CLI này không có lệnh xem usage (đặt usage_command trong cấu hình nếu có)"]
+        cmd = " ".join(a.usage_command)
+        if not shutil.which(a.usage_command[0]):
+            return cmd, [f"Chưa cài lệnh '{a.usage_command[0]}'"]
+        run = Run(list(a.usage_command), str(self.root), self.env_for(), use_pty=a.pty,
+                  timeout=timeout, on_line=lambda _l: None)
+        try:
+            code = await run.start()
+        except Exception as e:
+            return cmd, [f"Không chạy được: {e}"]
+        lines = [ln for ln in run.lines if ln.strip()]
+        if len(lines) > 20:  # opencode stats kèm bảng công cụ dài: giữ phần tổng quan / chi phí
+            lines = lines[:20] + [f"… (còn {len(lines) - 20} dòng — chạy `{cmd}` để xem đủ)"]
+        if run.timed_out:
+            lines.append(f"(hết {int(timeout)} giây chờ)")
+        elif code != 0:
+            lines.append(f"(mã thoát {code})")
+        return cmd, lines or ["(không in gì)"]
+
+    async def usage_all(self, names: list[str] | None = None, on_done=None) -> dict[str, tuple[str, list[str]]]:
+        """Hỏi song song hạn mức của các agent đang bật. on_done(agent, cmd, lines) gọi khi từng cái xong."""
+        names = names if names is not None else list(self.cfg.active_agents())
+
+        async def one(n: str):
+            cmd, lines = await self.agent_usage(n)
+            if on_done:
+                on_done(n, cmd, lines)
+            return n, (cmd, lines)
+        return dict(await asyncio.gather(*(one(n) for n in names)))
+
     async def discover_all(self, names: list[str] | None = None, timeout: float = 20,
                            on_done=None) -> dict[str, str]:
         """Hỏi song song mọi agent đã cài có models_command. on_done(agent, msg) gọi khi từng cái xong."""

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 from conftest import ateam, git_init, tasks, write_project_config
 
@@ -286,3 +287,26 @@ def test_compact_replaces_notes_with_lead_summary(env, project, tmp_path):
     ateam(env, project, "run", "-q")
     last = (tmp_path / "full.log").read_text().split("<<codex>>")[-1]
     assert "Mục tiêu đã xong" in last and "ghi chú mới" in last and "đừng sửa vendor/" not in last
+
+
+def test_usage_asks_each_cli(env, project):
+    """ateam usage: thống kê của ateam + hạn mức do CLI từng agent báo (claude/agy: -p /usage,
+    opencode stats rút gọn, codex đọc rate_limits trong file phiên)."""
+    r = ateam(env, project, "usage")
+    out = r.stdout
+    assert "📊 claude  (claude -p /usage)" in out and "Current session: 41% used" in out, out
+    assert "📊 antigravity  (agy -p /usage)" in out and "Weekly Limit Remaining  29%" in out
+    assert "📊 grok  (opencode stats --days 7)" in out and "stat dòng 20" in out
+    assert "stat dòng 21" not in out and "còn 10 dòng" in out
+    assert "Chưa có phiên codex nào" in out
+    sess = Path(env["CODEX_HOME"]) / "sessions" / "2026" / "10" / "15"
+    sess.mkdir(parents=True)
+    (sess / "rollout-x.jsonl").write_text(
+        '{"timestamp":"2026-10-15T08:12:05Z","type":"event_msg","payload":{"type":"token_count",'
+        '"rate_limits":{"plan_type":"plus","primary":{"used_percent":12.5,"window_minutes":300,'
+        '"resets_at":1792651616},"secondary":{"used_percent":3,"window_minutes":10080,"resets_at":1792651616}}}}\n')
+    out = ateam(env, project, "usage").stdout
+    assert "Gói: plus" in out and "Hạn mức chính (5 giờ): đã dùng 12.5%" in out, out
+    assert "Hạn mức phụ (tuần): đã dùng 3%" in out
+    out = ateam(env, project, "usage", "--local").stdout
+    assert "📊" not in out and "Đang tạm nghỉ" in out

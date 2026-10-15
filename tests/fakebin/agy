@@ -8,6 +8,10 @@ if [ "${1:-}" = "models" ]; then
 fi
 source "$(dirname "$0")/_common.sh"
 P="$fake_prompt"
+if [ "$P" = "/usage" ]; then
+  printf 'Quota:\r\nGemini Models  Weekly Limit Remaining  29%%  2026-10-21 09:25 +07\r\n'
+  exit 0
+fi
 printf '\033[32mantigravity\033[0m đang đọc...\r\n'
 printf 'loading 10%%\rloading 100%%\n'
 if [[ "$P" == *"#1 by codex"* ]]; then echo "thấy kết quả task 1"; fi

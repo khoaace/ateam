@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.4 — 15/10/2026
+
+- **Chạy lệnh terminal trong app**: gõ `!yarn dev` (hoặc `/sh …`) — lệnh chạy trong thư mục dự án, output trực
+  tiếp ở tab mới **💻 Terminal** (Ctrl+T xoay vòng ba tab): danh sách lệnh với trạng thái, thời gian, port phát
+  hiện được (`:3000` + link), nút Dừng / Chạy lại / Xoá, nhiều lệnh song song. Gõ `!` để xem gợi ý: lệnh gần
+  đây, script `package.json` (đúng pnpm/yarn/bun/npm theo lockfile), target `Makefile`. `/stop [số]`, `/term`.
+  Thoát app dừng mọi lệnh đang chạy (không để lại dev server mồ côi).
+- **`/update`** (và `ateam update`): kiểm tra phiên bản mới trên trang docs, có bản mới thì chạy lệnh cài một
+  dòng (`get.sh`) ngay trong app, in tiến trình vào log hệ thống, xong nhắc thoát rồi mở lại. Bản cài từ mã
+  nguồn (`pip install -e`) không bị ghi đè mà được chỉ dẫn `git pull`.
+- **`/usage` hỏi hạn mức thật từ từng CLI** (song song, kết quả hiện khi xong): Claude Code `claude -p /usage`,
+  Antigravity `agy -p /usage`, OpenCode `opencode stats --days 7`, Codex đọc `rate_limits` trong file phiên gần
+  nhất. Khoá cấu hình mới `usage_command` theo agent; `ateam usage --local` chỉ in thống kê của ateam.
+
 ## 0.5.3 — 15/10/2026
 
 - Cấu hình chung nâng lên bản 5: lần mở đầu tiên sau khi nâng cấp, `~/.config/ateam/config.toml` được sao lưu

@@ -148,6 +148,7 @@ CATALOG: dict[str, dict] = {
         "models": ["opus", "sonnet", "haiku", "opusplan", "claude-opus-5-5", "claude-sonnet-5-5",
                    "claude-haiku-5-5", "claude-fable-5-1"],
         "efforts": ["low", "medium", "high", "max"],
+        "usage_command": ["claude", "-p", "/usage"],  # % phiên / tuần đã dùng + giờ hồi (không gọi model)
     },
     "codex": {
         "models": ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol",
@@ -159,13 +160,17 @@ CATALOG: dict[str, dict] = {
         "models": [],
         "efforts": ["low", "medium", "high", "xhigh", "max"],
         "models_command": ["agy", "models"],
+        "usage_command": ["agy", "-p", "/usage"],  # quota còn lại theo nhóm model (cần pty)
     },
     "opencode": {
         "models": ["xai/grok-build-0.1", "xai/grok-4.7"],
         "efforts": ["low", "medium", "high"],
         "models_command": ["opencode", "models"],
+        "usage_command": ["opencode", "stats", "--days", "7"],  # token & chi phí 7 ngày qua
     },
 }
+# codex không có lệnh xem hạn mức không cần gọi model: /usage đọc ảnh chụp rate_limits mà codex ghi
+# trong file phiên gần nhất (~/.codex/sessions), xem limits.codex_rate_limits
 MODEL_RE = re.compile(r"^[A-Za-z0-9][\w.:/@\[\]+-]*$")
 
 
@@ -229,6 +234,7 @@ class AgentConfig:
     efforts: list[str] = field(default_factory=list)
     models: list[str] = field(default_factory=list)
     models_command: list[str] = field(default_factory=list)
+    usage_command: list[str] = field(default_factory=list)  # lệnh in hạn mức/usage của CLI (/usage)
     models_filter: str = ""
     fallback: list[str] = field(default_factory=list)
     verify: bool = True
@@ -603,7 +609,8 @@ def agent_to_dict(a: AgentConfig) -> dict:
     for k in ("model", "effort", "models_filter", "file_ref"):
         if getattr(a, k):
             d[k] = getattr(a, k)
-    for k in ("model_args", "effort_args", "efforts", "models", "models_command", "fallback"):
+    for k in ("model_args", "effort_args", "efforts", "models", "models_command", "usage_command",
+              "fallback"):
         if getattr(a, k):
             d[k] = list(getattr(a, k))
     if a.file_args is not None:
@@ -766,6 +773,8 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
         models_command=_strs(a.get("models_command")) or (
             command[:1] + cat["models_command"][1:] if cat.get("models_command") else []),
         models_filter=str(a.get("models_filter", "") or ""),
+        usage_command=_strs(a.get("usage_command")) or (
+            command[:1] + cat["usage_command"][1:] if cat.get("usage_command") else []),
         fallback=_strs(a.get("fallback")),
         verify=bool(a.get("verify", True)),
         file_ref=str(a.get("file_ref", "") or ""),
