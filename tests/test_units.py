@@ -546,3 +546,29 @@ def test_shell_project_scripts_and_ports(tmp_path):
     assert find_ports("  - Local:        http://localhost:3000") == [3000]
     assert find_ports("ready - started server on 0.0.0.0:5173, url: http://127.0.0.1:5173") == [5173]
     assert find_ports("Listening on port 8080") == [8080] and find_ports("version 1.2.3") == []
+
+
+def test_full_access_flags_per_cli():
+    """Toàn quyền đổi đúng cờ từng CLI (và đổi ngược lại được); CLI lạ giữ nguyên."""
+    from ateam.config import agent_from_dict, apply_access, provider_template
+    safe = {
+        "claude": ["claude", "-p", "{prompt}", "--permission-mode", "acceptEdits"],
+        "codex": ["codex", "exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "{prompt}"],
+        "agy": ["agy", "--mode", "accept-edits", "--print-timeout", "0", "-p", "{prompt}"],
+        "opencode": ["opencode", "run", "{prompt}"],
+    }
+    full = {
+        "claude": ["claude", "-p", "{prompt}", "--permission-mode", "bypassPermissions"],
+        "codex": ["codex", "exec", "--sandbox", "danger-full-access", "--skip-git-repo-check", "{prompt}"],
+        "agy": ["agy", "--dangerously-skip-permissions", "--print-timeout", "0", "-p", "{prompt}"],
+        "opencode": ["opencode", "run", "--auto", "{prompt}"],
+    }
+    for k in safe:
+        assert apply_access(safe[k], True) == full[k], k
+        assert apply_access(full[k], False) == safe[k], k
+        assert apply_access(safe[k], False) == safe[k], k
+        assert safe[k] == provider_template(k)["command"], k   # khớp lệnh mẫu trong DEFAULT_CONFIG
+    assert apply_access(["mycli", "{prompt}"], True) == ["mycli", "{prompt}"]
+    a = agent_from_dict("x", dict(provider_template("agy"), full_access=True, model="m"))
+    assert a.argv("làm") == ["agy", "--dangerously-skip-permissions", "--print-timeout", "0",
+                             "--model", "m", "-p", "làm"]

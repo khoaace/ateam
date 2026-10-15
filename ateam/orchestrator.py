@@ -26,6 +26,11 @@ BAD_FLAG_RE = re.compile(r"unexpected argument '-|unrecognized (?:argument|optio
                          r"|no such option", re.I)
 
 
+# agent headless bị từ chối quyền chạy lệnh (agy thoát 0 sau khi in câu này -> trước đây task bị tính "xong")
+DENIED_RE = re.compile(r"permission that headless mode cannot prompt for|auto-denied|auto-rejected"
+                       r"|requested permissions? to use \w+, but you haven't granted it", re.I)
+
+
 class Orchestrator:
     def __init__(self, root: Path, cfg: Config, db: DB,
                  on_event: Callable[[str, dict], None] | None = None):
@@ -744,6 +749,8 @@ class Orchestrator:
             return "ratelimit"
         if rc != 0 and BAD_FLAG_RE.search(run.output):
             return "badflag"
+        if DENIED_RE.search(run.output):
+            return "denied"
         if rc != 0:
             return "failed"
         if not run.output.strip():
@@ -944,6 +951,8 @@ class Orchestrator:
             "badflag": (FAILED, f"{a.binary} không nhận một cờ trong lệnh (CLI có thể đã đổi phiên bản)"
                                 " — chạy `ateam doctor` rồi sửa command trong cấu hình"),
             "empty": (FAILED, "Agent không in ra gì (kiểm tra đăng nhập / quyền / pty)"),
+            "denied": (FAILED, f"{a.name} bị chặn chạy lệnh (thiếu quyền) — bật Toàn quyền cho agent này ở "
+                               "/setup (agent có sẵn) hoặc /custom (agent tuỳ chỉnh), rồi /retry"),
             "ratelimit": (FAILED, f"{a.name} hết hạn mức"),
         }[res]
 

@@ -214,6 +214,8 @@ def test_tui_setup_screen(env, project, monkeypatch):
             codex.value = "gpt-6-luna"
             grok.value = "xai/grok-5-fast"
             scr.query_one("#setup-on-antigravity", Checkbox).value = False
+            assert scr.query_one("#setup-access-codex", Select).value == "safe"
+            scr.query_one("#setup-access-codex", Select).value = "full"
             role = scr.query_one("#setup-role-codex", TextInput)
             assert role.value == app.cfg.agents["codex"].role
             role.value = "Chỉ làm backend"
@@ -229,6 +231,8 @@ def test_tui_setup_screen(env, project, monkeypatch):
             assert not app.cfg.agents["antigravity"].enabled
             assert len(app.query(AgentPane)) == 3
             assert app.cfg.agents["codex"].role == "Chỉ làm backend"
+            assert app.cfg.agents["codex"].full_access
+            assert "--sandbox danger-full-access" in " ".join(app.cfg.agents["codex"].argv("x"))
             assert app.cfg.default_workflow == "nhanh"
             assert "workflow 'nhanh'" in app.query_one("#cmd").placeholder
             # gõ mục tiêu thường -> theo workflow mặc định; /goal -> trưởng nhóm lập kế hoạch
@@ -260,6 +264,7 @@ def test_tui_setup_screen(env, project, monkeypatch):
     assert st["agents"]["antigravity"] == {"enabled": False}
     assert st["agents"]["claude"] == {"effort": "high"}
     assert st["agents"]["codex"]["role"] == "Chỉ làm backend" and st["default_workflow"] == "nhanh"
+    assert st["agents"]["codex"]["full_access"] is True
     assert "grok" in st["models_found"] and "antigravity" in st["models_found"]
     cfg = load_config(project)
     assert cfg.lead == "codex" and not cfg.agents["antigravity"].enabled
@@ -334,7 +339,8 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
 
     from ateam.config import ensure_global_config, load_config, load_custom
     from ateam.db import DB
-    from ateam.tui import AgentEditScreen, AgentPane, CustomScreen, SetupScreen, TeamApp, WorkflowEditScreen
+    from ateam.tui import (AgentEditScreen, AgentPane, AgentQuickScreen, CustomScreen, SetupScreen, TeamApp,
+                           WorkflowEditScreen)
 
     async def wait_for(pilot, cond, n=40):
         for _ in range(n):
@@ -350,12 +356,32 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             await pilot.pause(0.3)
             app.run_command("/custom")
             assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
+            # form đơn giản: chọn nhà cung cấp, model, effort, quyền — cờ CLI lấy từ mẫu
             await pilot.click("#custom-add-agent")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, AgentQuickScreen))
+            q = app.screen
+            q.query_one("#q-provider", Select).value = "agy"
+            await pilot.pause(0.2)
+            assert q.query_one("#q-name", Input).value == "antigravity-2"
+            assert [v for _, v in q.query_one("#q-effort", Select)._options][:2] == ["low", "medium"]
+            q.query_one("#q-effort", Select).value = "high"
+            q.query_one("#q-access", Select).value = "full"
+            await pilot.pause(0.2)
+            preview = str(q.query_one("#quick-preview").render())
+            assert "agy --dangerously-skip-permissions" in preview and "accept-edits" not in preview, preview
+            await pilot.press("ctrl+s")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
+            saved = load_custom()["agents"]["antigravity-2"]
+            assert saved["command"][0] == "agy" and saved["pty"] and saved["full_access"] is True
+            assert saved["effort"] == "high" and "model" not in saved
+            # "Nâng cao…" mở form đầy đủ cho CLI khác
+            await pilot.click("#custom-add-agent")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, AgentQuickScreen))
+            await pilot.click("#q-advanced")
             assert await wait_for(pilot, lambda: isinstance(app.screen, AgentEditScreen))
             ed = app.screen
             ed.query_one("#ag-template", Select).value = "trống"
             await pilot.pause(0.2)
-            assert ed.query_one("#ag-name", Input).value == "my-agent"
             ed.query_one("#ag-name", Input).value = "codex"  # trùng agent có sẵn -> không lưu
             await pilot.press("ctrl+s")
             await pilot.pause(0.2)
@@ -404,7 +430,8 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             await pilot.press("escape")
             assert await wait_for(pilot, lambda: "mine" in app.cfg.agents and not isinstance(app.screen, CustomScreen))
             await pilot.pause(0.3)
-            assert app.cfg.custom_agents == {"mine"}
+            assert app.cfg.custom_agents == {"mine", "antigravity-2"}
+            assert app.cfg.agents["antigravity-2"].full_access
             assert "review-code" in app.cfg.workflows
             assert any(p.agent == "mine" for p in app.query(AgentPane))
             steps = app.cfg.workflows["review-code"].steps
@@ -432,11 +459,11 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             await pilot.click("#setup-custom")
             assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
             await pilot.pause(0.3)
-            dels = [b for b in app.screen.query(Button) if str(b.label) == "Xoá"]
-            await pilot.click("#" + dels[0].id)
+            del_mine = next(bid for bid, act in app.screen.ids.items() if act == ("del-agent", "mine"))
+            await pilot.click("#" + del_mine)
             await pilot.pause(0.2)
             assert "mine" in load_custom().get("agents", {})
-            await pilot.click("#" + dels[0].id)
+            await pilot.click("#" + del_mine)
             await pilot.pause(0.3)
             assert "mine" not in load_custom().get("agents", {})
             await pilot.press("escape")

@@ -11,7 +11,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
    nâng cấp. Lỗi cú pháp TOML = bỏ qua cả file.
 4. `<dự án>/.ateam/config.toml` — merge sâu lên trên (chỉ cần ghi khoá muốn đổi). Tạo bằng
    `ateam init --project`.
-5. `~/.config/ateam/state.json` → `agents.<tên>.model|effort|enabled|role` (đặt bằng `/model`, `/effort`,
+5. `~/.config/ateam/state.json` → `agents.<tên>.model|effort|enabled|role|full_access` (đặt bằng `/model`, `/effort`,
    `ateam set`, màn hình thiết lập `/setup`; `role` sửa ở cột *Vai trò* của `/setup`), `lead` (trưởng nhóm chọn ở `/setup`),
    `default_workflow` (workflow chạy khi gõ mục tiêu trong TUI, chọn ở `/setup`; workflow đã bị xoá thì bỏ qua), `onboarded` (đã qua
    màn hình thiết lập lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`), và `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify`).
@@ -61,6 +61,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 | `model_args`, `effort_args` | `[]` | Cờ chèn trước prompt khi có model/effort (`{model}`, `{effort}` được thay) |
 | `efforts` | danh mục | Mức effort hợp lệ (kiểm tra, gợi ý, bảng chọn, giới hạn lựa chọn của trưởng nhóm). Vắng = theo `CATALOG`; `[]` = không có |
 | `models` | danh mục | Model gợi ý cho bảng chọn `/model`, tab Đội, `/models`. Vắng = `CATALOG` trong `config.py` theo tên lệnh (`claude`, `codex`, `agy`, `opencode`). Chỉ là gợi ý: tên ngoài danh sách vẫn đặt được |
+| `full_access` | `false` | Toàn quyền: agent được chạy lệnh shell và dùng mạng (lint, build, `git push`). ateam đổi cờ lúc chạy: claude `--permission-mode bypassPermissions`, codex `--sandbox danger-full-access`, agy `--dangerously-skip-permissions` (thay `--mode accept-edits`), opencode `--auto`; CLI khác không đổi. Đặt ở cột *Quyền* của `/setup` (lưu `state.json`) hoặc form agent tuỳ chỉnh |
 | `usage_command` | danh mục | argv in hạn mức/usage của CLI cho `/usage`: `claude -p /usage`, `agy -p /usage` (qua pty nếu `pty = true`), `opencode stats --days 7`; tối đa 20 dòng. Vắng với `codex` = đọc `rate_limits` trong file phiên mới nhất ở `$CODEX_HOME/sessions` (mặc định `~/.codex`) |
 | `models_command` | danh mục | argv liệt kê model thật (`opencode models`, `agy models`, `codex debug models`; output dạng chữ mỗi dòng một model, hoặc JSON `{"models": [{"slug", "visibility"}]}` thì bỏ model `hide`); chạy song song ở màn hình thiết lập (`/setup`, lần đầu mở app), khi mở app mà chưa có kết quả, hoặc `/models <agent> làm mới`, kết quả lưu ở `state.json` và đứng trước `models` |
 | `models_filter` | `""` | Chỉ giữ model chứa chữ này. Vắng: nếu có model chứa tên agent (vd `grok`) thì chỉ giữ các model đó |

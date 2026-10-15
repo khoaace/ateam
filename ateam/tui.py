@@ -24,7 +24,8 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
 from textual.widgets.option_list import Option
 
 from . import clipboard, diffview, mentions, shell, update
-from .config import (CUSTOM_FILE, LEAD_ALIAS, NAME_RE, WORKFLOW_TEMPLATES, AgentConfig, Config,
+from .config import (CATALOG, CUSTOM_FILE, LEAD_ALIAS, NAME_RE, PROVIDERS, WORKFLOW_TEMPLATES, AgentConfig,
+                     Config, full_access_supported, provider_of, provider_template,
                      Workflow, WorkflowStep, agent_from_dict, agent_templates, describe_models,
                      load_config, load_custom, load_state, mark_setup_done, save_custom_item,
                      save_project_setting, save_setup, workflow_to_dict)
@@ -736,6 +737,7 @@ class SetupScreen(ModalScreen):
     .setup-row Checkbox { width: 22; }
     .setup-model { width: 36; }
     .setup-effort { width: 18; }
+    .setup-access { width: 18; }
     .setup-note { width: 1fr; height: 3; padding: 1 0 0 1; color: $text-muted;
                   text-wrap: nowrap; text-overflow: ellipsis; }
     .setup-role { width: 1fr; }
@@ -817,7 +819,7 @@ class SetupScreen(ModalScreen):
                                      "chưa có workflow — tạo ở nút Agent & workflow tuỳ chỉnh",
                                      classes="setup-note"),
                               id="setup-flow-row"),
-                   Static(f"{'  Agent (bật/tắt)':22}{'Model':36}{'Effort':18}Vai trò (sửa được)",
+                   Static(f"{'  Agent (bật/tắt)':22}{'Model':36}{'Effort':18}{'Quyền':18}Vai trò (sửa được)",
                           id="setup-head")]
         for n, a in self.cfg.agents.items():
             ok = a.installed()
@@ -835,6 +837,11 @@ class SetupScreen(ModalScreen):
                                   id=safe_id(n, "setup-effort-")))
             else:
                 row.append(Static("effort: (không có)", classes="setup-effort setup-note"))
+            if full_access_supported(a.binary):
+                row.append(Select(ACCESS_CHOICES, value="full" if a.full_access else "safe", allow_blank=False,
+                                  disabled=not ok, classes="setup-access", id=safe_id(n, "setup-access-")))
+            else:
+                row.append(Static("—", classes="setup-access setup-note"))
             if ok:
                 row.append(TextInput(a.role, placeholder="vai trò của agent trong đội",
                                      classes="setup-role", id=safe_id(n, "setup-role-")))
@@ -859,6 +866,9 @@ class SetupScreen(ModalScreen):
             if effs and isinstance(effs.first(), Select):
                 e = effs.first().value
                 ch["effort"] = None if e == RESET else e
+            acc = self.query("#" + safe_id(n, "setup-access-"))
+            if acc and isinstance(acc.first(), Select):
+                ch["full_access"] = acc.first().value == "full"
             roles = self.query("#" + safe_id(n, "setup-role-"))
             if roles:
                 ch["role"] = roles.first().value.strip() or None
@@ -904,6 +914,9 @@ class SetupScreen(ModalScreen):
             self.query_one("#" + safe_id(n, "setup-on-"), Checkbox).value = bool(ch.get("enabled"))
             if ch.get("role"):
                 self.query_one("#" + safe_id(n, "setup-role-"), TextInput).value = ch["role"]
+            acc = self.query("#" + safe_id(n, "setup-access-"))
+            if "full_access" in ch and acc and isinstance(acc.first(), Select):
+                acc.first().value = "full" if ch["full_access"] else "safe"
             for key in ("model", "effort"):
                 w = self.query("#" + safe_id(n, f"setup-{key}-"))
                 if key in ch and w and isinstance(w.first(), Select):
@@ -957,6 +970,170 @@ def _argv_text(v) -> str:
     return " ".join(x if x and not re.search(r"[\s'\"\\]", x) else shlex.quote(x) for x in map(str, v))
 
 
+ACCESS_CHOICES = [("sửa file", "safe"), ("toàn quyền", "full")]
+ACCESS_LONG = [("Chỉ sửa file (an toàn)", "safe"),
+               ("Toàn quyền — chạy lệnh, mạng (build, git push…)", "full")]
+
+
+class AgentQuickScreen(ModalScreen):
+    """Thêm/sửa agent dựa trên một nhà cung cấp có sẵn (Claude Code, Codex, Antigravity, OpenCode):
+    chỉ chọn model, effort, quyền — mọi cờ CLI lấy từ mẫu. "Nâng cao…" mở form đầy đủ (AgentEditScreen).
+    Trả về (tên, thân TOML, tên cũ) hoặc None (Esc)."""
+
+    BINDINGS = [Binding("escape", "cancel", "Huỷ", priority=True),
+                Binding("ctrl+s", "save", "Lưu", priority=True)]
+    DEFAULT_CSS = "AgentQuickScreen { align: center middle; }" + FORM_CSS.replace("{box}", "quick-box") + """
+    #quick-preview { height: auto; padding: 0 1; background: $boost; margin-top: 1; }
+    """
+
+    def __init__(self, cfg: Config, name: str | None = None, raw: dict | None = None):
+        super().__init__()
+        self.cfg, self.old_name, self.raw = cfg, name, dict(raw or {})
+        self.provider = provider_of(self.raw.get("command")) or next(
+            (p for p in PROVIDERS if shutil.which(p)), "claude")
+
+    def compose(self) -> ComposeResult:
+        provs = [(label + ("" if shutil.which(p) else "  (chưa cài)"), p) for p, (label, _t) in PROVIDERS.items()]
+        with Vertical(id="quick-box"):
+            yield Static(Text("Sửa agent " + self.old_name if self.old_name else "Thêm agent", "bold"))
+            yield Static(Text("Chọn nhà cung cấp, model, effort và quyền — cờ CLI ateam tự điền. "
+                              "Ctrl+S lưu, Esc huỷ. CLI khác (Gemini, Aider, lệnh riêng): Nâng cao…", "dim"))
+            yield form_row("Nhà cung cấp", Select(provs, value=self.provider, allow_blank=False, id="q-provider",
+                                                  classes="f-input"), "CLI chạy agent này")
+            yield form_row("Tên", TextInput(self.old_name or "", placeholder="vd: codex-nhanh",
+                                            id="q-name", classes="f-input"), "chữ, số, - và _")
+            yield form_row("Model", Select([("(mặc định)", RESET)], value=RESET, allow_blank=False, id="q-model",
+                                           classes="f-input"), "(mặc định) = để CLI tự chọn")
+            yield form_row("Effort", Select([("(mặc định)", RESET)], value=RESET, allow_blank=False,
+                                            id="q-effort", classes="f-input"), "mức suy luận")
+            yield form_row("Quyền", Select(ACCESS_LONG, value="full" if self.raw.get("full_access") else "safe",
+                                           allow_blank=False, id="q-access", classes="f-input"),
+                           "toàn quyền khi agent cần chạy lệnh")
+            yield form_row("Vai trò", TextInput(str(self.raw.get("role", "")), placeholder="trưởng nhóm chia việc "
+                                                "dựa vào đây", id="q-role", classes="f-input"), "tuỳ chọn")
+            yield Static(id="quick-preview")
+            with Horizontal(classes="f-buttons"):
+                yield Button("Nâng cao…", id="q-advanced")
+                yield Button("Huỷ (Esc)", id="q-cancel")
+                yield Button("Lưu (Ctrl+S)", id="q-save", variant="primary")
+
+    def on_mount(self) -> None:
+        self._fill_choices(keep_model=str(self.raw.get("model") or ""), keep_effort=str(self.raw.get("effort") or ""))
+        if not self.old_name:
+            self._auto_name()
+        self.query_one("#q-provider", Select).focus()
+
+    def _models(self) -> list[str]:
+        # model hỏi được từ CLI nằm ở agent có sẵn cùng lệnh; không có thì danh mục có sẵn
+        same = [a for n, a in self.cfg.agents.items()
+                if provider_of(a.command) == self.provider and n not in self.cfg.custom_agents]
+        if same:
+            return same[0].model_choices()
+        return list(CATALOG.get(self.provider, {}).get("models", []))
+
+    def _fill_choices(self, keep_model: str = "", keep_effort: str = "") -> None:
+        models = self._models()
+        if keep_model and keep_model not in models:
+            models = [keep_model] + models
+        msel = self.query_one("#q-model", Select)
+        msel.set_options([(m, m) for m in models] + [("(mặc định)", RESET)])
+        msel.value = keep_model or RESET
+        efforts = provider_template(self.provider).get("efforts") or []
+        esel = self.query_one("#q-effort", Select)
+        esel.set_options([(e, e) for e in efforts] + [("(mặc định)", RESET)])
+        esel.value = keep_effort if keep_effort in efforts else RESET
+        esel.disabled = not efforts
+        role = self.query_one("#q-role", TextInput)
+        if not role.value.strip() or role.value == getattr(self, "_auto_role", None):
+            self._auto_role = str(provider_template(self.provider).get("role", ""))
+            role.value = self._auto_role
+        self.update_preview()
+
+    def _auto_name(self) -> None:
+        name = self.query_one("#q-name", TextInput)
+        if name.value.strip() and name.value != getattr(self, "_auto", None):
+            return
+        base = PROVIDERS[self.provider][1]
+        n, i = base, 2
+        while n in self.cfg.agents:
+            n, i = f"{base}-{i}", i + 1
+        self._auto = name.value = n
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "q-provider" and event.value in PROVIDERS and event.value != self.provider:
+            self.provider = str(event.value)
+            self._fill_choices()
+            if not self.old_name:
+                self._auto_name()
+        self.update_preview()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self.update_preview()
+
+    def body(self) -> dict:
+        body = provider_template(self.provider)
+        for key, wid in (("model", "#q-model"), ("effort", "#q-effort")):
+            v = self.query_one(wid, Select).value
+            body.pop(key, None)
+            if v not in (RESET, Select.BLANK, None, ""):
+                body[key] = v
+        role = self.query_one("#q-role", TextInput).value.strip()
+        body["role"] = role
+        if self.query_one("#q-access", Select).value == "full":
+            body["full_access"] = True
+        # dự phòng của mẫu có thể trỏ tới agent đã bị tắt/xoá: chỉ giữ agent đang có
+        body["fallback"] = [f for f in body.get("fallback", []) if f in self.cfg.agents]
+        return body
+
+    def update_preview(self) -> None:
+        if not self.is_mounted:
+            return
+        name = self.query_one("#q-name", TextInput).value.strip() or "agent"
+        a = agent_from_dict(name, self.body())
+        t = Text()
+        t.append("Lệnh sẽ chạy: ", "bold")
+        t.append(" ".join(a.argv("<prompt>")))
+        t.append("\n")
+        t.append(f"✓ đã cài '{a.binary}'" if a.installed() else f"✗ chưa cài '{a.binary}'",
+                 "green" if a.installed() else "yellow")
+        if a.full_access:
+            t.append("   ⚠ toàn quyền: agent chạy được mọi lệnh trên máy, chỉ dùng với repo tin tưởng", "yellow")
+        self.query_one("#quick-preview", Static).update(t)
+
+    def validate(self) -> tuple[str, dict]:
+        name = self.query_one("#q-name", TextInput).value.strip()
+        if not NAME_RE.match(name) or name == LEAD_ALIAS:
+            raise ValueError("Tên chỉ gồm chữ, số, - và _ (không dùng 'lead')")
+        if name in self.cfg.agents and name != self.old_name:
+            raise ValueError(f"Đã có agent '{name}' — chọn tên khác")
+        return name, self.body()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id
+        if bid == "q-save":
+            self.action_save()
+        elif bid == "q-cancel":
+            self.action_cancel()
+        elif bid == "q-advanced":
+            name = self.query_one("#q-name", TextInput).value.strip() or None
+
+            def back(result) -> None:  # lưu ở form nâng cao = xong luôn form này
+                if result:
+                    self.dismiss(result)
+            self.app.push_screen(AgentEditScreen(self.cfg, self.old_name, self.body(), new_name=name), back)
+
+    def action_save(self) -> None:
+        try:
+            name, body = self.validate()
+        except ValueError as e:
+            self.notify(str(e), severity="error")
+            return
+        self.dismiss((name, body, self.old_name))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class AgentEditScreen(ModalScreen):
     """Form thêm/sửa 1 agent tuỳ chỉnh. Trả về (tên, thân TOML, tên cũ) hoặc None (Esc)."""
 
@@ -983,9 +1160,11 @@ class AgentEditScreen(ModalScreen):
         ("max-concurrent", "Số task cùng lúc", "mặc định 1", "max_concurrent", "int"),
     ]
 
-    def __init__(self, cfg: Config, name: str | None = None, raw: dict | None = None):
+    def __init__(self, cfg: Config, name: str | None = None, raw: dict | None = None,
+                 new_name: str | None = None):
         super().__init__()
         self.cfg, self.old_name, self.raw = cfg, name, dict(raw or {})
+        self.new_name = new_name  # tên đã gõ ở form đơn giản (mở form này bằng "Nâng cao…")
         self.templates = agent_templates()
 
     def compose(self) -> ComposeResult:
@@ -998,7 +1177,8 @@ class AgentEditScreen(ModalScreen):
                 yield form_row("Mẫu", Select([(k, k) for k in self.templates], prompt="(chọn để điền sẵn)",
                                              id="ag-template", classes="f-input"),
                                "điền sẵn lệnh, cờ model/effort, cú pháp file")
-                yield form_row("Tên", TextInput(self.old_name or "", placeholder="vd: gemini, aider-fast",
+                yield form_row("Tên", TextInput(self.old_name or self.new_name or "",
+                                                placeholder="vd: gemini, aider-fast",
                                             id="ag-name", classes="f-input"),
                                "chữ, số, - và _")
                 for fid, label, hint, _k, _t in self.FIELDS:
@@ -1006,6 +1186,7 @@ class AgentEditScreen(ModalScreen):
                 yield form_row("Tuỳ chọn", Horizontal(
                     Checkbox("Chạy trong terminal giả (pty)", id="ag-pty"),
                     Checkbox("Chạy lệnh kiểm tra sau task", True, id="ag-verify"),
+                    Checkbox("Toàn quyền", id="ag-full"),
                     classes="f-input"), "pty cần cho CLI chỉ in khi có terminal (vd agy)")
             yield Static(id="agent-preview")
             with Horizontal(classes="f-buttons"):
@@ -1030,6 +1211,7 @@ class AgentEditScreen(ModalScreen):
             self.query_one(f"#ag-{fid}", Input).value = text
         self.query_one("#ag-pty", Checkbox).value = bool(raw.get("pty", False))
         self.query_one("#ag-verify", Checkbox).value = bool(raw.get("verify", True))
+        self.query_one("#ag-full", Checkbox).value = bool(raw.get("full_access", False))
         self.update_preview()
 
     def on_select_changed(self, event: Select.Changed) -> None:
@@ -1078,6 +1260,8 @@ class AgentEditScreen(ModalScreen):
             out["pty"] = True
         if not self.query_one("#ag-verify", Checkbox).value:
             out["verify"] = False
+        if self.query_one("#ag-full", Checkbox).value:
+            out["full_access"] = True
         return out
 
     def update_preview(self) -> None:
@@ -1402,7 +1586,7 @@ class CustomScreen(ModalScreen):
             self.action_close()
             return
         if bid == "custom-add-agent":
-            self.app.push_screen(AgentEditScreen(self.cfg), lambda r: self._saved("agents", r))
+            self.app.push_screen(AgentQuickScreen(self.cfg), lambda r: self._saved("agents", r))
             return
         if bid == "custom-add-flow":
             self.app.push_screen(WorkflowEditScreen(self.cfg), lambda r: self._saved("workflows", r))
@@ -1411,7 +1595,8 @@ class CustomScreen(ModalScreen):
         custom = load_custom()
         if action == "edit-agent":
             raw = (custom.get("agents") or {}).get(name, {})
-            self.app.push_screen(AgentEditScreen(self.cfg, name, raw), lambda r: self._saved("agents", r))
+            form = AgentQuickScreen if provider_of(raw.get("command")) else AgentEditScreen
+            self.app.push_screen(form(self.cfg, name, raw), lambda r: self._saved("agents", r))
         elif action == "edit-flow":
             raw = (custom.get("workflows") or {}).get(name)
             old: str | None = name
@@ -2863,6 +3048,7 @@ class TeamApp(App):
             f = fresh.agents.get(n)
             if f:
                 a.enabled, a.model, a.effort, a.role = f.enabled, f.model, f.effort, f.role
+                a.full_access = f.full_access
         await self._rebuild_panes()
         self._show_input_mode()
         on = [f"{n} ({a.label()})" for n, a in self.cfg.active_agents().items()]

@@ -155,6 +155,17 @@ Sau mỗi task có thay đổi file, ateam chạy lệnh kiểm tra trong đúng
 kèm log lỗi (mặc định chính agent đó, tối đa 2 lần; đổi bằng `[verify] fix_agent`, `max_fix_attempts`).
 Vẫn fail thì task báo lỗi. Agent chỉ đọc/nghiên cứu có thể đặt `verify = false`.
 
+## Quyền của agent và agent tuỳ chỉnh
+
+Mặc định agent **chỉ được sửa file**. Việc cần chạy lệnh (lint, build, `git commit/push`…) thì bật **Toàn quyền**
+cho agent đó ở cột *Quyền* của `/setup` (hoặc trong form agent tuỳ chỉnh): ateam tự đổi đúng cờ cho từng CLI.
+Agent bị chặn chạy lệnh thì task báo lỗi kèm hướng dẫn bật Toàn quyền (trước đây có CLI vẫn báo "xong").
+Toàn quyền nghĩa là agent chạy được mọi lệnh trên máy — chỉ dùng với repo tin tưởng.
+
+Thêm agent (`/custom` → *Thêm agent*): chọn **nhà cung cấp** (Claude Code, Codex, Antigravity, OpenCode),
+**model**, **effort**, **quyền** và vai trò — mọi cờ CLI lấy từ mẫu. CLI khác (Gemini, Aider, lệnh riêng):
+nút **Nâng cao…** mở form đầy đủ.
+
 ## Chạy lệnh terminal (dev server, test, build…)
 
 Gõ `!` rồi lệnh ở ô nhập, ví dụ `!yarn dev`, `!make test` (hoặc `/sh yarn dev`). Lệnh chạy trong thư mục

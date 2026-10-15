@@ -171,6 +171,58 @@ CATALOG: dict[str, dict] = {
 }
 # codex không có lệnh xem hạn mức không cần gọi model: /usage đọc ảnh chụp rate_limits mà codex ghi
 # trong file phiên gần nhất (~/.codex/sessions), xem limits.codex_rate_limits
+# Cờ quyền theo CLI: "chỉ sửa file" (mặc định trong DEFAULT_CONFIG) <-> "toàn quyền" (chạy lệnh shell, mạng).
+# full_access = true đổi lúc dựng lệnh (apply_access), file cấu hình vẫn ghi lệnh an toàn gốc.
+ACCESS_CLIS = ("claude", "codex", "agy", "opencode")
+
+
+def full_access_supported(binary: str) -> bool:
+    return Path(binary).name in ACCESS_CLIS
+
+
+def apply_access(command: list[str], full: bool) -> list[str]:
+    """Đổi cờ quyền trong lệnh theo CLI. CLI lạ: giữ nguyên (không biết cờ của nó)."""
+    cmd = list(command)
+    if not cmd:
+        return cmd
+    name = Path(cmd[0]).name
+
+    def set_value(flag: str, value: str) -> None:
+        if flag in cmd and cmd.index(flag) + 1 < len(cmd):
+            cmd[cmd.index(flag) + 1] = value
+        else:
+            cmd[1:1] = [flag, value]
+
+    if name == "claude":
+        if full:
+            set_value("--permission-mode", "bypassPermissions")
+        elif "--permission-mode" in cmd:
+            set_value("--permission-mode", "acceptEdits")
+    elif name == "codex":
+        sandbox = "danger-full-access" if full else "workspace-write"
+        i = cmd.index("exec") + 1 if "exec" in cmd else 1
+        if "--sandbox" in cmd:
+            set_value("--sandbox", sandbox)
+        elif full:
+            cmd[i:i] = ["--sandbox", sandbox]
+    elif name == "agy":
+        if full:
+            if "--mode" in cmd and cmd.index("--mode") + 1 < len(cmd):
+                j = cmd.index("--mode")
+                del cmd[j:j + 2]
+            if "--dangerously-skip-permissions" not in cmd:
+                cmd.insert(1, "--dangerously-skip-permissions")
+        elif "--dangerously-skip-permissions" in cmd:
+            cmd.remove("--dangerously-skip-permissions")
+            cmd[1:1] = ["--mode", "accept-edits"]
+    elif name == "opencode":
+        if full and "--auto" not in cmd:
+            cmd.insert(cmd.index("run") + 1 if "run" in cmd else 1, "--auto")
+        elif not full and "--auto" in cmd:
+            cmd.remove("--auto")
+    return cmd
+
+
 MODEL_RE = re.compile(r"^[A-Za-z0-9][\w.:/@\[\]+-]*$")
 
 
@@ -225,6 +277,7 @@ class AgentConfig:
     timeout: int = 1800
     max_concurrent: int = 1
     pty: bool = False
+    full_access: bool = False  # toàn quyền: chạy lệnh shell, mạng (xem apply_access)
     enabled: bool = True
     plan_command: list[str] | None = None
     model: str = ""
@@ -263,7 +316,8 @@ class AgentConfig:
         """Dựng lệnh: thay {prompt}/{model}/{effort}, chèn cờ model/effort ngay trước prompt."""
         model = (model if model else self.model) or ""
         effort = (effort if effort else self.effort) or ""
-        base = list((self.plan_command if plan and self.plan_command else self.command))
+        base = apply_access(self.plan_command if plan and self.plan_command else self.command,
+                            self.full_access)
         extra: list[str] = []
         if model and self.model_args and not any("{model}" in c for c in base):
             extra += [a.replace("{model}", model) for a in self.model_args]
@@ -487,6 +541,27 @@ EXTRA_AGENT_TEMPLATES: dict[str, dict] = {
 }
 
 
+# Nhà cung cấp cho form "Thêm agent" đơn giản: tên lệnh -> (nhãn, agent mẫu trong DEFAULT_CONFIG)
+PROVIDERS: dict[str, tuple[str, str]] = {
+    "claude": ("Claude Code", "claude"),
+    "codex": ("Codex", "codex"),
+    "agy": ("Antigravity", "antigravity"),
+    "opencode": ("OpenCode (Grok, …)", "grok"),
+}
+
+
+def provider_of(command) -> str:
+    """Tên lệnh của agent nếu là một nhà cung cấp có sẵn (claude/codex/agy/opencode), ngược lại ""."""
+    cmd = _strs(command)
+    name = Path(cmd[0]).name if cmd else ""
+    return name if name in PROVIDERS else ""
+
+
+def provider_template(provider: str) -> dict:
+    """Bảng [agents.*] mẫu của nhà cung cấp (lệnh an toàn, cờ model/effort, efforts, pty…)."""
+    return dict(tomllib.loads(DEFAULT_CONFIG)["agents"][PROVIDERS[provider][1]])
+
+
 def agent_templates() -> dict[str, dict]:
     out = {f"{n} ({' '.join(_strs(a.get('command'))[:1])})": dict(a)
            for n, a in tomllib.loads(DEFAULT_CONFIG)["agents"].items()}
@@ -625,6 +700,8 @@ def agent_to_dict(a: AgentConfig) -> dict:
         d["max_concurrent"] = a.max_concurrent
     if a.pty:
         d["pty"] = True
+    if a.full_access:
+        d["full_access"] = True
     if not a.verify:
         d["verify"] = False
     return d
@@ -670,7 +747,7 @@ def save_setup(root: Path, lead: str, agents: dict[str, dict],
         if not a:
             continue
         entry = st_agents.setdefault(name, {})
-        for key in ("enabled", "model", "effort", "role"):
+        for key in ("enabled", "model", "effort", "role", "full_access"):
             if key not in ch:
                 continue
             v = ch[key]
@@ -762,6 +839,7 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
         timeout=int(a.get("timeout", 1800)),
         max_concurrent=max(1, int(a.get("max_concurrent", 1))),
         pty=bool(a.get("pty", False)),
+        full_access=bool(st.get("full_access", a.get("full_access", False))),
         enabled=bool(st.get("enabled", a.get("enabled", True))),
         plan_command=fix_legacy_flags(_strs(a.get("plan_command"))) or None,
         model=st.get("model", a.get("model", "")) or "",

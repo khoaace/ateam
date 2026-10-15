@@ -8,6 +8,11 @@ if [ "${1:-}" = "models" ]; then
 fi
 source "$(dirname "$0")/_common.sh"
 P="$fake_prompt"
+if [[ "$P" == *"NEEDS_SHELL"* && " $* " != *" --dangerously-skip-permissions "* ]]; then
+  # như agy thật khi bị từ chối quyền chạy lệnh ở chế độ headless: in lỗi rồi thoát 0
+  echo 'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.'
+  exit 0
+fi
 if [ "$P" = "/usage" ]; then
   printf 'Quota:\r\nGemini Models  Weekly Limit Remaining  29%%  2026-10-21 09:25 +07\r\n'
   exit 0

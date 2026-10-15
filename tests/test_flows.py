@@ -310,3 +310,16 @@ def test_usage_asks_each_cli(env, project):
     assert "Hạn mức phụ (tuần): đã dùng 3%" in out
     out = ateam(env, project, "usage", "--local").stdout
     assert "📊" not in out and "Đang tạm nghỉ" in out
+
+
+def test_permission_denied_fails_with_hint(env, project):
+    """agy bị từ chối quyền chạy lệnh vẫn thoát 0: task phải lỗi kèm cách bật Toàn quyền; bật rồi thì xong."""
+    ateam(env, project, "add", "--to", "antigravity", "NEEDS_SHELL chạy lint rồi build")
+    ateam(env, project, "run", "-q")
+    t = tasks(project)[-1]
+    assert t.status == "failed" and "Toàn quyền" in (t.error or ""), t
+    write_project_config(project, "[agents.antigravity]\nfull_access = true\n")
+    ateam(env, project, "add", "--to", "antigravity", "NEEDS_SHELL chạy lint rồi build")
+    ateam(env, project, "run", "-q")
+    assert tasks(project)[-1].status == "done"
+    assert "--dangerously-skip-permissions" in (Path(env["ATEAM_FAKE_ARGS_LOG"])).read_text()

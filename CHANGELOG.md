@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.5 — 15/10/2026
+
+- **Quyền chạy lệnh cho agent**: cột *Quyền* mới ở `/setup` (cả agent có sẵn) và trong form agent — *sửa file*
+  (mặc định) hoặc *toàn quyền* (chạy lệnh shell, mạng: lint, build, git push). ateam tự đổi cờ đúng từng CLI
+  (claude `bypassPermissions`, codex `danger-full-access`, agy `--dangerously-skip-permissions`, opencode
+  `--auto`); khoá cấu hình mới `full_access`.
+- **Sửa: task bị tính "xong" dù agent bị từ chối quyền chạy lệnh** (agy in "a tool required the "command"
+  permission … auto-denied" rồi thoát 0). Giờ task lỗi kèm hướng dẫn bật Toàn quyền.
+- **Thêm agent đơn giản**: chọn nhà cung cấp (Claude Code, Codex, Antigravity, OpenCode), model, effort, quyền,
+  vai trò — không còn phải điền lệnh và cờ CLI. Form đầy đủ vẫn ở nút *Nâng cao…* (cho Gemini, Aider, lệnh riêng).
+
 ## 0.5.4 — 15/10/2026
 
 - **Chạy lệnh terminal trong app**: gõ `!yarn dev` (hoặc `/sh …`) — lệnh chạy trong thư mục dự án, output trực
