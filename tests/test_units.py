@@ -74,6 +74,9 @@ def test_old_global_config_is_upgraded_with_backup(tmp_path, monkeypatch):
         c = cfgmod.load_config(Path(tmp_path / "proj"))
         assert set(c.agents) == {"claude", "codex", "antigravity", "grok"}
         assert c.agents["grok"].model == "xai/grok-build-0.1"
+        # file mặc định vừa ghi phải mang đúng CONFIG_VERSION, không thì lần mở sau lại sao lưu + thay
+        assert cfgmod.ensure_global_config() == []
+        assert len(list(cfgmod.GLOBAL_DIR.glob("config.v*.bak.toml"))) == 1
     finally:
         monkeypatch.undo()
         importlib.reload(cfgmod)
@@ -116,6 +119,18 @@ def test_parse_models_from_cli_listing():
     out = "Available models:\n  gemini-3-pro      (default)\n- gemini-3-flash\n\nNAME\nxai/grok-4.7\nxai/grok-4.7\n"
     assert parse_models(out) == ["gemini-3-pro", "gemini-3-flash", "xai/grok-4.7"]
     assert parse_models(out, "grok") == ["xai/grok-4.7"]
+
+
+def test_parse_models_from_json_catalog():
+    """`codex debug models`: JSON 1 dòng, bỏ model ẩn; cảnh báo lẫn trước JSON vẫn đọc được."""
+    from ateam.config import parse_models, parse_models_json
+    out = ('warning: refresh timed out\n{"models":[{"slug":"gpt-6.1-sol","visibility":"list"},'
+           '{"slug":"gpt-reserve","visibility":"hide"},{"slug":"gpt-5.6-luna"},'
+           '{"slug":"codex-auto-review","visibility":"hide"}]}')
+    assert parse_models(out) == ["gpt-6.1-sol", "gpt-5.6-luna"]
+    assert parse_models(out, "luna") == ["gpt-5.6-luna"]
+    assert parse_models_json("gemini-3-pro\nxai/grok-4.7") is None
+    assert parse_models_json('{"x": 1}') is None
 
 
 def test_catalog_fills_models_and_efforts(tmp_path, monkeypatch):
@@ -173,6 +188,24 @@ def test_save_setup_only_stores_differences(tmp_path, monkeypatch):
         cfgmod.save_setup(tmp_path, "claude", {"grok": {"enabled": True}})
         st = cfgmod.load_state()
         assert "lead" not in st and st["agents"]["grok"] == {"effort": "high"}
+        # vai trò sửa trong màn hình thiết lập: khác file cấu hình mới ghi; workflow mặc định phải tồn tại
+        role_default = cfgmod.load_config(tmp_path, with_state=False).agents["codex"].role
+        (tmp_path / ".ateam").mkdir()
+        (tmp_path / ".ateam" / "config.toml").write_text(
+            '[workflows.nhanh]\n[[workflows.nhanh.steps]]\nagent = "grok"\ntitle = "Làm"\n')
+        cfgmod.save_setup(tmp_path, "claude", {"codex": {"role": "Chỉ viết backend"},
+                                               "grok": {"role": c.agents["grok"].role}}, "nhanh")
+        st = cfgmod.load_state()
+        assert st["agents"]["codex"] == {"role": "Chỉ viết backend"} and "role" not in st["agents"]["grok"]
+        c = cfgmod.load_config(tmp_path)
+        assert c.agents["codex"].role == "Chỉ viết backend" and c.default_workflow == "nhanh"
+        cfgmod.save_setup(tmp_path, "claude", {"codex": {"role": None}}, "khong-co")
+        st = cfgmod.load_state()
+        assert "codex" not in st["agents"] and "default_workflow" not in st
+        assert cfgmod.load_config(tmp_path).agents["codex"].role == role_default
+        st["default_workflow"] = "da-xoa"  # workflow bị xoá sau khi đặt: coi như không đặt
+        cfgmod.save_state(st)
+        assert cfgmod.load_config(tmp_path).default_workflow == ""
     finally:
         monkeypatch.undo()
         importlib.reload(cfgmod)
@@ -324,3 +357,145 @@ def test_bad_flag_failure_points_to_doctor():
     assert Orchestrator._classify(R(), 2) == "badflag"
     R.output = "boom"
     assert Orchestrator._classify(R(), 1) == "failed"
+
+
+def test_log_styler_formats_agent_output():
+    """Log hiển thị: ẩn prompt codex in lại, gộp lỗi JSON lặp, nhãn NOTE/DELEGATE/SUMMARY, markdown."""
+    from ateam.tui import LogStyler, styled_lines
+    log = "\n".join([
+        "$ codex · task · gpt-5.5 · medium · /p",
+        "Reading additional input from stdin...",
+        "OpenAI Codex v0.162.1",
+        "--------",
+        "model: gpt-5.5",
+        "--------",
+        "user",
+        'You are "codex"…',
+        "<<<NOTE>>>your note<<<END>>>",
+        "2026-10-15T06:45:08.913858Z ERROR codex_models_manager: request timed out",
+        'ERROR: {"type":"error","status":400,"error":{"message":"model không hỗ trợ"}}',
+        'ERROR: {"type":"error","status":400,"error":{"message":"model không hỗ trợ"}}',
+        "codex",
+        "Đã sửa **app.py** và `utils.py`",
+        "- mục một",
+        '<<<DELEGATE to="grok" title="Viết README">>>',
+        "nội dung giao",
+        "<<<END>>>",
+        "<<<NOTE>>>dòng 1",
+        "dòng 2<<<END>>>",
+        "SUMMARY: xong",
+    ])
+    out = styled_lines(log, LogStyler())
+    plain = [t.plain for t in out]
+    assert plain[0] == "▍codex · task · gpt-5.5 · medium  /p"
+    assert "▸ prompt gửi agent (ẩn)" in plain
+    assert not any("You are" in p or "your note" in p for p in plain)   # prompt in lại bị ẩn
+    assert plain.count("✗ Lỗi: model không hỗ trợ") == 1
+    assert "error: codex_models_manager: request timed out" in plain
+    md = out[plain.index("Đã sửa app.py và utils.py")]
+    assert [(md.plain[sp.start:sp.end], str(sp.style)) for sp in md.spans] == [("app.py", "bold"),
+                                                                               ("utils.py", "cyan")]
+    assert "• mục một" in plain
+    assert "↪ Giao cho grok: Viết README" in plain and "   nội dung giao" in plain
+    assert "📝 Ghi chú: dòng 1" in plain and "   dòng 2" in plain
+    assert plain[-1] == "✔ Tóm tắt: xong"
+    assert all("<<<" not in p for p in plain)
+    sysline = styled_lines("[13:45:17] ✗ #2 codex: failed", LogStyler())[0]
+    assert sysline.plain == "13:45:17 ✗ #2 codex: failed" and not sysline.style
+
+
+def test_log_styler_renders_lead_plan_and_review():
+    """JSON kế hoạch/review của trưởng nhóm (1 dòng hoặc nhiều dòng trong ```json) vẽ thành danh sách."""
+    from ateam.tui import LogStyler, styled_lines
+    one = ('  [claude] [{"id": 1, "agent": "codex", "effort": "high", "title": "Hero banner",'
+           ' "prompt": "Thay logo chữ", "depends_on": []}, {"id": 2, "agent": "grok", "title": "Test",'
+           ' "prompt": "viết test", "depends_on": [1]}]')
+    multi = ["```json", "[", '  {"id": 1, "agent": "codex", "title": "A", "prompt": "làm A"}', "]", "```"]
+    review = '{"done": false, "summary": "Thiếu **test**", "new_tasks": []}'
+    plain = [t.plain for t in styled_lines("\n".join([one, *multi, review, "{ không phải json"]), LogStyler())]
+    assert plain[0].startswith("  [claude] 📋 Kế hoạch: 2 task")
+    assert "#1  codex@high  Hero banner" in plain[0] and "Thay logo chữ" in plain[0]
+    assert "#2  grok  Test  ⟵ sau #1" in plain[0]
+    assert plain[1].startswith("📋 Kế hoạch: 1 task") and "#1  codex  A" in plain[1]
+    assert plain[2] == "🔎 Review: cần làm thêm\n  Thiếu test"
+    assert plain[3] == "{ không phải json"            # không phải JSON: giữ nguyên
+    assert not any("```" in p or '"agent"' in p for p in plain)
+
+
+DIFF_SAMPLE = """\
+diff --git a/src/Hero.tsx b/src/Hero.tsx
+index 1..2 100644
+--- a/src/Hero.tsx
++++ b/src/Hero.tsx
+@@ -1,4 +1,5 @@
+ import a
++import { useSystem } from "./s"
+ <div>
+-  <KaceLogo isDark size="loader" />
++  <img src={logo} className="h-10" />
+ </div>
+\\ No newline at end of file
+diff --git a/old.css b/old.css
+deleted file mode 100644
+--- a/old.css
++++ /dev/null
+@@ -1 +0,0 @@
+-old
+diff --git a/name1.txt b/name2.txt
+similarity index 100%
+rename from name1.txt
+rename to name2.txt
+diff --git a/logo.png b/logo.png
+new file mode 100644
+Binary files /dev/null and b/logo.png differ
+diff --git a/tài liệu.md b/tài liệu.md
+new file mode 100644
+--- /dev/null
++++ b/tài liệu.md
+@@ -0,0 +1,2 @@
++# Tiêu đề
++dòng
+"""
+
+
+def test_diffview_parse_unified():
+    from ateam.diffview import parse_unified
+    files = parse_unified(DIFF_SAMPLE)
+    assert [(f.status, f.path, f.old_path) for f in files] == [
+        ("M", "src/Hero.tsx", "src/Hero.tsx"), ("D", "old.css", "old.css"),
+        ("R", "name2.txt", "name1.txt"), ("A", "logo.png", "logo.png"), ("A", "tài liệu.md", "tài liệu.md")]
+    hero = files[0]
+    assert (hero.added, hero.removed) == (2, 1) and not files[3].hunks and files[3].binary
+    lines = hero.hunks[0].lines
+    assert [(ln.kind, ln.old_no, ln.new_no) for ln in lines] == [
+        (" ", 1, 1), ("+", None, 2), (" ", 2, 3), ("-", 3, None), ("+", None, 4), (" ", 4, 5)]
+    assert files[4].hunks[0].lines[1].new_no == 2
+
+
+def test_diffview_split_rows_and_word_spans():
+    from ateam.diffview import Hunk, DiffLine, parse_unified, split_rows, word_spans
+    hero = parse_unified(DIFF_SAMPLE)[0].hunks[0]
+    # dòng thêm lẻ: bên trái trống; khối sửa: dòng xoá đối diện dòng thêm
+    assert split_rows(hero) == [(0, 0), (None, 1), (2, 2), (3, 4), (5, 5)]
+    h = Hunk("@@", [DiffLine("-", 1, None, "a"), DiffLine("-", 2, None, "b"), DiffLine("+", None, 1, "c")])
+    assert split_rows(h) == [(0, 2), (1, None)]
+    old, new = word_spans('  <KaceLogo isDark size="loader" />', '  <img isDark size="x" />')
+    a, b = '  <KaceLogo isDark size="loader" />', '  <img isDark size="x" />'
+    assert [a[s:e] for s, e in old] == ["KaceLogo", "loader"]   # theo từ, không vụn từng ký tự
+    assert [b[s:e] for s, e in new] == ["img", "x"]
+    assert word_spans("hoàn toàn khác", "xyz 123 !!") == ([], [])  # khác hẳn: chỉ tô nền dòng
+
+
+def test_diffview_render_fits_width():
+    from ateam.diffview import added_file, parse_unified, render
+    files = parse_unified(DIFF_SAMPLE)
+    for split in (True, False):
+        for width in (60, 140):
+            text, starts = render(files[0], width, split)
+            assert starts == [0]
+            assert all(ln.cell_len <= width for ln in text.split("\n")), (split, width)
+    assert "nhị phân" in render(files[3], 80, True)[0].plain
+    assert "chỉ đổi tên" in render(files[2], 80, True)[0].plain
+    fd = added_file("a.py", "x = 1\ny = 2")
+    assert (fd.status, fd.added) == ("A", 2)
+    assert added_file("a.bin", None).binary

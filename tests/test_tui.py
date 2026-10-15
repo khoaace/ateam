@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 
 from conftest import git_init, write_project_config
 
@@ -20,7 +21,7 @@ def test_tui_smoke(env, project, monkeypatch):
     importlib.reload(ateam.config)  # đọc XDG_CONFIG_HOME của test
     from ateam.config import ensure_global_config, load_config
     from ateam.db import DB
-    from ateam.tui import AgentPane, TeamApp
+    from ateam.tui import AgentPane, DiffScreen, TeamApp
 
     async def main():
         ensure_global_config()
@@ -42,10 +43,18 @@ def test_tui_smoke(env, project, monkeypatch):
             app.show_task(1)
             await pilot.press("ctrl+d")
             await pilot.pause(0.5)
-            assert app.view_task == -1
+            # màn hình diff: danh sách file của nhánh task, hai cột ↔ một cột, Ctrl+Y merge rồi đóng
+            assert isinstance(app.screen, DiffScreen) and app.view_task == 1
+            files = app.screen.ds.files
+            assert [(f.status, f.path) for f in files] == [("A", "b.txt")]
+            assert app.screen.is_split()  # màn hình 160 cột: mặc định hai cột
+            await pilot.press("s")
+            await pilot.pause(0.2)
+            assert not app.screen.is_split()
             await pilot.press("ctrl+y")
             await pilot.pause(0.5)
             assert app.db.tasks()[0].status == "done"
+            assert not isinstance(app.screen, DiffScreen)
             app.run_command("/usage")
             await pilot.press("ctrl+q")
 
@@ -163,10 +172,13 @@ def test_tui_model_effort_picker(env, project, monkeypatch):
 
 
 def test_tui_setup_screen(env, project, monkeypatch):
-    """Màn hình thiết lập lần đầu: hỏi sẵn model từ CLI, chọn trưởng nhóm/model/effort, tắt agent."""
+    """Màn hình thiết lập lần đầu: hỏi sẵn model từ CLI, chọn trưởng nhóm/model/effort, tắt agent,
+    sửa vai trò, chọn workflow mặc định (gõ mục tiêu là chạy theo nó; /goal vẫn để trưởng nhóm)."""
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     git_init(project)
+    write_project_config(project, 'approve_plan = true\n[workflows.nhanh]\ndescription = "làm nhanh"\n'
+                                  '[[workflows.nhanh.steps]]\nagent = "grok"\ntitle = "Làm {goal}"\n')
 
     import importlib
 
@@ -176,7 +188,7 @@ def test_tui_setup_screen(env, project, monkeypatch):
 
     from ateam.config import ensure_global_config, load_config, load_state, needs_setup
     from ateam.db import DB
-    from ateam.tui import RESET, AgentPane, SetupScreen, TeamApp
+    from ateam.tui import RESET, AgentPane, SetupScreen, TeamApp, TextInput
 
     async def main():
         ensure_global_config()
@@ -197,9 +209,17 @@ def test_tui_setup_screen(env, project, monkeypatch):
             assert "gemini-3-pro" in [v for _, v in agy._options]
             scr.query_one("#setup-lead", Select).value = "codex"
             scr.query_one("#setup-effort-claude", Select).value = "high"
-            scr.query_one("#setup-model-codex", Select).value = "gpt-5.5"
+            codex = scr.query_one("#setup-model-codex", Select)
+            assert "gpt-6-luna" in [v for _, v in codex._options]  # từ `codex debug models`
+            codex.value = "gpt-6-luna"
             grok.value = "xai/grok-5-fast"
             scr.query_one("#setup-on-antigravity", Checkbox).value = False
+            role = scr.query_one("#setup-role-codex", TextInput)
+            assert role.value == app.cfg.agents["codex"].role
+            role.value = "Chỉ làm backend"
+            flow = scr.query_one("#setup-flow", Select)
+            assert [v for _, v in flow._options] == [RESET, "nhanh"] and flow.value == RESET
+            flow.value = "nhanh"
             await pilot.press("ctrl+s")
             await pilot.pause(0.5)
             assert not isinstance(app.screen, SetupScreen)
@@ -208,6 +228,19 @@ def test_tui_setup_screen(env, project, monkeypatch):
             assert app.cfg.agents["grok"].model == "xai/grok-5-fast"
             assert not app.cfg.agents["antigravity"].enabled
             assert len(app.query(AgentPane)) == 3
+            assert app.cfg.agents["codex"].role == "Chỉ làm backend"
+            assert app.cfg.default_workflow == "nhanh"
+            assert "workflow 'nhanh'" in app.query_one("#cmd").placeholder
+            # gõ mục tiêu thường -> theo workflow mặc định; /goal -> trưởng nhóm lập kế hoạch
+            box = app.query_one("#cmd")
+            box.value = "đăng nhập"
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            g = app.db.goals()[-1]
+            assert g.workflow == "nhanh" and app.db.tasks(goal_id=g.id)[0].title == "Làm đăng nhập"
+            app.run_command("/goal thêm trang hồ sơ")
+            await pilot.pause(0.3)
+            assert app.db.goals()[-1].workflow is None
             # mở lại bằng /setup, rồi Esc = giữ nguyên
             app.run_command("/setup")
             for _ in range(40):
@@ -226,6 +259,7 @@ def test_tui_setup_screen(env, project, monkeypatch):
     assert st["onboarded"] and st["lead"] == "codex"
     assert st["agents"]["antigravity"] == {"enabled": False}
     assert st["agents"]["claude"] == {"effort": "high"}
+    assert st["agents"]["codex"]["role"] == "Chỉ làm backend" and st["default_workflow"] == "nhanh"
     assert "grok" in st["models_found"] and "antigravity" in st["models_found"]
     cfg = load_config(project)
     assert cfg.lead == "codex" and not cfg.agents["antigravity"].enabled
@@ -470,6 +504,76 @@ def test_tui_command_popup_help_and_empty_state(env, project, monkeypatch):
     asyncio.run(main())
 
 
+def test_tui_task_agent_popup_and_raw_prompt(env, project, monkeypatch, tmp_path):
+    """/task: gõ xong lệnh thì hiện danh sách agent; prompt gửi agent đúng nguyên văn."""
+    full = tmp_path / "full.log"
+    for k, v in dict(env, ATEAM_FAKE_FULL_LOG=str(full)).items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import CommandInput, MentionList, TeamApp
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(140, 40)) as pilot:
+            await pilot.pause(0.5)
+            box = app.query_one("#cmd", CommandInput)
+            popup = app.query_one("#mention", MentionList)
+            await pilot.press(*"/tas", "tab")           # chọn lệnh /task -> mở luôn danh sách agent
+            await pilot.pause(0.2)
+            assert box.value == "/task " and popup.display
+            assert popup.border_title.startswith("/task")
+            ids = [popup.get_option_at_index(i).id for i in range(popup.option_count)]
+            assert ids == ["claude", "codex", "antigravity", "grok"]
+            assert "Viết code" in str(popup.get_option_at_index(1).prompt)  # vai trò
+            await pilot.press("c", "o")
+            await pilot.pause(0.1)
+            assert [popup.get_option_at_index(i).id for i in range(popup.option_count)] == ["codex"]
+            await pilot.press("enter")                  # Enter chọn agent, không gửi lệnh
+            assert box.value == "/task codex " and not popup.display and not app.db.tasks()
+            await pilot.press(*"xin chào", "enter")
+            for _ in range(40):
+                await pilot.pause(0.25)
+                t = app.db.tasks()
+                if t and t[0].status == "done":
+                    break
+            assert app.db.tasks()[0].status == "done"
+            # nút Dọn: chỉ xoá task đã kết thúc mà mục tiêu đã xong và không còn ai chờ nó
+            db, first = app.db, app.db.tasks()[0].id
+            live = db.add_goal("đang review")  # chưa kết thúc ("reviewing": không bị review lại)
+            db.update_goal(live, status="reviewing")
+            ended = db.add_goal("đã xong")
+            db.update_goal(ended, status="done")
+            keep_goal = db.add_task("codex", "a", "a", goal_id=live, status="done")
+            needed = db.add_task("codex", "b", "b", status="failed")
+            db.add_task("codex", "c", "c", status="draft", depends_on=[needed])
+            gone = db.add_task("codex", "d", "d", goal_id=ended, status="cancelled")
+            app.refresh_view()
+            await pilot.pause(0.2)
+            clear = app.query_one("#board-clear")
+            assert app.query_one("#board-tools").display and "2 task" in str(clear.label)
+            await pilot.click("#board-clear")
+            await pilot.pause(0.3)
+            ids = {t.id for t in db.tasks()}
+            assert keep_goal in ids and needed in ids and first not in ids and gone not in ids
+            assert [g.id for g in db.goals()] == [live]
+            assert first not in app._rows and gone not in app._rows and keep_goal in app._rows
+            assert not app.orch.log_path(first).exists()
+            assert not app.query_one("#board-tools").display
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+    sent = full.read_text()
+    assert sent.rstrip().endswith("<<codex>> exec --sandbox workspace-write --skip-git-repo-check xin chào"), sent
+
+
 def test_tui_helpers():
     from rich.text import Text
 
@@ -576,15 +680,19 @@ def test_tui_vietnamese_input():
         def compose(self):
             yield TextInput(id="i")
 
-    async def typed(raw: str) -> TextInput:
+    async def typed(raw: str, burst: bool = False) -> TextInput:
         app = Demo()
         async with app.run_test() as pilot:
             box = app.query_one(TextInput)
             box.focus()
-            # đi qua bộ đọc phím của Textual như byte thật từ terminal (pilot.press làm rơi dấu tổ hợp)
+            await pilot.pause()
+            # đi qua bộ đọc phím của Textual như byte thật từ terminal (pilot.press làm rơi dấu tổ hợp);
+            # burst: gửi liền mọi phím không chờ, như bộ gõ bắn Backspace + chữ mới trong một lượt
             for event in XTermParser().feed(raw):
                 app._driver.send_message(event)
-                await pilot.pause()
+                if not burst:
+                    await pilot.pause()
+            await pilot.pause(0.2)
             return box
 
     async def main():
@@ -600,6 +708,16 @@ def test_tui_vietnamese_input():
         # dấu không gộp được vào chữ trước vẫn bị xoá cùng chữ đó
         box = await typed("ax́\x7f")
         assert box.value == "a"
+        # OpenKey (byte thật ghi trên Terminal.app): gửi U+202F làm ký tự mồi rồi tính luôn nó vào
+        # số Backspace; Textual không chèn U+202F nên Backspace thừa xoá mất chữ thật ("cà", "càoiệt")
+        box = await typed("xin cha \x7f\x7fào vie \x7f\x7fê \x7f\x7f\x7fiệt nam")
+        assert box.value == "xin chào việt nam" and box.cursor_position == len(box.value)
+        # gõ nhanh: Backspace và chữ mới tới dồn một lượt -> vẫn phải xử lý đúng thứ tự
+        # (trước đây Backspace đi qua binding nên chạy sau chữ mới: "toi" thành "to")
+        box = await typed("toi \x7f\x7f\x7fôi muo \x7f\x7fô \x7f\x7f\x7fuốn", burst=True)
+        assert box.value == "tôi muốn"
+        box = await typed("toi\x7f\x7fôi\x7f\x7fx", burst=True)
+        assert box.value == "tx"
 
     asyncio.run(main())
 
@@ -755,3 +873,54 @@ def test_tui_team_tab_layout_stays_fixed(env, project, monkeypatch):
         asyncio.run(main(size))
     # ký tự điều khiển C1 (NEL, RI…) trong output agent không được lọt ra terminal
     assert clean_line("a\x85b\x8dc\x7fd\x1b[2Je") == "abcde"
+
+
+def test_tui_diff_screen_shared_mode_and_vscode(env, project, monkeypatch, tmp_path):
+    """Chế độ shared: diff gồm cả file chưa track; phím o mở `code --diff cũ mới`; Esc đóng."""
+    code_log = tmp_path / "code.log"
+    for k, v in dict(env, ATEAM_FAKE_CODE_LOG=str(code_log)).items():
+        monkeypatch.setenv(k, v)
+    git_init(project)  # base.txt = "base\n"
+    (project / "base.txt").write_text("base đã sửa\n")
+    (project / "mới.py").write_text("x = 1\n")
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import DiffScreen, TeamApp
+
+    async def main():
+        ensure_global_config()
+        db = DB(project / ".ateam/team.db")
+        tid = db.add_task("codex", "sửa base", "x", status="done")
+        app = TeamApp(project, load_config(project), db)
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause(0.3)
+            app.run_command(f"/diff {tid}")
+            for _ in range(20):
+                await pilot.pause(0.1)
+                if isinstance(app.screen, DiffScreen):
+                    break
+            scr = app.screen
+            assert isinstance(scr, DiffScreen)
+            assert {(f.status, f.path) for f in scr.ds.files} == {("M", "base.txt"), ("A", "mới.py")}
+            assert not scr.is_split()  # màn hình hẹp (< 120 cột): một cột
+            body = str(scr.query_one("#diff-body").render())
+            assert "base đã sửa" in body
+            await pilot.press("o")
+            for _ in range(30):
+                await pilot.pause(0.1)
+                if code_log.exists():
+                    break
+            args = code_log.read_text().split()
+            assert args[0] == "--diff"
+            assert Path(args[1]).read_text() == "base\n" and Path(args[2]).read_text() == "base đã sửa\n"
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, DiffScreen)
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())

@@ -113,7 +113,9 @@ Với mỗi task `queued` theo thứ tự id:
 1. Worktree (nếu bật): `_wt_prepare` tạo `.ateam/worktrees/t<id>` trên nhánh `ateam/t<id>` từ HEAD,
    lưu `base`.
 2. Dựng prompt (`task_prompt`): mục tiêu, task, SUMMARY của task phụ thuộc, ghi chú chung, luật
-   DELEGATE/NOTE/SUMMARY (chỉ cho giao chéo nếu `depth < max_delegation_depth`).
+   DELEGATE/NOTE/SUMMARY (chỉ cho giao chéo nếu `depth < max_delegation_depth`). Riêng task giao tay
+   bằng `/task` (`source = "user"`) gửi nguyên văn `prompt` người dùng gõ, không bọc gì (vẫn đổi `@file`
+   trong `argv_for`); không có DELEGATE/NOTE, `result` lấy đoạn cuối output nếu agent không in `SUMMARY:`.
 3. Nếu có verify và `only_when_changed`: lấy `_fingerprint` (HEAD + `git diff HEAD` + file chưa track).
 4. `_run_agent(kind="task")` → `Run` → phân loại `_classify`: cancelled / timeout / ratelimit / failed
    / empty / ok.
@@ -180,6 +182,16 @@ có ở gốc dự án được đổi sang tuyệt đối.
 với code nói về "rate limit"), tìm mẫu trong 30 dòng cuối. `reset_time` đọc giờ hồi từ
 `|<epoch>` (Claude), `try again in N minutes`, `resets at 3pm`; không có thì `cooldown_minutes`.
 Cooldown lưu ở `~/.config/ateam/state.json` (`cooldown`), dùng chung mọi dự án.
+
+## Xem diff
+
+`Orchestrator.diff_files(tid)` chạy `git -c core.quotePath=false diff -M --no-color` (worktree: `base..head`
+của task; shared: `HEAD` + file chưa track từ `git ls-files --others`, bỏ `.ateam/`, file > 1 MB) và
+`diffview.parse_unified` bóc thành `FileDiff`/`Hunk`/`DiffLine` có số dòng cũ/mới. `DiffScreen` (`tui.py`)
+vẽ từng file bằng `diffview.render`: hai cột ghép dòng xoá ↔ dòng thêm theo khối (`split_rows`), tô cú pháp
+cả khối mỗi phía một lần rồi tách dòng, chữ đổi so theo từ (`word_spans`); tối đa 4000 dòng mỗi file.
+Phím `o`: `diff_versions` ghi hai bản ra `.ateam/diff/t<id>/old|new/` (`git show`) rồi chạy `code --diff`.
+`Orchestrator.diff()` dạng chữ vẫn dùng cho `ateam diff`.
 
 ## Giao tiếp với TUI
 

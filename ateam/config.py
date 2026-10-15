@@ -23,7 +23,7 @@ STATE_FILE = GLOBAL_DIR / "state.json"
 CUSTOM_FILE = GLOBAL_DIR / "custom.toml"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 LEAD_ALIAS = "lead"  # agent của bước workflow = trưởng nhóm hiện tại
-CONFIG_VERSION = 4
+CONFIG_VERSION = 5
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
 
 DEFAULT_CONFIG = """\
@@ -34,7 +34,7 @@ DEFAULT_CONFIG = """\
 #  Model / effort đổi trong app (/model, /effort) được lưu ở ~/.config/ateam/state.json
 #  và ưu tiên hơn giá trị trong file này. Gõ /model <agent> - để quay về giá trị ở đây.
 # ============================================================
-config_version = 4
+config_version = 5
 
 lead = "claude"              # agent làm trưởng nhóm (lập kế hoạch + review)
 max_parallel = 3             # tổng số task chạy song song tối đa
@@ -100,11 +100,11 @@ max_concurrent = 1
 # --sandbox workspace-write: sửa file + chạy lệnh trong sandbox của Codex (codex exec không hỏi duyệt).
 # Cho ghi/mạng ngoài thư mục làm việc: "danger-full-access" (chỉ repo tin tưởng).
 command = ["codex", "exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "{prompt}"]
-model = ""                   # vd: "gpt-5.5", "gpt-5.5-codex"... (xem trong codex /model)
+model = ""                   # vd: "gpt-6.1-sol", "gpt-6-luna"... (xem: codex debug models)
 effort = ""
 model_args = ["-m", "{model}"]
 effort_args = ["-c", "model_reasoning_effort=\\"{effort}\\""]
-efforts = ["minimal", "low", "medium", "high", "xhigh"]
+efforts = ["low", "medium", "high", "xhigh", "max", "ultra"]
 fallback = ["claude"]
 role = "Viết code, sửa bug, chạy test, refactor."
 timeout = 1800
@@ -150,8 +150,10 @@ CATALOG: dict[str, dict] = {
         "efforts": ["low", "medium", "high", "max"],
     },
     "codex": {
-        "models": ["gpt-5.5", "gpt-5.5-codex"],
-        "efforts": ["minimal", "low", "medium", "high", "xhigh"],
+        "models": ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol",
+                   "gpt-5.6-terra", "gpt-5.6-luna"],
+        "efforts": ["low", "medium", "high", "xhigh", "max", "ultra"],
+        "models_command": ["codex", "debug", "models"],  # JSON, xem parse_models
     },
     "agy": {
         "models": [],
@@ -167,8 +169,34 @@ CATALOG: dict[str, dict] = {
 MODEL_RE = re.compile(r"^[A-Za-z0-9][\w.:/@\[\]+-]*$")
 
 
+def parse_models_json(output: str) -> list[str] | None:
+    """Danh mục model dạng JSON (vd `codex debug models`): {"models": [{"slug", "visibility"}, …]}.
+    Bỏ model ẩn. None nếu output không phải JSON như vậy."""
+    start, end = output.find("{"), output.rfind("}")
+    if start < 0 or end < start:
+        return None
+    try:
+        data = json.loads(output[start:end + 1])
+    except ValueError:
+        return None
+    items = data.get("models") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return None
+    out: list[str] = []
+    for m in items:
+        if not isinstance(m, dict) or m.get("visibility") == "hide":
+            continue
+        name = m.get("slug") or m.get("id") or m.get("name")
+        if isinstance(name, str) and MODEL_RE.match(name) and name not in out:
+            out.append(name)
+    return out
+
+
 def parse_models(output: str, filt: str = "") -> list[str]:
-    """Bóc tên model từ output của lệnh liệt kê (mỗi dòng một model, lấy cột đầu)."""
+    """Bóc tên model từ output của lệnh liệt kê (JSON, hoặc mỗi dòng một model, lấy cột đầu)."""
+    found = parse_models_json(output)
+    if found is not None:
+        return [m for m in found if not filt or filt.lower() in m.lower()]
     out: list[str] = []
     for line in output.splitlines():
         line = line.strip().lstrip("-*•").strip()
@@ -316,6 +344,7 @@ class Config:
     verify: VerifyConfig = field(default_factory=VerifyConfig)
     cooldown_minutes: int = 30
     lead_fallback: list[str] = field(default_factory=list)
+    default_workflow: str = ""  # gõ mục tiêu trong TUI là chạy theo workflow này ("" = trưởng nhóm)
     agents: dict[str, AgentConfig] = field(default_factory=dict)
     workflows: dict[str, Workflow] = field(default_factory=dict)
     custom_agents: set[str] = field(default_factory=set)  # tên agent lấy từ custom.toml
@@ -619,12 +648,13 @@ def needs_setup() -> bool:
     return not load_state().get("onboarded")
 
 
-def save_setup(root: Path, lead: str, agents: dict[str, dict]) -> None:
+def save_setup(root: Path, lead: str, agents: dict[str, dict],
+               default_workflow: str | None = None) -> None:
     """Lưu kết quả màn hình thiết lập vào state.json.
 
-    agents = {tên: {"enabled": bool, "model": str|None, "effort": str|None}}; model/effort None
-    hoặc "" = theo file cấu hình. Giá trị trùng với file cấu hình thì không ghi (để sửa file vẫn
-    có tác dụng)."""
+    agents = {tên: {"enabled": bool, "model": str|None, "effort": str|None, "role": str|None}};
+    model/effort/role None hoặc "" = theo file cấu hình. Giá trị trùng với file cấu hình thì không
+    ghi (để sửa file vẫn có tác dụng). default_workflow: workflow chạy khi gõ mục tiêu ("" = bỏ)."""
     base = load_config(root, with_state=False)
     state = load_state()
     st_agents = state.setdefault("agents", {})
@@ -633,7 +663,7 @@ def save_setup(root: Path, lead: str, agents: dict[str, dict]) -> None:
         if not a:
             continue
         entry = st_agents.setdefault(name, {})
-        for key in ("enabled", "model", "effort"):
+        for key in ("enabled", "model", "effort", "role"):
             if key not in ch:
                 continue
             v = ch[key]
@@ -647,6 +677,11 @@ def save_setup(root: Path, lead: str, agents: dict[str, dict]) -> None:
         state["lead"] = lead
     else:
         state.pop("lead", None)
+    if default_workflow is not None:
+        if default_workflow and default_workflow in base.workflows:
+            state["default_workflow"] = default_workflow
+        else:
+            state.pop("default_workflow", None)
     state["onboarded"] = 1
     save_state(state)
 
@@ -716,7 +751,7 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
     return AgentConfig(
         name=name,
         command=command,
-        role=a.get("role", ""),
+        role=st.get("role", a.get("role", "")) or "",
         timeout=int(a.get("timeout", 1800)),
         max_concurrent=max(1, int(a.get("max_concurrent", 1))),
         pty=bool(a.get("pty", False)),
@@ -800,6 +835,7 @@ def load_config(root: Path, with_state: bool = True) -> Config:
     )
     lim = data.get("limits") or {}
     lead = full_state.get("lead")
+    dwf = str(full_state.get("default_workflow") or "")
     return Config(
         lead=lead if lead in agents else data.get("lead", "claude"),
         max_parallel=max(1, int(data.get("max_parallel", 3))),
@@ -813,6 +849,7 @@ def load_config(root: Path, with_state: bool = True) -> Config:
         verify=verify,
         cooldown_minutes=max(1, int(lim.get("cooldown_minutes", 30))),
         lead_fallback=_strs(lim.get("lead_fallback")),
+        default_workflow=dwf if dwf in workflows else "",  # workflow đã bị xoá thì coi như không đặt
         agents=agents,
         workflows=workflows,
         custom_agents={n for n in (custom.get("agents") or {}) if n in agents},

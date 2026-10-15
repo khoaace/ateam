@@ -197,6 +197,11 @@ def test_models_refresh_asks_cli(env, project):
     r = ateam(env, project, "models")
     assert "xai/grok-5-fast" in r.stdout and "gemini-3-flash" in r.stdout
     assert "claude-opus-5-5" in r.stdout
+    # codex: danh mục JSON (`codex debug models`), không lọc theo tên agent, model cũ bị báo
+    ateam(env, project, "set", "codex", "--model", "gpt-5.5")
+    r = ateam(env, project, "models", "codex", "--refresh")
+    assert "tìm thấy 2 model" in r.stdout and "'gpt-5.5' không có trong danh sách" in r.stdout, r.stdout
+    assert "gpt-6-luna" in r.stdout and "codex-auto-review" not in r.stdout
 
 
 def test_custom_agent_and_workflow_cli(env, project, tmp_path):

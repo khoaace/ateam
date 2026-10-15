@@ -28,10 +28,11 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/config.py` | `DEFAULT_CONFIG` (TOML), dataclass `Config`/`AgentConfig`/`VerifyConfig`/`Workflow`, `AgentConfig.argv()`, state.json, custom.toml (agent/workflow tuỳ chỉnh, mẫu) |
 | `ateam/db.py` | Schema SQLite + migration cột, `Task`/`Goal`, thống kê `runs` |
 | `ateam/prompts.py` | Prompt gửi trưởng nhóm/thành viên (tiếng Anh) + bóc JSON, DELEGATE, NOTE, SUMMARY |
+| `ateam/diffview.py` | Màn hình diff kiểu VS Code: bóc `git diff`, ghép dòng hai cột, tô cú pháp (pygments qua rich) và chữ đổi trong dòng; `DiffScreen` ở `tui.py` dùng |
 | `ateam/mentions.py` | `@file`: gợi ý file/thư mục cho TUI, đổi `@đường/dẫn` sang cú pháp từng CLI (`SYNTAX`) |
 | `ateam/clipboard.py` | Ctrl+V dán ảnh: đọc clipboard (osascript/pngpaste/wl-paste/xclip), lưu `.ateam/images/`, nhận ảnh kéo-thả |
 | `ateam/limits.py` | Nhận diện thông báo hết hạn mức, đoán giờ hồi, lưu cooldown |
-| `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `opencode`, `mycli` (agent tuỳ chỉnh) |
+| `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `opencode`, `mycli` (agent tuỳ chỉnh), `code` (VS Code, cho phím `o` ở màn hình diff) |
 | `site/`, `scripts/build_site.py`, `wrangler.jsonc` | Trang docs + gói zip, deploy Cloudflare Workers |
 | `scripts/get.sh`, `install.sh` | Cài một lệnh từ GitHub; cài vào `~/.ateam/venv` + `~/.local/bin/ateam` |
 | `docs/` | Tài liệu cho người phát triển (xem dưới) |

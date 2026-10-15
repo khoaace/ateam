@@ -70,6 +70,8 @@ DRAFT, QUEUED, RUNNING, DONE, FAILED, CANCELLED, BLOCKED, CONFLICT, REVIEW = (
 )
 ACTIVE = (DRAFT, QUEUED, RUNNING, REVIEW)
 FINISHED_BAD = (FAILED, CANCELLED, BLOCKED)
+# trạng thái mục tiêu đã kết thúc (không còn lập kế hoạch / chạy / review nữa)
+GOAL_ENDED = ("done", "incomplete", "failed", "cancelled")
 
 
 @dataclass
@@ -192,6 +194,11 @@ class DB:
             fields["depends_on"] = json.dumps(fields["depends_on"])
         keys = ", ".join(f"{k}=?" for k in fields)
         self.conn.execute(f"UPDATE tasks SET {keys} WHERE id=?", (*fields.values(), tid))
+
+    def delete(self, task_ids: list[int], goal_ids: list[int]) -> None:
+        """Xoá hẳn task / mục tiêu (dọn bảng việc). Bảng runs giữ nguyên để /usage vẫn đủ số liệu."""
+        self.conn.executemany("DELETE FROM tasks WHERE id=?", [(i,) for i in task_ids])
+        self.conn.executemany("DELETE FROM goals WHERE id=?", [(i,) for i in goal_ids])
 
     # ---------- notes ----------
     def add_note(self, author: str, text: str) -> None:

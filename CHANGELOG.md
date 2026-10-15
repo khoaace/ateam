@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.5.3 — 15/10/2026
+
+- Cấu hình chung nâng lên bản 5: lần mở đầu tiên sau khi nâng cấp, `~/.config/ateam/config.toml` được sao lưu
+  (`config.v4.….bak.toml`) và thay bằng file mặc định mới (effort codex mới); lựa chọn trong `state.json` và
+  `custom.toml` giữ nguyên.
+- **Sửa: danh sách model của Codex sai** (`gpt-5.5` báo lỗi *not supported when using Codex with a
+  ChatGPT account*). ateam giờ hỏi danh sách thật bằng `codex debug models` (JSON, bỏ model ẩn) ở màn
+  hình thiết lập / `/models codex làm mới`; danh mục dự phòng đổi sang `gpt-6.1-sol`, `gpt-6-astra`,
+  `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`; effort `low…max, ultra`
+  (bỏ `minimal`). Model đang chọn không còn trong danh sách thì được nhắc chọn lại.
+- **Log dễ đọc hơn** (cột log và ô agent ở tab Đội): tiêu đề mỗi lượt chạy tô màu; header và prompt mà
+  Codex in lại được làm mờ/ẩn; lỗi JSON của CLI rút gọn thành `✗ Lỗi: …` (không lặp); `SUMMARY:`,
+  `<<<NOTE>>>`, `<<<DELEGATE>>>` hiện thành *Tóm tắt*, *Ghi chú*, *Giao cho …*; `**đậm**`, `` `code` ``,
+  gạch đầu dòng; log hệ thống tô theo biểu tượng ✓ ✗ ⚠. File log trên đĩa giữ nguyên.
+- **`/task`**: gõ `/task ` hiện danh sách agent (model · effort · vai trò), gõ để lọc, Tab/Enter chọn.
+  Prompt gửi agent giờ **đúng nguyên văn** bạn gõ, không còn bọc vai trò và luật DELEGATE/NOTE/SUMMARY.
+- **Sửa: gõ tiếng Việt bằng OpenKey trong ô nhập bị mất chữ** ("xin chào" thành "xin cà", "việt" thành
+  "iệt"). OpenKey gửi ký tự mồi U+202F trước khi xoá chữ cũ và tính nó vào số Backspace; Textual bỏ qua
+  ký tự này nên Backspace thừa xoá mất một chữ thật. Ô nhập giờ ghi nhận ký tự mồi và nuốt đúng Backspace đi kèm.
+  Thêm nữa, khi gõ nhanh bộ gõ bắn Backspace và chữ mới liền một lượt; Backspace trước đây đi vòng qua
+  phím tắt của app nên chạy *sau* chữ mới và xoá luôn chữ vừa gõ ("tôi muốn" thành "to mun", lúc bị lúc
+  không). Backspace/Delete giờ được ô nhập xử lý ngay, đúng thứ tự.
+- **Thiết lập đội: sửa vai trò và chọn workflow mặc định** (`/setup`). Cột *Vai trò* giờ là ô nhập sửa được
+  (lưu ở `state.json`, chỉ khi khác file cấu hình); hàng mới *⚙ Workflow mặc định*: chọn một workflow thì gõ
+  mục tiêu là chạy theo workflow đó (ô nhập ghi rõ đang dùng workflow nào), không cần `/flow`. Lệnh mới
+  `/goal <mục tiêu>` luôn để trưởng nhóm lập kế hoạch. `ateam goal` trên dòng lệnh không đổi.
+- **Màn hình xem diff kiểu VS Code** (Ctrl+D, `/diff N`) thay cho việc in `git diff` thô vào cột log:
+  danh sách file bên trái (trạng thái M/A/D/R, +/−), diff từng file bên phải có số dòng, tô màu cú pháp,
+  nền xanh/đỏ cho dòng thêm/xoá và tô đậm đúng từ bị đổi. Mặc định hai cột (cũ | mới), `s` đổi một cột
+  (terminal < 120 cột tự dùng một cột); `]` `[` nhảy giữa các đoạn đổi; `o` mở file trong VS Code bằng
+  `code --diff`; Ctrl+Y merge ngay từ màn hình diff. Chế độ shared hiện cả file mới chưa track.
+- **Kế hoạch dễ đọc và dễ duyệt hơn**: trong log, JSON kế hoạch / review của trưởng nhóm (kể cả khối
+  ```` ```json ```` nhiều dòng) hiện thành danh sách *📋 Kế hoạch: N task* — mỗi task một dòng `#id agent@effort
+  tiêu đề ⟵ sau #…` kèm đoạn đầu nội dung; review hiện *🔎 Review* + tóm tắt + việc giao thêm. Khung
+  **Duyệt kế hoạch** có thêm ô chi tiết: ↑↓ chọn task nào thì thấy toàn bộ nội dung, agent, model · effort,
+  phụ thuộc của task đó trước khi duyệt; mục tiêu hiện đủ (tới 300 ký tự).
+- **Dọn bảng việc**: nút *🗑 Dọn N task đã xong* phía trên bảng (chỉ hiện khi có gì để dọn) và lệnh `/clear`
+  xoá task xong/lỗi/huỷ/bị chặn của mục tiêu đã kết thúc (hoặc giao tay), mục tiêu đã kết thúc, cùng file log;
+  task còn được task khác chờ thì giữ lại. Thống kê `/usage` không đổi.
+- Trạng thái **đang chạy** (task, spinner, đồng hồ, thanh timeline, mục tiêu đang lập kế hoạch/review)
+  đổi từ tím (magenta) sang **xanh dương**: Terminal.app vẽ magenta gần như đỏ, dễ nhầm với lỗi.
+
 ## 0.5.2 — 14/10/2026
 
 - Cấu hình chung nâng lên bản 4: lần mở đầu tiên sau khi nâng cấp, `~/.config/ateam/config.toml` được

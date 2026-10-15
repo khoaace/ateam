@@ -9,6 +9,10 @@ for a in "$@"; do
     printf "error: unexpected argument '--full-auto' found\n\nUsage: codex exec [OPTIONS] [PROMPT]\n" >&2; exit 2
   fi
 done
+if [ "${1:-}" = "debug" ] && [ "${2:-}" = "models" ]; then  # như codex thật: JSON trên 1 dòng
+  echo '{"models":[{"slug":"gpt-6.1-sol","visibility":"list"},{"slug":"gpt-reserve","visibility":"hide"},{"slug":"gpt-6-luna","visibility":"list"},{"slug":"codex-auto-review","visibility":"hide"}]}'
+  exit 0
+fi
 P="$fake_prompt"
 if fake_limited codex; then echo "ERROR: You've hit your usage limit. Try again in 7 minutes."; exit 1; fi
 if [[ "$P" == *"TEAM LEAD"* && "$P" == *"Reply with ONLY a JSON array"* ]]; then

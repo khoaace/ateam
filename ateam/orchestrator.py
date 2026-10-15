@@ -16,7 +16,7 @@ from . import mentions
 from . import prompts as P
 from .config import AgentConfig, Config
 from .db import (ACTIVE, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
-                 FINISHED_BAD, QUEUED, REVIEW, RUNNING, Task)
+                 FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Task)
 from .runner import Run
 
 SYSTEM = 0  # id "task" của log hệ thống
@@ -310,6 +310,35 @@ class Orchestrator:
         self.emit("changed")
         return n
 
+    def finished_ids(self) -> tuple[list[int], list[int]]:
+        """Task và mục tiêu dọn được: task xong/lỗi/huỷ/bị chặn mà mục tiêu của nó đã kết thúc (hoặc
+        không thuộc mục tiêu nào) và không còn task nào khác đang chờ nó; mục tiêu đã kết thúc mà dọn
+        xong thì không còn task nào."""
+        goals = {g.id: g for g in self.db.goals()}
+        ended = {gid for gid, g in goals.items() if g.status in GOAL_ENDED}
+        tasks = self.db.tasks()
+        drop = {t.id for t in tasks if t.status in (DONE,) + FINISHED_BAD
+                and (t.goal_id is None or t.goal_id in ended)}
+        needed = {d for t in tasks if t.id not in drop for d in t.depends_on}
+        drop -= needed  # task còn lại phụ thuộc vào nó: xoá đi thì task đó thành "bị chặn"
+        left = {t.goal_id for t in tasks if t.id not in drop}
+        return sorted(drop), sorted(gid for gid in ended if gid not in left)
+
+    def clear_finished(self) -> tuple[int, int]:
+        """Dọn bảng việc: xoá task và mục tiêu đã kết thúc cùng file log của chúng."""
+        tids, gids = self.finished_ids()
+        if not tids and not gids:
+            return 0, 0
+        self.db.delete(tids, gids)
+        for tid in tids:
+            try:
+                self.log_path(tid).unlink()
+            except OSError:
+                pass
+        self.log(f"🗑 Đã dọn {len(tids)} task, {len(gids)} mục tiêu đã kết thúc khỏi bảng việc.")
+        self.emit("changed")
+        return len(tids), len(gids)
+
     # ------------------------------------------------------------------ giao tay / chỉnh sửa
     def add_task(self, agent: str, prompt: str, title: str | None = None, *,
                  model: str | None = None, effort: str | None = None) -> int:
@@ -361,7 +390,7 @@ class Orchestrator:
 
     async def discover_models(self, agent: str, timeout: float = 30) -> str:
         """Chạy models_command của agent (vd `opencode models`) để lấy danh sách model thật."""
-        from .config import parse_models, save_found_models
+        from .config import parse_models, parse_models_json, save_found_models
         a = self.cfg.agents.get(agent)
         if not a:
             return f"Không có agent '{agent}'"
@@ -376,7 +405,10 @@ class Orchestrator:
         except Exception as e:
             return f"{agent}: không chạy được {' '.join(a.models_command)}: {e}"
         found = parse_models(run.output, a.models_filter)
-        if not a.models_filter and any(agent.lower() in m.lower() for m in found):
+        # danh sách dạng chữ của opencode lẫn model mọi hãng -> giữ model mang tên agent (nếu có);
+        # JSON (codex) đã chỉ gồm model dùng được, lọc theo tên sẽ chỉ còn "codex-auto-review"
+        if (not a.models_filter and parse_models_json(run.output) is None
+                and any(agent.lower() in m.lower() for m in found)):
             found = [m for m in found if agent.lower() in m.lower()]
         if code != 0 or not found:
             why = "hết thời gian" if run.timed_out else f"mã thoát {code}" if code else "không thấy model nào"
@@ -384,7 +416,10 @@ class Orchestrator:
         save_found_models(agent, found)
         a.models = found + [m for m in a.models if m not in found]
         self.emit("changed")
-        return f"{agent}: tìm thấy {len(found)} model"
+        msg = f"{agent}: tìm thấy {len(found)} model"
+        if a.model and a.model not in found:
+            msg += f" ⚠ model đang chọn '{a.model}' không có trong danh sách — chọn lại: /model {agent}"
+        return msg
 
     async def discover_all(self, names: list[str] | None = None, timeout: float = 20,
                            on_done=None) -> dict[str, str]:
@@ -768,10 +803,13 @@ class Orchestrator:
                 dt = self.db.task(d)
                 if dt:
                     deps.append((dt.id, dt.agent, dt.title, dt.result or ""))
-            prompt = P.task_prompt(
-                self.cfg, agent=t.agent, task_id=t.id, title=t.title, prompt=t.prompt,
-                goal=goal.text if goal else None, deps=deps, notes=self.notes_text(),
-                cwd=str(workdir), can_delegate=t.depth < self.cfg.max_delegation_depth)
+            if t.source == "user":  # /task: gửi nguyên văn người dùng gõ, không bọc vai trò/luật
+                prompt = t.prompt
+            else:
+                prompt = P.task_prompt(
+                    self.cfg, agent=t.agent, task_id=t.id, title=t.title, prompt=t.prompt,
+                    goal=goal.text if goal else None, deps=deps, notes=self.notes_text(),
+                    cwd=str(workdir), can_delegate=t.depth < self.cfg.max_delegation_depth)
             gate = bool(v.command) and agent.verify
             before = await self._fingerprint(workdir) if gate and v.only_when_changed else None
             self.log(f"▶ #{tid} {t.agent}: {t.title}")
@@ -1048,6 +1086,69 @@ class Orchestrator:
             msg = f"Đã huỷ #{tid}"
         self.emit("changed")
         return msg
+
+    async def _git_bytes(self, *args: str) -> tuple[int, bytes]:
+        proc = await asyncio.create_subprocess_exec(
+            "git", *args, cwd=str(self.root), stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        out, _ = await proc.communicate()
+        return proc.returncode, out
+
+    async def diff_files(self, tid: int) -> "DiffSet | str":
+        """Diff có cấu trúc (từng file) cho màn hình xem diff; str = thông báo khi không xem được."""
+        from .diffview import DiffSet, added_file, parse_unified
+        t = self.db.task(tid)
+        if not t:
+            return f"Không có task #{tid}"
+        git = ("-c", "core.quotePath=false", "diff", "-M", "--no-color")
+        if t.base and (t.head or t.branch):
+            head = t.head or t.branch
+            rc, body = await self._git(*git, t.base, head)
+            if rc != 0:
+                return f"Không lấy được diff của task #{tid}: {body.strip()[:200]}"
+            files = parse_unified(body)
+            if not files:
+                return f"Task #{tid} không thay đổi file nào."
+            return DiffSet(tid, f"Diff #{tid} · {t.base[:8]}..{head[:12]}", files, t.base, head)
+        rc, body = await self._git(*git, "HEAD")
+        if rc != 0:
+            return "Thư mục này không phải git repo (hoặc chưa có commit nào) — không xem được diff."
+        files = parse_unified(body)
+        _, others = await self._git("ls-files", "--others", "--exclude-standard", "-z")
+        for path in [p for p in others.split("\0") if p and not p.startswith(".ateam/")]:
+            f = self.root / path
+            try:
+                data = f.read_bytes() if f.stat().st_size <= 1_000_000 else None
+            except OSError:
+                continue
+            try:
+                text = data.decode("utf-8") if data is not None and b"\0" not in data else None
+            except UnicodeDecodeError:
+                text = None
+            files.append(added_file(path, text))
+        if not files:
+            return "Không có thay đổi nào chưa commit."
+        return DiffSet(tid, f"Thay đổi chưa commit của thư mục (chế độ shared, không tách theo task #{tid})",
+                       files, "HEAD", None)
+
+    async def diff_versions(self, ds, fd) -> tuple[Path, Path]:
+        """Hai bản (cũ, mới) của một file trong diff, ghi ra .ateam/diff/ để mở bằng `code --diff`."""
+        out = self.state / "diff" / f"t{ds.tid}"
+        old = out / "old" / (fd.old_path or fd.path)
+        new = out / "new" / fd.path
+        old.parent.mkdir(parents=True, exist_ok=True)
+        new.parent.mkdir(parents=True, exist_ok=True)
+        data = b""
+        if fd.status != "A":
+            _, data = await self._git_bytes("show", f"{ds.base}:{fd.old_path or fd.path}")
+        old.write_bytes(data)
+        if ds.head is None and fd.status != "D":
+            return old, self.root / fd.path  # chế độ shared: bản mới là file đang có trong thư mục
+        data = b""
+        if fd.status != "D":
+            _, data = await self._git_bytes("show", f"{ds.head}:{fd.path}")
+        new.write_bytes(data)
+        return old, new
 
     async def diff(self, tid: int) -> str:
         """Diff của task (chế độ worktree), hoặc diff hiện tại của cả thư mục (shared)."""

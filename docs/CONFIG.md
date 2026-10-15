@@ -11,8 +11,9 @@ Nguồn cấu hình, ưu tiên tăng dần:
    nâng cấp. Lỗi cú pháp TOML = bỏ qua cả file.
 4. `<dự án>/.ateam/config.toml` — merge sâu lên trên (chỉ cần ghi khoá muốn đổi). Tạo bằng
    `ateam init --project`.
-5. `~/.config/ateam/state.json` → `agents.<tên>.model|effort|enabled` (đặt bằng `/model`, `/effort`,
-   `ateam set`, màn hình thiết lập `/setup`), `lead` (trưởng nhóm chọn ở `/setup`), `onboarded` (đã qua
+5. `~/.config/ateam/state.json` → `agents.<tên>.model|effort|enabled|role` (đặt bằng `/model`, `/effort`,
+   `ateam set`, màn hình thiết lập `/setup`; `role` sửa ở cột *Vai trò* của `/setup`), `lead` (trưởng nhóm chọn ở `/setup`),
+   `default_workflow` (workflow chạy khi gõ mục tiêu trong TUI, chọn ở `/setup`; workflow đã bị xoá thì bỏ qua), `onboarded` (đã qua
    màn hình thiết lập lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`), và `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify`).
 6. Riêng từng task: cột `model`/`effort` (`/task agent:model@effort`, `/set`, kế hoạch của trưởng nhóm).
 
@@ -22,7 +23,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 
 | Khoá | Mặc định | Ý nghĩa |
 | --- | --- | --- |
-| `config_version` | `4` | Phiên bản file; thấp hơn `CONFIG_VERSION` thì được nâng cấp |
+| `config_version` | `5` | Phiên bản file; thấp hơn `CONFIG_VERSION` thì được nâng cấp |
 | `lead` | `"claude"` | Agent làm trưởng nhóm |
 | `max_parallel` | `3` | Tổng số task chạy cùng lúc |
 | `approve_plan` | `true` | Kế hoạch (và task bổ sung sau review) ở `draft`, chờ `/go` |
@@ -60,7 +61,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 | `model_args`, `effort_args` | `[]` | Cờ chèn trước prompt khi có model/effort (`{model}`, `{effort}` được thay) |
 | `efforts` | danh mục | Mức effort hợp lệ (kiểm tra, gợi ý, bảng chọn, giới hạn lựa chọn của trưởng nhóm). Vắng = theo `CATALOG`; `[]` = không có |
 | `models` | danh mục | Model gợi ý cho bảng chọn `/model`, tab Đội, `/models`. Vắng = `CATALOG` trong `config.py` theo tên lệnh (`claude`, `codex`, `agy`, `opencode`). Chỉ là gợi ý: tên ngoài danh sách vẫn đặt được |
-| `models_command` | danh mục | argv liệt kê model thật (`opencode models`, `agy models`); chạy song song ở màn hình thiết lập (`/setup`, lần đầu mở app), khi mở app mà chưa có kết quả, hoặc `/models <agent> làm mới`, kết quả lưu ở `state.json` và đứng trước `models` |
+| `models_command` | danh mục | argv liệt kê model thật (`opencode models`, `agy models`, `codex debug models`; output dạng chữ mỗi dòng một model, hoặc JSON `{"models": [{"slug", "visibility"}]}` thì bỏ model `hide`); chạy song song ở màn hình thiết lập (`/setup`, lần đầu mở app), khi mở app mà chưa có kết quả, hoặc `/models <agent> làm mới`, kết quả lưu ở `state.json` và đứng trước `models` |
 | `models_filter` | `""` | Chỉ giữ model chứa chữ này. Vắng: nếu có model chứa tên agent (vd `grok`) thì chỉ giữ các model đó |
 | `fallback` | `[]` | Agent thay thế khi agent này hết hạn mức (theo thứ tự) |
 | `verify` | `true` | `false` = không chạy `[verify]` sau task của agent này |
@@ -100,7 +101,7 @@ Mỗi bước:
 | Agent | command | model_args / effort_args | efforts | fallback |
 | --- | --- | --- | --- | --- |
 | `claude` | `claude -p {prompt} --permission-mode acceptEdits` | `--model` / `--effort` | low, medium, high, max | codex |
-| `codex` | `codex exec --sandbox workspace-write --skip-git-repo-check {prompt}` | `-m` / `-c model_reasoning_effort="…"` | minimal…xhigh | claude |
+| `codex` | `codex exec --sandbox workspace-write --skip-git-repo-check {prompt}` | `-m` / `-c model_reasoning_effort="…"` | low…ultra | claude |
 | `antigravity` | `agy --mode accept-edits --print-timeout 0 -p {prompt}` (pty) | `--model` / `--effort` | low…max | claude, codex |
 | `grok` | `opencode run {prompt}`, model `xai/grok-build-0.1` | `--model` / `--variant` | low, medium, high | codex |
 

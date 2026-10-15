@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Giả lập lệnh `code` của VS Code: ghi argv vào $ATEAM_FAKE_CODE_LOG để test kiểm tra `code --diff cũ mới`.
+echo "$*" >> "${ATEAM_FAKE_CODE_LOG:-/dev/null}"

@@ -47,14 +47,20 @@ ateam
 **Lần đầu mở app** sẽ hiện màn hình *Thiết lập đội AI*: ateam hỏi song song các CLI có lệnh liệt kê
 model (`opencode models`, `agy models`; Claude Code và Codex dùng danh mục có sẵn) để bảng chọn có sẵn
 model thật, rồi cho bạn chọn trong một màn hình: agent nào tham gia, ai làm trưởng nhóm, model và effort
-của từng agent. **Ctrl+S** lưu, **Esc** bỏ qua (giữ cấu hình hiện tại). Mở lại bất cứ lúc nào bằng
-`/setup` trong app hoặc `ateam setup`.
+của từng agent, **vai trò** của từng agent (sửa thẳng trong ô, trưởng nhóm dựa vào đây để chia việc) và
+**workflow mặc định**: chọn một workflow thì gõ mục tiêu là chạy theo workflow đó luôn, không cần `/flow`
+(muốn trưởng nhóm lập kế hoạch thì gõ `/goal <mục tiêu>`). **Ctrl+S** lưu, **Esc** bỏ qua (giữ cấu hình
+hiện tại). Mở lại bất cứ lúc nào bằng `/setup` trong app hoặc `ateam setup`.
 
 * **Gõ một câu bình thường** → giao mục tiêu cho trưởng nhóm. Kế hoạch hiện ra ở trạng thái *nháp*
   trong khung **Duyệt kế hoạch** ngay trên ô nhập (thấy ở cả tab Bảng việc và Đội): danh sách task kèm
   agent và phụ thuộc, con trỏ đặt sẵn ở nút *Duyệt & chạy* nên chỉ cần **Enter** (hoặc **F2** / **Ctrl+G** /
-  `/go`). Enter trên một task để sửa nội dung, nút *Đổi agent*, *Bỏ kế hoạch* (`/drop`); Esc về ô nhập.
-* **Giao tay**: `/task codex viết unit test cho utils.py`
+  `/go`). ↑↓ trong danh sách để xem toàn bộ nội dung từng task ở ô chi tiết bên dưới; Enter trên một task
+  để sửa nội dung, nút *Đổi agent*, *Bỏ kế hoạch* (`/drop`); Esc về ô nhập.
+* **Giao tay**: `/task codex viết unit test cho utils.py` (gõ `/task ` để chọn agent từ danh sách); agent
+  nhận đúng nguyên văn bạn gõ.
+* **Dọn bảng việc**: nút **🗑 Dọn … task đã xong** phía trên bảng (hoặc `/clear`) xoá các task đã xong/lỗi/huỷ
+  của mục tiêu đã kết thúc cùng log của chúng; task còn được task khác chờ thì giữ lại.
 * **Nhắc file/thư mục bằng `@`**: gõ `@` trong ô nhập để hiện danh sách file và thư mục của dự án, gõ
   tiếp để lọc (khớp cả rải rác, vd `@atcfg` → `ateam/config.py`), ↑↓ chọn, Tab/Enter chèn, Esc đóng.
   Chọn thư mục thì danh sách đi vào trong thư mục đó. Khi chạy, ateam đổi `@đường/dẫn` sang đúng cú
@@ -148,7 +154,12 @@ Vẫn fail thì task báo lỗi. Agent chỉ đọc/nghiên cứu có thể đ�
 ## Xem diff và duyệt merge (chế độ worktree)
 
 Đặt `merge = "review"`: task xong (và qua kiểm tra) dừng ở trạng thái **chờ duyệt**.
-**Ctrl+D** / `/diff 3` xem thay đổi, **Ctrl+Y** / `/merge 3` để merge,
+**Ctrl+D** / `/diff 3` mở màn hình xem diff kiểu VS Code: danh sách file bên trái (M sửa · A thêm · D xoá ·
+R đổi tên, kèm +/−), diff file đang chọn bên phải với số dòng, tô màu cú pháp và tô đậm từ bị đổi.
+Mặc định **hai cột** (cũ | mới), `s` đổi sang một cột; ↑↓ chọn file, `]` `[` nhảy giữa các đoạn đổi,
+`o` mở file đó trong VS Code (`code --diff`), Esc đóng. Ở chế độ shared màn hình này hiện mọi thay đổi
+chưa commit của thư mục, gồm cả file mới chưa track.
+**Ctrl+Y** / `/merge 3` để merge (từ màn hình diff cũng được),
 `/reject 3 thiếu xử lý lỗi null` để giao làm lại kèm góp ý (`/reject 3` không góp ý = huỷ).
 Task phụ thuộc chỉ chạy sau khi task trước được merge. Ngoài app: `ateam diff|merge|reject`.
 
