@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.6 — 15/10/2026
+
+- **Sửa: bật Toàn quyền cho agent ở /custom rồi quay lại /setup thì bị đè về "sửa file"**. Khi quay lại từ màn hình
+  tuỳ chỉnh, form thiết lập khôi phục lựa chọn cũ của mọi ô (kể cả ô người dùng không đụng tới) và Ctrl+S ghi
+  `full_access = false` vào `state.json`, đè lên `custom.toml`. Giờ chỉ giữ những ô đã đổi trong /setup; lưu
+  agent ở /custom cũng bỏ các giá trị cũ của agent đó trong `state.json` (model, effort, vai trò, quyền).
+
 ## 0.5.5 — 15/10/2026
 
 - **Quyền chạy lệnh cho agent**: cột *Quyền* mới ở `/setup` (cả agent có sẵn) và trong form agent — *sửa file*

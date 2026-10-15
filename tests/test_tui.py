@@ -1092,3 +1092,70 @@ def test_tui_terminal_tab(env, project, monkeypatch):
     sleeper = asyncio.run(main())
     assert sleeper.status == "stopped"
     assert (project / ".ateam" / "logs" / "sh1.log").read_text().startswith("$ echo 'xin chào'")
+
+
+def test_tui_full_access_from_custom_survives_setup(env, project, monkeypatch):
+    """Lỗi người dùng gặp: /setup → Agent & workflow tuỳ chỉnh → bật Toàn quyền cho agent → quay lại /setup
+    → Ctrl+S. Form thiết lập từng khôi phục lựa chọn cũ ("sửa file") và ghi full_access=false vào state,
+    đè mất giá trị trong custom.toml; state cũ còn sót cũng đè lên."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import Select
+
+    from ateam.config import (ensure_global_config, load_config, load_custom, load_state, save_custom_item,
+                              save_state)
+    from ateam.db import DB
+    from ateam.tui import AgentQuickScreen, CustomScreen, SetupScreen, TeamApp
+
+    async def wait_for(pilot, cond, n=80):
+        for _ in range(n):
+            await pilot.pause(0.1)
+            if cond():
+                return True
+        return False
+
+    async def main():
+        ensure_global_config()
+        save_custom_item("agents", "gehihi", {"command": ["agy", "--mode", "accept-edits", "--print-timeout", "0",
+                                                          "-p", "{prompt}"], "pty": True, "role": "Việc nhỏ"})
+        st = load_state()
+        st.setdefault("agents", {})["gehihi"] = {"full_access": False, "role": "Lint, build"}
+        st["onboarded"] = 1
+        save_state(st)
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.3)
+            app.open_setup()
+            assert await wait_for(pilot, lambda: isinstance(app.screen, SetupScreen) and app.screen.ready)
+            setup = app.screen
+            setup.query_one("#setup-effort-claude", Select).value = "high"   # đổi dở trong /setup: phải giữ
+            await pilot.click("#setup-custom")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
+            await pilot.pause(0.3)
+            edit = next(bid for bid, act in app.screen.ids.items() if act == ("edit-agent", "gehihi"))
+            await pilot.click("#" + edit)
+            assert await wait_for(pilot, lambda: isinstance(app.screen, AgentQuickScreen))
+            app.screen.query_one("#q-access", Select).value = "full"
+            await pilot.press("ctrl+s")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
+            assert "full_access" not in load_state()["agents"].get("gehihi", {})   # state cũ đã bỏ
+            await pilot.press("escape")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, SetupScreen) and app.screen.ready)
+            assert app.screen.query_one("#setup-access-gehihi", Select).value == "full"
+            assert app.screen.query_one("#setup-effort-claude", Select).value == "high"
+            await pilot.press("ctrl+s")
+            assert await wait_for(pilot, lambda: not isinstance(app.screen, SetupScreen))
+            assert app.cfg.agents["gehihi"].full_access
+            assert "--dangerously-skip-permissions" in app.cfg.agents["gehihi"].argv("x")
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+    assert load_custom()["agents"]["gehihi"]["full_access"] is True
+    assert load_state()["agents"].get("gehihi", {}).get("full_access") is not False
+    assert load_config(project).agents["gehihi"].full_access

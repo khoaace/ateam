@@ -27,7 +27,8 @@ from . import clipboard, diffview, mentions, shell, update
 from .config import (CATALOG, CUSTOM_FILE, LEAD_ALIAS, NAME_RE, PROVIDERS, WORKFLOW_TEMPLATES, AgentConfig,
                      Config, full_access_supported, provider_of, provider_template,
                      Workflow, WorkflowStep, agent_from_dict, agent_templates, describe_models,
-                     load_config, load_custom, load_state, mark_setup_done, save_custom_item,
+                     clear_agent_state, load_config, load_custom, load_state, mark_setup_done,
+                     save_custom_item,
                      save_project_setting, save_setup, workflow_to_dict)
 from .db import DB
 from .orchestrator import SYSTEM, Orchestrator
@@ -851,6 +852,7 @@ class SetupScreen(ModalScreen):
         await rows.mount_all(widgets)
         self.query_one("#setup-save", Button).disabled = False
         self.ready = True
+        self.initial = self.choices()  # để biết ô nào người dùng đã đổi trong form (xem _custom_done)
         self._show_status()
         self.query_one("#setup-lead", Select).focus()
 
@@ -888,9 +890,16 @@ class SetupScreen(ModalScreen):
                                  lambda changed: self._custom_done(changed, keep))
 
     async def _custom_done(self, changed: bool, keep: dict) -> None:
-        """Quay lại từ màn hình tuỳ chỉnh: nạp lại đội rồi dựng lại form, giữ lựa chọn đang dở."""
+        """Quay lại từ màn hình tuỳ chỉnh: nạp lại đội rồi dựng lại form. Chỉ giữ những ô người dùng đã
+        đổi trong form này — ô còn lại lấy giá trị mới (vd vừa bật Toàn quyền cho agent ở /custom)."""
         if not changed:
             return
+        before = getattr(self, "initial", {"agents": {}})
+        keep = {"lead": keep["lead"] if keep["lead"] != before.get("lead") else None,
+                "default_workflow": keep["default_workflow"]
+                if keep["default_workflow"] != before.get("default_workflow") else None,
+                "agents": {n: {k: v for k, v in ch.items() if (before["agents"].get(n) or {}).get(k, object()) != v}
+                           for n, ch in keep["agents"].items()}}
         await self.app.reload_custom()
         for n, a in self.cfg.agents.items():
             if a.models_command and a.installed() and n not in self.fetch:
@@ -911,7 +920,8 @@ class SetupScreen(ModalScreen):
         for n, ch in keep["agents"].items():
             if n not in self.cfg.agents or not self.cfg.agents[n].installed():
                 continue
-            self.query_one("#" + safe_id(n, "setup-on-"), Checkbox).value = bool(ch.get("enabled"))
+            if "enabled" in ch:
+                self.query_one("#" + safe_id(n, "setup-on-"), Checkbox).value = bool(ch["enabled"])
             if ch.get("role"):
                 self.query_one("#" + safe_id(n, "setup-role-"), TextInput).value = ch["role"]
             acc = self.query("#" + safe_id(n, "setup-access-"))
@@ -1576,6 +1586,10 @@ class CustomScreen(ModalScreen):
             return
         name, body, old = result
         save_custom_item(kind, name, body, old)
+        if kind == "agents":  # giá trị vừa đặt trong form phải có hiệu lực, không để state.json cũ đè
+            clear_agent_state(name)
+            if old and old != name:
+                clear_agent_state(old, keys=("enabled", "model", "effort", "role", "full_access"))
         self.changed = True
         self.notify(f"Đã lưu {'agent' if kind == 'agents' else 'workflow'} '{name}'")
         await self.refill()

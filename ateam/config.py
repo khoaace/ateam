@@ -770,6 +770,20 @@ def save_setup(root: Path, lead: str, agents: dict[str, dict],
     save_state(state)
 
 
+def clear_agent_state(name: str, keys=("model", "effort", "role", "full_access")) -> None:
+    """Bỏ các giá trị /setup, /model… đã ghi đè trong state.json cho agent (vd vừa lưu agent ở /custom:
+    giá trị trong form phải có hiệu lực, không để giá trị cũ trong state đè lên)."""
+    state = load_state()
+    entry = (state.get("agents") or {}).get(name)
+    if not entry:
+        return
+    for k in keys:
+        entry.pop(k, None)
+    if not entry:
+        state["agents"].pop(name, None)
+    save_state(state)
+
+
 def mark_setup_done() -> None:
     state = load_state()
     state["onboarded"] = 1
