@@ -1,14 +1,14 @@
 # Changelog
 
-## Chưa phát hành
+## 0.8.0 — 16/10/2026
 
 - **`/grill <mục tiêu>` — trưởng nhóm "grill" bạn trước khi làm**: hỏi từng câu một (phạm vi, luồng, dữ liệu, ca
   biên, tiêu chí xong) kèm phương án gợi ý và phương án khuyên dùng, tự đọc code thay vì hỏi khi được. Trả lời ở
   ô nhập (gõ số / bấm để chọn phương án), "Để trưởng nhóm tự quyết", "Đủ rồi" để chốt. Xong thì trưởng nhóm viết
   bản đặc tả rồi lập kế hoạch; đặc tả đi kèm mục tiêu trong mọi prompt sau. Chạy được với mọi CLI.
-
 - Tab 🌿 Git: ô **Bỏ qua hook (--no-verify)** dưới nút Commit và `/commit --no-verify <message>` (hoặc `-n`) để
   commit khi hook pre-commit/commit-msg (husky, lint-staged…) chặn. Commit bị hook chặn thì thông báo nhắc cách này.
+- Tab Git: nút hàng stage gọn lại, không bị cắt ở terminal ~130 cột.
 
 ## 0.7.0 — 16/10/2026
 
