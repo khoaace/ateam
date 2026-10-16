@@ -328,6 +328,7 @@ ateam doctor</pre><button class="copy" data-copy="manual">Sao chép</button></di
         <div style="--fc: var(--agy)"><dt>Duyệt diff trước khi merge</dt><dd>Mỗi task một git worktree riêng. <kbd>Ctrl</kbd>+<kbd>D</kbd> xem diff, <kbd>Ctrl</kbd>+<kbd>Y</kbd> merge, <code>/reject</code> kèm góp ý để làm lại.</dd></div>
         <div style="--fc: var(--grok)"><dt>Hết hạn mức thì đổi người</dt><dd>Agent báo rate limit được cho nghỉ đến giờ hồi; task tự chuyển sang agent dự phòng, kể cả vai trưởng nhóm.</dd></div>
         <div><dt>Model và effort cho từng agent, từng task</dt><dd><code>/model claude opus</code>, <code>/effort codex xhigh</code>, hoặc <code>/task codex@xhigh …</code> cho riêng một việc khó.</dd></div>
+        <div><dt>Quản lý git ngay trong app</dt><dd>Tab 🌿 Git (<code>/git</code>): stage từng file, xem diff, commit — trưởng nhóm viết commit message từ diff —, đổi/tạo/merge nhánh, pull/push, stash, lịch sử và revert.</dd></div>
         <div><dt>Agent và workflow của riêng bạn</dt><dd>Bất kỳ CLI nào chạy headless đều vào đội được: Gemini CLI, Cursor CLI, Aider… thêm trong màn hình <code>/custom</code> (có mẫu và xem trước lệnh). Workflow dựng sẵn như thiết kế → code → test chạy bằng <code>/flow &lt;tên&gt; &lt;mục tiêu&gt;</code>.</dd></div>
       </dl>
     </div>
@@ -348,6 +349,7 @@ ateam doctor</pre><button class="copy" data-copy="manual">Sao chép</button></di
               <tr><td><code>/assign 3 grok</code></td><td>Đổi người làm task 3</td></tr>
               <tr><td><code>/verify pytest -q</code></td><td>Lệnh kiểm tra sau mỗi task của dự án</td></tr>
               <tr><td><code>/diff 3</code> · <code>/merge 3</code></td><td>Xem thay đổi · merge task chờ duyệt</td></tr>
+              <tr><td><code>/git</code> · <code>/commit</code></td><td>Tab Git · commit (trống: trưởng nhóm viết message)</td></tr>
               <tr><td><code>/reject 3 thiếu xử lý lỗi</code></td><td>Trả lại task kèm góp ý để làm lại</td></tr>
               <tr><td><code>/setup</code></td><td>Chọn agent, trưởng nhóm, model và effort trong một màn hình</td></tr>
               <tr><td><code>/custom</code></td><td>Thêm agent (CLI bất kỳ) và workflow của riêng bạn</td></tr>
