@@ -88,6 +88,8 @@ def test_detect_and_save_language(tmp_path, monkeypatch):
     from ateam import i18n
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     monkeypatch.delenv("ATEAM_LANG", raising=False)
+    for k in ("LC_ALL", "LC_MESSAGES"):  # runner macOS đặt sẵn LC_ALL, được ưu tiên hơn LANG
+        monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("LANG", "en_US.UTF-8")
     assert i18n.detect_lang([]) == "en"  # máy mới, LANG tiếng Anh
     monkeypatch.setenv("LANG", "vi_VN.UTF-8")
