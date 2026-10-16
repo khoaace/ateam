@@ -21,6 +21,7 @@ from .clipboard import is_image
 SYNTAX: dict[str, tuple[str, list[str]]] = {
     "claude": ("@{path}", []),             # Claude Code đọc @file ngay trong prompt
     "agy": ("@{path}", []),                # Antigravity: @file như Gemini CLI
+    "grok": ("@{path}", []),               # Grok Build: @file trong prompt
     "gemini": ("@{path}", []),
     "codex": ("{path}", []),               # codex exec không có @ (chỉ TUI có) -> đường dẫn thường
     "opencode": ("{path}", ["-f", "{path}"]),  # opencode run đính file bằng -f/--file
@@ -145,6 +146,11 @@ def insert_args(argv: list[str], prompt: str, extra: list[str],
     idx = next((i for i in range(len(argv) - 1, -1, -1) if argv[i] == prompt), len(argv))
     if 0 < idx < len(argv) and argv[idx - 1] in prompt_flags:
         idx -= 1
+    elif idx == len(argv) - 1 and not extra[-1].startswith("-"):
+        # prompt là đối số vị trí cuối, ngay sau giá trị của cờ: cờ nhận nhiều giá trị (opencode -f là
+        # mảng yargs, kể cả dạng --file=) sẽ nuốt luôn prompt thành "file" -> "File not found: <prompt>".
+        # "--" chấm dứt phần cờ.
+        extra = list(extra) + ["--"]
     return argv[:idx] + list(extra) + argv[idx:]
 
 

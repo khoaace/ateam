@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.6.0 — 16/10/2026
+
+- **Tiếp tục mục tiêu hoặc thread đã xong**: chọn task rồi **F6** (Ctrl+O), bấm **↪ Tiếp tục** trong khung mục
+  tiêu, hoặc `/continue` (gợi ý danh sách mục tiêu/thread đã kết thúc, dòng giải thích phía trên ô nhập).
+  Mục tiêu được mở lại — trưởng nhóm lập task bổ sung dựa trên kết quả đã có; task giao tay thì cùng agent
+  nhận các lượt trước kèm yêu cầu mới. Dòng lệnh: `ateam continue m12|t40 "yêu cầu"`. Báo khi mục tiêu xong.
+- **Sửa: task của OpenCode (Grok) lỗi "File not found: You are …" khi mục tiêu/task nhắc `@file`**. `-f/--file`
+  của `opencode run` là mảng nhận nhiều giá trị nên nuốt luôn prompt đứng sau thành tên file. Giờ ateam chèn
+  `--` trước prompt khi cờ file đứng ngay trước nó.
+- **Hỗ trợ Grok Build CLI** (`grok -p`, `-m`, `--reasoning-effort`, `--permission-mode`; model hỏi bằng `grok models`).
+  Agent `grok` giờ chạy Grok Build; OpenCode thành agent riêng `opencode`. Cấu hình lên bản 6 (file cũ được sao
+  lưu), lựa chọn đã lưu cho `grok` cũ (qua OpenCode) tự chuyển sang `opencode`.
+- **Wizard thiết lập mới** (`/setup`, lần đầu mở app): hỏi từng bước — CLI đang dùng, kiểu làm việc, mức chi phí,
+  CLI · model · effort cho từng vai trò (Trưởng nhóm, Code, Review, UI, Test, Nghiên cứu; một CLI hai model thì tự
+  tạo thêm agent như `claude-review`), an toàn & duyệt code (quyền, worktree, duyệt diff), lệnh kiểm tra — rồi xem
+  lại và lưu. Esc quay lại bước trước.
+- **Nhanh hơn**: lướt bảng việc chỉ nạp log của dòng dừng lại và chỉ đọc phần cuối file log (log 5 MB: ~0,43 s →
+  ~0,06 s mỗi dòng); đổi tab không còn hiệu ứng trượt và không vẽ tab đang ẩn (~0,4 s → ~0,1 s); mỗi lần làm mới
+  chỉ đọc DB một lần, chỉ vẽ lại phần có thay đổi.
+- **Sửa: log hiện mỗi chữ một dòng** khi terminal hẹp (cột log chỉ còn vài ký tự). Terminal dưới 110 cột thì bảng
+  việc và log xếp dọc; đổi bề rộng cửa sổ thì log tự dàn lại.
+- **Nút và popup gọn hơn**: nút chỉ có chữ `[ … ]` (màu chữ phân biệt, không nền), viền popup màu trung tính. Mọi
+  popup có nút ✕; Esc chỉ đóng lớp trên cùng (đang mở danh sách chọn thì chỉ đóng danh sách); form đang sửa dở cần
+  Esc hai lần.
+- **Log bên phải**: prompt ateam bị CLI in lại được gập thành một dòng "‹prompt ateam gửi agent — đã ẩn›"; nút
+  **🗑 Xoá log** phía trên ô log (chỉ ẩn trên màn hình, file log giữ nguyên; task chạy lại thì hiện log mới).
+
 ## 0.5.6 — 15/10/2026
 
 - **Sửa: bật Toàn quyền cho agent ở /custom rồi quay lại /setup thì bị đè về "sửa file"**. Khi quay lại từ màn hình

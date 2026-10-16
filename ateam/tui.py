@@ -11,26 +11,31 @@ import shlex
 import shutil
 import time
 import unicodedata
+from collections import deque
 from pathlib import Path
 
+from rich.style import Style
 from rich.text import Text
-from textual import events
+from textual import events, on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input, OptionList,
-                             RichLog, Select, Static, TabbedContent, TabPane)
+                             RichLog, Select, SelectionList, Static, TabbedContent, TabPane)
+from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
 from . import clipboard, diffview, mentions, shell, update
-from .config import (CATALOG, CUSTOM_FILE, LEAD_ALIAS, NAME_RE, PROVIDERS, WORKFLOW_TEMPLATES, AgentConfig,
-                     Config, full_access_supported, provider_of, provider_template,
+from .config import (CATALOG, CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, NAME_RE, PROVIDERS, ROLES, TIERS,
+                     WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan, builtin_agent, default_cli,
+                     full_access_supported, plan_team, provider_of, provider_template, save_onboard,
+                     tier_preset,
                      Workflow, WorkflowStep, agent_from_dict, agent_templates, describe_models,
-                     clear_agent_state, load_config, load_custom, load_state, mark_setup_done,
+                     clear_agent_state, load_config, load_custom, load_state, mark_setup_done, needs_setup,
                      save_custom_item,
-                     save_project_setting, save_setup, workflow_to_dict)
-from .db import DB
+                     save_project_setting, workflow_to_dict)
+from .db import ACTIVE, DB, GOAL_ENDED
 from .orchestrator import SYSTEM, Orchestrator
 
 # màu "đang chạy/đang xử lý": xanh dương (256 màu, Terminal.app không có truecolor); magenta trước đây
@@ -62,6 +67,9 @@ GOAL_STATUS = {
     "failed": ("lỗi", "red"),
 }
 SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+NARROW_WIDTH = 110  # terminal hẹp hơn: bảng việc và log xếp dọc thay vì hai cột
+# ô nhập đang ở "/continue <ref> …" (ref = m12 / t40), nhóm 1 = ref
+CONTINUE_RE = re.compile(r"/(?:continue|tiep|c) (\S+) ")
 SILENT_WARN = 60  # giây không có output -> cảnh báo "im lặng"
 PANE_MODELS = 5   # số model gợi ý hiện trong ô agent (đủ xem bằng /models <agent>)
 RESET = "\x00reset"  # lựa chọn "quay về mặc định" trong bảng chọn
@@ -84,6 +92,9 @@ Giao việc:
                                     đổi effort/model riêng cho 1 task ('-' = theo agent)
   /retry <task>   /cancel <task>    chạy lại (F5 hoặc Ctrl+R) / huỷ (Ctrl+K) task
   /review <mục tiêu>                bắt trưởng nhóm review ngay
+  /continue <m12|t40> <yêu cầu>     tiếp tục mục tiêu (m) hoặc thread /task (t) đã xong: trưởng nhóm
+                                    lập task bổ sung dựa trên việc đã làm / agent nhận kèm các lượt trước.
+                                    F6 (Ctrl+O) với task đang chọn, hoặc bấm "↪ Tiếp tục" ở khung mục tiêu
   /note <nội dung>                  ghi chú chung cho cả đội
 
 Lệnh, file, ảnh trong ô nhập:
@@ -110,7 +121,7 @@ Hạn mức:
   /cooldown <agent> off             cho agent làm việc lại ngay
 
 Model & effort của từng agent (được lưu lại cho lần sau):
-  /model <agent> <tên model>        vd: /model claude opus   ·   /model grok xai/grok-4.7
+  /model <agent> <tên model>        vd: /model claude opus   ·   /model grok grok-4.7-build-fast
   /effort <agent> <mức>             vd: /effort codex xhigh  ·   /effort claude high
   /model <agent>   /effort <agent>  mở bảng chọn từ danh sách agent hỗ trợ (hoặc bấm vào ô agent ở tab Đội)
   /model <agent> -                  quay về mặc định trong config (tương tự /effort <agent> -)
@@ -138,7 +149,7 @@ Lệnh terminal (tab 💻 Terminal):
   /sh <lệnh>                        như !<lệnh>
   /stop [số]                        dừng lệnh đang chọn (nút ■ Dừng / ↻ Chạy lại / ✗ Xoá trong tab)
   /help                             trợ giúp này (F1)
-  F2 = Ctrl+G, F5 = Ctrl+R          dùng F2/F5 khi terminal chặn phím Ctrl (vd terminal trong VS Code/
+  F2 = Ctrl+G, F5 = Ctrl+R, F6 = Ctrl+O   dùng F2/F5/F6 khi terminal chặn phím Ctrl (vd terminal trong VS Code/
                                     Cursor trên Mac: Ctrl+G là Go to Line, Ctrl+R là Run Recent).
                                     MacBook: giữ fn khi bấm F2/F5
   /quit                             thoát (Ctrl+Q) — agent đang chạy sẽ bị dừng"""
@@ -167,6 +178,7 @@ COMMANDS = [
     ("retry", "<task>", "chạy lại task"),
     ("cancel", "<task>", "huỷ task"),
     ("review", "<mục tiêu>", "bắt trưởng nhóm review ngay"),
+    ("continue", "<m12|t40> <yêu cầu>", "tiếp tục mục tiêu / thread đã xong (F6)"),
     ("note", "<nội dung>", "ghi chú chung cho cả đội"),
     ("diff", "<task>", "xem thay đổi của task"),
     ("merge", "<task>", "duyệt và merge task đang chờ"),
@@ -191,7 +203,7 @@ COMMANDS = [
     ("help", "", "toàn bộ lệnh & phím tắt"),
     ("quit", "", "thoát"),
 ]
-COMMAND_ALIASES = {"h": "help", "?": "help", "t": "task", "flows": "flow", "workflow": "custom",
+COMMAND_ALIASES = {"h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
                    "workflows": "custom", "agent-moi": "custom", "exit": "quit", "q": "quit"}
 
 
@@ -293,6 +305,11 @@ CODEX_HEAD_RE = re.compile(
     r"^(OpenAI Codex v|Reading (additional input|prompt) from stdin|-{4,}$|"
     r"(workdir|model|provider|approval|sandbox|reasoning effort|reasoning summaries|session id): )")
 CODEX_MARKS = ("codex", "thinking", "exec", "tokens used", "user")
+# prompt ateam gửi thành viên (prompts.task_prompt) bị CLI in lại, vd opencode "File not found: <prompt>":
+# dòng đầu chứa PROMPT_START, dòng cuối (luật SUMMARY) chứa PROMPT_END -> gập lại cho log dễ đọc
+PROMPT_START = ", a member of an AI agent team"
+PROMPT_END = "anything teammates need to know."
+PROMPT_FOLD_MAX = 400  # không thấy dòng cuối sau ngần này dòng thì thôi gập (prompt bị cắt)
 RUST_LOG_RE = re.compile(r"^\d{4}-\d\d-\d\dT[\d:.]+Z\s+(ERROR|WARN|INFO|DEBUG|TRACE)\s+(.*)$")
 DELEGATE_OPEN_RE = re.compile(r"^\s*<<<DELEGATE\b(.*?)>>>\s*(.*)$")
 ATTR_RE = re.compile(r'(\w+)="([^"]*)"')
@@ -368,6 +385,34 @@ def json_text(raw: str) -> Text | None:
     return None
 
 
+def set_static(widget: Static, content) -> None:
+    """Static.update chỉ khi nội dung thật sự đổi: update luôn bắt widget vẽ (và có thể tính lại bố cục),
+    mà vòng làm mới chạy mỗi 0,5 giây với nội dung thường y nguyên."""
+    sig = (content.plain, tuple(content.spans), str(content.style)) if isinstance(content, Text) else content
+    if getattr(widget, "_ateam_sig", None) != sig:
+        widget._ateam_sig = sig
+        widget.update(content)
+
+
+LOG_SHOW_LINES = 300  # số dòng cuối hiện khi mở log 1 task (cuộn lên xem thêm: /log hoặc file .ateam/logs)
+LOG_TAIL_BYTES = 192 * 1024  # mở log 1 task: chỉ đọc chừng này byte cuối (file vài MB đọc + tô màu rất chậm)
+
+
+def read_log_tail(path: Path, start: int = 0, limit: int = LOG_TAIL_BYTES) -> str:
+    """Phần cuối file log từ byte `start` (bỏ dòng bị cắt dở ở đầu nếu phải bỏ bớt)."""
+    with open(path, "rb") as f:
+        size = f.seek(0, 2)
+        if start > size:  # file bị ghi lại từ đầu (task chạy lại)
+            start = 0
+        begin = max(start, size - limit)
+        f.seek(begin)
+        data = f.read()
+    if begin > start:
+        nl = data.find(b"\n")
+        data = data[nl + 1:] if nl >= 0 else b""
+    return data.decode("utf-8", errors="replace")
+
+
 def styled_lines(text: str, styler: "LogStyler") -> list[Text]:
     """Tô cả file từ đầu (để biết đang ở khối nào), rồi bên gọi lấy phần cuối."""
     return [t for t in map(styler.style, text.splitlines()) if t is not None]
@@ -384,6 +429,7 @@ class LogStyler:
         self.codex = False      # đang ở header của codex
         self.echo = False       # đang ở đoạn codex in lại prompt
         self.block = ""         # "note" | "delegate" khi đang trong khối nhiều dòng
+        self.folded = -1        # >= 0: đang ẩn prompt ateam bị CLI in lại (số dòng đã ẩn)
         self.last_error = ""
         self.json_buf: list[str] = []  # JSON nhiều dòng của trưởng nhóm đang gom
         self.after_json = False         # dòng trước vừa vẽ xong một khối JSON
@@ -417,12 +463,29 @@ class LogStyler:
                 return None
             self.echo = False
         if self.task_headers and s.startswith("$ "):  # tiêu đề lượt chạy: "$ agent · task · model · effort · thư mục"
-            self.codex, self.block = False, ""
+            self.codex, self.block, self.folded = False, "", -1
             parts = s[2:].split(" · ")
             t = Text()
             t.append("▍" + (" · ".join(parts[:-1]) if len(parts) > 1 else s[2:]), "bold cyan")
             if len(parts) > 1:
                 t.append("  " + parts[-1], "dim")
+            return t
+        if self.folded >= 0:
+            self.folded += 1
+            if PROMPT_END in s or self.folded > PROMPT_FOLD_MAX:
+                self.folded = -1
+            return None
+        start = s.find('You are "')
+        if start >= 0 and PROMPT_START in s[start:]:
+            t = Text()
+            pre = s[:start].rstrip()
+            if pre:  # vd "Error: File not found:"
+                head = self._style(pre) or Text(pre)
+                t.append_text(head)
+                t.stylize(head.style, 0, len(head))  # append_text bỏ style gốc của Text
+                t.append(" ")
+            t.append("‹prompt ateam gửi agent — đã ẩn›", "dim italic")
+            self.folded = -1 if PROMPT_END in s else 0  # đặt sau khi tô `pre` (gọi lại _style)
             return t
         if self.block:
             if "<<<END>>>" in s:
@@ -621,7 +684,7 @@ class AgentPane(Vertical):
         yield Static(classes="pane-head")
         # min_width=1: RichLog mặc định vẽ mỗi dòng rộng ít nhất 78 cột; ô agent hẹp hơn thì
         # sinh thanh cuộn ngang, chữ bị cắt và vuốt trackpad làm log trôi sang ngang
-        yield RichLog(classes="pane-log", wrap=True, markup=False, highlight=False,
+        yield ReflowLog(classes="pane-log", wrap=True, markup=False, highlight=False,
                       max_lines=3000, min_width=1)
 
     @property
@@ -655,13 +718,114 @@ def choice_line(label: str, items: list[str], current: str, limit: int = 0) -> T
     return t
 
 
-class ChoiceScreen(ModalScreen):
+class Btn(Button):
+    """Nút chỉ có chữ (không nền, không viền — màu chữ theo variant, xem TeamApp.CSS): nhãn bọc
+    "[ … ]" để vẫn nhận ra là nút."""
+
+    def __init__(self, label=None, *args, **kw):
+        super().__init__(self.wrap(label), *args, **kw)
+
+    @staticmethod
+    def wrap(label):
+        if isinstance(label, str):
+            label = Text(label)  # chữ thường, không bóc markup (nhãn có "[" / "]")
+        if isinstance(label, Text) and not label.plain.startswith("[ "):
+            label = Text.assemble("[ ", label, " ]")
+        return label
+
+    def validate_label(self, label):
+        return super().validate_label(self.wrap(label))
+
+
+class ReflowLog(RichLog):
+    """RichLog vẽ mỗi dòng theo bề rộng lúc ghi; đổi bề rộng (kéo cửa sổ, terminal hẹp rồi rộng lại)
+    thì dòng cũ vẫn giữ bề rộng cũ — có khi chỉ 1–2 ký tự, thành chữ dọc. Lớp này giữ lại nội dung đã ghi
+    và vẽ lại khi bề rộng đổi."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self._items: deque = deque(maxlen=self.max_lines or 5000)
+        self._width = 0
+        self._reflowing = False
+
+    def write(self, content, *args, **kw):
+        if not self._reflowing:
+            self._items.append(content)
+        return super().write(content, *args, **kw)
+
+    def clear(self):
+        self._items.clear()
+        return super().clear()
+
+    def on_resize(self, event) -> None:
+        super().on_resize(event)  # RichLog: ghi các dòng hoãn lại lúc chưa biết kích thước
+        width = self.scrollable_content_region.width
+        if self._width and width != self._width and self._items:
+            self.set_timer(0.15, self._reflow, name="reflow")
+        self._width = width
+
+    def _reflow(self) -> None:
+        at_end = self.is_vertical_scroll_end
+        self._reflowing = True
+        try:
+            RichLog.clear(self)
+            for item in self._items:
+                super().write(item, scroll_end=False)
+        finally:
+            self._reflowing = False
+        if at_end:
+            self.scroll_end(animate=False)
+
+
+class BaseModal(ModalScreen):
+    """Popup chung: dòng tiêu đề có nút ✕; Esc đóng *một* lớp — không dùng priority, nên dropdown (Select)
+    hay danh sách đang mở nhận Esc trước và chỉ đóng chính nó. Form có thay đổi chưa lưu (dirty) cần Esc
+    hai lần (trong 3 giây) mới đóng."""
+
+    BINDINGS = [Binding("escape", "request_close", "Đóng")]
+    DEFAULT_CSS = """
+    BaseModal .m-titlebar { height: 1; }
+    BaseModal .m-title { width: 1fr; text-style: bold; }
+    """
+    _initial = None
+    _esc_at = 0.0
+
+    def title_bar(self, title: str) -> Horizontal:
+        return Horizontal(Static(Text(title, "bold"), classes="m-title"),
+                          Btn("✕", classes="m-close"), classes="m-titlebar")
+
+    def form_values(self) -> tuple:
+        return tuple((w.id, w.value) for w in self.query("Input, Select, Checkbox"))
+
+    def mark_clean(self) -> None:
+        """Gọi khi form vừa điền xong giá trị ban đầu."""
+        self._initial = self.form_values()
+
+    def dirty(self) -> bool:
+        return self._initial is not None and self.form_values() != self._initial
+
+    def close(self) -> None:
+        self.dismiss(None)
+
+    def action_request_close(self) -> None:
+        if self.dirty() and time.time() - self._esc_at > 3:
+            self._esc_at = time.time()
+            self.notify("Còn thay đổi chưa lưu — Esc lần nữa để bỏ, Ctrl+S để lưu", severity="warning")
+            return
+        self.close()
+
+    @on(Button.Pressed, ".m-close")
+    def _close_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.close()
+
+
+class ChoiceScreen(BaseModal):
     """Bảng chọn model/effort cho 1 agent. Trả về giá trị chọn, RESET, hoặc None (Esc)."""
 
-    BINDINGS = [Binding("escape", "dismiss_none", "Đóng", priority=True)]
     DEFAULT_CSS = """
     ChoiceScreen { align: center middle; }
-    #choice-box { width: 60; height: auto; max-height: 80%; border: thick $accent;
+    #choice-box { width: 60; height: auto; max-height: 80%; border: round $panel-lighten-2;
                   background: $surface; padding: 0 1; }
     #choice-list { height: auto; max-height: 30; }
     """
@@ -676,7 +840,7 @@ class ChoiceScreen(ModalScreen):
                 for n, it in enumerate(self.items)]
         opts.append(Option(("● " if not self.current else "  ") + self.default_label, id="reset"))
         with Vertical(id="choice-box"):
-            yield Static(Text(self.title_text, "bold"))
+            yield self.title_bar(self.title_text)
             yield OptionList(*opts, id="choice-list")
             yield Static(Text("Enter: chọn · Esc: đóng · tên khác: /model <agent> <tên>", "dim"))
 
@@ -693,14 +857,13 @@ class ChoiceScreen(ModalScreen):
         self.dismiss(None)
 
 
-class HelpScreen(ModalScreen):
+class HelpScreen(BaseModal):
     """Toàn bộ lệnh & phím tắt trong một bảng nổi cuộn được (/help, F1)."""
 
-    BINDINGS = [Binding("escape", "close", "Đóng", priority=True),
-                Binding("f1", "close", "Đóng", priority=True)]
+    BINDINGS = [Binding("f1", "close", "Đóng", priority=True)]
     DEFAULT_CSS = """
     HelpScreen { align: center middle; }
-    #help-box { width: 124; max-width: 100%; height: 90%; border: thick $accent;
+    #help-box { width: 124; max-width: 100%; height: 90%; border: round $panel-lighten-2;
                 background: $surface; padding: 0 1; }
     #help-body { height: 1fr; }
     #help-foot { height: 1; color: $text-muted; }
@@ -708,7 +871,7 @@ class HelpScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="help-box"):
-            yield Static(Text("Trợ giúp ateam", "bold"))
+            yield self.title_bar("Trợ giúp ateam")
             with VerticalScroll(id="help-body"):
                 yield Static(help_text())
             yield Static("↑↓ / PgUp PgDn cuộn · Esc hoặc F1 đóng", id="help-foot")
@@ -717,240 +880,421 @@ class HelpScreen(ModalScreen):
         self.query_one("#help-body").focus()
 
     def action_close(self) -> None:
-        self.dismiss(None)
+        self.close()
 
 
-class SetupScreen(ModalScreen):
-    """Thiết lập lần đầu (hoặc /setup): bật agent nào, trưởng nhóm, model và effort từng agent.
+class OnboardScreen(BaseModal):
+    """Wizard thiết lập đội (lần đầu mở app, /setup, `ateam setup`): hỏi từng bước — CLI đang dùng, kiểu làm
+    việc, mức chi phí, gán CLI · model · effort cho từng vai trò, an toàn & duyệt code, lệnh kiểm tra — rồi
+    xem lại và lưu. Mỗi lúc chỉ dựng widget của bước đang mở. Esc = quay lại bước trước.
 
-    Trước khi hiện form, hỏi song song các CLI có lệnh liệt kê model (opencode models, agy models)
-    để bảng chọn có sẵn model thật; CLI khác dùng danh mục có sẵn. Trả về dict lựa chọn, hoặc
-    None nếu bỏ qua (Esc)."""
+    Trả về {"plan": TeamPlan, "settings": {...}} (xem config.save_onboard), hoặc None nếu đóng."""
 
-    BINDINGS = [Binding("escape", "skip", "Bỏ qua", priority=True),
-                Binding("ctrl+s", "save", "Lưu", priority=True)]
+    BINDINGS = [Binding("ctrl+s", "save", "Lưu", priority=True)]
     DEFAULT_CSS = """
-    SetupScreen { align: center middle; }
-    #setup-box { width: 150; max-width: 98%; height: auto; max-height: 95%; border: thick $accent;
-                 background: $surface; padding: 0 1; }
-    #setup-rows { height: auto; max-height: 32; }
-    .setup-row, #setup-lead-row { height: 3; }
-    .setup-row Checkbox { width: 22; }
-    .setup-model { width: 36; }
-    .setup-effort { width: 18; }
-    .setup-access { width: 18; }
-    .setup-note { width: 1fr; height: 3; padding: 1 0 0 1; color: $text-muted;
-                  text-wrap: nowrap; text-overflow: ellipsis; }
-    .setup-role { width: 1fr; }
-    #setup-head { height: 1; color: $text-muted; text-style: bold; margin-top: 1; }
-    #setup-lead-row > Static, #setup-flow-row > Static { width: 22; padding: 1 0 0 1; }
-    #setup-lead-row > .setup-note, #setup-flow-row > .setup-note { width: 1fr; }
-    #setup-flow-row { height: 3; }
-    #setup-lead, #setup-flow { width: 54; }
-    #setup-buttons { height: auto; align: right middle; }
-    #setup-buttons Button { margin-left: 2; }
+    OnboardScreen { align: center middle; }
+    #ob-box { width: 116; max-width: 98%; height: auto; max-height: 95%; border: round $panel-lighten-2;
+              background: $surface; padding: 0 1; }
+    #ob-steps { height: auto; color: $text-muted; margin-bottom: 1; }
+    #ob-body { height: auto; max-height: 34; }
+    #ob-body .ob-q { text-style: bold; margin-top: 1; }
+    #ob-body .ob-hint { color: $text-muted; }
+    #ob-body OptionList, #ob-body SelectionList { height: auto; max-height: 12; border: none;
+                                                  padding: 0; background: $surface; }
+    #ob-body .ob-row { height: 3; }
+    /* cột co giãn theo bề rộng: terminal hẹp vẫn thấy đủ CLI / model / effort, mô tả co lại trước */
+    #ob-body .ob-role { width: 17; padding: 1 0 0 0; text-style: bold; }
+    #ob-body .ob-cli { width: 2fr; min-width: 17; }
+    #ob-body .ob-model { width: 3fr; min-width: 21; }
+    #ob-body .ob-effort { width: 2fr; min-width: 13; }
+    #ob-body .ob-desc { width: 3fr; min-width: 0; padding: 1 0 0 1; color: $text-muted; text-wrap: nowrap;
+                        text-overflow: ellipsis; }
+    #ob-body #ob-verify-input { margin-top: 1; }
+    #ob-buttons { height: auto; margin-top: 1; }
+    #ob-buttons .ob-spacer { width: 1fr; }
+    #ob-buttons Button { margin-left: 2; }
     """
+    # (khoá, tiêu đề, tên ngắn trên thanh tiến trình)
+    STEPS = [("cli", "CLI bạn đang dùng", "CLI"), ("style", "Kiểu làm việc", "Kiểu"),
+             ("tier", "Mức chi phí", "Mức"), ("roles", "Vai trò · model · effort", "Vai trò"),
+             ("safety", "An toàn & duyệt code", "An toàn"), ("verify", "Lệnh kiểm tra", "Kiểm tra"),
+             ("review", "Xem lại & lưu", "Xem lại")]
+    STYLES = [("approve", "Trưởng nhóm lập kế hoạch, tôi duyệt rồi mới chạy",
+               "kế hoạch hiện ở khung Duyệt kế hoạch, Enter/F2 để chạy — an toàn, dễ kiểm soát"),
+              ("auto", "Trưởng nhóm lập kế hoạch và chạy luôn", "nhanh nhất, không cần duyệt"),
+              ("flow", "Theo quy trình cố định: thiết kế → code → test",
+               "gõ mục tiêu là chạy workflow 'tinh-nang'; /goal vẫn để trưởng nhóm lập kế hoạch"),
+              ("manual", "Chủ yếu tôi tự giao từng việc (/task)",
+               "tắt trưởng nhóm tự review và giao thêm việc")]
+    TIER_HINTS = {"eco": "model nhỏ/nhanh, effort thấp — tốn ít hạn mức nhất",
+                  "balanced": "model mạnh vừa, effort trung bình; trưởng nhóm và review cao hơn 1 bậc",
+                  "max": "model mạnh nhất, effort cao — chất lượng tốt nhất, tốn hạn mức nhất"}
+    APPLY = [("shared", "Sửa thẳng vào thư mục dự án", "đơn giản; các agent làm chung một chỗ"),
+             ("worktree-auto", "Mỗi task một nhánh git riêng, xong thì tự merge",
+              "an toàn khi nhiều agent chạy song song"),
+             ("worktree-review", "Mỗi task một nhánh git riêng, tôi xem diff rồi mới merge",
+              "Ctrl+D xem diff kiểu VS Code, Ctrl+Y merge")]
 
-    def __init__(self, cfg: Config, orch: Orchestrator, timeout: float = 20):
+    def __init__(self, root: Path, cfg: Config, orch: Orchestrator, timeout: float = 20):
         super().__init__()
-        self.cfg, self.orch, self.timeout = cfg, orch, timeout
-        self.fetch: dict[str, str] = {}
-        self.ready = False
+        self.root, self.cfg, self.orch, self.timeout = root, cfg, orch, timeout
+        self.step = 0
+        self.installed = [p for p in PROVIDERS if shutil.which(p)]
+        team = {provider_of(a.command) for a in cfg.active_agents().values()}
+        self.providers = [p for p in self.installed if p in team] or list(self.installed)
+        self.style = ("flow" if cfg.default_workflow else "manual" if not cfg.auto_review
+                      else "approve" if cfg.approve_plan else "auto")
+        self.tier = "balanced"
+        self.assign: dict[str, tuple[str, str, str] | None] = self._current_assign()
+        # assign đang ứng với bộ CLI/mức nào; lần đầu thiết lập (None) thì bước Vai trò điền theo mức chi phí,
+        # mở lại /setup thì giữ đội hiện tại cho tới khi đổi CLI hoặc mức
+        self._assign_key = (tuple(self.providers), None if needs_setup() else self.tier)
+        self.access = "full" if any(a.full_access for a in cfg.active_agents().values()) else "safe"
+        self.apply = ("shared" if cfg.isolation != "worktree" else
+                      "worktree-review" if cfg.merge == "review" else "worktree-auto")
+        self.verify = cfg.verify.command
+        self.git = (root / ".git").exists()
+        self.discovering = True
+        self._esc_at = 0.0
 
-    def compose(self) -> ComposeResult:
-        with Vertical(id="setup-box"):
-            yield Static(Text("Thiết lập đội AI", "bold"))
-            yield Static(id="setup-status")
-            yield Vertical(id="setup-rows")
-            with Horizontal(id="setup-buttons"):
-                yield Button("Agent & workflow tuỳ chỉnh…", id="setup-custom")
-                yield Button("Bỏ qua (Esc)", id="setup-skip")
-                yield Button("Lưu & bắt đầu (Ctrl+S)", id="setup-save", variant="primary",
-                             disabled=True)
+    # ---------------------------------------------------------------- dữ liệu
+    def models_of(self, provider: str) -> list[str]:
+        a = self.cfg.agents.get(builtin_agent(provider))
+        if a is None or provider_of(a.command) != provider:
+            a = next((x for x in self.cfg.agents.values() if provider_of(x.command) == provider), None)
+        return a.model_choices() if a else list(CATALOG.get(provider, {}).get("models", []))
 
-    def on_mount(self) -> None:
-        for n, a in self.cfg.agents.items():
-            if a.models_command and a.installed():
-                self.fetch[n] = "đang hỏi…"
-            elif not a.installed():
-                self.fetch[n] = f"chưa cài '{a.binary}'"
+    def efforts_of(self, provider: str) -> list[str]:
+        return [str(e) for e in provider_template(provider).get("efforts") or []] if provider in PROVIDERS else []
+
+    def _current_assign(self) -> dict:
+        """Gán vai trò theo đội hiện tại (mở lại /setup): vai trò mà role của agent có nhắc tới; còn lại
+        theo mặc định."""
+        out: dict = {}
+        agents = {n: a for n, a in self.cfg.active_agents().items() if provider_of(a.command)}
+        for key, _label, desc in ROLES:
+            a = agents.get(self.cfg.lead) if key == "lead" else next(
+                (x for x in agents.values() if desc in x.role), None)
+            if a and provider_of(a.command) in self.providers:
+                out[key] = (provider_of(a.command), a.model, a.effort)
             else:
-                self.fetch[n] = f"danh mục có sẵn ({len(a.models)} model)" if a.models else "CLI tự chọn"
-        self._show_status()
-        self.run_worker(self._prefetch(), exclusive=True)
-
-    def _show_status(self) -> None:
-        t = Text("Đang lấy danh sách model từ các CLI…\n" if not self.ready else
-                 "Chọn agent tham gia, model và effort. Tab/↑↓ để di chuyển, Enter để mở bảng chọn.\n",
-                 "yellow" if not self.ready else "dim")
-        for n, msg in self.fetch.items():
-            t.append(f"  {n}: ", "bold")
-            t.append(msg + "\n", "dim")
-        self.query_one("#setup-status", Static).update(t)
-
-    async def _prefetch(self) -> None:
-        def done(n: str, msg: str) -> None:
-            a = self.cfg.agents[n]
-            ok = msg.startswith(f"{n}: tìm thấy")
-            self.fetch[n] = (f"{len(a.models)} model" + (" (hỏi từ CLI)" if ok else "")
-                             + ("" if ok else f" — {msg.split(': ', 1)[-1]}, dùng danh mục có sẵn"))
-            self._show_status()
-        try:
-            await self.orch.discover_all(timeout=self.timeout, on_done=done)
-        except Exception as e:  # không bao giờ chặn màn hình thiết lập
-            self.orch.log(f"⚠ Không hỏi được danh sách model: {e}")
-        await self._build_form()
-
-    async def _build_form(self) -> None:
-        rows = self.query_one("#setup-rows", Vertical)
-        installed = [n for n, a in self.cfg.agents.items() if a.installed()]
-        lead = self.cfg.lead if self.cfg.lead in installed else (installed[0] if installed else self.cfg.lead)
-        lead_opts = [(n + ("" if n in installed else "  (chưa cài)"), n) for n in self.cfg.agents]
-        flows = [("(không — trưởng nhóm lập kế hoạch)", RESET)] + [
-            (f"{n} — {w.description}" if w.description else n, n) for n, w in self.cfg.workflows.items()]
-        widgets = [Horizontal(Static("★ Trưởng nhóm"),
-                              Select(lead_opts, value=lead, allow_blank=False, id="setup-lead"),
-                              Static("lập kế hoạch & review", classes="setup-note"),
-                              id="setup-lead-row"),
-                   Horizontal(Static("⚙ Workflow mặc định"),
-                              Select(flows, value=self.cfg.default_workflow or RESET, allow_blank=False,
-                                     id="setup-flow"),
-                              Static("gõ mục tiêu là chạy theo workflow này · /goal: trưởng nhóm lập "
-                                     "kế hoạch" if self.cfg.workflows else
-                                     "chưa có workflow — tạo ở nút Agent & workflow tuỳ chỉnh",
-                                     classes="setup-note"),
-                              id="setup-flow-row"),
-                   Static(f"{'  Agent (bật/tắt)':22}{'Model':36}{'Effort':18}{'Quyền':18}Vai trò (sửa được)",
-                          id="setup-head")]
-        for n, a in self.cfg.agents.items():
-            ok = a.installed()
-            box = Checkbox(n, value=ok and (a.enabled or n == lead), disabled=not ok,
-                           id=safe_id(n, "setup-on-"))
-            models = [(m, m) for m in a.model_choices()] + [("(mặc định)", RESET)]
-            model = Select(models, value=a.model if a.model else RESET, allow_blank=False,
-                           disabled=not ok, classes="setup-model", id=safe_id(n, "setup-model-"))
-            row = [box, model]
-            if a.efforts:
-                extra = [a.effort] if a.effort and a.effort not in a.efforts else []  # giữ mức tự đặt
-                effs = [(e, e) for e in extra + a.efforts] + [("(mặc định)", RESET)]
-                row.append(Select(effs, value=a.effort or RESET,
-                                  allow_blank=False, disabled=not ok, classes="setup-effort",
-                                  id=safe_id(n, "setup-effort-")))
-            else:
-                row.append(Static("effort: (không có)", classes="setup-effort setup-note"))
-            if full_access_supported(a.binary):
-                row.append(Select(ACCESS_CHOICES, value="full" if a.full_access else "safe", allow_blank=False,
-                                  disabled=not ok, classes="setup-access", id=safe_id(n, "setup-access-")))
-            else:
-                row.append(Static("—", classes="setup-access setup-note"))
-            if ok:
-                row.append(TextInput(a.role, placeholder="vai trò của agent trong đội",
-                                     classes="setup-role", id=safe_id(n, "setup-role-")))
-            else:
-                row.append(Static(f"✗ chưa cài lệnh '{a.binary}'", classes="setup-note"))
-            widgets.append(Horizontal(*row, classes="setup-row"))
-        await rows.mount_all(widgets)
-        self.query_one("#setup-save", Button).disabled = False
-        self.ready = True
-        self.initial = self.choices()  # để biết ô nào người dùng đã đổi trong form (xem _custom_done)
-        self._show_status()
-        self.query_one("#setup-lead", Select).focus()
-
-    def choices(self) -> dict:
-        flow = self.query_one("#setup-flow", Select).value
-        out: dict = {"lead": self.query_one("#setup-lead", Select).value, "agents": {},
-                     "default_workflow": "" if flow == RESET else flow}
-        for n, a in self.cfg.agents.items():
-            m = self.query_one("#" + safe_id(n, "setup-model-"), Select).value
-            ch = {"enabled": self.query_one("#" + safe_id(n, "setup-on-"), Checkbox).value,
-                  "model": None if m == RESET else m}
-            effs = self.query("#" + safe_id(n, "setup-effort-"))
-            if effs and isinstance(effs.first(), Select):
-                e = effs.first().value
-                ch["effort"] = None if e == RESET else e
-            acc = self.query("#" + safe_id(n, "setup-access-"))
-            if acc and isinstance(acc.first(), Select):
-                ch["full_access"] = acc.first().value == "full"
-            roles = self.query("#" + safe_id(n, "setup-role-"))
-            if roles:
-                ch["role"] = roles.first().value.strip() or None
-            if not a.installed():
-                ch = {"enabled": a.enabled}  # không đụng tới agent chưa cài
-            out["agents"][n] = ch
+                out[key] = self._default(key)
         return out
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "setup-save":
-            self.action_save()
-        elif event.button.id == "setup-skip":
-            self.action_skip()
-        elif event.button.id == "setup-custom" and self.ready:
-            keep = self.choices()
-            self.app.push_screen(CustomScreen(self.orch.root, self.cfg),
-                                 lambda changed: self._custom_done(changed, keep))
+    def _default(self, role: str) -> tuple[str, str, str] | None:
+        p = default_cli(role, self.providers)
+        if not p:
+            return None
+        return (p,) + tier_preset(p, self.tier, role, self.models_of(p), self.efforts_of(p))
 
-    async def _custom_done(self, changed: bool, keep: dict) -> None:
-        """Quay lại từ màn hình tuỳ chỉnh: nạp lại đội rồi dựng lại form. Chỉ giữ những ô người dùng đã
-        đổi trong form này — ô còn lại lấy giá trị mới (vd vừa bật Toàn quyền cho agent ở /custom)."""
-        if not changed:
+    def plan(self) -> TeamPlan:
+        return plan_team(self.assign)
+
+    def settings(self) -> dict:
+        return {"full_access": self.access == "full", "approve_plan": self.style != "auto",
+                "auto_review": self.style != "manual", "flow": self.style == "flow",
+                "isolation": "worktree" if self.apply.startswith("worktree") else "shared",
+                "merge": "review" if self.apply == "worktree-review" else "auto",
+                "verify_command": self.verify.strip()}
+
+    # ---------------------------------------------------------------- khung
+    def compose(self) -> ComposeResult:
+        with Vertical(id="ob-box"):
+            yield self.title_bar("Thiết lập đội AI")
+            yield Static(id="ob-steps")
+            yield VerticalScroll(id="ob-body")
+            with Horizontal(id="ob-buttons"):
+                yield Btn("Agent & workflow tuỳ chỉnh…", id="ob-custom")
+                yield Static(classes="ob-spacer")
+                yield Btn("← Quay lại", id="ob-back")
+                yield Btn("Tiếp →", id="ob-next", variant="primary")
+
+    async def on_mount(self) -> None:
+        self.run_worker(self._discover(), exclusive=True)
+        await self.show_step(0)
+
+    async def _discover(self) -> None:
+        try:
+            await self.orch.discover_all(timeout=self.timeout)
+        except Exception as e:  # không bao giờ chặn wizard
+            self.orch.log(f"⚠ Không hỏi được danh sách model: {e}")
+        self.discovering = False
+        if self.STEPS[self.step][0] == "roles":
+            await self.show_step(self.step)  # nạp lại model vừa hỏi được
+
+    async def show_step(self, i: int) -> None:
+        self.step = i
+        key, title, _short = self.STEPS[i]
+        self.query_one(".m-title", Static).update(Text(f"Thiết lập đội AI · Bước {i + 1}/{len(self.STEPS)} — {title}",
+                                                       "bold"))
+        t = Text()
+        for n, (_k, _title, name) in enumerate(self.STEPS):
+            if n:
+                t.append("  ›  ", "dim")
+            t.append(f"{n + 1}. {name}", "bold" if n == i else "dim" if n > i else "green")
+        self.query_one("#ob-steps", Static).update(t)
+        body = self.query_one("#ob-body", VerticalScroll)
+        await body.remove_children()
+        await body.mount_all(getattr(self, f"_step_{key}")())
+        self.query_one("#ob-back", Button).disabled = i == 0
+        self.query_one("#ob-next", Button).label = "Lưu & bắt đầu (Ctrl+S)" if key == "review" else "Tiếp →"
+        self.query_one("#ob-custom").display = key == "review"
+        first = body.query("SelectionList, OptionList, Select, Input")
+        (first.first() if first else self.query_one("#ob-next")).focus()
+
+    # ---------------------------------------------------------------- từng bước
+    def _step_cli(self) -> list:
+        items = []
+        for p, (label, _agent) in PROVIDERS.items():
+            ok = p in self.installed
+            t = Text(f"{label:14}", "bold" if ok else "dim")
+            t.append(f"  ✓ đã cài ({p})" if ok else f"  ✗ chưa cài — {INSTALL_HINTS.get(p, p)}",
+                     "green" if ok else "dim")
+            items.append(Selection(t, p, p in self.providers and ok, disabled=not ok))
+        return [Static("Bạn đang dùng những CLI nào? Đội chỉ gồm các CLI được chọn.", classes="ob-q"),
+                SelectionList(*items, id="ob-cli"),
+                Static("Space: chọn/bỏ · Tab: sang nút Tiếp", classes="ob-hint")]
+
+    def _choice(self, oid: str, items: list[tuple[str, str, str]], current: str, disabled=()) -> OptionList:
+        opts = []
+        for k, label, hint in items:
+            t = Text()  # Text(chữ, style) sẽ tô cả dòng — chỉ tô riêng dấu ●
+            t.append("● " if k == current else "○ ", "bold green" if k == current else "dim")
+            t.append(label, "bold")
+            t.append(f"\n   {hint}", "grey62")  # không dùng dim: trên nền dòng đang chọn sẽ chìm mất
+            opts.append(Option(t, id=k, disabled=k in disabled))
+        ol = OptionList(*opts, id=oid)
+        ol.highlighted = next((n for n, (k, _l, _h) in enumerate(items) if k == current), 0)
+        return ol
+
+    def _step_style(self) -> list:
+        return [Static("Bạn muốn đội làm việc thế nào?", classes="ob-q"),
+                self._choice("ob-style", self.STYLES, self.style),
+                Static("↑↓ chọn · Enter: chọn và sang bước tiếp", classes="ob-hint")]
+
+    def _step_tier(self) -> list:
+        items = [(k, label, self.TIER_HINTS[k]) for k, label in TIERS]
+        return [Static("Ưu tiên tiết kiệm hạn mức hay chất lượng?", classes="ob-q"),
+                self._choice("ob-tier", items, self.tier),
+                Static("Bước sau điền sẵn model & effort theo mức này — vẫn đổi được từng vai trò.",
+                       classes="ob-hint")]
+
+    def _row(self, role: str, label: str, desc: str) -> Horizontal:
+        a = self.assign.get(role)
+        short = {"claude": "Claude", "grok": "Grok"}  # ô chọn hẹp: tên ngắn, không xuống dòng
+        clis = [(short.get(p, PROVIDERS[p][0]), p) for p in self.providers]
+        if role != "lead":
+            clis.append(("(không dùng)", RESET))
+        p = a[0] if a else RESET
+        models = self.models_of(p) if a else []
+        if a and a[1] and a[1] not in models:
+            models = [a[1]] + models
+        effs = self.efforts_of(p) if a else []
+        return Horizontal(
+            Static(label, classes="ob-role"),
+            Select(clis, value=p if any(p == v for _l, v in clis) else clis[0][1], allow_blank=False,
+                   classes="ob-cli", id=f"ob-cli-{role}"),
+            Select([(m, m) for m in models] + [("(mặc định)", RESET)], value=(a[1] if a and a[1] else RESET),
+                   allow_blank=False, disabled=not a, classes="ob-model", id=f"ob-model-{role}"),
+            Select([(e, e) for e in effs] + [("(mặc định)", RESET)],
+                   value=(a[2] if a and a[2] in effs else RESET), allow_blank=False,
+                   disabled=not (a and effs), classes="ob-effort", id=f"ob-effort-{role}"),
+            Static(desc, classes="ob-desc"), classes="ob-row")
+
+    def _step_roles(self) -> list:
+        key = (tuple(self.providers), self.tier)
+        if self._assign_key != key:  # đổi CLI hoặc mức chi phí: gán lại theo mặc định mới
+            self.assign = {k: self._default(k) for k, _l, _d in ROLES}
+            self._assign_key = key
+        out = [Static("Giao từng vai trò cho CLI nào, dùng model và effort gì?", classes="ob-q"),
+               Static("Cùng một CLI làm nhiều vai trò với model/effort khác nhau → ateam tự tạo thêm agent "
+                      "(vd claude-review)." + ("  ⏳ đang hỏi danh sách model từ các CLI…" if self.discovering
+                                               else ""), classes="ob-hint")]
+        out += [self._row(k, label, desc) for k, label, desc in ROLES]
+        return out
+
+    def _step_safety(self) -> list:
+        access = [("safe", "Chỉ sửa file (an toàn)", "agent không chạy lệnh shell / mạng"),
+                  ("full", "Toàn quyền — chạy lệnh, mạng (lint, build, git push…)",
+                   "chỉ dùng cho repo bạn tin tưởng; agent tuỳ chỉnh đổi riêng ở /custom")]
+        no_git = () if self.git else ("worktree-auto", "worktree-review")
+        apply = [(k, label, hint if self.git else hint + " — cần thư mục là git repo có commit")
+                 for k, label, hint in self.APPLY]
+        return [Static("Agent được làm gì?", classes="ob-q"),
+                self._choice("ob-access", access, self.access),
+                Static("Thay đổi của agent áp vào code thế nào?", classes="ob-q"),
+                self._choice("ob-apply", apply, self.apply, disabled=no_git)]
+
+    def _step_verify(self) -> list:
+        words = ("test", "lint", "check", "build", "typecheck", "tsc", "vitest", "jest", "pytest")
+        cmds = [c for c, _d in shell.project_scripts(self.root, recent=[])
+                if any(w in c.lower() for w in words)][:8]
+        items = [(c, c, "chạy sau mỗi task có sửa code; lỗi thì giao agent sửa") for c in cmds]
+        if self.verify and self.verify not in cmds:
+            items.insert(0, (self.verify, self.verify, "đang dùng"))
+        items.append(("", "Không chạy lệnh kiểm tra", "bật sau bằng /verify <lệnh>"))
+        return [Static("Lệnh kiểm tra tự chạy sau mỗi task (test, lint, build)?", classes="ob-q"),
+                self._choice("ob-verify", items, self.verify),
+                TextInput(self.verify if self.verify not in cmds else "",
+                          placeholder="hoặc gõ lệnh khác, vd: npm run lint && npm test", id="ob-verify-input")]
+
+    def _step_review(self) -> list:
+        plan, st = self.plan(), self.settings()
+        t = Text()
+        t.append("Đội\n", "bold")
+        for name, a in plan.agents.items():
+            t.append(f"  {'★ ' if name == plan.lead else '  '}{name:18}", "bold yellow" if name == plan.lead else "bold")
+            t.append(f"{PROVIDERS[a['provider']][0]:13}", "cyan")
+            label = (a["model"] or "mặc định") + (f" · {a['effort']}" if a["effort"] else "")
+            t.append(f"{label:30}")
+            t.append(", ".join(dict((k, lbl) for k, lbl, _d in ROLES)[r].lstrip("★ ") for r in a["roles"]), "dim")
+            if not a["builtin"]:
+                t.append("  (agent thêm)", "green")
+            t.append("\n")
+        others = [n for n in self.cfg.custom_agents if n in self.cfg.agents and not load_custom()
+                  .get("agents", {}).get(n, {}).get("wizard")]
+        if others:
+            t.append(f"  Agent tuỳ chỉnh giữ nguyên: {', '.join(others)}\n", "dim")
+        style = dict((k, label) for k, label, _h in self.STYLES)[self.style]
+        apply = dict((k, label) for k, label, _h in self.APPLY)[self.apply]
+        t.append("\nCách làm việc\n", "bold")
+        for k, v in (("Kiểu", style), ("Mức", dict(TIERS)[self.tier]),
+                     ("Quyền", "toàn quyền" if st["full_access"] else "chỉ sửa file"),
+                     ("Áp thay đổi", apply), ("Kiểm tra", st["verify_command"] or "không")):
+            t.append(f"  {k:12}", "dim")
+            t.append(v + "\n")
+        if not plan.lead:
+            t.append("\n⚠ Chưa có trưởng nhóm — quay lại bước Vai trò.", "bold red")
+        return [Static(t)]
+
+    # ---------------------------------------------------------------- lưu lựa chọn của bước đang mở
+    def collect(self) -> str | None:
+        """Đọc giá trị của bước đang mở vào self.*; trả về lỗi (chuỗi) nếu chưa hợp lệ."""
+        key = self.STEPS[self.step][0]
+        if key == "cli":
+            chosen = list(self.query_one("#ob-cli", SelectionList).selected)
+            if not chosen:
+                return "Chọn ít nhất một CLI"
+            self.providers = [p for p in PROVIDERS if p in chosen]
+        elif key in ("style", "tier", "safety"):
+            for oid, attr in (("ob-style", "style"), ("ob-tier", "tier"), ("ob-access", "access"),
+                              ("ob-apply", "apply")):
+                for ol in self.query(f"#{oid}"):
+                    if ol.highlighted is not None:
+                        opt = ol.get_option_at_index(ol.highlighted)
+                        if not opt.disabled:
+                            setattr(self, attr, opt.id)
+        elif key == "roles":
+            for k, _l, _d in ROLES:
+                p = self.query_one(f"#ob-cli-{k}", Select).value
+                if p == RESET:
+                    self.assign[k] = None
+                    continue
+                m = self.query_one(f"#ob-model-{k}", Select).value
+                e = self.query_one(f"#ob-effort-{k}", Select).value
+                self.assign[k] = (p, "" if m == RESET else m, "" if e == RESET else e)
+        elif key == "verify":
+            typed = self.query_one("#ob-verify-input", Input).value.strip()
+            ol = self.query_one("#ob-verify", OptionList)
+            self.verify = typed or (ol.get_option_at_index(ol.highlighted).id or ""
+                                    if ol.highlighted is not None else "")
+        return None
+
+    async def go(self, delta: int) -> None:
+        if delta > 0:
+            err = self.collect()
+            if err:
+                self.notify(err, severity="warning")
+                return
+        else:
+            self.collect()
+        await self.show_step(max(0, min(len(self.STEPS) - 1, self.step + delta)))
+
+    # ---------------------------------------------------------------- sự kiện
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Đổi CLI của một vai trò: nạp lại model/effort của dòng đó (gợi ý theo mức chi phí)."""
+        sid = event.select.id or ""
+        if not sid.startswith("ob-cli-"):
             return
-        before = getattr(self, "initial", {"agents": {}})
-        keep = {"lead": keep["lead"] if keep["lead"] != before.get("lead") else None,
-                "default_workflow": keep["default_workflow"]
-                if keep["default_workflow"] != before.get("default_workflow") else None,
-                "agents": {n: {k: v for k, v in ch.items() if (before["agents"].get(n) or {}).get(k, object()) != v}
-                           for n, ch in keep["agents"].items()}}
-        await self.app.reload_custom()
-        for n, a in self.cfg.agents.items():
-            if a.models_command and a.installed() and n not in self.fetch:
-                self.fetch[n] = "chưa hỏi danh sách model (/models " + n + " làm mới)"
-            elif not a.installed():
-                self.fetch[n] = f"chưa cài '{a.binary}'"
-            elif n not in self.fetch:
-                self.fetch[n] = f"danh mục có sẵn ({len(a.models)} model)" if a.models else "CLI tự chọn"
-        for n in [n for n in self.fetch if n not in self.cfg.agents]:
-            del self.fetch[n]
-        self.ready = False
-        await self.query_one("#setup-rows", Vertical).remove_children()
-        await self._build_form()
-        if keep["lead"] in self.cfg.agents:
-            self.query_one("#setup-lead", Select).value = keep["lead"]
-        if keep["default_workflow"] in self.cfg.workflows:
-            self.query_one("#setup-flow", Select).value = keep["default_workflow"]
-        for n, ch in keep["agents"].items():
-            if n not in self.cfg.agents or not self.cfg.agents[n].installed():
-                continue
-            if "enabled" in ch:
-                self.query_one("#" + safe_id(n, "setup-on-"), Checkbox).value = bool(ch["enabled"])
-            if ch.get("role"):
-                self.query_one("#" + safe_id(n, "setup-role-"), TextInput).value = ch["role"]
-            acc = self.query("#" + safe_id(n, "setup-access-"))
-            if "full_access" in ch and acc and isinstance(acc.first(), Select):
-                acc.first().value = "full" if ch["full_access"] else "safe"
-            for key in ("model", "effort"):
-                w = self.query("#" + safe_id(n, f"setup-{key}-"))
-                if key in ch and w and isinstance(w.first(), Select):
-                    v = ch[key] or RESET
-                    if any(v == val for _, val in w.first()._options):
-                        w.first().value = v
+        role = sid[len("ob-cli-"):]
+        p = event.value
+        cur = self.assign.get(role)
+        if p == RESET:
+            self.assign[role] = None
+        elif not cur or cur[0] != p:
+            self.assign[role] = (p,) + tier_preset(p, self.tier, role, self.models_of(p), self.efforts_of(p))
+        else:
+            return
+        a = self.assign[role]
+        msel = self.query(f"#ob-model-{role}")
+        esel = self.query(f"#ob-effort-{role}")
+        if not msel or not esel:
+            return
+        msel, esel = msel.first(Select), esel.first(Select)
+        models = self.models_of(p) if a else []
+        effs = self.efforts_of(p) if a else []
+        msel.set_options([(m, m) for m in models] + [("(mặc định)", RESET)])
+        msel.value = a[1] if a and a[1] in models else RESET
+        esel.set_options([(e, e) for e in effs] + [("(mặc định)", RESET)])
+        esel.value = a[2] if a and a[2] in effs else RESET
+        msel.disabled, esel.disabled = not a, not (a and effs)
+
+    async def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        oid = event.option_list.id
+        if oid == "ob-access":  # câu hỏi thứ 2 cùng bước
+            self.query_one("#ob-apply", OptionList).focus()
+            return
+        await self.go(1)
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id
+        if bid == "ob-next":
+            event.stop()
+            if self.STEPS[self.step][0] == "review":
+                self.action_save()
+            else:
+                await self.go(1)
+        elif bid == "ob-back":
+            event.stop()
+            await self.go(-1)
+        elif bid == "ob-custom":
+            event.stop()
+            self.app.push_screen(CustomScreen(self.root, self.cfg), self._custom_done)
+
+    async def _custom_done(self, changed) -> None:
+        if changed:
+            await self.app.reload_custom()
+            await self.show_step(self.step)
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "ob-verify-input":
+            event.stop()
+            await self.go(1)
+
+    def action_request_close(self) -> None:
+        if self.step > 0:  # Esc = quay lại bước trước
+            self.run_worker(self.go(-1), exclusive=True, group="ob-nav")
+            return
+        if time.time() - self._esc_at > 3:
+            self._esc_at = time.time()
+            self.notify("Esc lần nữa để thoát thiết lập (giữ cấu hình hiện tại)", severity="warning")
+            return
+        self.close()
 
     def action_save(self) -> None:
-        if not self.ready:
+        if self.STEPS[self.step][0] != "review":
+            self.collect()
+        plan = self.plan()
+        if not plan.lead:
+            self.notify("Chưa có trưởng nhóm — chọn CLI cho vai trò ★ Trưởng nhóm", severity="error")
             return
-        ch = self.choices()
-        lead = self.cfg.agents.get(ch["lead"])
-        if not lead or not lead.installed() or not ch["agents"][ch["lead"]].get("enabled"):
-            self.notify(f"Trưởng nhóm '{ch['lead']}' phải được bật (và đã cài).", severity="error")
-            return
-        self.dismiss(ch)
-
-    def action_skip(self) -> None:
-        self.dismiss(None)
+        self.dismiss({"plan": plan, "settings": self.settings()})
 
 
 # --------------------------------------------------------------------------- agent & workflow tuỳ chỉnh
 FORM_CSS = """
-    #{box} { width: 120; max-width: 100%; height: auto; max-height: 95%; border: thick $accent;
+    #{box} { width: 120; max-width: 100%; height: auto; max-height: 95%; border: round $panel-lighten-2;
              background: $surface; padding: 0 1; }
     #{box} .f-scroll { height: auto; max-height: 34; }
     #{box} .f-row { height: 3; }
@@ -985,13 +1329,12 @@ ACCESS_LONG = [("Chỉ sửa file (an toàn)", "safe"),
                ("Toàn quyền — chạy lệnh, mạng (build, git push…)", "full")]
 
 
-class AgentQuickScreen(ModalScreen):
+class AgentQuickScreen(BaseModal):
     """Thêm/sửa agent dựa trên một nhà cung cấp có sẵn (Claude Code, Codex, Antigravity, OpenCode):
     chỉ chọn model, effort, quyền — mọi cờ CLI lấy từ mẫu. "Nâng cao…" mở form đầy đủ (AgentEditScreen).
     Trả về (tên, thân TOML, tên cũ) hoặc None (Esc)."""
 
-    BINDINGS = [Binding("escape", "cancel", "Huỷ", priority=True),
-                Binding("ctrl+s", "save", "Lưu", priority=True)]
+    BINDINGS = [Binding("ctrl+s", "save", "Lưu", priority=True)]
     DEFAULT_CSS = "AgentQuickScreen { align: center middle; }" + FORM_CSS.replace("{box}", "quick-box") + """
     #quick-preview { height: auto; padding: 0 1; background: $boost; margin-top: 1; }
     """
@@ -1005,7 +1348,7 @@ class AgentQuickScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         provs = [(label + ("" if shutil.which(p) else "  (chưa cài)"), p) for p, (label, _t) in PROVIDERS.items()]
         with Vertical(id="quick-box"):
-            yield Static(Text("Sửa agent " + self.old_name if self.old_name else "Thêm agent", "bold"))
+            yield self.title_bar("Sửa agent " + self.old_name if self.old_name else "Thêm agent")
             yield Static(Text("Chọn nhà cung cấp, model, effort và quyền — cờ CLI ateam tự điền. "
                               "Ctrl+S lưu, Esc huỷ. CLI khác (Gemini, Aider, lệnh riêng): Nâng cao…", "dim"))
             yield form_row("Nhà cung cấp", Select(provs, value=self.provider, allow_blank=False, id="q-provider",
@@ -1023,15 +1366,16 @@ class AgentQuickScreen(ModalScreen):
                                                 "dựa vào đây", id="q-role", classes="f-input"), "tuỳ chọn")
             yield Static(id="quick-preview")
             with Horizontal(classes="f-buttons"):
-                yield Button("Nâng cao…", id="q-advanced")
-                yield Button("Huỷ (Esc)", id="q-cancel")
-                yield Button("Lưu (Ctrl+S)", id="q-save", variant="primary")
+                yield Btn("Nâng cao…", id="q-advanced")
+                yield Btn("Huỷ", id="q-cancel")
+                yield Btn("Lưu (Ctrl+S)", id="q-save", variant="primary")
 
     def on_mount(self) -> None:
         self._fill_choices(keep_model=str(self.raw.get("model") or ""), keep_effort=str(self.raw.get("effort") or ""))
         if not self.old_name:
             self._auto_name()
         self.query_one("#q-provider", Select).focus()
+        self.call_after_refresh(self.mark_clean)
 
     def _models(self) -> list[str]:
         # model hỏi được từ CLI nằm ở agent có sẵn cùng lệnh; không có thì danh mục có sẵn
@@ -1144,11 +1488,10 @@ class AgentQuickScreen(ModalScreen):
         self.dismiss(None)
 
 
-class AgentEditScreen(ModalScreen):
+class AgentEditScreen(BaseModal):
     """Form thêm/sửa 1 agent tuỳ chỉnh. Trả về (tên, thân TOML, tên cũ) hoặc None (Esc)."""
 
-    BINDINGS = [Binding("escape", "cancel", "Huỷ", priority=True),
-                Binding("ctrl+s", "save", "Lưu", priority=True)]
+    BINDINGS = [Binding("ctrl+s", "save", "Lưu", priority=True)]
     DEFAULT_CSS = "AgentEditScreen { align: center middle; }" + FORM_CSS.replace("{box}", "agent-box") + """
     #agent-preview { height: auto; padding: 0 1; background: $boost; margin-top: 1; }
     """
@@ -1179,8 +1522,7 @@ class AgentEditScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="agent-box"):
-            yield Static(Text("Sửa agent " + self.old_name if self.old_name else "Thêm agent tuỳ chỉnh",
-                              "bold"))
+            yield self.title_bar("Sửa agent " + self.old_name if self.old_name else "Thêm agent tuỳ chỉnh")
             yield Static(Text("Bất kỳ CLI nào có chế độ headless (nhận prompt, in kết quả rồi thoát). "
                               "Chọn mẫu để điền sẵn, Ctrl+S lưu, Esc huỷ.", "dim"))
             with VerticalScroll(classes="f-scroll"):
@@ -1200,12 +1542,13 @@ class AgentEditScreen(ModalScreen):
                     classes="f-input"), "pty cần cho CLI chỉ in khi có terminal (vd agy)")
             yield Static(id="agent-preview")
             with Horizontal(classes="f-buttons"):
-                yield Button("Huỷ (Esc)", id="ag-cancel")
-                yield Button("Lưu (Ctrl+S)", id="ag-save", variant="primary")
+                yield Btn("Huỷ", id="ag-cancel")
+                yield Btn("Lưu (Ctrl+S)", id="ag-save", variant="primary")
 
     def on_mount(self) -> None:
         self.fill(self.raw)
         self.query_one("#ag-name" if not self.old_name else "#ag-command", Input).focus()
+        self.call_after_refresh(self.mark_clean)
 
     def fill(self, raw: dict) -> None:
         for fid, _l, _h, key, kind in self.FIELDS:
@@ -1328,12 +1671,11 @@ class AgentEditScreen(ModalScreen):
         self.dismiss(None)
 
 
-class WorkflowEditScreen(ModalScreen):
+class WorkflowEditScreen(BaseModal):
     """Form thêm/sửa 1 workflow: danh sách bước (agent, tiêu đề, prompt, chạy sau bước nào, effort).
     Trả về (tên, thân TOML, tên cũ) hoặc None (Esc)."""
 
-    BINDINGS = [Binding("escape", "cancel", "Huỷ", priority=True),
-                Binding("ctrl+s", "save", "Lưu", priority=True)]
+    BINDINGS = [Binding("ctrl+s", "save", "Lưu", priority=True)]
     DEFAULT_CSS = "WorkflowEditScreen { align: center middle; }" + FORM_CSS.replace("{box}", "flow-box") + """
     #flow-steps { height: auto; }
     #flow-box .f-input { width: 64; }
@@ -1363,7 +1705,7 @@ class WorkflowEditScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="flow-box"):
-            yield Static(Text("Sửa workflow " + self.old_name if self.old_name else "Thêm workflow", "bold"))
+            yield self.title_bar("Sửa workflow " + self.old_name if self.old_name else "Thêm workflow")
             yield Static(Text("Chuỗi bước dựng sẵn, chạy bằng /flow <tên> <mục tiêu> — không cần trưởng "
                               "nhóm lập kế hoạch. {goal} trong tiêu đề/prompt = mục tiêu bạn gõ. "
                               "'Sau bước': trống = sau bước liền trước, 0 = chạy ngay, 1,2 = sau bước 1 và 2.",
@@ -1383,14 +1725,15 @@ class WorkflowEditScreen(ModalScreen):
                     ("Prompt", "step-prompt"), ("Sau bước", "step-after"), ("Effort", "step-effort"),
                     ("", "step-del"))], id="flow-head")
                 yield Vertical(id="flow-steps")
-                yield Button("+ Thêm bước", id="wf-add")
+                yield Btn("+ Thêm bước", id="wf-add")
             with Horizontal(classes="f-buttons"):
-                yield Button("Huỷ (Esc)", id="wf-cancel")
-                yield Button("Lưu (Ctrl+S)", id="wf-save", variant="primary")
+                yield Btn("Huỷ", id="wf-cancel")
+                yield Btn("Lưu (Ctrl+S)", id="wf-save", variant="primary")
 
     async def on_mount(self) -> None:
         await self.fill(self.raw)
         self.query_one("#wf-name" if not self.old_name else "#wf-desc", Input).focus()
+        self.call_after_refresh(self.mark_clean)
 
     def step_row(self, st: dict) -> Horizontal:
         self.n += 1
@@ -1409,7 +1752,7 @@ class WorkflowEditScreen(ModalScreen):
             TextInput(after_text, placeholder="trước", classes="step-after", id=f"wf-after-{k}"),
             TextInput(str(st.get("effort") or ""), placeholder="effort", classes="step-effort",
                   id=f"wf-effort-{k}"),
-            Button("✕", classes="step-del", id=f"wf-del-{k}"),
+            Btn("✕", classes="step-del", id=f"wf-del-{k}"),
             classes="step-row", id=f"wf-step-{k}")
 
     def renumber(self) -> None:
@@ -1497,17 +1840,16 @@ class WorkflowEditScreen(ModalScreen):
         self.dismiss(None)
 
 
-class CustomScreen(ModalScreen):
+class CustomScreen(BaseModal):
     """Quản lý agent và workflow tuỳ chỉnh (/custom, hoặc nút ở màn hình thiết lập).
     Mỗi lần lưu ghi ngay vào custom.toml. Trả về True nếu có thay đổi."""
 
-    BINDINGS = [Binding("escape", "close", "Đóng", priority=True)]
     DEFAULT_CSS = "CustomScreen { align: center middle; }" + FORM_CSS.replace("{box}", "custom-box") + """
     .c-row { height: 3; }
     .c-name { width: 22; padding: 1 0 0 1; text-style: bold; }
     .c-info { width: 1fr; height: 3; padding: 1 0 0 1; color: $text-muted;
               text-wrap: nowrap; text-overflow: ellipsis; }
-    .c-row Button { min-width: 8; margin-left: 1; }
+    .c-row Button { margin: 1 0 0 1; }
     .c-empty { height: 1; padding: 0 1; color: $text-muted; }
     #custom-agents, #custom-flows { height: auto; }
     #custom-box Button.c-add { margin: 0 0 0 1; }
@@ -1522,19 +1864,19 @@ class CustomScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="custom-box"):
-            yield Static(Text("Agent & workflow tuỳ chỉnh", "bold"))
+            yield self.title_bar("Agent & workflow tuỳ chỉnh")
             yield Static(Text("Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc theo vai "
                               "trò, bật/tắt ở /setup). Workflow chạy bằng /flow <tên> <mục tiêu>. "
                               f"Lưu ở {CUSTOM_FILE}", "dim"))
             with VerticalScroll(classes="f-scroll"):
                 yield Static("Agent tuỳ chỉnh", classes="f-section")
                 yield Vertical(id="custom-agents")
-                yield Button("+ Thêm agent", id="custom-add-agent", classes="c-add")
+                yield Btn("+ Thêm agent", id="custom-add-agent", classes="c-add")
                 yield Static("Workflow", classes="f-section")
                 yield Vertical(id="custom-flows")
-                yield Button("+ Thêm workflow", id="custom-add-flow", classes="c-add")
+                yield Btn("+ Thêm workflow", id="custom-add-flow", classes="c-add")
             with Horizontal(classes="f-buttons"):
-                yield Button("Xong (Esc)", id="custom-close", variant="primary")
+                yield Btn("Xong (Esc)", id="custom-close", variant="primary")
 
     async def on_mount(self) -> None:
         await self.refill()
@@ -1551,7 +1893,7 @@ class CustomScreen(ModalScreen):
             n += 1
             bid = f"c-btn-{n}"
             self.ids[bid] = (action, name)
-            return Button(label, id=bid, variant=variant)
+            return Btn(label, id=bid, variant=variant)
 
         rows = []
         for name in sorted(self.cfg.custom_agents):
@@ -1638,8 +1980,11 @@ class CustomScreen(ModalScreen):
             self.notify(f"Đã xoá '{name}'")
             await self.refill()
 
-    def action_close(self) -> None:
+    def close(self) -> None:
         self.dismiss(self.changed)
+
+    def action_close(self) -> None:
+        self.close()
 
 
 class MentionList(OptionList):
@@ -1735,6 +2080,11 @@ class CommandInput(TextInput):
             self._mode, self._span = "shell", (0, self.cursor_position)
             self._fill_shell(sh.group(1))
             return
+        cont = re.fullmatch(r"/(?:continue|tiep|c) (\S*)", before)
+        if cont and self.cursor_position == len(self.value):
+            self._mode, self._span = "continue", (cont.start(1), self.cursor_position)
+            self._fill_continue(cont.group(1))
+            return
         a = re.fullmatch(r"/(?:task|t) ([^\s:@]*)", before)
         if a and self.cursor_position == len(self.value):
             self._mode, self._span = "agent", (a.start(1), self.cursor_position)
@@ -1823,6 +2173,25 @@ class CommandInput(TextInput):
         popup.border_title = "/task — chọn agent"
         popup.display = True
 
+    def _fill_continue(self, query: str) -> None:
+        """Gợi ý cho /continue: mục tiêu và thread /task đã kết thúc, mới nhất trước."""
+        q = query.lower().lstrip("#")
+        items = self.app.continue_candidates()
+        found = [(ref, t) for ref, t in items if not q or q in ref or q in t.plain.lower()]
+        if not found or [r for r, _t in found] == [q]:  # gõ đủ ref rồi: không che ô nhập nữa
+            self.close_popup()
+            return
+        popup = self.popup
+        popup.clear_options()
+        room = min(90, self.app.size.width - 1) - 8
+        for ref, t in found:
+            t = t.copy()
+            t.truncate(room, overflow="ellipsis")
+            popup.add_option(Option(t, id=ref))
+        popup.highlighted = 0
+        popup.border_title = "/continue — chọn mục tiêu (m) hoặc thread /task (t) để tiếp tục"
+        popup.display = True
+
     def _fill(self, query: str) -> None:
         popup = self.popup
         popup.border_title = "@ file / thư mục"
@@ -1857,7 +2226,7 @@ class CommandInput(TextInput):
             self.cursor_position = len(self.value)
             self.close_popup()
             return True
-        if self._mode == "agent":
+        if self._mode in ("agent", "continue"):
             self.value = self.value[:start] + opt.id + " " + self.value[end:]
             self.cursor_position = start + len(opt.id) + 1
             self.close_popup()
@@ -1910,6 +2279,8 @@ class CommandInput(TextInput):
             await res
 
     def action_mention_close(self) -> None:
+        if not self.popup_open and CONTINUE_RE.match(self.value):  # Esc huỷ /continue đang soạn
+            self.value = ""
         self.close_popup()
 
 
@@ -1987,10 +2358,10 @@ class PlanBar(Vertical):
         with VerticalScroll(id="plan-detail-box"):
             yield Static(id="plan-detail")
         with Horizontal(id="plan-buttons"):
-            yield Button("▶ Duyệt & chạy  F2", id="plan-approve", variant="success")
-            yield Button("✎ Sửa task", id="plan-edit")
-            yield Button("⇄ Đổi agent", id="plan-assign")
-            yield Button("✗ Bỏ kế hoạch", id="plan-discard", variant="error")
+            yield Btn("▶ Duyệt & chạy  F2", id="plan-approve", variant="success")
+            yield Btn("✎ Sửa task", id="plan-edit")
+            yield Btn("⇄ Đổi agent", id="plan-assign")
+            yield Btn("✗ Bỏ kế hoạch", id="plan-discard", variant="error")
         yield Static("↑↓ xem từng task · Enter: sửa nội dung · Tab: chuyển nút · Esc: về ô nhập",
                      id="plan-hint")
 
@@ -2074,12 +2445,12 @@ class PlanBar(Vertical):
         self.app.query_one("#cmd", Input).focus()
 
 
-class DiffScreen(ModalScreen):
+class DiffScreen(BaseModal):
     """Xem diff kiểu VS Code: danh sách file bên trái, diff của file đang chọn bên phải (hai cột hoặc
     một cột), tô màu cú pháp và chữ đổi trong dòng. Phím o mở file trong `code --diff`."""
 
     BINDINGS = [
-        Binding("escape,q", "close", "Đóng"),
+        Binding("q", "close", "Đóng"),
         Binding("n,j", "move(1)", "File kế", show=False),
         Binding("p,k", "move(-1)", "File trước", show=False),
         Binding("right_square_bracket", "hunk(1)", "Đoạn kế", show=False),
@@ -2091,7 +2462,8 @@ class DiffScreen(ModalScreen):
     ]
     DEFAULT_CSS = """
     DiffScreen { background: $background; }
-    #diff-head { height: auto; padding: 0 1; background: $boost; }
+    #diff-top { height: auto; background: $boost; }
+    #diff-head { width: 1fr; height: auto; padding: 0 1; }
     #diff-main { height: 1fr; }
     #diff-files { width: 30%; min-width: 24; max-width: 60; border: none; border-right: solid $primary-darken-2; }
     #diff-right { width: 1fr; }
@@ -2109,7 +2481,9 @@ class DiffScreen(ModalScreen):
         self._width = 0
 
     def compose(self) -> ComposeResult:
-        yield Static(id="diff-head")
+        with Horizontal(id="diff-top"):
+            yield Static(id="diff-head")
+            yield Btn("✕ Đóng", classes="m-close")
         with Horizontal(id="diff-main"):
             yield OptionList(id="diff-files")
             with Vertical(id="diff-right"):
@@ -2221,13 +2595,38 @@ class TeamApp(App):
     ENABLE_COMMAND_PALETTE = False
     CSS = """
     Screen { layers: base overlay; overflow: hidden hidden; }
+    /* Nút chỉ có chữ: không nền, không viền; variant phân biệt bằng màu chữ (xem Btn) */
+    Button, Button:hover, Button:focus, Button.-active {
+        height: 1; min-width: 0; border: none; padding: 0 1; background: transparent; tint: transparent;
+        text-style: bold; color: $text; }
+    Button:hover { text-style: bold underline; }
+    Button:focus { text-style: bold underline; }
+    Button.-primary { color: $accent; }
+    Button.-success { color: $success; }
+    Button.-warning { color: $warning; }
+    Button.-error { color: $error; }
+    Button:disabled { color: $text-disabled; text-style: none; }
+    Footer { overflow: hidden hidden; }
+    /* dòng đang chọn trong danh sách (wizard, gợi ý / @ !, dropdown): nền xám trung tính thay cho xanh dương
+       đậm — chữ màu (xanh lá, cyan) đè lên xanh dương gần như không đọc được */
+    OptionList > .option-list--option-highlighted,
+    OptionList:focus > .option-list--option-highlighted {
+        background: $panel-lighten-2; color: $text; text-style: bold; }
+    SelectionList > .selection-list--button-highlighted,
+    SelectionList:focus > .selection-list--button-highlighted { background: $panel-lighten-2; }
     #tabs { height: 1fr; }
     #tabs > ContentSwitcher { height: 1fr; }
     TabPane { padding: 0; height: 1fr; }
     #team { height: 1fr; overflow: hidden hidden; }
     #board { height: 1fr; }
     #left { width: 46%; min-width: 40; }
+    #board.mid #left { width: 58%; }
     #right { width: 1fr; border-left: solid $primary-darken-2; }
+    /* terminal hẹp: xếp dọc, không để cột phải chỉ còn vài ký tự (log thành chữ dọc) */
+    #board.narrow { layout: vertical; }
+    #board.narrow #left { width: 100%; min-width: 0; height: 45%; }
+    #board.narrow #right { width: 100%; height: 1fr; border-left: none;
+                           border-top: solid $primary-darken-2; }
     #agents { height: auto; padding: 0 1; background: $boost; }
     #goals { height: auto; max-height: 7; padding: 0 1; border-bottom: solid $primary-darken-3; }
     #tasks { height: 1fr; }
@@ -2237,13 +2636,16 @@ class TeamApp(App):
     #jobs { height: 1fr; border: none; }
     #jobs-empty { height: 1fr; padding: 1 2; color: $text-muted; }
     #jobs-buttons { height: auto; }
-    #jobs-buttons Button { min-width: 10; margin-right: 1; }
+    #jobs-buttons Button { margin-right: 1; }
     #job-view { width: 1fr; }
     #job-head { height: auto; padding: 0 1; background: $boost; }
     #job-log { height: 1fr; }
-    #board-clear { height: 1; min-width: 0; border: none; padding: 0 1; margin: 0 1 0 0; }
+    #board-clear { margin: 0 1 0 0; }
     #tasks-empty { height: 1fr; padding: 1 2; color: $text-muted; }
-    #detail { height: auto; max-height: 9; padding: 0 1; background: $boost; }
+    /* cao cố định: chiều cao đổi theo từng task thì mỗi lần lướt bảng cả màn hình phải tính lại bố cục */
+    #detail { height: 6; padding: 0 1; background: $boost; overflow: hidden hidden; }
+    #log-tools { height: 1; align: right top; }
+    #log-clear { margin: 0 1 0 0; }
     #log { height: 1fr; padding: 0 1; overflow-x: hidden; }
     #team-grid { layout: grid; grid-size: 2; grid-gutter: 0 1; height: 1fr; }
     .agentpane { border: round $panel-lighten-2; height: 1fr; }
@@ -2253,18 +2655,19 @@ class TeamApp(App):
     .pane-log { height: 1fr; padding: 0 1; overflow-x: hidden; }
     #timeline { height: auto; max-height: 14; padding: 0 1; border-top: solid $primary-darken-2; }
     #cmd { dock: bottom; margin: 0 0 1 0; }
-    #plan { height: auto; max-height: 75%; display: none; border: heavy $warning;
-            border-title-color: $warning; padding: 0 1; background: $boost; }
-    #plan:focus-within { border: heavy $success; }
+    #plan { height: auto; max-height: 75%; display: none; border: round $panel-lighten-2;
+            border-title-color: $warning; border-title-style: bold; padding: 0 1; background: $boost; }
+    #plan:focus-within { border-title-color: $success; }
     #plan-tasks { height: auto; max-height: 10; border: none; padding: 0; background: $boost; }
-    #plan-detail-box { height: auto; max-height: 10; margin-top: 1; padding: 0 1;
-                       border-left: thick $warning; background: $panel; }
+    #plan-detail-box { height: auto; max-height: 10; margin-top: 1; padding: 0 1; background: $panel; }
     #plan-detail { height: auto; }
     #plan-buttons { height: auto; margin-top: 1; }
-    #plan-buttons Button { margin-right: 1; min-width: 14; }
+    #plan-buttons Button { margin-right: 2; }
     #plan-hint { color: $text-muted; }
+    #continue-hint { height: auto; display: none; padding: 0 1; background: $boost; }
     #mention { dock: bottom; layer: overlay; display: none; height: auto; max-height: 14;
-               width: 90; max-width: 100%; margin: 0 0 4 1; border: round $accent;
+               width: 90; max-width: 100%; margin: 0 0 4 1; border: round $panel-lighten-2;
+               border-title-color: $accent; border-subtitle-color: $text-muted;
                background: $panel; }
     """
     # priority=True: phím tắt vẫn chạy khi con trỏ đang ở ô nhập (Input của Textual tự dùng
@@ -2278,6 +2681,7 @@ class TeamApp(App):
         Binding("f2,ctrl+g", "approve", "Duyệt & chạy", priority=True),
         Binding("f5,ctrl+r", "retry", "Chạy lại", priority=True),
         Binding("ctrl+k", "cancel_task", "Huỷ task", priority=True),
+        Binding("f6,ctrl+o", "continue", "Tiếp tục", priority=True),
         Binding("ctrl+d", "diff", "Xem diff", priority=True),
         Binding("ctrl+y", "merge", "Merge", priority=True),
         Binding("ctrl+l", "syslog", "Log hệ thống", priority=True),
@@ -2287,6 +2691,9 @@ class TeamApp(App):
         super().__init__()
         self.root, self.cfg, self.db = root, cfg, db
         self.start_setup = setup
+        # tắt hiệu ứng chuyển động (gạch chân tab trượt, cuộn mượt): mỗi lần đổi tab/cuộn phải vẽ lại nhiều
+        # khung hình — trên terminal là giật, lag
+        self.animation_level = "none"
         self.orch = Orchestrator(root, cfg, db, on_event=self.on_orch_event)
         self.view_task = SYSTEM
         self.log_styler = LogStyler()  # trạng thái tô màu của log đang xem (#log)
@@ -2297,6 +2704,11 @@ class TeamApp(App):
         self._loop_task: asyncio.Task | None = None
         self._frame = 0
         self._booted = False
+        self._goal_status: dict[int, str] = {}  # để báo khi mục tiêu vừa kết thúc
+        self._log_cut: dict[int, int] = {}  # nút Xoá log: vị trí (byte) trong file log bắt đầu hiện
+        self._snap: dict | None = None  # DB đọc 1 lần cho mỗi lượt refresh_view
+        self._refresh_pending = False
+        self._row_timer = None  # hẹn nạp log của dòng đang chọn (lướt bảng)
 
     # ------------------------------------------------------------------ layout
     def compose(self) -> ComposeResult:
@@ -2308,12 +2720,14 @@ class TeamApp(App):
                         yield Static(id="agents")
                         yield Static(id="goals")
                         with Horizontal(id="board-tools"):
-                            yield Button("🗑 Dọn task đã xong", id="board-clear")
+                            yield Btn("🗑 Dọn task đã xong", id="board-clear")
                         yield DataTable(id="tasks", cursor_type="row", zebra_stripes=True)
                         yield Static(id="tasks-empty")
                     with Vertical(id="right"):
                         yield Static(id="detail")
-                        yield RichLog(id="log", wrap=True, markup=False, highlight=False,
+                        with Horizontal(id="log-tools"):
+                            yield Btn("🗑 Xoá log", id="log-clear")
+                        yield ReflowLog(id="log", wrap=True, markup=False, highlight=False,
                                       max_lines=5000, min_width=1)
             with TabPane("👥 Đội", id="tab-team"):
                 with Vertical(id="team"):
@@ -2328,14 +2742,15 @@ class TeamApp(App):
                         yield OptionList(id="jobs")
                         yield Static(id="jobs-empty")
                         with Horizontal(id="jobs-buttons"):
-                            yield Button("■ Dừng", id="job-stop", variant="error")
-                            yield Button("↻ Chạy lại", id="job-restart")
-                            yield Button("✗ Xoá", id="job-remove")
+                            yield Btn("■ Dừng", id="job-stop", variant="error")
+                            yield Btn("↻ Chạy lại", id="job-restart")
+                            yield Btn("✗ Xoá", id="job-remove")
                     with Vertical(id="job-view"):
                         yield Static(id="job-head")
-                        yield RichLog(id="job-log", wrap=True, markup=False, highlight=False,
+                        yield ReflowLog(id="job-log", wrap=True, markup=False, highlight=False,
                                       max_lines=5000, min_width=1)
         yield PlanBar(id="plan")
+        yield Static(id="continue-hint")
         yield MentionList(id="mention")
         yield CommandInput(self.root, id="cmd",
                            placeholder="Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file")
@@ -2368,8 +2783,10 @@ class TeamApp(App):
             self.run_worker(self._discover_missing_models(), exclusive=False)
 
     def on_resize(self, event: events.Resize) -> None:
-        # terminal hẹp: nới cột bảng việc để cột "Task" (quan trọng nhất) không bị đẩy mất
-        self.query_one("#left").styles.width = "46%" if event.size.width >= 140 else "58%"
+        # vừa: nới cột bảng việc để cột "Task" (quan trọng nhất) không bị đẩy mất; hẹp: xếp dọc
+        board, w = self.query_one("#board"), event.size.width
+        board.set_class(w < NARROW_WIDTH, "narrow")
+        board.set_class(NARROW_WIDTH <= w < 140, "mid")
 
     def _preload_panes(self) -> None:
         """Nạp phần cuối log của task gần nhất cho mỗi ô agent."""
@@ -2412,6 +2829,8 @@ class TeamApp(App):
             if "start" in data:
                 act = data["start"]
                 p.styler = LogStyler()  # lượt chạy mới: bỏ trạng thái khối của lượt trước
+                if act["task_id"]:
+                    self._log_cut.pop(act["task_id"], None)  # task chạy lại: file log ghi từ đầu
                 if act["task_id"] and act["task_id"] == self.view_task:
                     self.show_task(act["task_id"])  # bỏ dòng "chưa chạy" cũ
                 head = f"#{act['task_id']} {act['title']}" if act["task_id"] else act["title"]
@@ -2423,7 +2842,7 @@ class TeamApp(App):
                 label, style = STATUS.get(st, ("xong", "green")) if st else ("xong", "green")
                 p.body.write(Text(f"── ■ {label} sau {fmt_dur(time.time() - act['started'])} ──", style))
         elif kind == "changed":
-            self.refresh_view()
+            self.schedule_refresh()
 
     def clear_board(self) -> None:
         n_tasks, n_goals = self.orch.clear_finished()
@@ -2552,14 +2971,42 @@ class TeamApp(App):
     def refresh_view(self) -> None:
         if not self._booted:
             return
+        self._refresh_pending = False
         self._frame = (self._frame + 1) % len(SPIN)
-        for fn in (self._refresh_agents, self._refresh_goals, self._refresh_table,
-                   self._refresh_detail, self._refresh_panes, self._refresh_timeline,
-                   self._refresh_plan, self._refresh_jobs):
-            try:
-                fn()
-            except Exception as e:  # không để lỗi vẽ làm treo app
-                self.log.error(f"refresh {fn.__name__}: {e!r}")
+        # một lần đọc DB cho cả lượt vẽ; tab đang ẩn thì không vẽ (vẽ ngay khi chuyển sang — on_tabbed…)
+        self._snap = {"tasks": self.db.tasks(), "goals": self.db.goals()}
+        tab = self.query_one("#tabs", TabbedContent).active
+        fns = [self._refresh_goals, self._refresh_plan]
+        if tab == "tab-board":
+            fns += [self._refresh_agents, self._refresh_table, self._refresh_detail]
+        elif tab == "tab-team":
+            fns += [self._refresh_panes, self._refresh_timeline]
+        elif tab == "tab-term":
+            fns += [self._refresh_jobs]
+        try:
+            for fn in fns:
+                try:
+                    fn()
+                except Exception as e:  # không để lỗi vẽ làm treo app
+                    self.log.error(f"refresh {fn.__name__}: {e!r}")
+        finally:
+            self._snap = None
+
+    def schedule_refresh(self, delay: float = 0.15) -> None:
+        """Gộp nhiều sự kiện "changed" liền nhau thành một lần vẽ."""
+        if not self._refresh_pending:
+            self._refresh_pending = True
+            self.set_timer(delay, self.refresh_view)
+
+    def snap_tasks(self) -> list:
+        return self._snap["tasks"] if self._snap else self.db.tasks()
+
+    def snap_goals(self) -> list:
+        return self._snap["goals"] if self._snap else self.db.goals()
+
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        if event.tabbed_content.id == "tabs":
+            self.refresh_view()
 
     def _refresh_agents(self) -> None:
         chunks: list[Text] = []
@@ -2588,10 +3035,18 @@ class TeamApp(App):
             chunks.append(Text(f"  💻 {len(jobs)} lệnh đang chạy" + (
                 " (" + ", ".join(f":{p}" for p in ports) + ")" if ports else "") + " · Ctrl+T", RUNNING))
         w = self.query_one("#agents", Static)
-        w.update(flow_chunks(chunks, w.content_region.width))
+        set_static(w, flow_chunks(chunks, w.content_region.width))
 
     def _refresh_goals(self) -> None:
-        goals = self.db.goals()[-4:]
+        all_goals = self.snap_goals()
+        # 4 mục tiêu mới nhất + mọi mục tiêu chưa xong (mục tiêu cũ vừa "tiếp tục" vẫn hiện)
+        keep = {g.id for g in all_goals[-4:]} | {g.id for g in all_goals if g.status not in GOAL_ENDED}
+        goals = [g for g in all_goals if g.id in keep]
+        prev, self._goal_status = self._goal_status, {g.id: g.status for g in all_goals}
+        for g in all_goals:
+            if g.status in GOAL_ENDED and prev.get(g.id, g.status) not in GOAL_ENDED:
+                self.notify(f"🏁 Mục tiêu #{g.id} {GOAL_STATUS.get(g.status, (g.status,))[0]} — "
+                            f"F6 hoặc bấm ↪ Tiếp tục để giao thêm việc", timeout=6)
         t = Text()
         if not goals:
             t.append("Chưa có mục tiêu. Gõ yêu cầu ở ô dưới cùng.", "dim")
@@ -2606,24 +3061,33 @@ class TeamApp(App):
                 t.append(f"⚙{g.workflow} ", "cyan")
             t.append(f"[{label}", style)
             t.append(f" · vòng {g.round}]" if g.round > 1 else "]", style)
-            t.append(f" {g.text[:80]}")
+            t.append(f" {g.text.splitlines()[0][:80] if g.text else ''}")
+            if g.followups:
+                t.append(f"\n   ↪ lần tiếp {len(g.followups)}: {g.followups[-1].splitlines()[0][:120]}",
+                         "cyan")
+            ended = g.status in GOAL_ENDED
+            if ended:  # nút bấm đầu dòng riêng: không bị gãy dòng như khi nằm cuối tiêu đề dài
+                t.append("\n   ")
+                t.append(" ↪ Tiếp tục ", Style(color="black", bgcolor="cyan", bold=True,
+                                              meta={"@click": f"app.continue_goal({g.id})"}))
             if g.summary and g.status in ("done", "incomplete", "failed", "awaiting"):
-                t.append(f"\n   ↳ {g.summary[:160]}", "dim")
+                t.append(f" {g.summary[:160]}" if ended else f"\n   ↳ {g.summary[:160]}", "dim")
             if g.status == "awaiting":
                 t.append("\n   ↳ xem khung Duyệt kế hoạch phía dưới · F2 duyệt & chạy", "yellow")
-        self.query_one("#goals", Static).update(t)
+        if self.query_one("#tabs", TabbedContent).active == "tab-board":
+            set_static(self.query_one("#goals", Static), t)
 
     def _refresh_table(self) -> None:
         table = self.query_one("#tasks", DataTable)
         now = time.time()
-        tasks = self.db.tasks()
+        tasks = self.snap_tasks()
         empty = self.query_one("#tasks-empty", Static)
         table.display, empty.display = bool(tasks), not tasks
         alive = {t.id for t in tasks}
         for tid in [i for i in self._rows if i not in alive]:  # đã dọn (/clear, nút Dọn)
             table.remove_row(str(tid))
             del self._rows[tid]
-        tids, gids = self.orch.finished_ids()
+        tids, gids = self.orch.finished_ids(tasks, self.snap_goals())
         tools = self.query_one("#board-tools")
         tools.display = bool(tids or gids)
         if tids or gids:
@@ -2639,7 +3103,7 @@ class TeamApp(App):
                                ("F1", "xem mọi lệnh & phím tắt")):
                 t.append(f"  {keys:27}", "bold cyan")
                 t.append(what + "\n")
-            empty.update(t)
+            set_static(empty, t)
         for task in tasks:
             label, style = STATUS.get(task.status, (task.status, ""))
             icon = SPIN[self._frame] if task.status == "running" else STATUS_ICON.get(task.status, "·")
@@ -2666,7 +3130,7 @@ class TeamApp(App):
         if self.view_task == SYSTEM:
             t = Text("📜 Log hệ thống", "bold")
             t.append("  ·  chọn 1 task trong bảng để xem log riêng · Ctrl+T: tab Đội", "dim")
-            d.update(t)
+            set_static(d, t)
             return
         task = self.db.task(self.view_task)
         if not task:
@@ -2691,11 +3155,16 @@ class TeamApp(App):
             t.append(f"\n⚠ {task.error}", "red")
         elif task.result and task.status != "running":
             t.append(f"\n↳ {task.result[:240].replace(chr(10), ' ')}", "green")
-        d.update(t)
+        if task.status not in ACTIVE:
+            g = self.db.goal(task.goal_id) if task.goal_id else None
+            if g is None or g.status in GOAL_ENDED:
+                what = f"mục tiêu #{g.id}" if g else f"hỏi tiếp {task.agent} trong thread này"
+                t.append(f"\n↪ F6: tiếp tục {what}", "dim")
+        set_static(d, t)
 
     def _refresh_panes(self) -> None:
         now = time.time()
-        tasks = self.db.tasks()
+        tasks = self.snap_tasks()
         usage = self.db.usage(today_start())
         for pane in self.query(AgentPane):
             name = pane.agent
@@ -2747,7 +3216,7 @@ class TeamApp(App):
                     label, style = STATUS.get(last.status, (last.status, ""))
                     t.append(f"  · gần nhất #{last.id} ", "dim")
                     t.append(label, style)
-            pane.head.update(t)
+            set_static(pane.head, t)
             pane.set_class(bool(acts), "busy")
             pane.set_class(not a.installed(), "missing")
 
@@ -2769,6 +3238,10 @@ class TeamApp(App):
         if bid == "board-clear":
             event.stop()
             self.clear_board()
+            return
+        if bid == "log-clear":
+            event.stop()
+            self.clear_log()
             return
         if bid.startswith("job-"):
             event.stop()
@@ -2835,28 +3308,51 @@ class TeamApp(App):
 
     def _refresh_timeline(self) -> None:
         tl = self.query_one("#timeline", Timeline)
-        tl.update(tl.build(self))
+        set_static(tl, tl.build(self))
 
     def show_task(self, tid: int) -> None:
         self.view_task = tid
         log = self.query_one("#log", RichLog)
         log.clear()
         self.log_styler = LogStyler()
-        path = (self.orch.logs / "system.log") if tid == SYSTEM else self.orch.log_path(tid)
+        path = self._log_file(tid)
         if path.exists():
-            for line in styled_lines(path.read_text(encoding="utf-8", errors="replace"),
-                                     self.log_styler)[-500:]:
+            cut = self._log_cut.get(tid, 0)
+            text = read_log_tail(path, cut)
+            if cut:
+                log.write(Text("🗑 Đã xoá log cũ — chỉ hiện dòng mới", "dim italic"))
+            for line in styled_lines(text, self.log_styler)[-LOG_SHOW_LINES:]:
                 log.write(line)
         elif tid != SYSTEM:
             log.write("(task chưa chạy — chưa có log)")
         if self._booted:
             self._refresh_detail()
 
+    def _log_file(self, tid: int) -> Path:
+        return (self.orch.logs / "system.log") if tid == SYSTEM else self.orch.log_path(tid)
+
+    def clear_log(self) -> None:
+        """Nút 🗑 Xoá log: ẩn log đang xem (chỉ hiện dòng mới). File log trên đĩa giữ nguyên, vì task
+        đang chạy vẫn ghi vào nó và /retry, review cần đọc lại."""
+        path = self._log_file(self.view_task)
+        self._log_cut[self.view_task] = path.stat().st_size if path.exists() else 0
+        self.show_task(self.view_task)
+
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        # giữ ↑↓ để lướt bảng: chỉ nạp log của dòng dừng lại (đọc + tô màu log mỗi dòng lướt qua rất chậm)
         if event.row_key and event.row_key.value:
             tid = int(event.row_key.value)
             if tid != self.view_task:
-                self.show_task(tid)
+                self.view_task = tid  # phím tắt (F5, Ctrl+D, F6…) dùng ngay dòng đang chọn
+                self._refresh_detail()
+                if self._row_timer is not None:
+                    self._row_timer.stop()
+                self._row_timer = self.set_timer(0.12, lambda: self._show_selected(tid))
+
+    def _show_selected(self, tid: int) -> None:
+        self._row_timer = None
+        if self.view_task == tid:
+            self.show_task(tid)
 
     def selected_task(self) -> int | None:
         if self.view_task == SYSTEM:
@@ -2944,6 +3440,106 @@ class TeamApp(App):
     def on_input_changed(self, event: Input.Changed) -> None:
         if isinstance(event.input, CommandInput):
             event.input.update_mention()
+            self._update_continue_hint(event.value)
+
+    # ------------------------------------------------------------------ tiếp tục mục tiêu / thread
+    def continue_candidates(self) -> list[tuple[str, Text]]:
+        """(ref, dòng hiển thị) cho gợi ý /continue: mục tiêu đã kết thúc rồi thread /task đã xong."""
+        out: list[tuple[str, Text]] = []
+        for g in reversed(self.db.goals()):
+            if g.status not in GOAL_ENDED:
+                continue
+            label, style = GOAL_STATUS.get(g.status, (g.status, ""))
+            t = Text()
+            t.append("🎯 ")
+            t.append(f"m{g.id}".ljust(6), "bold cyan")
+            t.append(f"{label:11}", style)
+            t.append(g.text.splitlines()[0] if g.text else "")
+            if g.summary:
+                t.append(f" — {g.summary.splitlines()[0]}", "dim")
+            out.append((f"m{g.id}", t))
+            if len(out) >= 10:
+                break
+        tasks = self.db.tasks()
+        has_next = {t.parent_id for t in tasks if t.source == "followup" and t.goal_id is None}
+        n = 0
+        for task in reversed(tasks):
+            if task.goal_id is not None or task.status in ACTIVE or task.id in has_next:
+                continue
+            label, style = STATUS.get(task.status, (task.status, ""))
+            t = Text()
+            t.append("💬 ")
+            t.append(f"t{task.id}".ljust(6), "bold cyan")
+            t.append(f"{task.agent} ", "cyan")
+            t.append(f"{STATUS_ICON.get(task.status, '·')} ", style)
+            t.append(task.title)
+            out.append((f"t{task.id}", t))
+            n += 1
+            if n >= 10:
+                break
+        return out
+
+    def continue_hint(self, ref: str) -> Text:
+        """Dòng giải thích /continue <ref> sẽ làm gì (hoặc vì sao chưa được)."""
+        r = self.orch.continue_ref(ref)
+        if isinstance(r, str):
+            return Text(f"⚠ {r}", "yellow")
+        kind, i = r
+        t = Text()
+        if kind == "goal":
+            g = self.db.goal(i)
+            if g.status not in GOAL_ENDED:
+                return Text(f"⚠ Mục tiêu #{i} chưa kết thúc — đợi xong rồi tiếp tục", "yellow")
+            n = len(self.db.tasks(goal_id=i))
+            t.append(f"↪ Tiếp tục mục tiêu #{i} ", "bold")
+            t.append(f"«{g.text.splitlines()[0][:60]}»", "cyan")
+            t.append(f" — trưởng nhóm lập task bổ sung dựa trên {n} task đã làm", "")
+        else:
+            task = self.db.task(i)
+            if task.status in ACTIVE:
+                return Text(f"⚠ Task #{i} chưa xong (hoặc đang chờ duyệt) — đợi xong rồi tiếp tục",
+                            "yellow")
+            turns = len(self.orch.thread_of(task)) + 1
+            t.append(f"↪ Hỏi tiếp {task.agent} ", "bold")
+            t.append(f"«{task.title[:60]}»", "cyan")
+            t.append(f" — kèm {turns} lượt trước của thread", "")
+        t.append("  (gõ yêu cầu mới rồi Enter, Esc huỷ)", "dim")
+        return t
+
+    def _update_continue_hint(self, value: str) -> None:
+        hint = self.query_one("#continue-hint", Static)
+        m = CONTINUE_RE.match(value)
+        hint.display = bool(m)
+        if m:
+            hint.update(self.continue_hint(m.group(1)))
+
+    def prefill_continue(self, ref: str) -> None:
+        """Điền '/continue <ref> ' vào ô nhập để người dùng gõ tiếp yêu cầu mới."""
+        self.query_one("#tabs", TabbedContent).active = "tab-board"
+        inp = self.query_one("#cmd", CommandInput)
+        inp.value = f"/continue {ref} "
+        inp.cursor_position = len(inp.value)
+        inp.close_popup()
+        inp.focus()
+
+    def action_continue(self) -> None:
+        """F6: tiếp tục mục tiêu của task đang chọn / thread /task đó / mục tiêu xong gần nhất."""
+        tid = self.selected_task()
+        task = self.db.task(tid) if tid else None
+        if task:
+            ref = f"m{task.goal_id}" if task.goal_id and self.db.goal(task.goal_id) else f"t{task.id}"
+        else:
+            ended = [g for g in self.db.goals() if g.status in GOAL_ENDED]
+            if not ended:
+                self.notify("Chưa có mục tiêu nào đã xong để tiếp tục — chọn 1 task trong bảng",
+                            severity="warning")
+                return
+            ref = f"m{ended[-1].id}"
+        self.prefill_continue(ref)
+
+    def action_continue_goal(self, gid: int) -> None:
+        """Nút "↪ Tiếp tục" trong khung mục tiêu."""
+        self.prefill_continue(f"m{gid}")
 
     def start_goal(self, text: str, workflow: str = "") -> None:
         """Mục tiêu mới: theo workflow (nếu có) hoặc để trưởng nhóm lập kế hoạch."""
@@ -3048,27 +3644,34 @@ class TeamApp(App):
                                      on_done=lambda _n, msg: self.orch.log("⚙ " + msg))
 
     def open_setup(self) -> None:
-        self.push_screen(SetupScreen(self.cfg, self.orch), self._setup_done)
+        self.push_screen(OnboardScreen(self.root, self.cfg, self.orch), self._setup_done)
 
     async def _setup_done(self, result) -> None:
         if result is None:
             mark_setup_done()
             self.orch.log("ℹ Bỏ qua thiết lập. Mở lại bất cứ lúc nào bằng /setup (hoặc `ateam setup`).")
             return
-        save_setup(self.root, result["lead"], result["agents"], result.get("default_workflow", ""))
+        save_onboard(self.root, result["plan"], **result["settings"])
+        await self.reload_custom()  # agent thêm (vd claude-review) và workflow mới
         fresh = load_config(self.root)
-        self.cfg.lead, self.cfg.default_workflow = fresh.lead, fresh.default_workflow
-        for n, a in self.cfg.agents.items():
+        c = self.cfg
+        c.lead, c.default_workflow = fresh.lead, fresh.default_workflow
+        c.approve_plan, c.auto_review, c.merge = fresh.approve_plan, fresh.auto_review, fresh.merge
+        c.verify.command = fresh.verify.command
+        for n, a in c.agents.items():
             f = fresh.agents.get(n)
             if f:
                 a.enabled, a.model, a.effort, a.role = f.enabled, f.model, f.effort, f.role
                 a.full_access = f.full_access
+        if c.isolation != fresh.isolation:
+            c.isolation = fresh.isolation
+            await self.orch.apply_isolation()
         await self._rebuild_panes()
         self._show_input_mode()
-        on = [f"{n} ({a.label()})" for n, a in self.cfg.active_agents().items()]
-        flow = (f" Gõ mục tiêu → workflow '{self.cfg.default_workflow}' (/goal: trưởng nhóm lập kế hoạch)."
-                if self.cfg.default_workflow else "")
-        self.orch.log(f"⚙ Đã lưu thiết lập. Trưởng nhóm: {self.cfg.lead}. Đội: {', '.join(on)}.{flow} "
+        on = [f"{n} ({a.label()})" for n, a in c.active_agents().items()]
+        flow = (f" Gõ mục tiêu → workflow '{c.default_workflow}' (/goal: trưởng nhóm lập kế hoạch)."
+                if c.default_workflow else "")
+        self.orch.log(f"⚙ Đã lưu thiết lập. Trưởng nhóm: {c.lead}. Đội: {', '.join(on)}.{flow} "
                       "Đổi lại: /setup, /model, /effort.")
         self.refresh_view()
 
@@ -3293,6 +3896,22 @@ class TeamApp(App):
             return
         elif cmd == "goal":
             self.start_goal(rest.strip())
+        elif cmd in ("continue", "tiep", "c"):
+            ref, _, req = rest.partition(" ")
+            if not req.strip():  # mới có ref: điền sẵn để gõ tiếp yêu cầu
+                self.prefill_continue(ref)
+                return
+            res = o.continue_any(ref, req)
+            if isinstance(res, str):
+                self.notify(res, severity="warning")
+                return
+            kind, i = res
+            if kind == "goal":
+                self.notify(f"↪ Trưởng nhóm đang lập kế hoạch tiếp cho mục tiêu #{i}")
+                self.show_task(SYSTEM)
+            else:
+                self.notify(f"↪ Task #{i}: hỏi tiếp {self.db.task(i).agent}")
+                self.show_task(i)
         elif cmd == "sh":
             self.run_shell(rest)
         elif cmd == "stop":

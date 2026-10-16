@@ -155,7 +155,19 @@ def cmd_goal(args) -> int:
     async def main() -> int:
         orch = Orchestrator(root, cfg, db, on_event=_printer(not args.quiet))
         await orch.setup()
-        if getattr(args, "workflow", None):
+        if getattr(args, "ref", None):  # ateam continue <m12|t40> <yêu cầu>
+            res = orch.continue_any(args.ref, " ".join(args.text))
+            if isinstance(res, str):
+                print("✗ " + res, file=sys.stderr)
+                return 1
+            if res[0] == "task":  # hỏi tiếp thread /task: chỉ cần chạy task mới
+                await orch.run_until_idle()
+                t = db.task(res[1])
+                print(f"\n=== Task #{t.id} [{t.agent}]: {t.status} ===")
+                print(t.error or t.result or "")
+                return 0 if t.status == "done" else 2
+            gid = res[1]
+        elif getattr(args, "workflow", None):
             gid = orch.run_workflow(args.workflow, " ".join(args.text))
             if isinstance(gid, str):
                 print("✗ " + gid, file=sys.stderr)
@@ -421,6 +433,11 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("text", nargs="+")
     s.add_argument("-y", "--yes", action="store_true", help="không hỏi duyệt kế hoạch")
     s.add_argument("-q", "--quiet", action="store_true", help="không in log chi tiết của agent")
+    s = sub.add_parser("continue", help="tiếp tục mục tiêu (m12) hoặc thread /task (t40) đã xong")
+    s.add_argument("ref", help="m<số> = mục tiêu, t<số> = task")
+    s.add_argument("text", nargs="+", help="yêu cầu mới")
+    s.add_argument("-y", "--yes", action="store_true", help="không hỏi duyệt kế hoạch")
+    s.add_argument("-q", "--quiet", action="store_true")
     s = sub.add_parser("flow", help="chạy mục tiêu theo workflow tuỳ chỉnh (không cần giao diện)")
     s.add_argument("workflow")
     s.add_argument("text", nargs="+")
@@ -469,7 +486,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
     handlers = {None: cmd_tui, "tui": cmd_tui, "setup": cmd_tui, "init": cmd_init, "doctor": cmd_doctor,
-                "goal": cmd_goal, "flow": cmd_goal, "flows": cmd_flows, "add": cmd_add, "note": cmd_note,
+                "goal": cmd_goal, "flow": cmd_goal, "continue": cmd_goal, "flows": cmd_flows, "add": cmd_add, "note": cmd_note,
                 "compact": cmd_compact, "list": cmd_list,
                 "log": cmd_log, "run": cmd_run, "set": cmd_set, "models": cmd_models, "diff": cmd_diff,
                 "merge": cmd_merge, "reject": cmd_reject, "verify": cmd_verify,

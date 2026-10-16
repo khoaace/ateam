@@ -182,15 +182,20 @@ def test_file_mentions_use_each_agent_syntax(env, project, tmp_path):
     full.unlink()
     out = run_for("codex")
     assert "đọc src/app.py và my docs/plan.md, bỏ qua @nope" in out, out
-    out = run_for("grok")
-    assert "-f src/app.py -f my docs/plan.md" in out and "đọc src/app.py và" in out, out
+    out = run_for("grok")  # Grok Build: @file ngay trong prompt
+    assert '@src/app.py và @"my docs/plan.md", bỏ qua @nope' in out and "<<grok>>" in out, out
+    out = run_for("opencode")
+    assert "-f src/app.py -f my docs/plan.md --" in out and "đọc src/app.py và" in out, out
+    assert "File not found" not in out  # -f không nuốt prompt (opencode thật báo lỗi này)
     assert "-f" in (tmp_path / "args.log").read_text()
 
 
 def test_models_refresh_asks_cli(env, project):
-    r = ateam(env, project, "models", "grok", "--refresh")
-    assert "tìm thấy 3 model" in r.stdout, r.stdout
-    assert "xai/grok-5-fast" in r.stdout and "openai/gpt-5.5" not in r.stdout
+    r = ateam(env, project, "models", "grok", "--refresh")  # grok models: "* grok-4.7 (default)"
+    assert "grok: tìm thấy 3 model" in r.stdout and "Default" not in r.stdout, r.stdout
+    assert "grok-4.7-build-fast" in r.stdout
+    r = ateam(env, project, "models", "opencode", "--refresh")  # OpenCode: mọi nhà cung cấp, không lọc
+    assert "tìm thấy 5 model" in r.stdout and "xai/grok-5-fast" in r.stdout, r.stdout
     # agy chỉ in khi có terminal -> phải hỏi qua pty
     r = ateam(env, project, "models", "antigravity", "--refresh")
     assert "gemini-3-pro" in r.stdout and "Available" not in r.stdout, r.stdout
@@ -296,7 +301,7 @@ def test_usage_asks_each_cli(env, project):
     out = r.stdout
     assert "📊 claude  (claude -p /usage)" in out and "Current session: 41% used" in out, out
     assert "📊 antigravity  (agy -p /usage)" in out and "Weekly Limit Remaining  29%" in out
-    assert "📊 grok  (opencode stats --days 7)" in out and "stat dòng 20" in out
+    assert "📊 opencode  (opencode stats --days 7)" in out and "stat dòng 20" in out
     assert "stat dòng 21" not in out and "còn 10 dòng" in out
     assert "Chưa có phiên codex nào" in out
     sess = Path(env["CODEX_HOME"]) / "sessions" / "2026" / "10" / "15"
@@ -323,3 +328,28 @@ def test_permission_denied_fails_with_hint(env, project):
     ateam(env, project, "run", "-q")
     assert tasks(project)[-1].status == "done"
     assert "--dangerously-skip-permissions" in (Path(env["ATEAM_FAKE_ARGS_LOG"])).read_text()
+
+
+def test_continue_goal_and_thread(env, project, tmp_path):
+    env["ATEAM_FAKE_FULL_LOG"] = str(tmp_path / "full.log")
+    ateam(env, project, "goal", "-y", "-q", "Tạo các file a b c")
+    n_before = len(tasks(project))
+    r = ateam(env, project, "continue", "m1", "-y", "-q", "thêm file d")
+    assert "=== Mục tiêu #1: done ===" in r.stdout, r.stdout
+    new = [t for t in tasks(project)][n_before:]
+    assert new and new[0].source == "followup" and new[0].goal_id == 1 and new[0].title == "Tạo d.txt"
+    full = (tmp_path / "full.log").read_text()
+    plan = full[full.index("NEW FOLLOW-UP REQUEST") - 3000:full.index("NEW FOLLOW-UP REQUEST") + 200]
+    assert "thêm file d" in plan and "tạo a.txt" in plan  # kết quả task cũ đi kèm
+    # task thuộc mục tiêu -> tiếp tục cả mục tiêu; ref sai -> báo lỗi
+    r = ateam(env, project, "continue", "zz", "x", check=False)
+    assert r.returncode == 1 and "Không hiểu" in r.stderr
+
+    # thread /task: hỏi tiếp cùng agent, prompt kèm lượt trước
+    ateam(env, project, "add", "--to", "codex", "viết hàm cộng")
+    ateam(env, project, "run", "-q")
+    tid = next(t.id for t in tasks(project) if t.title == "viết hàm cộng")
+    r = ateam(env, project, "continue", f"t{tid}", "-q", "thêm test cho hàm")
+    t = next(t for t in tasks(project) if t.parent_id == tid and t.source == "followup")
+    assert t.parent_id == tid and t.source == "followup" and t.goal_id is None and t.status == "done"
+    assert "nhớ lượt trước" in (project / f".ateam/logs/t{t.id}.log").read_text()

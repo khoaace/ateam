@@ -9,7 +9,10 @@ if [ "$P" = "/usage" ]; then  # như claude -p /usage thật: không gọi model
   exit 0
 fi
 if fake_limited claude; then echo "Claude AI usage limit reached|$(( $(date +%s) + 3600 ))"; exit 1; fi
-if [[ "$P" == *"Reply with ONLY a JSON array"* ]]; then
+if [[ "$P" == *"NEW FOLLOW-UP REQUEST"* ]]; then
+  # Tiếp tục mục tiêu đã xong: 1 task bổ sung
+  echo '[{"id":1,"agent":"codex","title":"Tạo d.txt","prompt":"tạo file d.txt","depends_on":[]}]'
+elif [[ "$P" == *"Reply with ONLY a JSON array"* ]]; then
   # Lập kế hoạch: 3 task, task 3 phụ thuộc 1 và 2; effort "bogus" phải bị bỏ qua
   echo "Đang xem dự án..."
   cat <<'J'

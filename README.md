@@ -10,8 +10,8 @@ Bạn vẫn có thể giao tay bất cứ lúc nào.
 ```
  Bạn ──mục tiêu──▶ Trưởng nhóm (claude) ──kế hoạch──▶ Bảng việc (SQLite)
                                                         │
-                ┌──────────────┬──────────────┬─────────┴────┐
-              codex      antigravity (agy)   grok (opencode)  claude
+                ┌──────────────┬──────────────┬─────────┴────┬──────────┐
+              codex      antigravity (agy)   grok (Grok Build)  opencode  claude
                 └── kết quả / ghi chú / <<<DELEGATE>>> ──▶ bảng việc ──▶ review ──▶ vòng tiếp
 ```
 
@@ -35,11 +35,11 @@ nhật bằng `git pull`.
 ```bash
 cd ateam
 ./install.sh          # tạo venv ở ~/.ateam, lệnh `ateam` ở ~/.local/bin
-ateam doctor          # kiểm tra claude / codex / agy / opencode đã có chưa, cờ trong lệnh còn hợp lệ không
+ateam doctor          # kiểm tra claude / codex / agy / grok / opencode đã có chưa, cờ trong lệnh còn hợp lệ không
 ```
 
 Yêu cầu: Python 3.9+ (`brew install python` nếu chưa có), git, và các CLI agent **đã đăng nhập sẵn**
-(chạy thử `claude`, `codex`, `agy`, `opencode` một lần cho chắc).
+(chạy thử `claude`, `codex`, `agy`, `grok`, `opencode` một lần cho chắc).
 
 ## Dùng
 
@@ -48,13 +48,23 @@ cd ~/code/du-an-cua-ban
 ateam
 ```
 
-**Lần đầu mở app** sẽ hiện màn hình *Thiết lập đội AI*: ateam hỏi song song các CLI có lệnh liệt kê
-model (`opencode models`, `agy models`; Claude Code và Codex dùng danh mục có sẵn) để bảng chọn có sẵn
-model thật, rồi cho bạn chọn trong một màn hình: agent nào tham gia, ai làm trưởng nhóm, model và effort
-của từng agent, **vai trò** của từng agent (sửa thẳng trong ô, trưởng nhóm dựa vào đây để chia việc) và
-**workflow mặc định**: chọn một workflow thì gõ mục tiêu là chạy theo workflow đó luôn, không cần `/flow`
-(muốn trưởng nhóm lập kế hoạch thì gõ `/goal <mục tiêu>`). **Ctrl+S** lưu, **Esc** bỏ qua (giữ cấu hình
-hiện tại). Mở lại bất cứ lúc nào bằng `/setup` trong app hoặc `ateam setup`.
+**Lần đầu mở app** sẽ hiện wizard *Thiết lập đội AI*, hỏi từng bước (Enter: chọn và sang bước tiếp, Esc: quay
+lại bước trước, nút ✕ để đóng):
+
+1. **CLI bạn đang dùng** — Claude Code, Codex, Antigravity, Grok Build, OpenCode (CLI chưa cài có lệnh cài).
+2. **Kiểu làm việc** — trưởng nhóm lập kế hoạch rồi bạn duyệt / chạy luôn / theo quy trình cố định (thiết kế →
+   code → test, gõ mục tiêu là chạy workflow `tinh-nang`) / chủ yếu tự giao việc bằng `/task`.
+3. **Mức chi phí** — Tiết kiệm · Cân bằng · Tối đa: điền sẵn model và effort hợp lý cho từng vai trò.
+4. **Vai trò → CLI · model · effort** — Trưởng nhóm, Code chính, Review code, Frontend/UI, Test & tài liệu,
+   Nghiên cứu. Một CLI làm nhiều vai trò với model khác nhau thì ateam tự tạo thêm agent (vd `claude-review`).
+5. **An toàn & duyệt code** — chỉ sửa file hay toàn quyền (chạy lệnh, mạng); sửa thẳng thư mục hay mỗi task một
+   nhánh git (tự merge, hoặc xem diff rồi mới merge).
+6. **Lệnh kiểm tra** — gợi ý từ `package.json` / `Makefile` (test, lint, build…) để tự chạy sau mỗi task.
+7. **Xem lại & lưu** (Ctrl+S).
+
+Danh sách model được hỏi thật từ các CLI (`codex debug models`, `agy models`, `grok models`, `opencode models`)
+ngay khi wizard mở. Mở lại bất cứ lúc nào bằng `/setup` trong app hoặc `ateam setup` (wizard điền sẵn đội hiện
+tại). Agent tuỳ chỉnh bạn tự thêm ở `/custom` được giữ nguyên.
 
 * **Gõ một câu bình thường** → giao mục tiêu cho trưởng nhóm. Kế hoạch hiện ra ở trạng thái *nháp*
   trong khung **Duyệt kế hoạch** ngay trên ô nhập (thấy ở cả tab Bảng việc và Đội): danh sách task kèm
@@ -63,13 +73,22 @@ hiện tại). Mở lại bất cứ lúc nào bằng `/setup` trong app hoặc 
   để sửa nội dung, nút *Đổi agent*, *Bỏ kế hoạch* (`/drop`); Esc về ô nhập.
 * **Giao tay**: `/task codex viết unit test cho utils.py` (gõ `/task ` để chọn agent từ danh sách); agent
   nhận đúng nguyên văn bạn gõ.
+* **Tiếp tục mục tiêu / thread đã xong**: chọn một task trong bảng rồi **F6** (hoặc **Ctrl+O**), bấm nút
+  **↪ Tiếp tục** cạnh mục tiêu đã xong, hoặc gõ `/continue ` để chọn từ danh sách — ô nhập điền sẵn
+  `/continue m12 ` (mục tiêu) / `/continue t40 ` (task giao tay), dòng phía trên cho biết sẽ tiếp tục gì; gõ
+  yêu cầu mới rồi Enter (Esc huỷ). Mục tiêu được mở lại: trưởng nhóm nhận kết quả các task cũ cùng yêu cầu mới
+  và lập task bổ sung ngay trong mục tiêu đó. Task giao tay: cùng agent nhận các lượt trước kèm yêu cầu mới.
 * **Dọn bảng việc**: nút **🗑 Dọn … task đã xong** phía trên bảng (hoặc `/clear`) xoá các task đã xong/lỗi/huỷ
   của mục tiêu đã kết thúc cùng log của chúng; task còn được task khác chờ thì giữ lại.
 * **Nhắc file/thư mục bằng `@`**: gõ `@` trong ô nhập để hiện danh sách file và thư mục của dự án, gõ
   tiếp để lọc (khớp cả rải rác, vd `@atcfg` → `ateam/config.py`), ↑↓ chọn, Tab/Enter chèn, Esc đóng.
   Chọn thư mục thì danh sách đi vào trong thư mục đó. Khi chạy, ateam đổi `@đường/dẫn` sang đúng cú
   pháp của agent nhận việc (xem bảng dưới); `ateam add`/`ateam goal` ngoài dòng lệnh cũng hiểu `@`.
-* Chọn task trong bảng (↑↓) để xem log trực tiếp của nó; **Ctrl+L** về log hệ thống.
+* **Popup**: mọi popup có nút **✕** ở góc phải; **Esc** chỉ đóng lớp trên cùng — đang mở danh sách chọn thì chỉ
+  đóng danh sách, form đang sửa dở cần Esc hai lần (tránh mất phần đã nhập). Terminal hẹp (< 110 cột) thì bảng
+  việc và log xếp dọc; kéo rộng cửa sổ thì log tự dàn lại.
+* Chọn task trong bảng (↑↓) để xem log trực tiếp của nó; **Ctrl+L** về log hệ thống; nút **🗑 Xoá log** phía
+  trên ô log ẩn phần log cũ (file `.ateam/logs/` giữ nguyên).
 * **Agent & workflow riêng**: `/custom` (hoặc nút *Agent & workflow tuỳ chỉnh…* ở màn hình thiết lập) —
   xem mục dưới.
 * **F5** (hoặc **Ctrl+R**) chạy lại task đang chọn, **Ctrl+K** huỷ, `/note ...` ghi chú cho cả đội. Ghi chú dài dần
@@ -84,6 +103,7 @@ ateam goal "Thêm trang đăng nhập + viết test"          # hỏi duyệt k�
 ateam goal -y "Sửa lỗi build"                           # chạy luôn
 ateam add --to grok "Viết docstring cho src/api.py"     # thêm task
 ateam run                                               # chạy hết task đang chờ
+ateam continue m1 "Thêm nút quên mật khẩu"              # tiếp tục mục tiêu #1 (t5 = thread task #5)
 ateam list   /   ateam log 3   /   ateam log sys
 ```
 
@@ -94,7 +114,8 @@ ateam list   /   ateam log 3   /   ateam log sys
 | claude | `@src/app.py` (Claude Code tự đọc file) | — |
 | antigravity (`agy`) | `@src/app.py` | — |
 | codex | `src/app.py` (`codex exec` không có cú pháp `@`) | — |
-| grok (`opencode run`) | `src/app.py` | `-f src/app.py` (đính kèm file) |
+| grok (Grok Build) | `@src/app.py` | — |
+| opencode (`opencode run`) | `src/app.py` | `-f src/app.py` (đính kèm file; ateam thêm `--` trước prompt) |
 | CLI khác | `src/app.py` | — |
 
 Chỉ đổi khi đường dẫn có thật trong dự án, nên `a@b.com`, `@property`, `codex@xhigh` giữ nguyên.
@@ -125,13 +146,14 @@ Trong app (được lưu lại cho lần sau, ở `~/.config/ateam/state.json`):
 /model claude opus             /effort claude high
 /model codex gpt-5.5           /effort codex xhigh
 /model antigravity <tên>       /effort antigravity high      (xem tên: agy models)
-/model grok xai/grok-4.7       /effort grok high             (OpenCode gọi là --variant)
+/model grok grok-4.7-build-fast   /effort grok high
+/model opencode xai/grok-4.7   /effort opencode high         (OpenCode gọi là --variant)
 /model codex -                 quay về mặc định
 /model claude   /effort codex  mở bảng chọn từ danh sách agent đó hỗ trợ
 /models                        xem model + effort mỗi agent hỗ trợ (● = đang dùng)
-/models grok làm mới           hỏi CLI danh sách model thật (opencode models, agy models)
+/models grok làm mới           hỏi CLI danh sách model thật (grok models, opencode models, agy models)
 /agents                        xem tất cả + mức effort hợp lệ
-/setup                         chọn lại tất cả trong một màn hình (bật/tắt agent, trưởng nhóm, model, effort)
+/setup                         wizard thiết lập: CLI, kiểu làm việc, vai trò · model · effort, an toàn
 ```
 
 Tab Đội cũng hiện danh sách model/effort trong ô từng agent; bấm vào tiêu đề ô để chọn model rồi
@@ -157,12 +179,13 @@ Vẫn fail thì task báo lỗi. Agent chỉ đọc/nghiên cứu có thể đ�
 
 ## Quyền của agent và agent tuỳ chỉnh
 
-Mặc định agent **chỉ được sửa file**. Việc cần chạy lệnh (lint, build, `git commit/push`…) thì bật **Toàn quyền**
-cho agent đó ở cột *Quyền* của `/setup` (hoặc trong form agent tuỳ chỉnh): ateam tự đổi đúng cờ cho từng CLI.
+Mặc định agent **chỉ được sửa file**. Việc cần chạy lệnh (lint, build, `git commit/push`…) thì chọn **Toàn quyền**
+ở bước *An toàn* của `/setup` (cả đội), hoặc cho riêng một agent tuỳ chỉnh trong form `/custom`: ateam tự đổi
+đúng cờ cho từng CLI.
 Agent bị chặn chạy lệnh thì task báo lỗi kèm hướng dẫn bật Toàn quyền (trước đây có CLI vẫn báo "xong").
 Toàn quyền nghĩa là agent chạy được mọi lệnh trên máy — chỉ dùng với repo tin tưởng.
 
-Thêm agent (`/custom` → *Thêm agent*): chọn **nhà cung cấp** (Claude Code, Codex, Antigravity, OpenCode),
+Thêm agent (`/custom` → *Thêm agent*): chọn **nhà cung cấp** (Claude Code, Codex, Antigravity, Grok Build, OpenCode),
 **model**, **effort**, **quyền** và vai trò — mọi cờ CLI lấy từ mẫu. CLI khác (Gemini, Aider, lệnh riêng):
 nút **Nâng cao…** mở form đầy đủ.
 
@@ -300,8 +323,12 @@ role = "Đọc codebase lớn, viết tài liệu."
 * **Antigravity (`agy`)**: chỉ in output khi có terminal thật, nên `ateam` chạy nó trong pseudo-terminal
   (`pty = true`), với `--mode accept-edits` (được sửa file) và `--print-timeout 0`. Muốn cho chạy cả lệnh
   shell: thay `--mode accept-edits` bằng `--dangerously-skip-permissions`.
-* **Grok qua OpenCode**: `opencode run --model xai/grok-build-0.1 ...`; xem model bằng
-  `opencode models | grep grok`. Nếu bị chặn quyền, thêm `--dangerously-skip-permissions`.
+* **Grok Build (`grok`)**: `grok --permission-mode acceptEdits -p "<prompt>"`, model bằng `-m` (`grok models` để
+  xem), effort bằng `--reasoning-effort`; Toàn quyền đổi thành `bypassPermissions`. Cần `grok login` trước.
+  Grok Build chưa có lệnh xem hạn mức chung nên `/usage` chỉ hiện thống kê của ateam.
+* **OpenCode**: `opencode run --model xai/grok-build-0.1 ...` (chạy được nhiều nhà cung cấp; xem model bằng
+  `opencode models`). Toàn quyền thêm `--auto`. Từ bản 0.6, agent `grok` cũ (chạy qua OpenCode) đổi tên thành
+  `opencode`; lựa chọn model/effort đã lưu được chuyển theo.
 
 ## Dữ liệu
 

@@ -12,9 +12,14 @@ Nguồn cấu hình, ưu tiên tăng dần:
 4. `<dự án>/.ateam/config.toml` — merge sâu lên trên (chỉ cần ghi khoá muốn đổi). Tạo bằng
    `ateam init --project`.
 5. `~/.config/ateam/state.json` → `agents.<tên>.model|effort|enabled|role|full_access` (đặt bằng `/model`, `/effort`,
-   `ateam set`, màn hình thiết lập `/setup`; `role` sửa ở cột *Vai trò* của `/setup`), `lead` (trưởng nhóm chọn ở `/setup`),
-   `default_workflow` (workflow chạy khi gõ mục tiêu trong TUI, chọn ở `/setup`; workflow đã bị xoá thì bỏ qua), `onboarded` (đã qua
-   màn hình thiết lập lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`), và `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify`).
+   `ateam set`, wizard `/setup`), `lead` (vai trò Trưởng nhóm ở `/setup`), `default_workflow` (workflow chạy khi gõ
+   mục tiêu trong TUI — wizard đặt `tinh-nang` khi chọn kiểu "theo quy trình cố định"; workflow đã bị xoá thì bỏ
+   qua), `approve_plan` / `auto_review` (kiểu làm việc ở `/setup`; chỉ ghi khi khác `true`), `onboarded` (đã qua
+   wizard lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`), và
+   `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify` hoặc bước *Lệnh kiểm tra*), `isolation` /
+   `merge` (bước *An toàn & duyệt code*, riêng từng dự án).
+   Agent wizard tự tạo thêm (cùng CLI, model khác, vd `claude-review`) nằm trong `custom.toml` với `wizard = true`;
+   chạy lại wizard thì các agent này được xoá và tạo lại.
 6. Riêng từng task: cột `model`/`effort` (`/task agent:model@effort`, `/set`, kế hoạch của trưởng nhóm).
 
 `XDG_CONFIG_HOME` đổi được vị trí thư mục `~/.config`.
@@ -23,7 +28,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 
 | Khoá | Mặc định | Ý nghĩa |
 | --- | --- | --- |
-| `config_version` | `5` | Phiên bản file; thấp hơn `CONFIG_VERSION` thì được nâng cấp |
+| `config_version` | `6` | Phiên bản file; thấp hơn `CONFIG_VERSION` thì được nâng cấp |
 | `lead` | `"claude"` | Agent làm trưởng nhóm |
 | `max_parallel` | `3` | Tổng số task chạy cùng lúc |
 | `approve_plan` | `true` | Kế hoạch (và task bổ sung sau review) ở `draft`, chờ `/go` |
@@ -61,7 +66,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 | `model_args`, `effort_args` | `[]` | Cờ chèn trước prompt khi có model/effort (`{model}`, `{effort}` được thay) |
 | `efforts` | danh mục | Mức effort hợp lệ (kiểm tra, gợi ý, bảng chọn, giới hạn lựa chọn của trưởng nhóm). Vắng = theo `CATALOG`; `[]` = không có |
 | `models` | danh mục | Model gợi ý cho bảng chọn `/model`, tab Đội, `/models`. Vắng = `CATALOG` trong `config.py` theo tên lệnh (`claude`, `codex`, `agy`, `opencode`). Chỉ là gợi ý: tên ngoài danh sách vẫn đặt được |
-| `full_access` | `false` | Toàn quyền: agent được chạy lệnh shell và dùng mạng (lint, build, `git push`). ateam đổi cờ lúc chạy: claude `--permission-mode bypassPermissions`, codex `--sandbox danger-full-access`, agy `--dangerously-skip-permissions` (thay `--mode accept-edits`), opencode `--auto`; CLI khác không đổi. Đặt ở cột *Quyền* của `/setup` (lưu `state.json`) hoặc form agent tuỳ chỉnh |
+| `full_access` | `false` | Toàn quyền: agent được chạy lệnh shell và dùng mạng (lint, build, `git push`). ateam đổi cờ lúc chạy: claude/grok `--permission-mode bypassPermissions`, codex `--sandbox danger-full-access`, agy `--dangerously-skip-permissions` (thay `--mode accept-edits`), opencode `--auto`; CLI khác không đổi. Đặt ở bước *An toàn* của `/setup` (cả đội, lưu `state.json`) hoặc form agent tuỳ chỉnh |
 | `usage_command` | danh mục | argv in hạn mức/usage của CLI cho `/usage`: `claude -p /usage`, `agy -p /usage` (qua pty nếu `pty = true`), `opencode stats --days 7`; tối đa 20 dòng. Vắng với `codex` = đọc `rate_limits` trong file phiên mới nhất ở `$CODEX_HOME/sessions` (mặc định `~/.codex`) |
 | `models_command` | danh mục | argv liệt kê model thật (`opencode models`, `agy models`, `codex debug models`; output dạng chữ mỗi dòng một model, hoặc JSON `{"models": [{"slug", "visibility"}]}` thì bỏ model `hide`); chạy song song ở màn hình thiết lập (`/setup`, lần đầu mở app), khi mở app mà chưa có kết quả, hoặc `/models <agent> làm mới`, kết quả lưu ở `state.json` và đứng trước `models` |
 | `models_filter` | `""` | Chỉ giữ model chứa chữ này. Vắng: nếu có model chứa tên agent (vd `grok`) thì chỉ giữ các model đó |
@@ -98,18 +103,23 @@ Mỗi bước:
 | `after` | bước liền trước | Số thứ tự bước (từ 1) phải xong trước; `[]` = chạy ngay |
 | `effort`, `model` | `""` | Riêng cho task của bước này (không bị lọc như effort trưởng nhóm đặt) |
 
-## Mặc định của 4 agent (config_version 3)
+## Mặc định của 5 agent (config_version 6)
 
 | Agent | command | model_args / effort_args | efforts | fallback |
 | --- | --- | --- | --- | --- |
 | `claude` | `claude -p {prompt} --permission-mode acceptEdits` | `--model` / `--effort` | low, medium, high, max | codex |
 | `codex` | `codex exec --sandbox workspace-write --skip-git-repo-check {prompt}` | `-m` / `-c model_reasoning_effort="…"` | low…ultra | claude |
 | `antigravity` | `agy --mode accept-edits --print-timeout 0 -p {prompt}` (pty) | `--model` / `--effort` | low…max | claude, codex |
-| `grok` | `opencode run {prompt}`, model `xai/grok-build-0.1` | `--model` / `--variant` | low, medium, high | codex |
+| `grok` | `grok --permission-mode acceptEdits -p {prompt}` (Grok Build CLI) | `-m` / `--reasoning-effort` | low, medium, high | codex |
+| `opencode` | `opencode run {prompt}`, model `xai/grok-build-0.1` | `--model` / `--variant` | low, medium, high | codex |
+
+Bản 6 đổi `grok` từ OpenCode sang Grok Build CLI. Khi nâng cấp, `ensure_global_config` chuyển các mục
+`state.json` của `grok` cũ (`agents.grok`, `models_found.grok`, `lead`) sang `opencode` (sao lưu
+`state.v5.<epoch>.bak.json`).
 
 Quyền mặc định là "được sửa file, không chạy lệnh shell tuỳ ý" ở những CLI phân biệt được hai việc
 này. Muốn agent chạy cả test/build: claude `--permission-mode bypassPermissions`, agy
-`--dangerously-skip-permissions`, opencode `--dangerously-skip-permissions`.
+`--dangerously-skip-permissions`, grok `--permission-mode bypassPermissions`, opencode `--auto` (khoá `full_access`).
 
 ## Ví dụ cấu hình dự án
 

@@ -54,7 +54,7 @@ stateDiagram-v2
 ```
 
 Cột đáng chú ý: `depends_on` (JSON list id), `depth` (số tầng giao chéo), `source`
-(`user` | `plan` | `review` | `cli` | `delegate:<agent>`), `model`/`effort` (ghi đè riêng task),
+(`user` | `plan` | `review` | `followup` | `cli` | `delegate:<agent>`), `model`/`effort` (ghi đè riêng task),
 `branch`/`base`/`head` (worktree, dùng cho diff), `attempts` (số lần sửa sau khi verify fail),
 `result` (SUMMARY đã bóc), `error`.
 
@@ -71,6 +71,13 @@ focus vào nút duyệt nếu ô nhập đang trống. Mục tiêu tạo từ wo
 các bước chèn thẳng qua `_insert_plan(from_user=True)` (giữ effort/model của bước); `workflow.review`
 (nếu đặt) thay `auto_review` khi `_check_goals` quyết định có review không. Task giao tay (`/task`, `ateam add` ngoài agent) không thuộc mục tiêu nào
 nên không được review.
+
+**Tiếp tục** (`/continue`, F6, nút "↪ Tiếp tục", `ateam continue`): `continue_goal` mở lại mục tiêu đã
+kết thúc (`GOAL_ENDED`) → `planning` với `round = 1` (giới hạn `max_rounds` tính lại), yêu cầu mới thêm vào
+cột `followups` (JSON list; `Goal.full_text()` ghép `FOLLOW-UP n:` để gửi agent). `_plan(followup=…)` dùng
+`followup_plan_prompt` kèm kết quả các task cũ (`_results_text`, dùng chung với review) và đánh giá trước;
+task mới có `source = "followup"`. `continue_ref` bóc `m12` (mục tiêu) / `t40` (task; task thuộc mục tiêu
+thì là mục tiêu đó); task không thuộc mục tiêu thì `continue_task` tạo task mới cùng agent/model/effort.
 
 ### Khác
 
@@ -116,6 +123,8 @@ Với mỗi task `queued` theo thứ tự id:
    DELEGATE/NOTE/SUMMARY (chỉ cho giao chéo nếu `depth < max_delegation_depth`). Riêng task giao tay
    bằng `/task` (`source = "user"`) gửi nguyên văn `prompt` người dùng gõ, không bọc gì (vẫn đổi `@file`
    trong `argv_for`); không có DELEGATE/NOTE, `result` lấy đoạn cuối output nếu agent không in `SUMMARY:`.
+   Task hỏi tiếp thread (`source = "followup"`, không thuộc mục tiêu, `parent_id` = lượt trước) dùng
+   `thread_prompt`: tối đa 6 lượt trước (prompt + result, đi ngược `parent_id`) rồi yêu cầu mới.
 3. Nếu có verify và `only_when_changed`: lấy `_fingerprint` (HEAD + `git diff HEAD` + file chưa track).
 4. `_run_agent(kind="task")` → `Run` → phân loại `_classify`: cancelled / timeout / ratelimit / failed
    / empty / ok.
@@ -211,10 +220,39 @@ Phím `o`: `diff_versions` ghi hai bản ra `.ateam/diff/t<id>/old|new/` (`git s
 | --- | --- | --- |
 | `log` | `task_id` (0 = hệ thống), `line`, `agent?`, `raw?` | ghi vào log đang xem và ô agent |
 | `activity` | `agent`, `start` hoặc `end` (dict: task_id, title, label, started, lines, last_line, last_at, status) | vạch ▶/■ trong ô agent |
-| `changed` | — | vẽ lại bảng, mục tiêu, ô agent |
+| `changed` | — | hẹn vẽ lại sau 150 ms (`schedule_refresh`: nhiều sự kiện liền nhau thành một lần vẽ) |
 
 `self.activity[agent]` giữ các hoạt động đang chạy (nhiều nếu `max_concurrent > 1`); `lead_spans`
 cho timeline. TUI chỉ đọc hai cấu trúc này, không sửa.
+
+### Hiệu năng vẽ (TUI)
+
+- `refresh_view` (mỗi 0,5 giây và sau `changed`) đọc DB **một lần** (`self._snap`: tasks, goals) cho mọi
+  `_refresh_*`; chỉ vẽ tab đang mở (bảng việc / Đội / Terminal), chuyển tab thì vẽ ngay
+  (`on_tabbed_content_tab_activated`). `set_static()` chỉ gọi `Static.update` khi nội dung đổi.
+- Lướt bảng: `RowHighlighted` đổi `view_task` + ô chi tiết ngay, còn nạp log hẹn 120 ms (chỉ dòng dừng lại).
+  `show_task` đọc ~192 KB cuối file (`read_log_tail`) và hiện `LOG_SHOW_LINES` dòng cuối; `#detail` cao cố định
+  để đổi task không làm tính lại bố cục cả màn hình.
+- `animation_level = "none"`: không có hiệu ứng gạch chân tab trượt / cuộn mượt.
+- `ReflowLog` (thay `RichLog`): giữ nội dung đã ghi, đổi bề rộng thì vẽ lại — RichLog vẽ dòng theo bề rộng lúc
+  ghi, nên log ghi khi cột hẹp (1–2 ký tự) thành chữ dọc mãi. Dưới `NARROW_WIDTH` (110) cột, `#board` thêm
+  class `narrow` và xếp dọc.
+
+### Popup (`BaseModal`)
+
+Mọi `ModalScreen` kế thừa `BaseModal`: dòng tiêu đề có nút ✕ (`title_bar`), Esc **không** dùng `priority` nên
+dropdown `Select` / danh sách đang mở nhận Esc trước; form có `dirty()` (so với `mark_clean()` lúc mở) cần Esc
+hai lần trong 3 giây. Nút dùng `Btn` (nhãn `[ … ]`, không nền/viền, variant = màu chữ — CSS trong `TeamApp.CSS`).
+
+### Wizard thiết lập (`OnboardScreen`)
+
+Lần đầu mở app / `/setup` / `ateam setup`. 7 bước, mỗi lúc chỉ mount widget của bước đang mở; `collect()` đọc
+giá trị bước hiện tại vào thuộc tính, `show_step()` dựng bước mới. Bước vai trò dùng `config.ROLES`,
+`default_cli`, `tier_preset` (mức chi phí → model theo từ khoá trong danh sách model thật + effort hợp lệ).
+Kết quả: `plan_team(assign)` → `TeamPlan` (vai trò cùng CLI/model/effort gom một agent; nhóm sau của cùng CLI
+thành agent `<agent>-<vai trò>`), rồi `save_onboard()` ghi `custom.toml` (agent thêm, `wizard = true`),
+`state.json` (`save_setup` + `approve_plan`/`auto_review`) và `.ateam/state.json` (`isolation`, `merge`,
+`verify_command`). Đổi `isolation` thì gọi `Orchestrator.apply_isolation()`.
 
 ## Môi trường truyền cho agent
 

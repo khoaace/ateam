@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS goals (
     round INTEGER NOT NULL DEFAULT 1,
     summary TEXT,
     created REAL,
-    workflow TEXT
+    workflow TEXT,
+    followups TEXT
 );
 CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,6 +115,20 @@ class Goal:
     summary: str | None
     created: float | None
     workflow: str | None = None
+    followups: list[str] | None = None  # yêu cầu "tiếp tục" người dùng thêm sau khi mục tiêu kết thúc
+
+    @classmethod
+    def from_row(cls, r: sqlite3.Row) -> "Goal":
+        d = dict(r)
+        d["followups"] = json.loads(d.get("followups") or "[]")
+        return cls(**d)
+
+    def full_text(self) -> str:
+        """Mục tiêu gửi agent: text gốc + các yêu cầu tiếp theo (tiếng Anh vì gửi agent)."""
+        out = self.text
+        for i, f in enumerate(self.followups or [], 1):
+            out += f"\n\nFOLLOW-UP {i}: {f}"
+        return out
 
 
 class DB:
@@ -132,8 +147,9 @@ class DB:
             if col not in cols:  # nâng cấp DB cũ
                 self.conn.execute(f"ALTER TABLE tasks ADD COLUMN {col} {typ}")
         gcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(goals)")}
-        if "workflow" not in gcols:
-            self.conn.execute("ALTER TABLE goals ADD COLUMN workflow TEXT")
+        for col in ("workflow", "followups"):
+            if col not in gcols:  # nâng cấp DB cũ
+                self.conn.execute(f"ALTER TABLE goals ADD COLUMN {col} TEXT")
 
     # ---------- goals ----------
     def add_goal(self, text: str, workflow: str | None = None) -> int:
@@ -144,10 +160,16 @@ class DB:
 
     def goal(self, gid: int) -> Goal | None:
         r = self.conn.execute("SELECT * FROM goals WHERE id=?", (gid,)).fetchone()
-        return Goal(**dict(r)) if r else None
+        return Goal.from_row(r) if r else None
 
     def goals(self) -> list[Goal]:
-        return [Goal(**dict(r)) for r in self.conn.execute("SELECT * FROM goals ORDER BY id")]
+        return [Goal.from_row(r) for r in self.conn.execute("SELECT * FROM goals ORDER BY id")]
+
+    def add_followup(self, gid: int, text: str) -> None:
+        g = self.goal(gid)
+        if g:
+            self.conn.execute("UPDATE goals SET followups=? WHERE id=?",
+                              (json.dumps((g.followups or []) + [text], ensure_ascii=False), gid))
 
     def update_goal(self, gid: int, **fields) -> None:
         if not fields:

@@ -53,6 +53,50 @@ Reply with ONLY a JSON array, no other text:
 {TASK_SCHEMA}"""
 
 
+def followup_plan_prompt(cfg: Config, goal: str, history: str, prev_summary: str, followup: str,
+                         cwd: str, notes: str, earlier: list[str] | None = None) -> str:
+    """Kế hoạch cho yêu cầu "tiếp tục" một mục tiêu đã làm xong."""
+    prior = "".join(f"\nEarlier follow-up {i}: {f}" for i, f in enumerate(earlier or [], 1))
+    return f"""You are the TEAM LEAD of a team of AI coding agents working in: {cwd}
+
+Team members (name: strengths):
+{roster(cfg, cfg.lead_sets_effort)}
+
+The team ALREADY WORKED on this goal earlier:
+ORIGINAL GOAL:
+{goal}{prior}
+
+WORK DONE SO FAR (task results):
+{history or '(no task results kept)'}
+{('Your previous assessment: ' + prev_summary + chr(10)) if prev_summary else ''}
+{('Shared team notes:' + chr(10) + notes + chr(10)) if notes else ''}
+NEW FOLLOW-UP REQUEST from the user:
+{followup}
+
+Plan ONLY what this new request needs, building on the work already done (do not redo finished
+work). Break it into a SMALL number (1-8) of concrete tasks and assign each to the best member
+(you may assign tasks to yourself, "{cfg.lead}"). Each prompt must be self-contained: the member
+only sees its own task, the goal and results of tasks it depends on, so include the relevant
+context from the work done so far. Use "depends_on" when a task needs another task's output;
+parallel tasks must not edit the same files. Write titles and prompts in the same language as
+the follow-up request.
+You may inspect the project to plan, but DO NOT modify any files now.{effort_hint(cfg)}
+
+Reply with ONLY a JSON array, no other text:
+{TASK_SCHEMA}"""
+
+
+def thread_prompt(turns: list[tuple[str, str]], new: str) -> str:
+    """Hỏi tiếp trong thread /task: các lượt trước (yêu cầu, kết quả) + yêu cầu mới, không bọc vai trò."""
+    if not turns:
+        return new
+    parts = ["We are continuing an earlier conversation in this project. Previous turns:"]
+    for i, (req, res) in enumerate(turns, 1):
+        parts.append(f"\n[{i}] Request:\n{req}\n[{i}] Your result:\n{(res or '(no result)')[:2500]}")
+    parts.append(f"\nNEW REQUEST:\n{new}")
+    return "\n".join(parts)
+
+
 def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: str,
                 goal: str | None, deps: list[tuple[int, str, str, str]], notes: str,
                 cwd: str, can_delegate: bool) -> str:

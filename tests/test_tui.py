@@ -38,7 +38,7 @@ def test_tui_smoke(env, project, monkeypatch):
             assert app.db.tasks()[0].status == "review"
             await pilot.press("ctrl+t")
             await pilot.pause(0.3)
-            assert len(app.query(AgentPane)) == 4
+            assert len(app.query(AgentPane)) == 5
             await pilot.press("ctrl+t")
             app.show_task(1)
             await pilot.press("ctrl+d")
@@ -161,10 +161,11 @@ def test_tui_model_effort_picker(env, project, monkeypatch):
             assert "effort:" in head and "sonnet" in head and "haiku" in head
             # lần đầu mở app tự hỏi opencode/agy danh sách model
             for _ in range(20):
-                if "xai/grok-5-fast" in app.cfg.agents["grok"].models:
+                if "xai/grok-5-fast" in app.cfg.agents["opencode"].models:
                     break
                 await pilot.pause(0.25)
-            assert "xai/grok-5-fast" in app.cfg.agents["grok"].models
+            assert "xai/grok-5-fast" in app.cfg.agents["opencode"].models
+            assert "grok-4.7-build-fast" in app.cfg.agents["grok"].models  # grok models (Grok Build)
             app.run_command("/models grok")
             await pilot.press("ctrl+q")
 
@@ -172,103 +173,153 @@ def test_tui_model_effort_picker(env, project, monkeypatch):
 
 
 def test_tui_setup_screen(env, project, monkeypatch):
-    """Màn hình thiết lập lần đầu: hỏi sẵn model từ CLI, chọn trưởng nhóm/model/effort, tắt agent,
-    sửa vai trò, chọn workflow mặc định (gõ mục tiêu là chạy theo nó; /goal vẫn để trưởng nhóm)."""
+    """Wizard thiết lập: chọn CLI → kiểu làm việc → mức → vai trò (CLI · model · effort, cùng CLI 2 model
+    thành 2 agent) → an toàn & duyệt code → lệnh kiểm tra → xem lại & lưu. Esc = bước trước; Esc ở dropdown
+    chỉ đóng dropdown; mở lại /setup giữ đội hiện tại."""
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     git_init(project)
-    write_project_config(project, 'approve_plan = true\n[workflows.nhanh]\ndescription = "làm nhanh"\n'
-                                  '[[workflows.nhanh.steps]]\nagent = "grok"\ntitle = "Làm {goal}"\n')
 
     import importlib
 
     import ateam.config
     importlib.reload(ateam.config)
-    from textual.widgets import Checkbox, Select
+    from textual.widgets import Input, OptionList, Select, SelectionList
 
-    from ateam.config import ensure_global_config, load_config, load_state, needs_setup
+    from ateam.config import ensure_global_config, load_config, load_custom, load_project_state, needs_setup
     from ateam.db import DB
-    from ateam.tui import RESET, AgentPane, SetupScreen, TeamApp, TextInput
+    from ateam.tui import RESET, AgentPane, OnboardScreen, TeamApp
+
+    async def wait(pilot, cond, n=60):
+        for _ in range(n):
+            if cond():
+                return True
+            await pilot.pause(0.1)
+        return cond()
+
+    async def choose(pilot, scr, oid, key):
+        ol = scr.query_one(f"#{oid}", OptionList)
+        ol.focus()
+        ol.highlighted = next(i for i in range(ol.option_count) if ol.get_option_at_index(i).id == key)
+        await pilot.press("enter")
+        await pilot.pause(0.3)
+
+    def step(scr):
+        return scr.STEPS[scr.step][0]
 
     async def main():
         ensure_global_config()
         assert needs_setup()
         app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"), setup=True)
         async with app.run_test(size=(160, 48)) as pilot:
-            for _ in range(80):
-                await pilot.pause(0.25)
-                if isinstance(app.screen, SetupScreen) and app.screen.ready:
-                    break
+            assert await wait(pilot, lambda: isinstance(app.screen, OnboardScreen))
             scr = app.screen
-            assert isinstance(scr, SetupScreen) and scr.ready
             await pilot.pause(0.3)
-            # model hỏi được từ CLI giả lập đã có sẵn trong bảng chọn
-            grok = scr.query_one("#setup-model-grok", Select)
-            assert "xai/grok-5-fast" in [v for _, v in grok._options]
-            agy = scr.query_one("#setup-model-antigravity", Select)
-            assert "gemini-3-pro" in [v for _, v in agy._options]
-            scr.query_one("#setup-lead", Select).value = "codex"
-            scr.query_one("#setup-effort-claude", Select).value = "high"
-            codex = scr.query_one("#setup-model-codex", Select)
-            assert "gpt-6-luna" in [v for _, v in codex._options]  # từ `codex debug models`
-            codex.value = "gpt-6-luna"
-            grok.value = "xai/grok-5-fast"
-            scr.query_one("#setup-on-antigravity", Checkbox).value = False
-            assert scr.query_one("#setup-access-codex", Select).value == "safe"
-            scr.query_one("#setup-access-codex", Select).value = "full"
-            role = scr.query_one("#setup-role-codex", TextInput)
-            assert role.value == app.cfg.agents["codex"].role
-            role.value = "Chỉ làm backend"
-            flow = scr.query_one("#setup-flow", Select)
-            assert [v for _, v in flow._options] == [RESET, "nhanh"] and flow.value == RESET
-            flow.value = "nhanh"
+            # 1. CLI: bỏ OpenCode
+            sl = scr.query_one("#ob-cli", SelectionList)
+            assert set(sl.selected) == {"claude", "codex", "agy", "grok", "opencode"}
+            sl.deselect("opencode")
+            await pilot.click("#ob-next")
+            await pilot.pause(0.3)
+            # 2. kiểu làm việc, 3. mức: Enter chọn và sang bước kế
+            assert step(scr) == "style"
+            await choose(pilot, scr, "ob-style", "flow")
+            assert step(scr) == "tier"
+            await choose(pilot, scr, "ob-tier", "max")
+            assert step(scr) == "roles"
+            assert await wait(pilot, lambda: not scr.discovering)
+            await pilot.pause(0.3)
+            # model hỏi được từ CLI giả lập có sẵn trong bảng chọn; OpenCode đã bỏ thì không có trong CLI
+            opts = lambda sid: [v for _, v in scr.query_one(sid, Select)._options]
+            assert "opencode" not in opts("#ob-cli-lead") and RESET not in opts("#ob-cli-lead")
+            assert "gemini-3-pro" in opts("#ob-model-ui")
+            assert "grok-4.7-build-fast" in opts("#ob-model-test")
+            assert scr.query_one("#ob-model-lead", Select).value == "opus"  # mức Tối đa, trưởng nhóm
+            # Esc ở dropdown đang mở chỉ đóng dropdown, không lùi bước / đóng wizard
+            sel = scr.query_one("#ob-cli-code", Select)
+            sel.focus()
+            await pilot.press("enter")
+            await pilot.pause(0.2)
+            assert sel.expanded
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert not sel.expanded and app.screen is scr and step(scr) == "roles"
+            # trưởng nhóm = codex (model gpt-6-luna); review = claude sonnet (khác model của claude ở UI)
+            scr.query_one("#ob-cli-lead", Select).value = "codex"
+            await pilot.pause(0.3)
+            assert "gpt-6-luna" in opts("#ob-model-lead")  # từ `codex debug models`
+            scr.query_one("#ob-model-lead", Select).value = "gpt-6-luna"
+            scr.query_one("#ob-cli-review", Select).value = "claude"
+            scr.query_one("#ob-cli-ui", Select).value = "claude"
+            await pilot.pause(0.3)
+            scr.query_one("#ob-model-review", Select).value = "sonnet"
+            scr.query_one("#ob-model-ui", Select).value = "opus"
+            scr.query_one("#ob-cli-research", Select).value = RESET  # không dùng
+            await pilot.pause(0.2)
+            await pilot.click("#ob-next")
+            await pilot.pause(0.3)
+            # 5. an toàn: toàn quyền + mỗi task 1 nhánh, duyệt diff
+            assert step(scr) == "safety"
+            await choose(pilot, scr, "ob-access", "full")
+            await choose(pilot, scr, "ob-apply", "worktree-review")
+            # 6. lệnh kiểm tra: gõ tay
+            assert step(scr) == "verify"
+            scr.query_one("#ob-verify-input", Input).value = "pytest -q"
+            await pilot.click("#ob-next")
+            await pilot.pause(0.3)
+            assert step(scr) == "review"
+            text = str(scr.query_one("#ob-body").query("Static").first().render())
+            assert "claude-review" in text or "claude-ui" in text
             await pilot.press("ctrl+s")
-            await pilot.pause(0.5)
-            assert not isinstance(app.screen, SetupScreen)
-            assert app.cfg.lead == "codex"
-            assert app.cfg.agents["claude"].effort == "high"
-            assert app.cfg.agents["grok"].model == "xai/grok-5-fast"
-            assert not app.cfg.agents["antigravity"].enabled
-            assert len(app.query(AgentPane)) == 3
-            assert app.cfg.agents["codex"].role == "Chỉ làm backend"
-            assert app.cfg.agents["codex"].full_access
-            assert "--sandbox danger-full-access" in " ".join(app.cfg.agents["codex"].argv("x"))
-            assert app.cfg.default_workflow == "nhanh"
-            assert "workflow 'nhanh'" in app.query_one("#cmd").placeholder
-            # gõ mục tiêu thường -> theo workflow mặc định; /goal -> trưởng nhóm lập kế hoạch
+            assert await wait(pilot, lambda: not isinstance(app.screen, OnboardScreen))
+            await pilot.pause(0.3)
+            c = app.cfg
+            assert c.lead == "codex" and c.agents["codex"].model == "gpt-6-luna"
+            assert "--sandbox danger-full-access" in " ".join(c.agents["codex"].argv("x"))
+            extra = [n for n in c.agents if n.startswith("claude-")]
+            assert len(extra) == 1 and c.agents[extra[0]].model in ("sonnet", "opus")
+            assert not c.agents["opencode"].enabled and not c.agents["antigravity"].enabled
+            # codex vừa làm trưởng nhóm (gpt-6-luna) vừa code chính (model khác) -> thêm codex-code
+            assert c.agents["codex-code"].binary == "codex" and c.agents["codex-code"].model != "gpt-6-luna"
+            assert {p.agent for p in app.query(AgentPane)} == {"codex", "codex-code", "claude", "grok", extra[0]}
+            assert c.default_workflow == "tinh-nang" and c.isolation == "worktree" and c.merge == "review"
+            assert c.verify.command == "pytest -q" and c.approve_plan
+            assert "workflow 'tinh-nang'" in app.query_one("#cmd").placeholder
+            # gõ mục tiêu -> chạy theo workflow mặc định
             box = app.query_one("#cmd")
             box.value = "đăng nhập"
             await pilot.press("enter")
             await pilot.pause(0.3)
             g = app.db.goals()[-1]
-            assert g.workflow == "nhanh" and app.db.tasks(goal_id=g.id)[0].title == "Làm đăng nhập"
-            app.run_command("/goal thêm trang hồ sơ")
-            await pilot.pause(0.3)
-            assert app.db.goals()[-1].workflow is None
-            # mở lại bằng /setup, rồi Esc = giữ nguyên
+            assert g.workflow == "tinh-nang" and app.db.tasks(goal_id=g.id)[0].title == "Thiết kế"
+            # mở lại /setup: giữ đội hiện tại; Esc lùi bước, ở bước 1 cần Esc 2 lần mới đóng
             app.run_command("/setup")
-            for _ in range(40):
-                await pilot.pause(0.25)
-                if isinstance(app.screen, SetupScreen) and app.screen.ready:
-                    break
-            assert app.screen.query_one("#setup-lead", Select).value == "codex"
-            assert app.screen.query_one("#setup-model-claude", Select).value == RESET
+            assert await wait(pilot, lambda: isinstance(app.screen, OnboardScreen))
+            scr = app.screen
+            await pilot.pause(0.3)
+            for _ in range(3):
+                await pilot.click("#ob-next")
+                await pilot.pause(0.3)
+            assert step(scr) == "roles"
+            assert scr.query_one("#ob-cli-lead", Select).value == "codex"
+            assert scr.query_one("#ob-model-lead", Select).value == "gpt-6-luna"
+            app.set_focus(None)
+            for _ in range(3):
+                await pilot.press("escape")
+                await pilot.pause(0.3)
+            assert step(scr) == "cli" and app.screen is scr
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert app.screen is scr  # Esc đầu ở bước 1 chỉ nhắc
             await pilot.press("escape")
             await pilot.pause(0.3)
-            assert app.cfg.lead == "codex"
+            assert not isinstance(app.screen, OnboardScreen) and app.cfg.lead == "codex"
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
-    st = load_state()
-    assert st["onboarded"] and st["lead"] == "codex"
-    assert st["agents"]["antigravity"] == {"enabled": False}
-    assert st["agents"]["claude"] == {"effort": "high"}
-    assert st["agents"]["codex"]["role"] == "Chỉ làm backend" and st["default_workflow"] == "nhanh"
-    assert st["agents"]["codex"]["full_access"] is True
-    assert "grok" in st["models_found"] and "antigravity" in st["models_found"]
-    cfg = load_config(project)
-    assert cfg.lead == "codex" and not cfg.agents["antigravity"].enabled
     assert not needs_setup()
+    assert load_custom()["agents"][[n for n in load_custom()["agents"]][0]]["wizard"] is True
+    assert load_project_state(project)["verify_command"] == "pytest -q"
 
 
 def test_tui_paste_image(env, project, monkeypatch):
@@ -339,7 +390,7 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
 
     from ateam.config import ensure_global_config, load_config, load_custom
     from ateam.db import DB
-    from ateam.tui import (AgentEditScreen, AgentPane, AgentQuickScreen, CustomScreen, SetupScreen, TeamApp,
+    from ateam.tui import (AgentEditScreen, AgentPane, AgentQuickScreen, CustomScreen, OnboardScreen, TeamApp,
                            WorkflowEditScreen)
 
     async def wait_for(pilot, cond, n=40):
@@ -451,12 +502,16 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             assert app.db.goal(1).status == "done"
             assert "Tóm tắt" in (project / "steps.txt").read_text()
 
-            # màn hình thiết lập: nút mở cùng màn hình; xoá agent tuỳ chỉnh (bấm 2 lần) -> form dựng lại
+            # wizard thiết lập: bước Xem lại liệt kê agent tuỳ chỉnh được giữ, có nút mở /custom; xoá agent
+            # tuỳ chỉnh (bấm 2 lần) -> quay lại wizard thấy ngay
             app.open_setup()
-            assert await wait_for(pilot, lambda: isinstance(app.screen, SetupScreen) and app.screen.ready, 200)
-            assert app.screen.query("#setup-on-mine")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, OnboardScreen), 200)
+            wiz = app.screen
+            await wiz.show_step(len(wiz.STEPS) - 1)
+            await pilot.pause(0.3)
+            assert "mine" in str(wiz.query_one("#ob-body").query("Static").first().render())
             app.save_screenshot(str(tmp_path / "setup.svg"))
-            await pilot.click("#setup-custom")
+            await pilot.click("#ob-custom")
             assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
             await pilot.pause(0.3)
             del_mine = next(bid for bid, act in app.screen.ids.items() if act == ("del-agent", "mine"))
@@ -467,9 +522,10 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             await pilot.pause(0.3)
             assert "mine" not in load_custom().get("agents", {})
             await pilot.press("escape")
-            assert await wait_for(pilot, lambda: isinstance(app.screen, SetupScreen) and app.screen.ready)
-            assert not app.screen.query("#setup-on-mine") and "mine" not in app.cfg.agents
-            await pilot.press("escape")
+            assert await wait_for(pilot, lambda: app.screen is wiz)
+            await pilot.pause(0.3)
+            assert "mine" not in str(wiz.query_one("#ob-body").query("Static").first().render())
+            assert "mine" not in app.cfg.agents
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
@@ -558,11 +614,12 @@ def test_tui_task_agent_popup_and_raw_prompt(env, project, monkeypatch, tmp_path
             assert box.value == "/task " and popup.display
             assert popup.border_title.startswith("/task")
             ids = [popup.get_option_at_index(i).id for i in range(popup.option_count)]
-            assert ids == ["claude", "codex", "antigravity", "grok"]
+            assert ids == ["claude", "codex", "antigravity", "grok", "opencode"]
             assert "Viết code" in str(popup.get_option_at_index(1).prompt)  # vai trò
             await pilot.press("c", "o")
             await pilot.pause(0.1)
-            assert [popup.get_option_at_index(i).id for i in range(popup.option_count)] == ["codex"]
+            # bắt đầu bằng "co" đứng trước, chứa "co" sau
+            assert [popup.get_option_at_index(i).id for i in range(popup.option_count)] == ["codex", "opencode"]
             await pilot.press("enter")                  # Enter chọn agent, không gửi lệnh
             assert box.value == "/task codex " and not popup.display and not app.db.tasks()
             await pilot.press(*"xin chào", "enter")
@@ -672,8 +729,8 @@ def test_tui_missing_args_show_usage_and_compact(env, project, monkeypatch):
                 box.value = ""
             await pilot.press(*"/setup", "enter")
             await pilot.pause(0.3)
-            assert type(app.screen).__name__ == "SetupScreen"
-            await pilot.press("escape")
+            assert type(app.screen).__name__ == "OnboardScreen"
+            await pilot.press("escape", "escape")  # bước 1: Esc lần 2 mới thoát
             await pilot.pause(0.3)
             seen.clear()
             app.run_command("/compact")
@@ -987,7 +1044,7 @@ def test_tui_usage_and_update_commands(env, project, monkeypatch):
             app.run_command("/usage")
             for _ in range(60):
                 await pilot.pause(0.25)
-                if all(f"📊 {n}" in log_text(app) for n in ("claude", "codex", "antigravity", "grok")):
+                if all(f"📊 {n}" in log_text(app) for n in ("claude", "codex", "antigravity", "opencode")):
                     break
             text = log_text(app)
             assert "Hôm nay:" in text and "Current session: 41% used" in text, text
@@ -1062,7 +1119,10 @@ def test_tui_terminal_tab(env, project, monkeypatch):
             assert app.query_one("#tabs", TabbedContent).active == "tab-term"
             job = app.selected_job()
             assert job.alive and job.ports == [4321]
+            # dòng trạng thái ở tab Bảng việc (tab ẩn không vẽ lại — vẽ ngay khi chuyển sang)
+            app.query_one("#tabs", TabbedContent).active = "tab-board"
             assert await wait(pilot, lambda: "1 lệnh đang chạy (:4321)" in str(app.query_one("#agents").render()))
+            app.query_one("#tabs", TabbedContent).active = "tab-term"
             app.run_command("/stop")
             assert await wait(pilot, lambda: job.rc is not None)
             assert job.status == "stopped"
@@ -1095,9 +1155,9 @@ def test_tui_terminal_tab(env, project, monkeypatch):
 
 
 def test_tui_full_access_from_custom_survives_setup(env, project, monkeypatch):
-    """Lỗi người dùng gặp: /setup → Agent & workflow tuỳ chỉnh → bật Toàn quyền cho agent → quay lại /setup
-    → Ctrl+S. Form thiết lập từng khôi phục lựa chọn cũ ("sửa file") và ghi full_access=false vào state,
-    đè mất giá trị trong custom.toml; state cũ còn sót cũng đè lên."""
+    """Lỗi người dùng gặp (0.5.6): bật Toàn quyền cho agent tuỳ chỉnh ở /custom (mở từ /setup) rồi lưu
+    /setup thì bị đè về "sửa file". Wizard chỉ đổi agent có sẵn và agent nó tự tạo — agent tuỳ chỉnh của
+    người dùng giữ nguyên quyền, kể cả khi wizard chọn "Chỉ sửa file"."""
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     git_init(project)
@@ -1111,7 +1171,7 @@ def test_tui_full_access_from_custom_survives_setup(env, project, monkeypatch):
     from ateam.config import (ensure_global_config, load_config, load_custom, load_state, save_custom_item,
                               save_state)
     from ateam.db import DB
-    from ateam.tui import AgentQuickScreen, CustomScreen, SetupScreen, TeamApp
+    from ateam.tui import AgentQuickScreen, CustomScreen, OnboardScreen, TeamApp
 
     async def wait_for(pilot, cond, n=80):
         for _ in range(n):
@@ -1132,10 +1192,11 @@ def test_tui_full_access_from_custom_survives_setup(env, project, monkeypatch):
         async with app.run_test(size=(160, 48)) as pilot:
             await pilot.pause(0.3)
             app.open_setup()
-            assert await wait_for(pilot, lambda: isinstance(app.screen, SetupScreen) and app.screen.ready)
-            setup = app.screen
-            setup.query_one("#setup-effort-claude", Select).value = "high"   # đổi dở trong /setup: phải giữ
-            await pilot.click("#setup-custom")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, OnboardScreen))
+            wiz = app.screen
+            await wiz.show_step(len(wiz.STEPS) - 1)
+            await pilot.pause(0.2)
+            await pilot.click("#ob-custom")
             assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
             await pilot.pause(0.3)
             edit = next(bid for bid, act in app.screen.ids.items() if act == ("edit-agent", "gehihi"))
@@ -1146,16 +1207,213 @@ def test_tui_full_access_from_custom_survives_setup(env, project, monkeypatch):
             assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
             assert "full_access" not in load_state()["agents"].get("gehihi", {})   # state cũ đã bỏ
             await pilot.press("escape")
-            assert await wait_for(pilot, lambda: isinstance(app.screen, SetupScreen) and app.screen.ready)
-            assert app.screen.query_one("#setup-access-gehihi", Select).value == "full"
-            assert app.screen.query_one("#setup-effort-claude", Select).value == "high"
+            assert await wait_for(pilot, lambda: app.screen is wiz)
+            assert wiz.access == "safe"
             await pilot.press("ctrl+s")
-            assert await wait_for(pilot, lambda: not isinstance(app.screen, SetupScreen))
+            assert await wait_for(pilot, lambda: not isinstance(app.screen, OnboardScreen))
             assert app.cfg.agents["gehihi"].full_access
             assert "--dangerously-skip-permissions" in app.cfg.agents["gehihi"].argv("x")
+            assert not app.cfg.agents["claude"].full_access
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
     assert load_custom()["agents"]["gehihi"]["full_access"] is True
     assert load_state()["agents"].get("gehihi", {}).get("full_access") is not False
     assert load_config(project).agents["gehihi"].full_access
+
+
+def test_tui_continue_goal_and_thread(env, project, monkeypatch, tmp_path):
+    """Tiếp tục: /continue có gợi ý + dòng giải thích, F6 trên task, nút ↪ Tiếp tục ở khung mục tiêu."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from rich.cells import cell_len
+
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import CommandInput, MentionList, TeamApp
+
+    db = DB(project / ".ateam/team.db")
+    gid = db.add_goal("Thêm trang đăng nhập")
+    db.add_task("codex", "Tạo form", "tạo form", goal_id=gid, status="done")
+    db.update_goal(gid, status="done", summary="Đã có form đăng nhập")
+    alone = db.add_task("codex", "viết hàm cộng", "viết hàm cộng", status="done")
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), db)
+        async with app.run_test(size=(140, 40)) as pilot:
+            await pilot.pause(0.5)
+            box = app.query_one("#cmd", CommandInput)
+            popup = app.query_one("#mention", MentionList)
+            hint = app.query_one("#continue-hint")
+            # gõ /continue -> danh sách mục tiêu & thread đã xong
+            await pilot.press(*"/continue ")
+            await pilot.pause(0.2)
+            ids = [popup.get_option_at_index(i).id for i in range(popup.option_count)]
+            assert popup.display and ids == ["m1", f"t{alone}"], ids
+            await pilot.press("tab")
+            await pilot.pause(0.2)
+            assert box.value == "/continue m1 " and not popup.display
+            assert hint.display and "Thêm trang đăng nhập" in str(hint.render())
+            await pilot.press("escape")  # Esc huỷ
+            await pilot.pause(0.1)
+            assert box.value == "" and not hint.display
+
+            # F6 trên task /task -> hỏi tiếp thread đó
+            app.show_task(alone)
+            await pilot.press("f6")
+            await pilot.pause(0.2)
+            assert box.value == f"/continue t{alone} " and "Hỏi tiếp codex" in str(hint.render())
+            box.value = ""
+
+            # nút ↪ Tiếp tục trong khung mục tiêu
+            goals = app.query_one("#goals")
+            lines = goals.render().plain.splitlines()
+            y = next(i for i, ln in enumerate(lines) if "↪ Tiếp tục" in ln)
+            x = cell_len(lines[y][:lines[y].index("↪ Tiếp tục")]) + 2
+            await pilot.click("#goals", offset=(x, y))
+            await pilot.pause(0.2)
+            assert box.value == "/continue m1 "
+
+            # gửi -> mục tiêu mở lại, trưởng nhóm lập kế hoạch tiếp
+            await pilot.press(*"thêm quên mật khẩu", "enter")
+            for _ in range(40):
+                await pilot.pause(0.25)
+                if app.db.goal(gid).status not in ("planning",):
+                    break
+            g = app.db.goal(gid)
+            assert g.followups == ["thêm quên mật khẩu"] and g.status in ("awaiting", "running", "done")
+            assert any(t.source == "followup" for t in app.db.tasks(goal_id=gid))
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+
+
+def test_tui_log_folds_echoed_prompt_and_clear_button(env, project, monkeypatch):
+    """Prompt ateam bị CLI in lại (opencode "File not found: <prompt>") được gập; nút 🗑 Xoá log."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam import prompts as P
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import LogStyler, TeamApp, styled_lines
+
+    cfg = load_config(project)
+    prompt = P.task_prompt(cfg, agent="grok", task_id=1, title="t", prompt="làm X", goal="G", deps=[],
+                           notes="", cwd="/x", can_delegate=True)
+    raw = "$ grok · task · /x\nError: File not found: " + prompt + "\nsau prompt"
+    lines = [t.plain for t in styled_lines(raw, LogStyler())]
+    assert lines[1].startswith("Error: File not found:") and "đã ẩn" in lines[1]
+    styled = [t for t in styled_lines(raw, LogStyler())][1]
+    assert any("red" in str(sp.style) and sp.start == 0 for sp in styled.spans)  # lỗi vẫn màu đỏ
+    assert lines[2:] == ["sau prompt"], lines  # luật DELEGATE/NOTE trong prompt không lọt ra
+
+    async def main():
+        ensure_global_config()
+        db = DB(project / ".ateam/team.db")
+        tid = db.add_task("grok", "t", "p", status="failed")
+        app = TeamApp(project, load_config(project), db)
+        log_file = app.orch.log_path(tid)
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        log_file.write_text("dòng cũ 1\ndòng cũ 2\n")
+        async with app.run_test(size=(140, 40)) as pilot:
+            await pilot.pause(0.3)
+            app.show_task(tid)
+            await pilot.pause(0.1)
+            log = app.query_one("#log")
+            assert any("dòng cũ 1" in ln.text for ln in log.lines)
+            await pilot.click("#log-clear")
+            await pilot.pause(0.2)
+            assert not any("dòng cũ" in ln.text for ln in log.lines)
+            with open(log_file, "a") as f:
+                f.write("dòng mới\n")
+            app.show_task(tid)  # chọn lại task: vẫn chỉ hiện phần sau khi xoá
+            await pilot.pause(0.1)
+            text = [ln.text for ln in log.lines]
+            assert any("dòng mới" in t for t in text) and not any("dòng cũ" in t for t in text)
+            assert log_file.read_text().startswith("dòng cũ 1")  # file trên đĩa giữ nguyên
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+
+
+def test_tui_popup_close_narrow_layout_and_log_reflow(env, project, monkeypatch):
+    """Popup có nút ✕; form đang sửa dở cần Esc 2 lần; terminal hẹp thì bảng việc và log xếp dọc; đổi bề rộng
+    thì log vẽ lại (không còn mỗi chữ một dòng); log lớn chỉ đọc phần cuối."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import Input
+
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import LOG_SHOW_LINES, AgentQuickScreen, CustomScreen, HelpScreen, TeamApp
+
+    async def main():
+        ensure_global_config()
+        db = DB(project / ".ateam/team.db")
+        tid = db.add_task("codex", "t", "p", status="done")
+        app = TeamApp(project, load_config(project), db)
+        big = app.orch.log_path(tid)
+        big.parent.mkdir(parents=True, exist_ok=True)
+        big.write_text("".join(f"dòng {i} " + "chữ " * 70 + "\n" for i in range(20000)))  # ~6MB
+        async with app.run_test(size=(70, 40)) as pilot:
+            await pilot.pause(0.3)
+            board = app.query_one("#board")
+            assert board.has_class("narrow")
+            log = app.query_one("#log")
+            assert log.size.width >= 60  # xếp dọc: log rộng gần hết màn hình
+            app.show_task(tid)
+            await pilot.pause(0.2)
+            text = [ln.text for ln in log.lines]
+            assert any("dòng 19999 " in t for t in text) and not any("dòng 0 " in t for t in text)
+            assert len(log._items) <= LOG_SHOW_LINES + 1  # chỉ phần cuối
+            # ghi khi cửa sổ hẹp, rồi kéo rộng: dòng được vẽ lại theo bề rộng mới
+            narrow_lines, narrow_w = len(log.lines), max(s.cell_length for s in log.lines)
+            assert narrow_w <= log.scrollable_content_region.width
+            await pilot.resize_terminal(200, 40)
+            await pilot.pause(0.5)
+            assert not board.has_class("narrow")
+            assert max(s.cell_length for s in log.lines) > narrow_w and len(log.lines) < narrow_lines
+
+            # ✕ đóng popup chỉ xem
+            app.action_help()
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, HelpScreen)
+            await pilot.click(".m-close")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, HelpScreen)
+            # form sửa dở: Esc lần 1 chỉ nhắc, lần 2 mới đóng; popup lồng nhau Esc chỉ đóng lớp trên
+            app.open_custom()
+            await pilot.pause(0.3)
+            await pilot.click("#custom-add-agent")
+            await pilot.pause(0.4)
+            assert isinstance(app.screen, AgentQuickScreen)
+            app.screen.query_one("#q-role", Input).value = "vai trò mới"
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, AgentQuickScreen)
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, CustomScreen)
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, CustomScreen)
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())

@@ -5,7 +5,7 @@
 ## ateam là gì
 
 Công cụ terminal (Python + Textual) điều phối nhiều AI coding agent CLI — Claude Code, Codex,
-Antigravity (`agy`), Grok qua OpenCode, hoặc bất kỳ CLI nào có chế độ headless — làm việc như
+Antigravity (`agy`), Grok Build (`grok`), OpenCode, hoặc bất kỳ CLI nào có chế độ headless — làm việc như
 một đội trên cùng một repo của người dùng:
 
 - **Trưởng nhóm** (mặc định `claude`) lập kế hoạch thành task JSON, review kết quả, giao thêm việc.
@@ -21,8 +21,8 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 
 | Đường dẫn | Nội dung |
 | --- | --- |
-| `ateam/cli.py` | Lệnh `ateam` (argparse): `tui` (mặc định), `setup`, `goal`, `add`, `run`, `diff`, `merge`, `reject`, `verify`, `usage`, `cooldown`, `set`, `doctor`, … |
-| `ateam/tui.py` | Giao diện Textual: tab Bảng việc, tab Đội (AgentPane + Timeline), màn hình thiết lập (`SetupScreen`), agent/workflow tuỳ chỉnh (`CustomScreen`, `AgentEditScreen`, `WorkflowEditScreen`), lệnh `/…`, phím tắt |
+| `ateam/cli.py` | Lệnh `ateam` (argparse): `tui` (mặc định), `setup`, `goal`, `continue`, `add`, `run`, `diff`, `merge`, `reject`, `verify`, `usage`, `cooldown`, `set`, `doctor`, … |
+| `ateam/tui.py` | Giao diện Textual: tab Bảng việc, tab Đội (AgentPane + Timeline), wizard thiết lập (`OnboardScreen`), popup chung (`BaseModal`, nút `Btn`), log co giãn (`ReflowLog`), agent/workflow tuỳ chỉnh (`CustomScreen`, `AgentEditScreen`, `WorkflowEditScreen`), lệnh `/…`, phím tắt |
 | `ateam/orchestrator.py` | Lõi: lập kế hoạch, `tick()` lập lịch, `_run_task`, verify, worktree/merge, hạn mức, review |
 | `ateam/runner.py` | `Run`: chạy 1 tiến trình (pipe hoặc pty), stream từng dòng, timeout, huỷ theo process group |
 | `ateam/config.py` | `DEFAULT_CONFIG` (TOML), dataclass `Config`/`AgentConfig`/`VerifyConfig`/`Workflow`, `AgentConfig.argv()`, state.json, custom.toml (agent/workflow tuỳ chỉnh, mẫu) |
@@ -33,7 +33,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/mentions.py` | `@file`: gợi ý file/thư mục cho TUI, đổi `@đường/dẫn` sang cú pháp từng CLI (`SYNTAX`) |
 | `ateam/clipboard.py` | Ctrl+V dán ảnh: đọc clipboard (osascript/pngpaste/wl-paste/xclip), lưu `.ateam/images/`, nhận ảnh kéo-thả |
 | `ateam/limits.py` | Nhận diện thông báo hết hạn mức, đoán giờ hồi, lưu cooldown |
-| `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `opencode`, `mycli` (agent tuỳ chỉnh), `code` (VS Code, cho phím `o` ở màn hình diff) |
+| `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `grok` (Grok Build), `opencode`, `mycli` (agent tuỳ chỉnh), `code` (VS Code, cho phím `o` ở màn hình diff) |
 | `site/`, `scripts/build_site.py`, `wrangler.jsonc` | Trang docs + gói zip, deploy Cloudflare Workers |
 | `scripts/get.sh`, `install.sh` | Cài một lệnh từ GitHub; cài vào `~/.ateam/venv` + `~/.local/bin/ateam` |
 | `docs/` | Tài liệu cho người phát triển (xem dưới) |

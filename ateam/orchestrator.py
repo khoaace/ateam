@@ -137,7 +137,11 @@ class Orchestrator:
                 self.db.update_goal(g.id, status="failed", summary="Bị dừng khi đang lập kế hoạch")
             elif g.status == "reviewing":
                 self.db.update_goal(g.id, status="running")
+        await self.apply_isolation()
 
+    async def apply_isolation(self) -> None:
+        """Chọn chế độ làm việc theo cfg.isolation (gọi lại được khi /setup đổi chế độ)."""
+        self.use_worktree = False
         if self.cfg.isolation == "worktree":
             rc, top = await self._git("rev-parse", "--show-toplevel")
             rc2, _ = await self._git("rev-parse", "--verify", "HEAD")
@@ -213,20 +217,25 @@ class Orchestrator:
                 self._end_activity(lead.name, act)
         return run.output, rc, kind
 
-    async def _plan(self, gid: int) -> None:
+    async def _plan(self, gid: int, followup: tuple[str, str, str] | None = None) -> None:
+        """followup: (yêu cầu mới, kết quả các task cũ, đánh giá cũ) khi tiếp tục mục tiêu đã xong."""
         try:
             goal = self.db.goal(gid)
             self.log(f"🧠 {self.cfg.lead} đang lập kế hoạch cho mục tiêu #{gid}…")
-            out = await self._call_lead(
-                P.plan_prompt(self.cfg, goal.text, str(self.root), self.notes_text()),
-                f"Lập kế hoạch mục tiêu #{gid}")
+            if followup:
+                prompt = P.followup_plan_prompt(self.cfg, goal.text, followup[1], followup[2],
+                                                followup[0], str(self.root), self.notes_text(),
+                                                earlier=(goal.followups or [])[:-1])
+            else:
+                prompt = P.plan_prompt(self.cfg, goal.text, str(self.root), self.notes_text())
+            out = await self._call_lead(prompt, f"Lập kế hoạch mục tiêu #{gid}")
             plan = P.extract_json(out or "", list)
             if not plan:
                 self.db.update_goal(gid, status="failed", summary="Trưởng nhóm không trả về kế hoạch JSON hợp lệ")
                 self.log(f"✗ Không đọc được kế hoạch cho mục tiêu #{gid} (xem .ateam/logs/lead.log). "
                          f"Bạn vẫn có thể giao tay bằng /task.")
                 return
-            ids = self._insert_plan(gid, plan, source="plan")
+            ids = self._insert_plan(gid, plan, source="followup" if followup else "plan")
             if self.cfg.approve_plan:
                 self.db.update_goal(gid, status="awaiting")
                 self.log(f"📋 Kế hoạch #{gid}: {len(ids)} task ở trạng thái NHÁP. "
@@ -257,6 +266,85 @@ class Orchestrator:
             self.log(f"📋 {len(ids)} bước — bắt đầu chạy.")
         self.emit("changed")
         return gid
+
+    def continue_goal(self, gid: int, text: str) -> int | str:
+        """Mở lại mục tiêu đã kết thúc với yêu cầu mới: trưởng nhóm lập task bổ sung dựa trên việc
+        đã làm. Trả về id mục tiêu, hoặc chuỗi lỗi."""
+        g = self.db.goal(gid)
+        if not g:
+            return f"Không có mục tiêu #{gid}"
+        if g.status not in GOAL_ENDED or gid in self.lead_busy:
+            return f"Mục tiêu #{gid} chưa kết thúc — đợi xong (hoặc /review {gid}) rồi tiếp tục"
+        if not self.cfg.agents.get(self.cfg.lead):
+            return f"Không có trưởng nhóm '{self.cfg.lead}' trong cấu hình"
+        text = text.strip()
+        if not text:
+            return "Thiếu yêu cầu mới"
+        history, summary = self._results_text(gid), g.summary or ""
+        self.db.add_followup(gid, text)
+        self.db.update_goal(gid, status="planning", round=1, summary=None)  # max_rounds tính lại
+        self.lead_busy.add(gid)
+        self.log(f"↪ Tiếp tục mục tiêu #{gid}: {text}")
+        self._spawn(self._plan(gid, followup=(text, history, summary)))
+        self.emit("changed")
+        return gid
+
+    def continue_ref(self, ref: str) -> tuple[str, int] | str:
+        """Bóc tham chiếu của /continue: "m12" = mục tiêu 12; "t40" hoặc "40" = task 40 (task thuộc
+        mục tiêu thì là mục tiêu đó). Trả về ("goal"|"task", id) hoặc chuỗi lỗi."""
+        m = re.fullmatch(r"#?([mMtT]?)(\d+)", ref.strip())
+        if not m:
+            return f"Không hiểu '{ref}' — dùng m<số> cho mục tiêu, t<số> cho task"
+        n = int(m.group(2))
+        if m.group(1).lower() == "m":
+            return ("goal", n) if self.db.goal(n) else f"Không có mục tiêu #{n}"
+        t = self.db.task(n)
+        if not t:
+            return f"Không có task #{n}"
+        if t.goal_id is not None and self.db.goal(t.goal_id):
+            return ("goal", t.goal_id)
+        return ("task", n)
+
+    def continue_any(self, ref: str, text: str) -> tuple[str, int] | str:
+        """/continue <ref> <yêu cầu>: tiếp tục mục tiêu hoặc thread. Trả về ("goal", id mục tiêu) /
+        ("task", id task mới), hoặc chuỗi lỗi."""
+        r = self.continue_ref(ref)
+        if isinstance(r, str):
+            return r
+        res = self.continue_goal(r[1], text) if r[0] == "goal" else self.continue_task(r[1], text)
+        return res if isinstance(res, str) else (r[0], res)
+
+    def continue_task(self, tid: int, text: str) -> int | str:
+        """Hỏi tiếp trong thread /task: task mới cùng agent, prompt kèm các lượt trước.
+        Trả về id task mới, hoặc chuỗi lỗi."""
+        t = self.db.task(tid)
+        if not t:
+            return f"Không có task #{tid}"
+        if t.status in ACTIVE:
+            return (f"Task #{tid} đang chờ duyệt — merge (Ctrl+Y) hoặc /reject trước" if t.status == REVIEW
+                    else f"Task #{tid} chưa xong — đợi chạy xong rồi tiếp tục")
+        if t.agent not in self.cfg.active_agents():
+            return f"Agent '{t.agent}' không còn trong đội"
+        text = text.strip()
+        if not text:
+            return "Thiếu yêu cầu mới"
+        title = text[:60] + ("…" if len(text) > 60 else "")
+        nid = self.db.add_task(t.agent, title, text, status=QUEUED, source="followup",
+                               parent_id=tid, model=t.model, effort=t.effort)
+        self.log(f"↪ Task #{nid} hỏi tiếp {t.agent} (sau #{tid}): {title}")
+        self.emit("changed")
+        return nid
+
+    def thread_of(self, t: Task, limit: int = 6) -> list[tuple[str, str]]:
+        """Các lượt trước của thread /task (cũ → mới): (yêu cầu, kết quả)."""
+        turns: list[tuple[str, str]] = []
+        seen = {t.id}
+        p = self.db.task(t.parent_id) if t.parent_id else None
+        while p and p.id not in seen and len(turns) < limit:
+            seen.add(p.id)
+            turns.append((p.prompt, p.result or p.error or ""))
+            p = self.db.task(p.parent_id) if p.source == "followup" and p.parent_id else None
+        return turns[::-1]
 
     def _insert_plan(self, gid: int, plan: list[dict], source: str,
                      from_user: bool = False) -> list[int]:
@@ -315,13 +403,13 @@ class Orchestrator:
         self.emit("changed")
         return n
 
-    def finished_ids(self) -> tuple[list[int], list[int]]:
+    def finished_ids(self, tasks: list | None = None, goals: list | None = None) -> tuple[list[int], list[int]]:
         """Task và mục tiêu dọn được: task xong/lỗi/huỷ/bị chặn mà mục tiêu của nó đã kết thúc (hoặc
         không thuộc mục tiêu nào) và không còn task nào khác đang chờ nó; mục tiêu đã kết thúc mà dọn
-        xong thì không còn task nào."""
-        goals = {g.id: g for g in self.db.goals()}
+        xong thì không còn task nào. tasks/goals: danh sách vừa đọc (TUI dùng lại, khỏi đọc DB lần nữa)."""
+        goals = {g.id: g for g in (self.db.goals() if goals is None else goals)}
         ended = {gid for gid, g in goals.items() if g.status in GOAL_ENDED}
-        tasks = self.db.tasks()
+        tasks = self.db.tasks() if tasks is None else tasks
         drop = {t.id for t in tasks if t.status in (DONE,) + FINISHED_BAD
                 and (t.goal_id is None or t.goal_id in ended)}
         needed = {d for t in tasks if t.id not in drop for d in t.depends_on}
@@ -535,7 +623,7 @@ class Orchestrator:
     def compact_sources(self) -> tuple[str, str, str]:
         """Ghi chú, mục tiêu và log hệ thống kể từ lần /compact trước — thứ sẽ được tóm tắt."""
         since = self.db.last_compact()
-        goals = "\n".join(f"#{g.id} [{g.status}] {g.text}" + (f" — {g.summary}" if g.summary else "")
+        goals = "\n".join(f"#{g.id} [{g.status}] {g.full_text()}" + (f" — {g.summary}" if g.summary else "")
                           for g in self.db.goals()[-12:] if (g.created or 0) >= since)
         log = ""
         p = self.logs / "system.log"
@@ -851,10 +939,12 @@ class Orchestrator:
                     deps.append((dt.id, dt.agent, dt.title, dt.result or ""))
             if t.source == "user":  # /task: gửi nguyên văn người dùng gõ, không bọc vai trò/luật
                 prompt = t.prompt
+            elif t.source == "followup" and t.goal_id is None:  # hỏi tiếp thread /task
+                prompt = P.thread_prompt(self.thread_of(t), t.prompt)
             else:
                 prompt = P.task_prompt(
                     self.cfg, agent=t.agent, task_id=t.id, title=t.title, prompt=t.prompt,
-                    goal=goal.text if goal else None, deps=deps, notes=self.notes_text(),
+                    goal=goal.full_text() if goal else None, deps=deps, notes=self.notes_text(),
                     cwd=str(workdir), can_delegate=t.depth < self.cfg.max_delegation_depth)
             gate = bool(v.command) and agent.verify
             before = await self._fingerprint(workdir) if gate and v.only_when_changed else None
@@ -979,15 +1069,9 @@ class Orchestrator:
             g = self.db.goal(gid)
             self.db.update_goal(gid, status="reviewing")
             self.emit("changed")
-            lines = []
-            for t in self.db.tasks(goal_id=gid):
-                if t.status == CANCELLED:
-                    continue
-                body = (t.result or t.error or "")[:1500]
-                lines.append(f"#{t.id} [{t.agent}] {t.status}: {t.title}\n{body}\n")
             self.log(f"🔍 {self.cfg.lead} đang review mục tiêu #{gid} (vòng {g.round})…")
             out = await self._call_lead(
-                P.review_prompt(self.cfg, g.text, g.round, "\n".join(lines), str(self.root)),
+                P.review_prompt(self.cfg, g.full_text(), g.round, self._results_text(gid), str(self.root)),
                 f"Review mục tiêu #{gid} vòng {g.round}")
             data = P.extract_json(out or "", dict)
             if not data:
@@ -1014,6 +1098,16 @@ class Orchestrator:
         finally:
             self.lead_busy.discard(gid)
             self.emit("changed")
+
+    def _results_text(self, gid: int) -> str:
+        """Kết quả các task của mục tiêu, gửi trưởng nhóm khi review / lập kế hoạch tiếp."""
+        lines = []
+        for t in self.db.tasks(goal_id=gid):
+            if t.status == CANCELLED:
+                continue
+            body = (t.result or t.error or "")[:1500]
+            lines.append(f"#{t.id} [{t.agent}] {t.status}: {t.title}\n{body}\n")
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------ git worktree
     async def git_ident(self) -> list[str]:

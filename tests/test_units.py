@@ -72,8 +72,8 @@ def test_old_global_config_is_upgraded_with_backup(tmp_path, monkeypatch):
         assert notes and "nâng cấp" in notes[0]
         assert list(cfgmod.GLOBAL_DIR.glob("config.v1.*.bak.toml"))
         c = cfgmod.load_config(Path(tmp_path / "proj"))
-        assert set(c.agents) == {"claude", "codex", "antigravity", "grok"}
-        assert c.agents["grok"].model == "xai/grok-build-0.1"
+        assert set(c.agents) == {"claude", "codex", "antigravity", "grok", "opencode"}
+        assert c.agents["grok"].binary == "grok" and c.agents["opencode"].model == "xai/grok-build-0.1"
         # file mặc định vừa ghi phải mang đúng CONFIG_VERSION, không thì lần mở sau lại sao lưu + thay
         assert cfgmod.ensure_global_config() == []
         assert len(list(cfgmod.GLOBAL_DIR.glob("config.v*.bak.toml"))) == 1
@@ -99,7 +99,10 @@ def test_mentions_render_per_agent(tmp_path):
     out, extra = mentions.render("@src/app.py", "opencode", roots, file_ref="`{path}`", file_args=[])
     assert out == "`src/app.py`" and extra == []
     assert mentions.insert_args(["claude", "-p", "P", "--x"], "P", ["-a"]) == ["claude", "-a", "-p", "P", "--x"]
-    assert mentions.insert_args(["opencode", "run", "P"], "P", ["-f", "a"]) == ["opencode", "run", "-f", "a", "P"]
+    assert mentions.insert_args(["opencode", "run", "P"], "P", ["-f", "a"]) == ["opencode", "run", "-f", "a", "--", "P"]
+    # cờ dạng --x=giá-trị không cần "--"; prompt không đứng cuối thì không thêm (cờ sau prompt vẫn là cờ)
+    assert mentions.insert_args(["codex", "exec", "P"], "P", ["--image=a"]) == ["codex", "exec", "--image=a", "P"]
+    assert mentions.insert_args(["x", "P", "--y"], "P", ["-f", "a"]) == ["x", "-f", "a", "P", "--y"]
 
 
 def test_mentions_search_ranking():
@@ -173,30 +176,30 @@ def test_save_setup_only_stores_differences(tmp_path, monkeypatch):
         assert cfgmod.needs_setup()
         cfgmod.save_setup(tmp_path, "codex", {
             "claude": {"enabled": True, "model": "opus", "effort": None},
-            "grok": {"enabled": False, "model": "xai/grok-build-0.1", "effort": "high"},
+            "opencode": {"enabled": False, "model": "xai/grok-build-0.1", "effort": "high"},
             "codex": {"enabled": True, "model": None, "effort": None},
         })
         st = cfgmod.load_state()
         assert st["onboarded"] and st["lead"] == "codex"
-        # giá trị trùng file cấu hình (enabled = true, model mặc định của grok) không ghi vào state
-        assert st["agents"] == {"claude": {"model": "opus"}, "grok": {"enabled": False, "effort": "high"}}
+        # giá trị trùng file cấu hình (enabled = true, model mặc định của opencode) không ghi vào state
+        assert st["agents"] == {"claude": {"model": "opus"}, "opencode": {"enabled": False, "effort": "high"}}
         c = cfgmod.load_config(tmp_path)
         assert c.lead == "codex" and c.agents["claude"].model == "opus"
-        assert not c.agents["grok"].enabled and c.agents["grok"].effort == "high"
+        assert not c.agents["opencode"].enabled and c.agents["opencode"].effort == "high"
         assert not cfgmod.needs_setup()
         # chọn lại trưởng nhóm như file cấu hình -> xoá khỏi state
-        cfgmod.save_setup(tmp_path, "claude", {"grok": {"enabled": True}})
+        cfgmod.save_setup(tmp_path, "claude", {"opencode": {"enabled": True}})
         st = cfgmod.load_state()
-        assert "lead" not in st and st["agents"]["grok"] == {"effort": "high"}
+        assert "lead" not in st and st["agents"]["opencode"] == {"effort": "high"}
         # vai trò sửa trong màn hình thiết lập: khác file cấu hình mới ghi; workflow mặc định phải tồn tại
         role_default = cfgmod.load_config(tmp_path, with_state=False).agents["codex"].role
         (tmp_path / ".ateam").mkdir()
         (tmp_path / ".ateam" / "config.toml").write_text(
             '[workflows.nhanh]\n[[workflows.nhanh.steps]]\nagent = "grok"\ntitle = "Làm"\n')
         cfgmod.save_setup(tmp_path, "claude", {"codex": {"role": "Chỉ viết backend"},
-                                               "grok": {"role": c.agents["grok"].role}}, "nhanh")
+                                               "opencode": {"role": c.agents["opencode"].role}}, "nhanh")
         st = cfgmod.load_state()
-        assert st["agents"]["codex"] == {"role": "Chỉ viết backend"} and "role" not in st["agents"]["grok"]
+        assert st["agents"]["codex"] == {"role": "Chỉ viết backend"} and "role" not in st["agents"]["opencode"]
         c = cfgmod.load_config(tmp_path)
         assert c.agents["codex"].role == "Chỉ viết backend" and c.default_workflow == "nhanh"
         cfgmod.save_setup(tmp_path, "claude", {"codex": {"role": None}}, "khong-co")
@@ -572,3 +575,152 @@ def test_full_access_flags_per_cli():
     a = agent_from_dict("x", dict(provider_template("agy"), full_access=True, model="m"))
     assert a.argv("làm") == ["agy", "--dangerously-skip-permissions", "--print-timeout", "0",
                              "--model", "m", "-p", "làm"]
+
+
+def test_goal_followups_migration_and_continue_refs(tmp_path):
+    import sqlite3
+    from ateam.config import Config
+    from ateam.db import DB
+    from ateam.orchestrator import Orchestrator
+    # DB cũ chưa có cột followups vẫn mở được
+    path = tmp_path / "old.db"
+    c = sqlite3.connect(str(path))
+    c.execute("CREATE TABLE goals (id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL,"
+              " status TEXT NOT NULL DEFAULT 'planning', round INTEGER NOT NULL DEFAULT 1,"
+              " summary TEXT, created REAL)")
+    c.execute("INSERT INTO goals(text, status) VALUES ('làm A', 'done')")
+    c.commit()
+    c.close()
+    db = DB(path)
+    g = db.goal(1)
+    assert g.followups == [] and g.full_text() == "làm A"
+    db.add_followup(1, "thêm B")
+    assert db.goal(1).full_text() == "làm A\n\nFOLLOW-UP 1: thêm B"
+
+    o = Orchestrator(tmp_path, Config(), db)
+    in_goal = db.add_task("codex", "t", "p", goal_id=1, status="done")
+    alone = db.add_task("codex", "t", "p", status="running")
+    assert o.continue_ref("m1") == ("goal", 1)
+    assert o.continue_ref(f"t{in_goal}") == ("goal", 1)  # task thuộc mục tiêu -> mục tiêu
+    assert o.continue_ref(str(alone)) == ("task", alone)
+    assert "Không có mục tiêu" in o.continue_ref("m9")
+    assert "chưa xong" in o.continue_task(alone, "x")
+    db.update_goal(1, status="running")
+    assert "chưa kết thúc" in o.continue_goal(1, "x")
+
+
+def test_thread_prompt_includes_previous_turns():
+    assert P.thread_prompt([], "chỉ hỏi") == "chỉ hỏi"
+    p = P.thread_prompt([("viết hàm cộng", "đã viết add()")], "thêm test")
+    assert p.index("viết hàm cộng") < p.index("đã viết add()") < p.index("NEW REQUEST:\nthêm test")
+
+
+def test_grok_build_cli_flags_and_models():
+    from ateam.config import apply_access, parse_models
+    cmd = ["grok", "--permission-mode", "acceptEdits", "-p", "{prompt}"]
+    assert apply_access(cmd, True) == ["grok", "--permission-mode", "bypassPermissions", "-p", "{prompt}"]
+    assert apply_access(apply_access(cmd, True), False) == cmd
+    grok = AgentConfig("grok", cmd, model_args=["-m", "{model}"],
+                       effort_args=["--reasoning-effort", "{effort}"], model="grok-4.7", effort="high")
+    assert grok.argv("HI") == ["grok", "--permission-mode", "acceptEdits", "-m", "grok-4.7",
+                               "--reasoning-effort", "high", "-p", "HI"]
+    out = ("You are not authenticated.\n\nDefault model: grok-4.7\n\nAvailable models:\n"
+           "  * grok-4.7 (default)\n  - grok-4.7-build-fast\n  - grok-4.6\n")
+    assert parse_models(out, "grok") == ["grok-4.7", "grok-4.7-build-fast", "grok-4.6"]
+
+
+def test_state_of_old_grok_agent_moves_to_opencode(tmp_path, monkeypatch):
+    """Bản 6: "grok" thành Grok Build CLI; model/effort đã chọn cho grok cũ (qua opencode) chuyển sang
+    agent "opencode", không áp nhầm vào Grok Build."""
+    import importlib
+    import json
+
+    import ateam.config as cfgmod
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfgmod = importlib.reload(cfgmod)
+    try:
+        cfgmod.GLOBAL_DIR.mkdir(parents=True)
+        cfgmod.GLOBAL_CONFIG.write_text('config_version = 5\nlead = "claude"\n[agents.grok]\n'
+                                        'command = ["opencode", "run", "{prompt}"]\n')
+        cfgmod.STATE_FILE.write_text(json.dumps({
+            "lead": "grok", "agents": {"grok": {"model": "xai/grok-4.7", "role": "R"}},
+            "models_found": {"grok": ["xai/grok-4.7"]}}))
+        notes = cfgmod.ensure_global_config()
+        assert any("Grok Build" in n for n in notes)
+        st = cfgmod.load_state()
+        assert st["agents"] == {"opencode": {"model": "xai/grok-4.7", "role": "R"}}
+        assert st["models_found"] == {"opencode": ["xai/grok-4.7"]} and st["lead"] == "opencode"
+        assert list(cfgmod.GLOBAL_DIR.glob("state.v5.*.bak.json"))
+        c = cfgmod.load_config(tmp_path)
+        assert c.agents["grok"].binary == "grok" and c.agents["grok"].model == ""
+        assert c.agents["opencode"].model == "xai/grok-4.7"
+    finally:
+        monkeypatch.delenv("XDG_CONFIG_HOME")
+        importlib.reload(cfgmod)
+
+
+def test_plan_team_groups_roles_and_adds_agents():
+    from ateam.config import TIER_PRESETS, PROVIDERS, plan_team, tier_preset
+    plan = plan_team({
+        "lead": ("claude", "opus", "high"), "code": ("codex", "", "medium"),
+        "review": ("claude", "sonnet", "medium"), "ui": ("claude", "opus", "high"),
+        "test": None, "research": ("agy", "", ""),
+    })
+    assert plan.lead == "claude"
+    assert plan.agents["claude"]["roles"] == ["lead", "ui"] and plan.agents["claude"]["builtin"]
+    # cùng CLI nhưng model khác -> agent thêm, không phải agent có sẵn
+    assert plan.agents["claude-review"] == {"provider": "claude", "model": "sonnet", "effort": "medium",
+                                            "roles": ["review"], "builtin": False}
+    assert plan.agents["antigravity"]["provider"] == "agy"
+    assert set(plan.unused) == {"grok", "opencode"}
+    # mỗi nhà cung cấp đều có mức gợi ý; trưởng nhóm được nâng 1 mức; effort sai bị bỏ
+    assert set(TIER_PRESETS) == set(PROVIDERS)
+    models = ["opus", "sonnet", "haiku"]
+    assert tier_preset("claude", "eco", "code", models, ["low", "medium", "high", "max"]) == ("sonnet", "low")
+    assert tier_preset("claude", "eco", "lead", models, ["low", "medium", "high", "max"]) == ("sonnet", "medium")
+    assert tier_preset("claude", "max", "lead", models, ["low", "high"]) == ("opus", "")
+    assert tier_preset("agy", "max", "code", [], ["high"]) == ("", "high")  # chưa biết model: CLI tự chọn
+
+
+def test_save_onboard_writes_state_custom_and_project(tmp_path, monkeypatch):
+    import importlib
+
+    import ateam.config as cfgmod
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    cfgmod = importlib.reload(cfgmod)
+    try:
+        cfgmod.ensure_global_config()
+        root = tmp_path / "proj"
+        root.mkdir()
+
+        def save(plan, **kw):
+            opts = dict(full_access=True, approve_plan=False, auto_review=True, flow=True,
+                        isolation="worktree", merge="review", verify_command="npm test")
+            opts.update(kw)
+            cfgmod.save_onboard(root, plan, **opts)
+
+        save(cfgmod.plan_team({"lead": ("claude", "opus", "high"), "code": ("codex", "", "medium"),
+                               "review": ("claude", "sonnet", "")}))
+        c = cfgmod.load_config(root)
+        assert c.lead == "claude" and c.agents["claude"].model == "opus"
+        assert c.agents["claude"].full_access and c.agents["codex"].effort == "medium"
+        assert "Trưởng nhóm" in c.agents["claude"].role and "Viết code" in c.agents["codex"].role
+        rv = c.agents["claude-review"]
+        assert rv.model == "sonnet" and rv.binary == "claude" and rv.full_access and rv.enabled
+        assert cfgmod.load_custom()["agents"]["claude-review"]["wizard"] is True
+        assert not c.agents["grok"].enabled and not c.agents["antigravity"].enabled
+        assert not c.approve_plan and c.auto_review
+        assert c.isolation == "worktree" and c.merge == "review" and c.verify.command == "npm test"
+        assert c.default_workflow == "tinh-nang"
+        assert c.workflows["tinh-nang"].steps[1].agent == "codex"  # bước "*" -> agent code chính
+        assert not cfgmod.needs_setup()
+        # chạy lại wizard: agent thêm lần trước bị xoá, không dồn; thiết lập trở về mặc định thì bỏ khỏi state
+        save(cfgmod.plan_team({"lead": ("codex", "", ""), "code": ("codex", "", "")}), full_access=False,
+             approve_plan=True, flow=False, isolation="shared", verify_command="")
+        c = cfgmod.load_config(root)
+        assert "claude-review" not in c.agents and c.lead == "codex" and not c.agents["claude"].enabled
+        assert c.approve_plan and c.isolation == "shared" and c.default_workflow == ""
+        assert "approve_plan" not in cfgmod.load_state() and not c.agents["codex"].full_access
+    finally:
+        monkeypatch.delenv("XDG_CONFIG_HOME")
+        importlib.reload(cfgmod)

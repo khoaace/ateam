@@ -20,6 +20,7 @@ if [[ "$P" == *"TEAM LEAD"* && "$P" == *"Reply with ONLY a JSON array"* ]]; then
 fi
 if [[ "$P" == *"TEAM LEAD"* ]]; then echo '{"done": true, "summary": "codex review: ok", "new_tasks": []}'; exit 0; fi
 if [[ "$P" == *"VERIFICATION COMMAND"* ]]; then echo "codex: sửa lỗi test"; touch fixed.txt; echo "SUMMARY: thêm fixed.txt"; exit 0; fi
+if [[ "$P" == *"NEW REQUEST:"* && "$P" == *"Your result:"* ]]; then echo "codex: nhớ lượt trước"; fi
 for i in 1 2 3; do echo "codex bước $i"; fake_sleep; done
 if [[ "$P" == *"README"* ]]; then echo readme > README.md; echo "SUMMARY: viết README"; exit 0; fi
 echo a > a.txt

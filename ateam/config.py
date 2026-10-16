@@ -23,7 +23,7 @@ STATE_FILE = GLOBAL_DIR / "state.json"
 CUSTOM_FILE = GLOBAL_DIR / "custom.toml"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 LEAD_ALIAS = "lead"  # agent của bước workflow = trưởng nhóm hiện tại
-CONFIG_VERSION = 5
+CONFIG_VERSION = 6
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
 
 DEFAULT_CONFIG = """\
@@ -34,7 +34,7 @@ DEFAULT_CONFIG = """\
 #  Model / effort đổi trong app (/model, /effort) được lưu ở ~/.config/ateam/state.json
 #  và ưu tiên hơn giá trị trong file này. Gõ /model <agent> - để quay về giá trị ở đây.
 # ============================================================
-config_version = 5
+config_version = 6
 
 lead = "claude"              # agent làm trưởng nhóm (lập kế hoạch + review)
 max_parallel = 3             # tổng số task chạy song song tối đa
@@ -126,8 +126,21 @@ timeout = 1800
 max_concurrent = 1
 
 [agents.grok]
-# Grok qua OpenCode. Danh sách model: opencode models | grep grok
-# Nếu bị chặn quyền, thêm "--dangerously-skip-permissions" vào command (chỉ repo tin tưởng).
+# Grok Build CLI (xAI). Danh sách model: grok models
+# acceptEdits: được sửa file. Cho chạy cả lệnh shell: "bypassPermissions" (chỉ repo tin tưởng)
+command = ["grok", "--permission-mode", "acceptEdits", "-p", "{prompt}"]
+model = ""                   # vd: "grok-4.7", "grok-4.7-build-fast"
+effort = ""
+model_args = ["-m", "{model}"]
+effort_args = ["--reasoning-effort", "{effort}"]
+efforts = ["low", "medium", "high"]
+fallback = ["codex"]
+role = "Code nhanh, việc nhỏ lặp nhanh, viết test, script, tài liệu."
+timeout = 1800
+max_concurrent = 1
+
+[agents.opencode]
+# OpenCode — chạy được nhiều nhà cung cấp (xAI, OpenAI, Anthropic…). Danh sách model: opencode models
 command = ["opencode", "run", "{prompt}"]
 model = "xai/grok-build-0.1"
 effort = ""                  # OpenCode gọi là "variant"; tuỳ model có hỗ trợ hay không
@@ -135,7 +148,7 @@ model_args = ["--model", "{model}"]
 effort_args = ["--variant", "{effort}"]
 efforts = ["low", "medium", "high"]
 fallback = ["codex"]
-role = "Code nhanh, việc nhỏ lặp nhanh, viết test, script, tài liệu."
+role = "Code nhanh, việc nhỏ, viết test, script, tài liệu."
 timeout = 1800
 max_concurrent = 1
 """
@@ -162,6 +175,11 @@ CATALOG: dict[str, dict] = {
         "models_command": ["agy", "models"],
         "usage_command": ["agy", "-p", "/usage"],  # quota còn lại theo nhóm model (cần pty)
     },
+    "grok": {
+        "models": ["grok-4.7", "grok-4.7-build-fast", "grok-4.6", "grok-4.5"],
+        "efforts": ["low", "medium", "high"],
+        "models_command": ["grok", "models"],  # "  * grok-4.7 (default)" / "  - grok-4.6"
+    },
     "opencode": {
         "models": ["xai/grok-build-0.1", "xai/grok-4.7"],
         "efforts": ["low", "medium", "high"],
@@ -173,7 +191,7 @@ CATALOG: dict[str, dict] = {
 # trong file phiên gần nhất (~/.codex/sessions), xem limits.codex_rate_limits
 # Cờ quyền theo CLI: "chỉ sửa file" (mặc định trong DEFAULT_CONFIG) <-> "toàn quyền" (chạy lệnh shell, mạng).
 # full_access = true đổi lúc dựng lệnh (apply_access), file cấu hình vẫn ghi lệnh an toàn gốc.
-ACCESS_CLIS = ("claude", "codex", "agy", "opencode")
+ACCESS_CLIS = ("claude", "codex", "agy", "grok", "opencode")
 
 
 def full_access_supported(binary: str) -> bool:
@@ -193,7 +211,7 @@ def apply_access(command: list[str], full: bool) -> list[str]:
         else:
             cmd[1:1] = [flag, value]
 
-    if name == "claude":
+    if name in ("claude", "grok"):  # cùng cờ --permission-mode
         if full:
             set_value("--permission-mode", "bypassPermissions")
         elif "--permission-mode" in cmd:
@@ -444,13 +462,48 @@ def ensure_global_config() -> list[str]:
         data = tomllib.loads(GLOBAL_CONFIG.read_text(encoding="utf-8"))
     except Exception:
         data = {}
-    if int(data.get("config_version", 1)) < CONFIG_VERSION:
+    old_version = int(data.get("config_version", 1))
+    if old_version < 6:
+        note = migrate_grok_to_opencode(data)
+        if note:
+            notes.append(note)
+    if old_version < CONFIG_VERSION:
         bak = GLOBAL_CONFIG.with_name(f"config.v{data.get('config_version', 1)}.{int(time.time())}.bak.toml")
         shutil.copy2(GLOBAL_CONFIG, bak)
         GLOBAL_CONFIG.write_text(DEFAULT_CONFIG, encoding="utf-8")
         notes.append(f"Đã nâng cấp cấu hình lên bản {CONFIG_VERSION} (thêm tính năng mới). "
                      f"Bản cũ sao lưu ở {bak}")
     return notes
+
+
+def migrate_grok_to_opencode(old_config: dict) -> str:
+    """Bản 6: agent "grok" chuyển sang Grok Build CLI, OpenCode thành agent "opencode". Các lựa chọn đã
+    lưu cho "grok" cũ (chạy qua opencode) trong state.json chuyển sang "opencode". Trả về thông báo."""
+    old = ((old_config.get("agents") or {}).get("grok") or {})
+    cmd = _strs(old.get("command"))
+    state = load_state()
+    entry = (state.get("agents") or {}).get("grok") or {}
+    was_opencode = (Path(cmd[0]).name == "opencode") if cmd else str(entry.get("model", "")).startswith("xai/")
+    if not was_opencode:
+        return ""
+    moved = False
+    if entry:
+        state["agents"]["opencode"] = {**entry, **(state["agents"].get("opencode") or {})}
+        del state["agents"]["grok"]
+        moved = True
+    found = state.get("models_found") or {}
+    if "grok" in found:
+        found["opencode"] = found.pop("grok")
+        moved = True
+    if state.get("lead") == "grok":
+        state["lead"] = "opencode"
+        moved = True
+    if not moved:
+        return ""
+    shutil.copy2(STATE_FILE, STATE_FILE.with_name(f"state.v5.{int(time.time())}.bak.json"))
+    save_state(state)
+    return ('Agent "grok" giờ chạy Grok Build CLI (lệnh grok); lựa chọn cũ của nó (qua OpenCode) chuyển '
+            'sang agent mới "opencode".')
 
 
 def load_state() -> dict:
@@ -546,12 +599,13 @@ PROVIDERS: dict[str, tuple[str, str]] = {
     "claude": ("Claude Code", "claude"),
     "codex": ("Codex", "codex"),
     "agy": ("Antigravity", "antigravity"),
-    "opencode": ("OpenCode (Grok, …)", "grok"),
+    "grok": ("Grok Build", "grok"),
+    "opencode": ("OpenCode", "opencode"),
 }
 
 
 def provider_of(command) -> str:
-    """Tên lệnh của agent nếu là một nhà cung cấp có sẵn (claude/codex/agy/opencode), ngược lại ""."""
+    """Tên lệnh của agent nếu là một nhà cung cấp có sẵn (claude/codex/agy/grok/opencode), ngược lại ""."""
     cmd = _strs(command)
     name = Path(cmd[0]).name if cmd else ""
     return name if name in PROVIDERS else ""
@@ -784,6 +838,160 @@ def clear_agent_state(name: str, keys=("model", "effort", "role", "full_access")
     save_state(state)
 
 
+# ------------------------------------------------------------------ wizard thiết lập (/setup)
+# Vai trò trong đội: (khoá, nhãn hiển thị, mô tả gửi trưởng nhóm để phân việc)
+ROLES: list[tuple[str, str, str]] = [
+    ("lead", "★ Trưởng nhóm", "Trưởng nhóm: lập kế hoạch, thiết kế kiến trúc, review kết quả."),
+    ("code", "Code chính", "Viết code, sửa bug, refactor."),
+    ("review", "Review code", "Review code, tìm lỗi, đề xuất cải thiện."),
+    ("ui", "Frontend/UI", "Frontend, giao diện, CSS, trải nghiệm người dùng."),
+    ("test", "Test & tài liệu", "Viết test, script, tài liệu."),
+    ("research", "Nghiên cứu", "Nghiên cứu, tìm tài liệu, phân tích codebase lớn."),
+]
+# CLI ưu tiên cho từng vai trò (lấy CLI đầu tiên người dùng có)
+ROLE_PREFS: dict[str, list[str]] = {
+    "lead": ["claude", "codex", "grok", "agy", "opencode"],
+    "code": ["codex", "claude", "grok", "opencode", "agy"],
+    "review": ["claude", "codex", "agy", "grok", "opencode"],
+    "ui": ["agy", "claude", "codex", "grok", "opencode"],
+    "test": ["grok", "opencode", "codex", "claude", "agy"],
+    "research": ["agy", "claude", "codex", "grok", "opencode"],
+}
+TIERS = [("eco", "Tiết kiệm"), ("balanced", "Cân bằng"), ("max", "Tối đa")]
+# Mức model/effort theo nhà cung cấp, từ rẻ tới mạnh: (từ khoá chọn model trong danh sách có sẵn, effort).
+# Tiết kiệm = mức 0, Cân bằng = 1, Tối đa = 2; trưởng nhóm và review được nâng 1 mức. Không có model khớp
+# từ khoá thì để CLI tự chọn; effort không hợp lệ với CLI thì bỏ.
+TIER_PRESETS: dict[str, list[tuple[list[str], str]]] = {
+    "claude": [(["sonnet"], "low"), (["sonnet"], "medium"), (["opus"], "high"), (["opus"], "max")],
+    "codex": [(["luna"], "low"), (["sol"], "medium"), (["sol"], "high"), (["sol"], "xhigh")],
+    "agy": [(["flash"], "low"), (["pro", "flash"], "medium"), (["pro"], "high"), (["pro"], "xhigh")],
+    "grok": [(["build-fast", "fast"], "low"), (["grok-4.7"], "medium"), (["grok-4.7"], "high"),
+             (["grok-4.7"], "high")],
+    "opencode": [(["grok-build"], "low"), (["grok-4.7", "grok"], "medium"), (["grok-4.7", "grok"], "high"),
+                 (["grok-4.7", "grok"], "high")],
+}
+INSTALL_HINTS: dict[str, str] = {
+    "claude": "npm i -g @anthropic-ai/claude-code",
+    "codex": "npm i -g @openai/codex",
+    "agy": "cài Antigravity rồi bật lệnh agy",
+    "grok": "curl -fsSL https://x.ai/cli/install.sh | bash",
+    "opencode": "npm i -g opencode-ai",
+}
+WIZARD_FLOW = "tinh-nang"  # workflow tạo khi chọn kiểu "theo quy trình cố định"
+
+
+def tier_preset(provider: str, tier: str, role: str, models: list[str], efforts: list[str]) -> tuple[str, str]:
+    """(model, effort) gợi ý cho vai trò theo mức chi phí; "" = để CLI tự chọn."""
+    levels = TIER_PRESETS.get(provider) or []
+    if not levels:
+        return "", ""
+    i = [k for k, _ in TIERS].index(tier) if tier in [k for k, _ in TIERS] else 1
+    if role in ("lead", "review"):
+        i += 1
+    keys, effort = levels[min(i, len(levels) - 1)]
+    model = next((m for k in keys for m in models if k in m.lower()), "")
+    return model, effort if effort in efforts else ""
+
+
+def default_cli(role: str, providers: list[str]) -> str:
+    return next((p for p in ROLE_PREFS.get(role, []) if p in providers), providers[0] if providers else "")
+
+
+@dataclass
+class TeamPlan:
+    """Kết quả gán vai trò: agents = {tên: {"provider", "model", "effort", "roles", "builtin"}}."""
+    agents: dict[str, dict]
+    lead: str
+    unused: list[str]  # agent có sẵn không được giao vai trò nào -> tắt
+
+
+def builtin_agent(provider: str) -> str:
+    return PROVIDERS[provider][1] if provider in PROVIDERS else provider
+
+
+def plan_team(assign: dict[str, tuple[str, str, str] | None]) -> TeamPlan:
+    """Vai trò -> agent. assign = {khoá vai trò: (CLI, model, effort) hoặc None = không dùng}.
+
+    Vai trò cùng (CLI, model, effort) dùng chung một agent. Nhóm đầu tiên của mỗi CLI dùng agent có sẵn
+    (claude, codex, antigravity, grok, opencode); nhóm sau của cùng CLI (model/effort khác) thành agent
+    thêm "<agent>-<vai trò>" (vd claude-review)."""
+    agents: dict[str, dict] = {}
+    by_key: dict[tuple, str] = {}
+    lead = ""
+    for role, _label, _desc in ROLES:
+        a = assign.get(role)
+        if not a or not a[0]:
+            continue
+        key = (a[0], a[1] or "", a[2] or "")
+        name = by_key.get(key)
+        if not name:
+            base = builtin_agent(a[0])
+            name = base if base not in agents else f"{base}-{role}"
+            agents[name] = {"provider": a[0], "model": key[1], "effort": key[2], "roles": [],
+                            "builtin": name == base}
+            by_key[key] = name
+        agents[name]["roles"].append(role)
+        if role == "lead":
+            lead = name
+    used = {n for n in agents if agents[n]["builtin"]}
+    unused = [builtin_agent(p) for p in PROVIDERS if builtin_agent(p) not in used]
+    return TeamPlan(agents=agents, lead=lead, unused=unused)
+
+
+def role_text(roles: list[str]) -> str:
+    desc = dict((k, d) for k, _l, d in ROLES)
+    return " ".join(desc[r] for r in roles if r in desc)
+
+
+def save_onboard(root: Path, plan: TeamPlan, *, full_access: bool, approve_plan: bool, auto_review: bool,
+                 flow: bool, isolation: str, merge: str, verify_command: str) -> None:
+    """Lưu kết quả wizard: agent có sẵn vào state.json, agent thêm vào custom.toml (wizard = true; lần
+    chạy wizard sau xoá đi tạo lại), thiết lập chung vào state.json, thiết lập dự án vào .ateam/state.json."""
+    data = load_custom()
+    for name, body in list((data.get("agents") or {}).items()):
+        if isinstance(body, dict) and body.get("wizard"):
+            save_custom_item("agents", name, None)
+            clear_agent_state(name)
+    for name, a in plan.agents.items():
+        if a["builtin"]:
+            continue
+        body = provider_template(a["provider"])
+        body.update({"model": a["model"], "effort": a["effort"], "role": role_text(a["roles"]),
+                     "full_access": bool(full_access and full_access_supported(a["provider"])),
+                     "wizard": True})
+        save_custom_item("agents", name, body)
+        clear_agent_state(name)
+    base = load_config(root, with_state=False)
+    choices: dict[str, dict] = {}
+    for name in base.agents:
+        a = plan.agents.get(name)
+        if a and a["builtin"]:
+            choices[name] = {"enabled": True, "model": a["model"] or None, "effort": a["effort"] or None,
+                             "role": role_text(a["roles"]),
+                             "full_access": bool(full_access and full_access_supported(base.agents[name].binary))}
+        elif name in plan.unused:
+            choices[name] = {"enabled": False}
+    workflow = ""
+    if flow:
+        if WIZARD_FLOW not in base.workflows:
+            tpl = WORKFLOW_TEMPLATES[WIZARD_FLOW]
+            code = next((n for n, a in plan.agents.items() if "code" in a["roles"]), plan.lead)
+            steps = [dict(st, agent=code if st["agent"] == "*" else st["agent"]) for st in tpl["steps"]]
+            save_custom_item("workflows", WIZARD_FLOW, {**tpl, "steps": steps})
+        workflow = WIZARD_FLOW
+    save_setup(root, plan.lead, choices, workflow)
+    state = load_state()
+    for key, value, default in (("approve_plan", approve_plan, True), ("auto_review", auto_review, True)):
+        if value == default:
+            state.pop(key, None)
+        else:
+            state[key] = value
+    save_state(state)
+    save_project_setting(root, "isolation", isolation if isolation != "shared" else None)
+    save_project_setting(root, "merge", merge if isolation == "worktree" and merge != "auto" else None)
+    save_project_setting(root, "verify_command", verify_command or None)
+
+
 def mark_setup_done() -> None:
     state = load_state()
     state["onboarded"] = 1
@@ -940,13 +1148,14 @@ def load_config(root: Path, with_state: bool = True) -> Config:
     return Config(
         lead=lead if lead in agents else data.get("lead", "claude"),
         max_parallel=max(1, int(data.get("max_parallel", 3))),
-        approve_plan=bool(data.get("approve_plan", True)),
-        auto_review=bool(data.get("auto_review", True)),
+        approve_plan=bool(full_state.get("approve_plan", data.get("approve_plan", True))),
+        auto_review=bool(full_state.get("auto_review", data.get("auto_review", True))),
         max_rounds=max(1, int(data.get("max_rounds", 3))),
         max_delegation_depth=max(0, int(data.get("max_delegation_depth", 2))),
         lead_sets_effort=bool(data.get("lead_sets_effort", True)),
-        isolation=data.get("isolation", "shared"),
-        merge=data.get("merge", "auto") if data.get("merge") in ("auto", "review") else "auto",
+        isolation=pstate.get("isolation", data.get("isolation", "shared")),
+        merge=(pstate.get("merge") or data.get("merge", "auto"))
+        if (pstate.get("merge") or data.get("merge")) in ("auto", "review") else "auto",
         verify=verify,
         cooldown_minutes=max(1, int(lim.get("cooldown_minutes", 30))),
         lead_fallback=_strs(lim.get("lead_fallback")),

@@ -11,6 +11,17 @@ fi
 fake_flags="--model --variant --dangerously-skip-permissions"
 source "$(dirname "$0")/_common.sh"
 P="$fake_prompt"
+# như opencode thật: -f/--file là mảng yargs, nuốt mọi đối số đứng sau cho tới cờ kế tiếp hoặc "--"
+eating=0
+for a in "$@"; do
+  case "$a" in
+    --) break ;;
+    -f|--file) eating=1 ;;
+    --file=*) eating=1 ;;
+    -*) eating=0 ;;
+    *) if [ "$eating" = 1 ] && [ "$a" = "$P" ]; then echo "Error: File not found: $P"; exit 1; fi ;;
+  esac
+done
 if fake_limited grok; then echo "Error: 429 Too Many Requests — rate limit exceeded"; exit 1; fi
 for i in 1 2; do echo "opencode bước $i"; fake_sleep; done
 if [[ "$P" == *"README"* ]]; then echo readme > README.md; echo "SUMMARY: viết README"; exit 0; fi
