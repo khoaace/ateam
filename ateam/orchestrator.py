@@ -28,7 +28,12 @@ BAD_FLAG_RE = re.compile(r"unexpected argument '-|unrecognized (?:argument|optio
 
 # agent headless bị từ chối quyền chạy lệnh (agy thoát 0 sau khi in câu này -> trước đây task bị tính "xong")
 DENIED_RE = re.compile(r"permission that headless mode cannot prompt for|auto-denied|auto-rejected"
-                       r"|requested permissions? to use \w+, but you haven't granted it", re.I)
+                       r"|requested permissions? to use \w+, but you haven't granted it"
+                       # Grok Build: lỗi có cấu trúc, hoặc model tự kể lại (tiếng Anh/Việt) khi --deny Bash chặn
+                       r"|headless run cannot ask for approval"
+                       r"|deny rule[^.\n]{0,20}\bbash\b|\bbash\b[^.\n]{0,20}deny rule"
+                       r"|(?:blocked|denied|chặn|từ chối)[^.\n]{0,80}permission policy"
+                       r"|permission policy[^.\n]{0,40}(?:blocked|denies|chặn|từ chối)", re.I)
 
 
 class Orchestrator:

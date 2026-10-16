@@ -4,9 +4,14 @@ if [ "${1:-}" = "models" ]; then  # như grok thật (kể cả dòng thừa tr�
   printf 'Default model: grok-4.7\n\nAvailable models:\n  * grok-4.7 (default)\n  - grok-4.7-build-fast\n  - grok-4.6\n'
   exit 0
 fi
-fake_flags="-p --single -m --model --reasoning-effort --effort --permission-mode"
+fake_flags="-p --single -m --model --reasoning-effort --effort --permission-mode --deny --allow"
 source "$(dirname "$0")/_common.sh"
 P=""; prev=""; for a in "$@"; do [ "$prev" = "-p" ] && P="$a"; prev="$a"; done
+if [[ "$P" == *"NEEDS_SHELL"* && " $* " == *" --deny Bash "* ]]; then
+  # như grok thật khi --deny Bash chặn lệnh shell: model kể lại, thoát 0
+  echo "I'll run the lint command.\`npm run lint\` did not run. The shell is blocked in this session by a permission policy that denies bash."
+  exit 0
+fi
 if fake_limited grok; then echo "Error: 429 Too Many Requests — rate limit exceeded"; exit 1; fi
 for i in 1 2; do echo "grok bước $i"; fake_sleep; done
 if [[ "$P" == *"README"* ]]; then echo readme > README.md; echo "SUMMARY: viết README"; exit 0; fi

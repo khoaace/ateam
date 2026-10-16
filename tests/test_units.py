@@ -617,13 +617,15 @@ def test_thread_prompt_includes_previous_turns():
 
 def test_grok_build_cli_flags_and_models():
     from ateam.config import apply_access, parse_models
-    cmd = ["grok", "--permission-mode", "acceptEdits", "-p", "{prompt}"]
+    # grok -p: "acceptEdits" chặn cả sửa file -> chỉ sửa file = auto + --deny Bash (đã thử với grok thật)
+    cmd = ["grok", "--permission-mode", "auto", "--deny", "Bash", "-p", "{prompt}"]
     assert apply_access(cmd, True) == ["grok", "--permission-mode", "bypassPermissions", "-p", "{prompt}"]
     assert apply_access(apply_access(cmd, True), False) == cmd
+    assert apply_access(["grok", "--permission-mode", "acceptEdits", "-p", "{prompt}"], False) == cmd  # cấu hình 0.6.0
     grok = AgentConfig("grok", cmd, model_args=["-m", "{model}"],
-                       effort_args=["--reasoning-effort", "{effort}"], model="grok-4.7", effort="high")
-    assert grok.argv("HI") == ["grok", "--permission-mode", "acceptEdits", "-m", "grok-4.7",
-                               "--reasoning-effort", "high", "-p", "HI"]
+                       effort_args=["--reasoning-effort", "{effort}"], model="grok-4.7", effort="xhigh")
+    assert grok.argv("HI") == ["grok", "--permission-mode", "auto", "--deny", "Bash", "-m", "grok-4.7",
+                               "--reasoning-effort", "xhigh", "-p", "HI"]
     out = ("You are not authenticated.\n\nDefault model: grok-4.7\n\nAvailable models:\n"
            "  * grok-4.7 (default)\n  - grok-4.7-build-fast\n  - grok-4.6\n")
     assert parse_models(out, "grok") == ["grok-4.7", "grok-4.7-build-fast", "grok-4.6"]
@@ -724,3 +726,19 @@ def test_save_onboard_writes_state_custom_and_project(tmp_path, monkeypatch):
     finally:
         monkeypatch.delenv("XDG_CONFIG_HOME")
         importlib.reload(cfgmod)
+
+
+def test_grok_shell_denial_is_detected():
+    """Câu grok thật in ra khi --deny Bash chặn lệnh (thoát 0) — phải nhận ra là bị chặn quyền."""
+    from ateam.orchestrator import DENIED_RE
+    real = [
+        "`npm run lint` did not run. The shell is blocked in this session by a permission policy that denies bash.",
+        "The shell command did not run. The permission policy blocked `echo hi > ran.txt`.",
+        "Lệnh `git --version` không chạy được: bị chặn bởi permission policy (`deny rule on bash`).",
+        "SUMMARY: Chạy `git --version` bị từ chối bởi deny rule trên bash; không có output.",
+        "permission required: Execute `echo hi` was not run, as a headless run cannot ask for approval",
+    ]
+    for line in real:
+        assert DENIED_RE.search(line), line
+    for ok in ("Ran `git --version`; output was `git version 2.53.0`.", "SUMMARY: thêm kiểm tra quyền (permission) cho API"):
+        assert not DENIED_RE.search(ok), ok

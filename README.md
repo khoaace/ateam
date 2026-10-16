@@ -323,9 +323,12 @@ role = "Đọc codebase lớn, viết tài liệu."
 * **Antigravity (`agy`)**: chỉ in output khi có terminal thật, nên `ateam` chạy nó trong pseudo-terminal
   (`pty = true`), với `--mode accept-edits` (được sửa file) và `--print-timeout 0`. Muốn cho chạy cả lệnh
   shell: thay `--mode accept-edits` bằng `--dangerously-skip-permissions`.
-* **Grok Build (`grok`)**: `grok --permission-mode acceptEdits -p "<prompt>"`, model bằng `-m` (`grok models` để
-  xem), effort bằng `--reasoning-effort`; Toàn quyền đổi thành `bypassPermissions`. Cần `grok login` trước.
-  Grok Build chưa có lệnh xem hạn mức chung nên `/usage` chỉ hiện thống kê của ateam.
+* **Grok Build (`grok`)**: `grok --permission-mode auto --deny Bash -p "<prompt>"` — được sửa/tạo file, không
+  chạy lệnh shell (`acceptEdits` của grok ở chế độ `-p` chặn cả sửa file nên ateam không dùng). Toàn quyền đổi thành
+  `--permission-mode bypassPermissions` (chạy lệnh, mạng). Model bằng `-m` (`grok models`), effort
+  `--reasoning-effort` (low, medium, high, xhigh). Cần `grok login` trước. Khi bị chặn lệnh, grok chỉ kể lại bằng
+  lời rồi thoát 0 — ateam nhận ra câu đó và báo task lỗi kèm hướng dẫn bật Toàn quyền. Grok Build chưa có lệnh xem
+  hạn mức chung nên `/usage` chỉ hiện thống kê của ateam.
 * **OpenCode**: `opencode run --model xai/grok-build-0.1 ...` (chạy được nhiều nhà cung cấp; xem model bằng
   `opencode models`). Toàn quyền thêm `--auto`. Từ bản 0.6, agent `grok` cũ (chạy qua OpenCode) đổi tên thành
   `opencode`; lựa chọn model/effort đã lưu được chuyển theo.

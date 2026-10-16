@@ -328,6 +328,16 @@ def test_permission_denied_fails_with_hint(env, project):
     ateam(env, project, "run", "-q")
     assert tasks(project)[-1].status == "done"
     assert "--dangerously-skip-permissions" in (Path(env["ATEAM_FAKE_ARGS_LOG"])).read_text()
+    # Grok Build: --deny Bash chặn lệnh, grok chỉ kể lại bằng lời rồi thoát 0 -> vẫn phải là lỗi
+    ateam(env, project, "add", "--to", "grok", "NEEDS_SHELL chạy lint")
+    ateam(env, project, "run", "-q")
+    t = tasks(project)[-1]
+    assert t.status == "failed" and "Toàn quyền" in (t.error or ""), t
+    write_project_config(project, "[agents.antigravity]\nfull_access = true\n[agents.grok]\nfull_access = true\n")
+    ateam(env, project, "add", "--to", "grok", "NEEDS_SHELL chạy lint")
+    ateam(env, project, "run", "-q")
+    assert tasks(project)[-1].status == "done"
+    assert "grok --permission-mode bypassPermissions" in (Path(env["ATEAM_FAKE_ARGS_LOG"])).read_text()
 
 
 def test_continue_goal_and_thread(env, project, tmp_path):

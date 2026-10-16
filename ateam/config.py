@@ -23,7 +23,7 @@ STATE_FILE = GLOBAL_DIR / "state.json"
 CUSTOM_FILE = GLOBAL_DIR / "custom.toml"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 LEAD_ALIAS = "lead"  # agent của bước workflow = trưởng nhóm hiện tại
-CONFIG_VERSION = 6
+CONFIG_VERSION = 7
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
 
 DEFAULT_CONFIG = """\
@@ -34,7 +34,7 @@ DEFAULT_CONFIG = """\
 #  Model / effort đổi trong app (/model, /effort) được lưu ở ~/.config/ateam/state.json
 #  và ưu tiên hơn giá trị trong file này. Gõ /model <agent> - để quay về giá trị ở đây.
 # ============================================================
-config_version = 6
+config_version = 7
 
 lead = "claude"              # agent làm trưởng nhóm (lập kế hoạch + review)
 max_parallel = 3             # tổng số task chạy song song tối đa
@@ -127,13 +127,14 @@ max_concurrent = 1
 
 [agents.grok]
 # Grok Build CLI (xAI). Danh sách model: grok models
-# acceptEdits: được sửa file. Cho chạy cả lệnh shell: "bypassPermissions" (chỉ repo tin tưởng)
-command = ["grok", "--permission-mode", "acceptEdits", "-p", "{prompt}"]
+# Chạy headless (-p), "acceptEdits" của grok chặn cả sửa file -> dùng "auto" (sửa file) + "--deny Bash"
+# (không chạy lệnh shell). Cho chạy cả lệnh shell/mạng: Toàn quyền (bypassPermissions, chỉ repo tin tưởng)
+command = ["grok", "--permission-mode", "auto", "--deny", "Bash", "-p", "{prompt}"]
 model = ""                   # vd: "grok-4.7", "grok-4.7-build-fast"
 effort = ""
 model_args = ["-m", "{model}"]
 effort_args = ["--reasoning-effort", "{effort}"]
-efforts = ["low", "medium", "high"]
+efforts = ["low", "medium", "high", "xhigh"]
 fallback = ["codex"]
 role = "Code nhanh, việc nhỏ lặp nhanh, viết test, script, tài liệu."
 timeout = 1800
@@ -177,7 +178,7 @@ CATALOG: dict[str, dict] = {
     },
     "grok": {
         "models": ["grok-4.7", "grok-4.7-build-fast", "grok-4.6", "grok-4.5"],
-        "efforts": ["low", "medium", "high"],
+        "efforts": ["low", "medium", "high", "xhigh"],
         "models_command": ["grok", "models"],  # "  * grok-4.7 (default)" / "  - grok-4.6"
     },
     "opencode": {
@@ -211,7 +212,17 @@ def apply_access(command: list[str], full: bool) -> list[str]:
         else:
             cmd[1:1] = [flag, value]
 
-    if name in ("claude", "grok"):  # cùng cờ --permission-mode
+    if name == "grok":
+        # grok -p: "acceptEdits" chặn cả sửa file (đã thử thật) -> chỉ sửa file = "auto" + "--deny Bash";
+        # cấu hình cũ còn acceptEdits cũng được đổi
+        while "--deny" in cmd and cmd.index("--deny") + 1 < len(cmd) and cmd[cmd.index("--deny") + 1] == "Bash":
+            j = cmd.index("--deny")
+            del cmd[j:j + 2]
+        set_value("--permission-mode", "bypassPermissions" if full else "auto")
+        if not full:
+            j = cmd.index("--permission-mode") + 2
+            cmd[j:j] = ["--deny", "Bash"]
+    elif name == "claude":
         if full:
             set_value("--permission-mode", "bypassPermissions")
         elif "--permission-mode" in cmd:
@@ -866,7 +877,7 @@ TIER_PRESETS: dict[str, list[tuple[list[str], str]]] = {
     "codex": [(["luna"], "low"), (["sol"], "medium"), (["sol"], "high"), (["sol"], "xhigh")],
     "agy": [(["flash"], "low"), (["pro", "flash"], "medium"), (["pro"], "high"), (["pro"], "xhigh")],
     "grok": [(["build-fast", "fast"], "low"), (["grok-4.7"], "medium"), (["grok-4.7"], "high"),
-             (["grok-4.7"], "high")],
+             (["grok-4.7"], "xhigh")],
     "opencode": [(["grok-build"], "low"), (["grok-4.7", "grok"], "medium"), (["grok-4.7", "grok"], "high"),
                  (["grok-4.7", "grok"], "high")],
 }

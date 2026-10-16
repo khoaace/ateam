@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1 — 16/10/2026
+
+- **Sửa: Grok Build không sửa được file** (đã thử với grok thật): ở chế độ `-p`, `--permission-mode acceptEdits` của
+  grok chặn cả việc sửa file ("permission required: Edit … headless run cannot ask for approval") mà task vẫn báo
+  "xong". Giờ "chỉ sửa file" = `--permission-mode auto --deny Bash` (sửa/tạo file được, không chạy lệnh shell);
+  Toàn quyền = `bypassPermissions`. Cấu hình cũ còn `acceptEdits` cũng được đổi khi chạy. Cấu hình lên bản 7.
+- Grok bị chặn lệnh shell chỉ kể lại bằng lời (tiếng Anh/Việt) rồi thoát 0 — ateam nhận ra và báo task lỗi kèm
+  hướng dẫn bật Toàn quyền.
+- Grok Build có thêm mức effort `xhigh` (grok nhận: low, medium, high, xhigh); mức Tối đa ở wizard dùng `xhigh`.
+
 ## 0.6.0 — 16/10/2026
 
 - **Tiếp tục mục tiêu hoặc thread đã xong**: chọn task rồi **F6** (Ctrl+O), bấm **↪ Tiếp tục** trong khung mục

@@ -28,7 +28,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 
 | Khoá | Mặc định | Ý nghĩa |
 | --- | --- | --- |
-| `config_version` | `6` | Phiên bản file; thấp hơn `CONFIG_VERSION` thì được nâng cấp |
+| `config_version` | `7` | Phiên bản file; thấp hơn `CONFIG_VERSION` thì được nâng cấp |
 | `lead` | `"claude"` | Agent làm trưởng nhóm |
 | `max_parallel` | `3` | Tổng số task chạy cùng lúc |
 | `approve_plan` | `true` | Kế hoạch (và task bổ sung sau review) ở `draft`, chờ `/go` |
@@ -103,14 +103,14 @@ Mỗi bước:
 | `after` | bước liền trước | Số thứ tự bước (từ 1) phải xong trước; `[]` = chạy ngay |
 | `effort`, `model` | `""` | Riêng cho task của bước này (không bị lọc như effort trưởng nhóm đặt) |
 
-## Mặc định của 5 agent (config_version 6)
+## Mặc định của 5 agent (config_version 7)
 
 | Agent | command | model_args / effort_args | efforts | fallback |
 | --- | --- | --- | --- | --- |
 | `claude` | `claude -p {prompt} --permission-mode acceptEdits` | `--model` / `--effort` | low, medium, high, max | codex |
 | `codex` | `codex exec --sandbox workspace-write --skip-git-repo-check {prompt}` | `-m` / `-c model_reasoning_effort="…"` | low…ultra | claude |
 | `antigravity` | `agy --mode accept-edits --print-timeout 0 -p {prompt}` (pty) | `--model` / `--effort` | low…max | claude, codex |
-| `grok` | `grok --permission-mode acceptEdits -p {prompt}` (Grok Build CLI) | `-m` / `--reasoning-effort` | low, medium, high | codex |
+| `grok` | `grok --permission-mode auto --deny Bash -p {prompt}` (Grok Build CLI; `acceptEdits` ở chế độ `-p` chặn cả sửa file) | `-m` / `--reasoning-effort` | low, medium, high, xhigh | codex |
 | `opencode` | `opencode run {prompt}`, model `xai/grok-build-0.1` | `--model` / `--variant` | low, medium, high | codex |
 
 Bản 6 đổi `grok` từ OpenCode sang Grok Build CLI. Khi nâng cấp, `ensure_global_config` chuyển các mục
