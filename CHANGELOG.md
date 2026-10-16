@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.8.1 — 16/10/2026
 
 - Khung hỏi đáp `/grill` dễ đọc hơn: phương án là chữ thường trên nền mặc định (trước đây nền cyan/xanh lá + chữ
   đen, khó đọc trên Terminal.app), số thứ tự có màu, phương án khuyên dùng in đậm kèm ★; dòng dài xuống hàng
