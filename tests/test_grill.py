@@ -119,3 +119,12 @@ def test_tui_grill_flow(env, project, monkeypatch, tmp_path):
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
+
+
+def test_grill_hanging_indent():
+    from ateam.tui import hang
+    out = hang("một hai ba bốn năm sáu bảy tám chín mười", 30, 6, first=6)
+    lines = out.split("\n")
+    assert len(lines) == 2 and lines[1].startswith(" " * 6) and not lines[0].startswith(" ")
+    assert all(len(ln) <= 30 - (0 if i else 6) for i, ln in enumerate(lines))
+    assert hang("ngắn", 80, 6) == "ngắn"
