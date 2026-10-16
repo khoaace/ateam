@@ -8,7 +8,7 @@ if [ "${1:-}" = "stats" ]; then
   for i in $(seq 1 30); do echo "│stat dòng $i │"; done  # dài như bảng thật -> ateam chỉ giữ 20 dòng
   exit 0
 fi
-fake_flags="--model --variant --dangerously-skip-permissions"
+fake_flags="--model --auto"
 source "$(dirname "$0")/_common.sh"
 P="$fake_prompt"
 # như opencode thật: -f/--file là mảng yargs, nuốt mọi đối số đứng sau cho tới cờ kế tiếp hoặc "--"

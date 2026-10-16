@@ -26,7 +26,7 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import clipboard, diffview, mentions, shell, update
+from . import clipboard, diffview, gitops, mentions, shell, update
 from .config import (CATALOG, CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, NAME_RE, PROVIDERS, ROLES, TIERS,
                      WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan, builtin_agent, default_cli,
                      full_access_supported, plan_team, provider_of, provider_template, save_onboard,
@@ -141,13 +141,29 @@ Khác:
   /clear                            dọn task & mục tiêu đã kết thúc khỏi bảng (nút 🗑 trên bảng)
   /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
-  /team  /board  /term              chuyển tab Đội / Bảng việc / Terminal (Ctrl+T xoay vòng)
+  /team  /board  /term  /git        chuyển tab Đội / Bảng việc / Terminal / Git (Ctrl+T xoay vòng)
 
 Lệnh terminal (tab 💻 Terminal):
   !<lệnh>                           chạy lệnh trong thư mục dự án, vd !yarn dev, !make test
   !                                 gợi ý script package.json, target Makefile, lệnh gần đây (Enter chạy)
   /sh <lệnh>                        như !<lệnh>
   /stop [số]                        dừng lệnh đang chọn (nút ■ Dừng / ↻ Chạy lại / ✗ Xoá trong tab)
+
+Git (tab 🌿 Git — Ctrl+T xoay tới, hoặc /git):
+  /git                              mở tab Git: file thay đổi, commit, nhánh, lịch sử, stash, pull/push
+                                    trong danh sách file: Space stage/bỏ stage · a stage tất cả · u bỏ stage
+                                    tất cả · x bỏ thay đổi · Enter/d xem diff · c tới ô commit message
+                                    trong lịch sử: Enter/d xem commit · r revert
+  /git <lệnh>                       chạy git <lệnh> bất kỳ ở tab Terminal, vd /git tag v1.0,
+                                    /git cherry-pick abc123, /git remote add origin <url>
+  /commit <message>                 commit file đã stage (chưa stage gì thì commit mọi thay đổi)
+  /commit                           trưởng nhóm đọc diff và viết commit message (nút ✨ trong tab Git)
+  /push [-f]   /pull   /fetch       đồng bộ với remote (-f = --force-with-lease)
+  /branch [tên]   /checkout <nhánh> tạo & chuyển nhánh / chuyển nhánh (trống: mở danh sách nhánh)
+  /stash [message]   /stash pop     cất tạm / lấy lại thay đổi chưa commit (/stash list: danh sách)
+                                    đổi nhánh, pull, stash bị chặn khi agent đang chạy task
+
+Trợ giúp & thoát:
   /help                             trợ giúp này (F1)
   F2 = Ctrl+G, F5 = Ctrl+R, F6 = Ctrl+O   dùng F2/F5/F6 khi terminal chặn phím Ctrl (vd terminal trong VS Code/
                                     Cursor trên Mac: Ctrl+G là Go to Line, Ctrl+R là Run Recent).
@@ -160,7 +176,8 @@ WELCOME = """\
   • /task codex viết test cho utils.py → giao tay cho 1 agent
   • Gõ / để xem các lệnh · @ để nhắc file · Ctrl+V dán ảnh
   • !yarn dev → chạy lệnh terminal (gõ ! để xem gợi ý) · tab 💻 Terminal
-  • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: đổi tab (Bảng việc / Đội / Terminal)"""
+  • /git → tab 🌿 Git: stage, commit (trưởng nhóm viết message), nhánh, pull/push, stash, lịch sử
+  • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: đổi tab (Bảng việc / Đội / Terminal / Git)"""
 
 # lệnh cho bảng gợi ý khi gõ "/" (tên, tham số, mô tả ngắn) — giữ khớp với TeamApp.run_command
 COMMANDS = [
@@ -171,6 +188,14 @@ COMMANDS = [
     ("sh", "<lệnh>", "chạy lệnh terminal (như !lệnh), vd /sh yarn dev"),
     ("stop", "[số]", "dừng lệnh terminal đang chọn (hoặc lệnh số đó)"),
     ("term", "", "mở tab Terminal (lệnh đang chạy)"),
+    ("git", "[lệnh git]", "mở tab Git; kèm lệnh thì chạy git <lệnh> ở tab Terminal"),
+    ("commit", "[message]", "commit (chưa stage gì thì commit tất cả); trống: trưởng nhóm viết message"),
+    ("push", "[-f]", "push nhánh hiện tại (lần đầu tự tạo nhánh trên remote)"),
+    ("pull", "", "pull nhánh hiện tại (fast-forward, không được thì merge)"),
+    ("fetch", "", "fetch mọi remote"),
+    ("branch", "[tên]", "tạo & chuyển sang nhánh mới; trống: danh sách nhánh"),
+    ("checkout", "<nhánh>", "chuyển sang nhánh (nhánh remote → tạo nhánh local)"),
+    ("stash", "[message|pop|apply|list]", "cất tạm / lấy lại thay đổi chưa commit"),
     ("flow", "<tên> <mục tiêu>", "chạy mục tiêu theo workflow"),
     ("assign", "<task> <agent>", "đổi người làm 1 task"),
     ("edit", "<task> <nội dung>", "sửa nội dung task chưa chạy"),
@@ -2472,10 +2497,11 @@ class DiffScreen(BaseModal):
     #diff-body { width: auto; min-width: 100%; }
     """
 
-    def __init__(self, ds, has_code: bool):
+    def __init__(self, ds, has_code: bool, start: int = 0):
         super().__init__()
         self.ds = ds
         self.has_code = has_code
+        self.start = start  # file chọn sẵn (mở từ một file ở tab Git)
         self.split: bool | None = None  # None = tự chọn theo bề rộng
         self._starts: list[int] = []
         self._width = 0
@@ -2509,7 +2535,7 @@ class DiffScreen(BaseModal):
         ol = self.query_one("#diff-files", OptionList)
         for i, fd in enumerate(ds.files):
             ol.add_option(Option(diffview.file_label(fd, 40), id=str(i)))
-        ol.highlighted = 0
+        ol.highlighted = min(self.start, max(0, len(ds.files) - 1))
         ol.focus()
         self.call_after_refresh(self.redraw)
 
@@ -2589,6 +2615,264 @@ class DiffScreen(BaseModal):
         await proc.wait()
 
 
+class ConfirmScreen(BaseModal):
+    """Hỏi lại trước thao tác không hoàn tác được. Trả về True (đồng ý) hoặc None."""
+
+    DEFAULT_CSS = """
+    ConfirmScreen { align: center middle; }
+    #confirm-box { width: 70; max-width: 100%; height: auto; border: round $warning;
+                   background: $surface; padding: 0 1; }
+    #confirm-body { height: auto; margin: 1 0; }
+    #confirm-buttons { height: auto; align: right middle; }
+    #confirm-buttons Button { margin-left: 2; }
+    """
+    BINDINGS = [Binding("y", "yes", show=False), Binding("n", "close", show=False)]
+
+    def __init__(self, title: str, body: str, yes: str = "Đồng ý"):
+        super().__init__()
+        self.title_text, self.body, self.yes = title, body, yes
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm-box"):
+            yield self.title_bar(self.title_text)
+            yield Static(self.body, id="confirm-body")
+            with Horizontal(id="confirm-buttons"):
+                yield Btn("Huỷ (n)", id="confirm-no")
+                yield Btn(f"{self.yes} (y)", id="confirm-yes", variant="error")
+
+    def on_mount(self) -> None:
+        self.query_one("#confirm-no", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        if event.button.id == "confirm-yes":
+            self.dismiss(True)
+        else:
+            self.close()
+
+    def action_yes(self) -> None:
+        self.dismiss(True)
+
+    def action_close(self) -> None:
+        self.close()
+
+
+class GitFileList(OptionList):
+    """Danh sách file thay đổi ở tab Git. Space stage/bỏ stage, a stage tất cả, u bỏ stage tất cả,
+    x bỏ thay đổi, Enter/d xem diff."""
+
+    BINDINGS = [
+        Binding("space", "app.git_toggle", "Stage/bỏ stage", show=False),
+        Binding("a", "app.git_stage_all", "Stage tất cả", show=False),
+        Binding("u", "app.git_unstage_all", "Bỏ stage tất cả", show=False),
+        Binding("x", "app.git_discard", "Bỏ thay đổi", show=False),
+        Binding("d", "app.git_diff", "Xem diff", show=False),
+        Binding("c", "app.git_focus_msg", "Commit", show=False),
+    ]
+
+
+class GitLogList(OptionList):
+    """Lịch sử commit ở tab Git. Enter xem diff của commit, r revert."""
+
+    BINDINGS = [
+        Binding("r", "app.git_revert", "Revert", show=False),
+        Binding("d", "app.git_show_commit", "Xem commit", show=False),
+    ]
+
+
+class GitBranchScreen(BaseModal):
+    """Danh sách nhánh local + remote. Trả về (hành động, nhánh, tên mới) hoặc None."""
+
+    DEFAULT_CSS = """
+    GitBranchScreen { align: center middle; }
+    #gb-box { width: 100; max-width: 100%; height: auto; max-height: 90%; border: round $panel-lighten-2;
+              background: $surface; padding: 0 1; }
+    #gb-list { height: auto; max-height: 20; }
+    #gb-hint { height: auto; color: $text-muted; }
+    #gb-name { margin-top: 1; }
+    .gb-buttons { height: auto; margin-top: 1; }
+    .gb-buttons Button { margin-right: 2; }
+    """
+
+    def __init__(self, branches: list, current: str):
+        super().__init__()
+        self.branches, self.current = branches, current
+
+    def compose(self) -> ComposeResult:
+        opts = []
+        for i, b in enumerate(self.branches):
+            t = Text()
+            t.append("● " if b.current else "  ", "green")
+            t.append(b.name, "bold green" if b.current else ("cyan" if b.remote else ""))
+            if b.track:
+                t.append(f" {b.track}", "yellow")
+            elif b.upstream:
+                t.append(f" → {b.upstream}", "dim")
+            if b.name.startswith("ateam/"):
+                t.append("  nhánh task của ateam", "dim")
+            t.append(f"  {b.date}", "dim")
+            if b.subject:
+                t.append(f"  {b.subject[:60]}", "dim")
+            opts.append(Option(t, id=str(i)))
+        with Vertical(id="gb-box"):
+            yield self.title_bar(f"⎇ Nhánh — đang ở {self.current or '(detached)'}")
+            yield OptionList(*opts, id="gb-list")
+            yield Static(Text("Enter: chuyển sang nhánh đang chọn (nhánh remote → tạo nhánh local theo dõi nó)"
+                              " · Esc: đóng", "dim"), id="gb-hint")
+            with Horizontal(classes="gb-buttons"):
+                yield Btn("⎇ Chuyển sang", id="gb-checkout", variant="primary")
+                yield Btn("⤵ Merge vào nhánh hiện tại", id="gb-merge")
+                yield Btn("✗ Xoá", id="gb-delete", variant="error")
+                yield Btn("✗ Xoá hẳn", id="gb-force", variant="error")
+            yield TextInput(id="gb-name", placeholder="Tên nhánh mới, vd feature/dang-nhap (Enter để tạo từ "
+                                                      "nhánh hiện tại)")
+            with Horizontal(classes="gb-buttons"):
+                yield Btn("＋ Tạo & chuyển sang", id="gb-create", variant="success")
+                yield Btn("✎ Đổi tên nhánh đang chọn", id="gb-rename")
+
+    def on_mount(self) -> None:
+        ol = self.query_one("#gb-list", OptionList)
+        if self.branches:
+            ol.highlighted = 0
+        ol.focus()
+
+    def selected(self):
+        ol = self.query_one("#gb-list", OptionList)
+        if ol.highlighted is None or not self.branches:
+            return None
+        return self.branches[ol.highlighted]
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        b = self.selected()
+        if b:
+            self.dismiss(("checkout", b.name, ""))
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        self._create()
+
+    def _create(self) -> None:
+        name = self.query_one("#gb-name", Input).value.strip()
+        if not name:
+            self.notify("Gõ tên nhánh mới trước", severity="warning")
+            return
+        self.dismiss(("create", name, ""))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+        if not bid.startswith("gb-"):
+            return
+        event.stop()
+        if bid == "gb-create":
+            self._create()
+            return
+        b = self.selected()
+        if not b:
+            self.notify("Chưa có nhánh nào", severity="warning")
+            return
+        if bid == "gb-rename":
+            new = self.query_one("#gb-name", Input).value.strip()
+            if b.remote:
+                self.notify("Chỉ đổi tên được nhánh local", severity="warning")
+            elif not new:
+                self.notify(f"Gõ tên mới cho {b.name} vào ô bên dưới rồi bấm lại", severity="warning")
+            else:
+                self.dismiss(("rename", b.name, new))
+            return
+        if b.remote and bid not in ("gb-checkout", "gb-merge"):
+            self.notify("Không xoá nhánh remote từ đây (dùng /git push origin --delete <nhánh>)",
+                        severity="warning")
+            return
+        if b.current and bid in ("gb-merge", "gb-delete", "gb-force"):
+            self.notify(f"{b.name} là nhánh hiện tại", severity="warning")
+            return
+        action = {"gb-checkout": "checkout", "gb-merge": "merge", "gb-delete": "delete",
+                  "gb-force": "force-delete"}[bid]
+        self.dismiss((action, b.name, ""))
+
+
+class GitStashScreen(BaseModal):
+    """Các lần stash. Trả về (hành động, ref, message) hoặc None."""
+
+    DEFAULT_CSS = """
+    GitStashScreen { align: center middle; }
+    #gs-box { width: 90; max-width: 100%; height: auto; max-height: 85%; border: round $panel-lighten-2;
+              background: $surface; padding: 0 1; }
+    #gs-list { height: auto; max-height: 20; }
+    #gs-empty { height: auto; color: $text-muted; margin: 1 0; }
+    #gs-msg { margin-top: 1; }
+    .gs-buttons { height: auto; margin-top: 1; }
+    .gs-buttons Button { margin-right: 2; }
+    """
+
+    def __init__(self, stashes: list, dirty: bool):
+        super().__init__()
+        self.stashes, self.dirty_tree = stashes, dirty
+
+    def compose(self) -> ComposeResult:
+        opts = []
+        for i, s in enumerate(self.stashes):
+            t = Text()
+            t.append(f"{s.ref}  ", "bold cyan")
+            t.append(s.subject)
+            t.append(f"  {s.date}", "dim")
+            opts.append(Option(t, id=str(i)))
+        with Vertical(id="gs-box"):
+            yield self.title_bar("📦 Stash — cất tạm thay đổi chưa commit")
+            yield OptionList(*opts, id="gs-list")
+            yield Static("Chưa có stash nào.", id="gs-empty")
+            with Horizontal(classes="gs-buttons", id="gs-row-list"):
+                yield Btn("⤴ Lấy lại (pop)", id="gs-pop", variant="primary")
+                yield Btn("Áp dụng, giữ stash", id="gs-apply")
+                yield Btn("✗ Xoá", id="gs-drop", variant="error")
+            yield TextInput(id="gs-msg", placeholder="Ghi chú cho lần cất (không bắt buộc) — Enter để cất")
+            with Horizontal(classes="gs-buttons"):
+                yield Btn("📦 Cất mọi thay đổi (kể cả file mới)", id="gs-push", variant="success")
+
+    def on_mount(self) -> None:
+        has = bool(self.stashes)
+        self.query_one("#gs-list").display = has
+        self.query_one("#gs-row-list").display = has
+        self.query_one("#gs-empty").display = not has
+        self.query_one("#gs-push", Button).disabled = not self.dirty_tree
+        if has:
+            ol = self.query_one("#gs-list", OptionList)
+            ol.highlighted = 0
+            ol.focus()
+        else:
+            self.query_one("#gs-msg", Input).focus()
+
+    def selected(self):
+        ol = self.query_one("#gs-list", OptionList)
+        return self.stashes[ol.highlighted] if self.stashes and ol.highlighted is not None else None
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        s = self.selected()
+        if s:
+            self.dismiss(("pop", s.ref, ""))
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        if self.dirty_tree:
+            self.dismiss(("push", "", event.value.strip()))
+        else:
+            self.notify("Không có thay đổi nào để cất", severity="warning")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+        if not bid.startswith("gs-"):
+            return
+        event.stop()
+        if bid == "gs-push":
+            self.dismiss(("push", "", self.query_one("#gs-msg", Input).value.strip()))
+            return
+        s = self.selected()
+        if s:
+            self.dismiss((bid[3:], s.ref, ""))
+
+
 # ============================================================================ app
 class TeamApp(App):
     TITLE = "AI Team"
@@ -2641,6 +2925,27 @@ class TeamApp(App):
     #job-head { height: auto; padding: 0 1; background: $boost; }
     #job-log { height: 1fr; }
     #board-clear { margin: 0 1 0 0; }
+    #git-top { height: auto; background: $boost; }
+    #git-top.narrow { layout: vertical; }
+    #git-top.narrow #git-head { width: 100%; }
+    #git-head { width: 1fr; height: auto; padding: 0 1; }
+    #git-actions { width: auto; height: auto; }
+    #git-actions Button { margin-left: 1; }
+    #git-main { height: 1fr; }
+    #git-main.narrow { layout: vertical; }
+    #git-side { width: 50%; min-width: 40; border-right: solid $primary-darken-2; }
+    #git-main.narrow #git-side { width: 100%; height: 55%; border-right: none;
+                                 border-bottom: solid $primary-darken-2; }
+    #git-files { height: 1fr; border: none; }
+    #git-empty { height: 1fr; padding: 1 2; }
+    .git-row { height: auto; }
+    .git-row Button { margin-right: 1; }
+    #git-msg { margin: 0; }
+    #git-amend { height: auto; border: none; padding: 0; background: transparent; }
+    #git-hist { width: 1fr; }
+    #git-log-title { height: 1; padding: 0 1; background: $panel; }
+    #git-log { height: 1fr; border: none; }
+    #git-norepo { height: 1fr; padding: 1 2; }
     #tasks-empty { height: 1fr; padding: 1 2; color: $text-muted; }
     /* cao cố định: chiều cao đổi theo từng task thì mỗi lần lướt bảng cả màn hình phải tính lại bố cục */
     #detail { height: 6; padding: 0 1; background: $boost; overflow: hidden hidden; }
@@ -2700,6 +3005,14 @@ class TeamApp(App):
         self.shell = shell.ShellManager(root, on_event=self.on_shell_event)  # lệnh terminal (!lệnh)
         self.view_job: int | None = None
         self.job_styler = LogStyler(task_headers=False)
+        self.git = gitops.GitRepo(root)  # tab 🌿 Git
+        self.git_status: gitops.RepoStatus | None = None
+        self.git_commits: list = []
+        self._git_loading = self._git_again = False
+        self._git_at = 0.0
+        self._git_ids: list = []
+        self._git_log_ids: list = []
+        self._git_body = ""  # phần thân commit message do trưởng nhóm viết (ô nhập chỉ một dòng)
         self._rows: dict[int, tuple] = {}
         self._loop_task: asyncio.Task | None = None
         self._frame = 0
@@ -2749,6 +3062,45 @@ class TeamApp(App):
                         yield Static(id="job-head")
                         yield ReflowLog(id="job-log", wrap=True, markup=False, highlight=False,
                                       max_lines=5000, min_width=1)
+            with TabPane("🌿 Git", id="tab-git"):
+                with Vertical(id="git"):
+                    with Horizontal(id="git-top"):
+                        yield Static(id="git-head")
+                        with Horizontal(id="git-actions"):
+                            yield Btn("✗ Huỷ merge", id="git-abort", variant="error")
+                            yield Btn("⇣ Fetch", id="git-fetch")
+                            yield Btn("⬇ Pull", id="git-pull")
+                            yield Btn("⬆ Push", id="git-push", variant="primary")
+                            yield Btn("⎇ Nhánh", id="git-branches")
+                            yield Btn("📦 Stash", id="git-stash")
+                            yield Btn("⟳", id="git-refresh")
+                    with Horizontal(id="git-main"):
+                        with Vertical(id="git-side"):
+                            yield GitFileList(id="git-files")
+                            yield Static(id="git-empty")
+                            with Horizontal(classes="git-row"):
+                                yield Btn("± Stage/bỏ", id="git-stage")
+                                yield Btn("＋ Stage tất cả", id="git-stage-all")
+                                yield Btn("↺ Bỏ thay đổi", id="git-discard", variant="error")
+                                yield Btn("Δ Diff", id="git-diff")
+                            yield TextInput(id="git-msg", placeholder="Commit message — Enter để commit")
+                            with Horizontal(classes="git-row"):
+                                yield Btn("✓ Commit", id="git-commit", variant="success")
+                                yield Btn("✨ Trưởng nhóm viết", id="git-ai", variant="primary")
+                                yield Checkbox("Sửa commit trước", id="git-amend")
+                        with Vertical(id="git-hist"):
+                            yield Static(id="git-log-title")
+                            yield GitLogList(id="git-log")
+                            with Horizontal(classes="git-row"):
+                                yield Btn("Δ Xem commit", id="git-show")
+                                yield Btn("↶ Revert", id="git-revert")
+                                yield Btn("⎌ Bỏ commit cuối", id="git-undo", variant="warning")
+                    with Vertical(id="git-norepo"):
+                        yield Static(Text.assemble(
+                            ("Thư mục này chưa là git repo.\n\n", "bold"),
+                            "Tạo repo để theo dõi thay đổi, commit, và dùng chế độ worktree "
+                            "(mỗi task một nhánh riêng).\n"))
+                        yield Btn("＋ Tạo git repo (git init)", id="git-init", variant="success")
         yield PlanBar(id="plan")
         yield Static(id="continue-hint")
         yield MentionList(id="mention")
@@ -2787,6 +3139,8 @@ class TeamApp(App):
         board, w = self.query_one("#board"), event.size.width
         board.set_class(w < NARROW_WIDTH, "narrow")
         board.set_class(NARROW_WIDTH <= w < 140, "mid")
+        self.query_one("#git-main").set_class(w < NARROW_WIDTH, "narrow")
+        self.query_one("#git-top").set_class(w < 140, "narrow")
 
     def _preload_panes(self) -> None:
         """Nạp phần cuối log của task gần nhất cho mỗi ô agent."""
@@ -2964,6 +3318,416 @@ class TeamApp(App):
         for line in text.splitlines():
             log.write(line)
 
+    # ------------------------------------------------------------------ git (tab 🌿 Git)
+    def open_git_tab(self) -> None:
+        self.query_one("#tabs", TabbedContent).active = "tab-git"
+        self.run_worker(self.refresh_git(), exclusive=False)
+
+    async def refresh_git(self) -> None:
+        """Đọc lại trạng thái + lịch sử git rồi vẽ tab Git. Gọi chồng nhau thì chỉ chạy thêm 1 lượt."""
+        if self._git_loading:
+            self._git_again = True
+            return
+        self._git_loading = True
+        try:
+            while True:
+                self._git_again = False
+                st = await self.git.status()
+                commits = await self.git.log(80) if st.is_repo and st.oid else []
+                self.git_status, self.git_commits = st, commits
+                self._git_at = time.time()
+                try:
+                    self._render_git()
+                except Exception as e:  # không để lỗi vẽ làm treo app
+                    self.log.error(f"render git: {e!r}")
+                if not self._git_again:
+                    break
+        finally:
+            self._git_loading = False
+
+    def _git_rows(self, st) -> list[tuple[str | None, Text]]:
+        """(id, dòng) cho danh sách file: tiêu đề nhóm có id None (không chọn được)."""
+        rows: list[tuple[str | None, Text]] = []
+
+        def group(title: str, files, code: str, staged: bool, style: str) -> None:
+            if not files:
+                return
+            rows.append((None, Text(f"{title} ({len(files)})", f"bold {style}")))
+            for f in files:
+                icon, color = gitops.file_icon(f, staged)
+                t = Text("  ")
+                t.append(f"{icon} ", f"bold {color}")
+                d, _, name = f.path.rpartition("/")
+                t.append(name)
+                if d:
+                    t.append(f"  {d}", "dim")
+                if f.orig:
+                    t.append(f"  ← {f.orig}", "dim")
+                rows.append((f"{code}\0{f.path}", t))
+
+        group("Xung đột — sửa xong thì stage", st.conflicts, "c", False, "red")
+        group("Đã stage — sẽ vào commit", st.staged, "s", True, "green")
+        group("Chưa stage", st.unstaged + st.untracked, "w", False, "yellow")
+        return rows
+
+    def _render_git(self) -> None:
+        st = self.git_status
+        if st is None:
+            return
+        head = Text()
+        ol = self.query_one("#git-files", GitFileList)
+        empty = self.query_one("#git-empty", Static)
+        self.query_one("#git-main").display = st.is_repo
+        self.query_one("#git-norepo").display = not st.is_repo
+        if not st.is_repo:
+            head.append("🌿 Git", "bold")
+            self.query_one("#git-head", Static).update(head)
+            return
+        head.append("⎇ ", "bold green")
+        head.append(st.branch or (f"detached @ {st.oid[:8]}" if st.oid else "(chưa có commit)"), "bold green")
+        if st.upstream:
+            head.append(f"  → {st.upstream}", "dim")
+            if st.ahead:
+                head.append(f"  ↑{st.ahead} chưa push", "bold yellow")
+            if st.behind:
+                head.append(f"  ↓{st.behind} chưa pull", "bold cyan")
+            if not st.ahead and not st.behind:
+                head.append("  ✓ đồng bộ", "green")
+        elif st.branch:
+            head.append("  chưa có trên remote (Push để tạo)", "dim")
+        if st.stashes:
+            head.append(f"   📦 {st.stashes} stash", "cyan")
+        if st.state:
+            head.append(f"   ⚠ đang {st.state} dở", "bold red")
+        self.query_one("#git-head", Static).update(head)
+        self.query_one("#git-abort").display = bool(st.state)
+
+        rows = self._git_rows(st)
+        ids = [r[0] for r in rows]
+        keep = None
+        if ol.highlighted is not None and ol.highlighted < ol.option_count:
+            keep = ol.get_option_at_index(ol.highlighted).id
+        if ids != self._git_ids:
+            ol.clear_options()
+            ol.add_options([Option(t, id=i, disabled=i is None) for i, t in rows])
+            self._git_ids = ids
+            paths = [i.partition("\0")[2] if i else None for i in ids]
+            if keep is not None and keep in ids:
+                target = ids.index(keep)
+            elif keep and keep.partition("\0")[2] in paths:
+                # file vừa chuyển nhóm (stage/bỏ stage): giữ con trỏ trên chính file đó
+                target = paths.index(keep.partition("\0")[2])
+            else:
+                target = next((n for n, i in enumerate(ids) if i is not None), None)
+            if target is not None:
+                ol.highlighted = target
+        ol.display = bool(rows)
+        empty.display = not rows
+        if not rows:
+            empty.update(Text("✓ Không có thay đổi nào chưa commit.", "green"))
+        n_staged = len(st.staged)
+        amend = self.query_one("#git-amend", Checkbox).value
+        self.query_one("#git-msg", Input).placeholder = (
+            "Message mới cho commit trước — Enter để sửa commit" if amend else
+            f"Commit message cho {n_staged} file đã stage — Enter để commit" if n_staged else
+            "Commit message (chưa stage gì: commit mọi thay đổi) — Enter để commit")
+
+        log = self.query_one("#git-log", GitLogList)
+        sigs = [c.sha for c in self.git_commits]
+        if sigs != self._git_log_ids:
+            keep = log.highlighted
+            log.clear_options()
+            for c in self.git_commits:
+                t = Text()
+                t.append(f"{c.short} ", "yellow")
+                if c.refs:
+                    t.append(f"({c.refs}) ", "bold cyan")
+                t.append(c.subject)
+                t.append(f"  {c.author} · {c.date}", "dim")
+                log.add_option(Option(t, id=c.sha))
+            self._git_log_ids = sigs
+            if self.git_commits:
+                log.highlighted = min(keep or 0, len(self.git_commits) - 1)
+        self.query_one("#git-log-title", Static).update(
+            Text(f"📜 Lịch sử ({len(self.git_commits)} commit gần nhất)", "bold") if self.git_commits
+            else Text("📜 Chưa có commit nào", "bold"))
+
+    def git_selected(self) -> tuple[str, str] | None:
+        """(nhóm, đường dẫn) của file đang chọn: nhóm s = đã stage, w = chưa stage, c = xung đột."""
+        ol = self.query_one("#git-files", GitFileList)
+        if ol.highlighted is None or ol.highlighted >= ol.option_count:
+            return None
+        oid = ol.get_option_at_index(ol.highlighted).id
+        if not oid:
+            return None
+        code, _, path = oid.partition("\0")
+        return code, path
+
+    def git_commit_selected(self):
+        log = self.query_one("#git-log", GitLogList)
+        if log.highlighted is None or not self.git_commits:
+            return None
+        return self.git_commits[min(log.highlighted, len(self.git_commits) - 1)]
+
+    def git_do(self, make, busy_check: bool = False, then=None) -> None:
+        """Chạy một thao tác git (make() trả coroutine → (ok, lời nhắn)), báo kết quả, vẽ lại tab Git.
+        busy_check: thao tác đổi nhánh/HEAD — từ chối khi agent đang chạy (chúng đang sửa hoặc sắp merge
+        vào nhánh hiện tại)."""
+        if busy_check and self.orch.runs:
+            self.notify(f"Đang có {len(self.orch.runs)} task chạy — đợi xong (hoặc Ctrl+K huỷ) rồi hẵng "
+                        f"đổi nhánh/pull/stash", severity="warning", timeout=6)
+            return
+
+        async def go() -> None:
+            ok, msg = await make()
+            self.notify(msg, severity="information" if ok else "warning", timeout=4 if ok else 10)
+            if ok and then:
+                then()
+            await self.refresh_git()
+        self.run_worker(go(), exclusive=False)
+
+    def action_git_toggle(self) -> None:
+        sel = self.git_selected()
+        if not sel:
+            return
+        code, path = sel
+        self.git_do(lambda: self.git.unstage([path]) if code == "s" else self.git.stage([path]))
+
+    def action_git_stage_all(self) -> None:
+        self.git_do(self.git.stage_all)
+
+    def action_git_unstage_all(self) -> None:
+        self.git_do(lambda: self.git.unstage())
+
+    def action_git_discard(self) -> None:
+        sel = self.git_selected()
+        if not sel:
+            return
+        code, path = sel
+        if code != "w":
+            self.notify("Chỉ bỏ được thay đổi chưa stage — bỏ stage file trước (Space)", severity="warning")
+            return
+        f = next((f for f in self.git_status.files if f.path == path), None) if self.git_status else None
+        what = "XOÁ file chưa theo dõi" if f and f.untracked else "bỏ mọi thay đổi chưa stage của"
+
+        def done(yes) -> None:
+            if yes:
+                self.git_do(lambda: self.git.discard([path]))
+        self.push_screen(ConfirmScreen("↺ Bỏ thay đổi", f"{what.capitalize()} {path}?\n"
+                                       "Không thể hoàn tác.", "Bỏ thay đổi"), done)
+
+    async def action_git_diff(self) -> None:
+        sel = self.git_selected()
+        if not sel:
+            self.notify("Chọn 1 file trong danh sách trước")
+            return
+        code, path = sel
+        if code == "c":
+            ds = diffview.DiffSet(0, f"Xung đột · {path}",
+                                  diffview.parse_unified(await self.git.diff_text("HEAD", "--", path)), "HEAD", None)
+        else:
+            ds = await self.git.changes_diffset(staged=code == "s")
+        if not ds.files:
+            self.notify("Không có diff để xem", severity="warning")
+            return
+        idx = next((i for i, f in enumerate(ds.files) if f.path == path), 0)
+        self.push_screen(DiffScreen(ds, has_code=bool(shutil.which("code")), start=idx))
+
+    async def action_git_show_commit(self) -> None:
+        c = self.git_commit_selected()
+        if not c:
+            return
+        ds = await self.git.commit_diffset(c)
+        if not ds.files:
+            self.notify(f"Commit {c.short} không đổi file nào (vd commit merge)")
+            return
+        self.push_screen(DiffScreen(ds, has_code=bool(shutil.which("code"))))
+
+    def action_git_revert(self) -> None:
+        c = self.git_commit_selected()
+        if not c:
+            return
+
+        def done(yes) -> None:
+            if yes:
+                self.git_do(lambda: self.git.revert(c.sha), busy_check=True)
+        self.push_screen(ConfirmScreen("↶ Revert", f"Tạo commit mới đảo ngược {c.short} · {c.subject}?",
+                                       "Revert"), done)
+
+    def action_git_focus_msg(self) -> None:
+        self.query_one("#git-msg", Input).focus()
+
+    def git_commit(self, message: str | None = None) -> None:
+        box = self.query_one("#git-msg", Input)
+        msg = (box.value if message is None else message).strip()
+        amend = self.query_one("#git-amend", Checkbox).value
+        if not msg and not amend:
+            self.notify("Gõ commit message trước (hoặc bấm ✨ để trưởng nhóm viết)", severity="warning")
+            box.focus()
+            return
+        st = self.git_status
+        all_changes = not (st and st.staged)
+
+        def clear() -> None:
+            box.value = ""
+            self._git_body = ""
+            self.query_one("#git-amend", Checkbox).value = False
+        self.git_do(lambda: self.git.commit(msg, amend=amend, all_changes=all_changes), then=clear)
+
+    async def git_ai_message(self) -> None:
+        btn = self.query_one("#git-ai", Button)
+        if btn.disabled:
+            return
+        btn.disabled = True
+        self.notify(f"✨ {self.cfg.lead} đang viết commit message…")
+        try:
+            ok, msg = await self.orch.commit_message()
+        finally:
+            btn.disabled = False
+        if not ok:
+            self.notify(msg, severity="warning", timeout=8)
+            return
+        box = self.query_one("#git-msg", Input)
+        # ô nhập một dòng: dòng tiêu đề + phần thân nối bằng " | " sẽ khó đọc → giữ tiêu đề, thân lưu riêng
+        subject, _, body = msg.partition("\n")
+        self._git_body = body.strip()
+        box.value = subject.strip()
+        box.focus()
+        self.notify("✨ Đã điền commit message — sửa nếu cần rồi Enter để commit"
+                    + (" (kèm phần mô tả trưởng nhóm viết)" if self._git_body else ""))
+
+    def git_branches(self) -> None:
+        async def go() -> None:
+            branches = await self.git.branches()
+            st = self.git_status or await self.git.status()
+            self.push_screen(GitBranchScreen(branches, st.branch), self._git_branch_done)
+        self.run_worker(go(), exclusive=False)
+
+    def _git_branch_done(self, res) -> None:
+        if not res:
+            return
+        action, name, new = res
+        if action == "checkout":
+            self.git_do(lambda: self.git.checkout(name), busy_check=True)
+        elif action == "create":
+            self.git_do(lambda: self.git.create_branch(name), busy_check=True)
+        elif action == "merge":
+            self.git_do(lambda: self.git.merge(name), busy_check=True)
+        elif action == "rename":
+            self.git_do(lambda: self.git.rename_branch(name, new))
+        elif action == "delete":
+            self.git_do(lambda: self.git.delete_branch(name))
+        elif action == "force-delete":
+            def done(yes) -> None:
+                if yes:
+                    self.git_do(lambda: self.git.delete_branch(name, force=True))
+            self.push_screen(ConfirmScreen("✗ Xoá hẳn nhánh", f"Xoá nhánh {name} kể cả commit chưa merge?\n"
+                                           "Các commit đó sẽ mất.", "Xoá hẳn"), done)
+
+    def git_stash(self) -> None:
+        async def go() -> None:
+            stashes = await self.git.stashes()
+            st = self.git_status or await self.git.status()
+            self.push_screen(GitStashScreen(stashes, not st.clean), self._git_stash_done)
+        self.run_worker(go(), exclusive=False)
+
+    def _git_stash_done(self, res) -> None:
+        if not res:
+            return
+        action, ref, msg = res
+        if action == "push":
+            self.git_do(lambda: self.git.stash_push(msg), busy_check=True)
+        elif action in ("pop", "apply"):
+            self.git_do(lambda: self.git.stash_apply(ref, pop=action == "pop"), busy_check=True)
+        elif action == "drop":
+            def done(yes) -> None:
+                if yes:
+                    self.git_do(lambda: self.git.stash_drop(ref))
+            self.push_screen(ConfirmScreen("✗ Xoá stash", f"Xoá {ref}? Thay đổi trong đó sẽ mất.", "Xoá"), done)
+
+    def git_button(self, bid: str) -> None:
+        g = self.git
+        if bid == "git-refresh":
+            self.run_worker(self.refresh_git(), exclusive=False)
+        elif bid == "git-fetch":
+            self.notify("⇣ Đang fetch…", timeout=2)
+            self.git_do(g.fetch)
+        elif bid == "git-pull":
+            self.notify("⬇ Đang pull…", timeout=2)
+            self.git_do(g.pull, busy_check=True)
+        elif bid == "git-push":
+            self.notify("⬆ Đang push…", timeout=2)
+            self.git_do(g.push)
+        elif bid == "git-branches":
+            self.git_branches()
+        elif bid == "git-stash":
+            self.git_stash()
+        elif bid == "git-abort":
+            self.git_do(g.abort)
+        elif bid == "git-init":
+            self.git_do(g.init)
+        elif bid == "git-stage":
+            self.action_git_toggle()
+        elif bid == "git-stage-all":
+            self.action_git_stage_all()
+        elif bid == "git-discard":
+            self.action_git_discard()
+        elif bid == "git-diff":
+            self.run_worker(self.action_git_diff(), exclusive=False)
+        elif bid == "git-commit":
+            msg = self.query_one("#git-msg", Input).value.strip()
+            self.git_commit(msg + ("\n\n" + self._git_body if self._git_body and msg else ""))
+        elif bid == "git-ai":
+            self.run_worker(self.git_ai_message(), exclusive=False)
+        elif bid == "git-show":
+            self.run_worker(self.action_git_show_commit(), exclusive=False)
+        elif bid == "git-revert":
+            self.action_git_revert()
+        elif bid == "git-undo":
+            def done(yes) -> None:
+                if yes:
+                    self.git_do(g.reset_soft, busy_check=True)
+            self.push_screen(ConfirmScreen("⎌ Bỏ commit cuối", "Bỏ commit cuối cùng, giữ nguyên thay đổi của "
+                                           "nó (ở trạng thái đã stage) để sửa rồi commit lại?", "Bỏ commit"), done)
+
+    def git_command(self, cmd: str, rest: str) -> None:
+        """/git, /commit, /push, /pull, /fetch, /branch, /checkout, /stash."""
+        g = self.git
+        if cmd == "git":
+            if not rest:
+                self.open_git_tab()
+                return
+            # lệnh git bất kỳ (rebase, tag, cherry-pick…): chạy ở tab Terminal, xong thì đọc lại trạng thái
+            self.run_shell("git " + rest)
+            return
+        if cmd == "commit":
+            if not rest:
+                self.open_git_tab()
+                self.run_worker(self.git_ai_message(), exclusive=False)
+                return
+            self._git_body = ""
+            self.git_commit(rest)
+        elif cmd == "push":
+            self.git_do(lambda: g.push(force=rest in ("-f", "--force", "force")))
+        elif cmd == "pull":
+            self.git_do(g.pull, busy_check=True)
+        elif cmd == "fetch":
+            self.git_do(g.fetch)
+        elif cmd == "branch":
+            if rest:
+                self.git_do(lambda: g.create_branch(rest), busy_check=True)
+            else:
+                self.git_branches()
+        elif cmd == "checkout":
+            self.git_do(lambda: g.checkout(rest), busy_check=True)
+        elif cmd == "stash":
+            if rest in ("pop", "apply"):
+                self.git_do(lambda: g.stash_apply(pop=rest == "pop"), busy_check=True)
+            elif rest in ("list", "ls"):
+                self.git_stash()
+            else:
+                self.git_do(lambda: g.stash_push(rest), busy_check=True)
+
     # ------------------------------------------------------------------ vẽ lại
     def busy_agents(self) -> set[str]:
         return {a for a, acts in self.orch.activity.items() if acts}
@@ -2983,6 +3747,9 @@ class TeamApp(App):
             fns += [self._refresh_panes, self._refresh_timeline]
         elif tab == "tab-term":
             fns += [self._refresh_jobs]
+        elif tab == "tab-git" and time.time() - self._git_at > 3 and not self._git_loading:
+            # thay đổi do agent/editor bên ngoài: đọc lại git status định kỳ khi đang xem tab
+            self.run_worker(self.refresh_git(), exclusive=False)
         try:
             for fn in fns:
                 try:
@@ -3007,6 +3774,8 @@ class TeamApp(App):
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         if event.tabbed_content.id == "tabs":
             self.refresh_view()
+            if event.pane.id == "tab-git":
+                self.run_worker(self.refresh_git(), exclusive=False)
 
     def _refresh_agents(self) -> None:
         chunks: list[Text] = []
@@ -3243,6 +4012,10 @@ class TeamApp(App):
             event.stop()
             self.clear_log()
             return
+        if bid.startswith("git-"):
+            event.stop()
+            self.git_button(bid)
+            return
         if bid.startswith("job-"):
             event.stop()
             job = self.selected_job()
@@ -3285,6 +4058,14 @@ class TeamApp(App):
             self.query_one("#plan", PlanBar).show_detail(self)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id == "git-files":
+            event.stop()
+            self.run_worker(self.action_git_diff(), exclusive=False)
+            return
+        if event.option_list.id == "git-log":
+            event.stop()
+            self.run_worker(self.action_git_show_commit(), exclusive=False)
+            return
         if event.option_list.id == "plan-tasks" and event.option.id:
             event.stop()
             self.prefill_plan_command("edit", int(event.option.id))
@@ -3379,7 +4160,7 @@ class TeamApp(App):
 
     def action_toggle_tab(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
-        order = ["tab-board", "tab-team", "tab-term"]
+        order = ["tab-board", "tab-team", "tab-term", "tab-git"]
         tabs.active = order[(order.index(tabs.active) + 1) % len(order)] if tabs.active in order else order[0]
         self.refresh_view()
 
@@ -3562,7 +4343,24 @@ class TeamApp(App):
             f"Nhập mục tiêu (chạy theo workflow '{wf}') · /goal: trưởng nhóm lập kế hoạch · /help · @ nhắc file"
             if wf else "Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file")
 
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if event.checkbox.id != "git-amend":
+            return
+        event.stop()
+        if event.value:
+            async def fill() -> None:
+                box = self.query_one("#git-msg", Input)
+                if not box.value.strip():
+                    subject, _, body = (await self.git.last_message()).partition("\n")
+                    box.value, self._git_body = subject.strip(), body.strip()
+            self.run_worker(fill(), exclusive=False)
+        self._render_git()
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "git-msg":
+            event.stop()
+            self.git_button("git-commit")
+            return
         text = event.value.strip()
         event.input.value = ""
         if not text:
@@ -3923,6 +4721,8 @@ class TeamApp(App):
         elif cmd == "term":
             self.query_one("#tabs", TabbedContent).active = "tab-term"
             self.refresh_view()
+        elif cmd in ("git", "commit", "push", "pull", "fetch", "branch", "checkout", "stash"):
+            self.git_command(cmd, rest)
         elif cmd in ("flow", "flows"):
             name, _, goal = rest.partition(" ")
             if not name or not goal.strip():

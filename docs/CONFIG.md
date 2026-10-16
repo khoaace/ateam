@@ -28,7 +28,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 
 | Khoá | Mặc định | Ý nghĩa |
 | --- | --- | --- |
-| `config_version` | `7` | Phiên bản file; thấp hơn `CONFIG_VERSION` thì được nâng cấp |
+| `config_version` | `8` | Phiên bản file; thấp hơn `CONFIG_VERSION` thì được nâng cấp |
 | `lead` | `"claude"` | Agent làm trưởng nhóm |
 | `max_parallel` | `3` | Tổng số task chạy cùng lúc |
 | `approve_plan` | `true` | Kế hoạch (và task bổ sung sau review) ở `draft`, chờ `/go` |
@@ -103,7 +103,7 @@ Mỗi bước:
 | `after` | bước liền trước | Số thứ tự bước (từ 1) phải xong trước; `[]` = chạy ngay |
 | `effort`, `model` | `""` | Riêng cho task của bước này (không bị lọc như effort trưởng nhóm đặt) |
 
-## Mặc định của 5 agent (config_version 7)
+## Mặc định của 5 agent (config_version 8)
 
 | Agent | command | model_args / effort_args | efforts | fallback |
 | --- | --- | --- | --- | --- |
@@ -111,7 +111,12 @@ Mỗi bước:
 | `codex` | `codex exec --sandbox workspace-write --skip-git-repo-check {prompt}` | `-m` / `-c model_reasoning_effort="…"` | low…ultra | claude |
 | `antigravity` | `agy --mode accept-edits --print-timeout 0 -p {prompt}` (pty) | `--model` / `--effort` | low…max | claude, codex |
 | `grok` | `grok --permission-mode auto --deny Bash -p {prompt}` (Grok Build CLI; `acceptEdits` ở chế độ `-p` chặn cả sửa file) | `-m` / `--reasoning-effort` | low, medium, high, xhigh | codex |
-| `opencode` | `opencode run {prompt}`, model `xai/grok-build-0.1` | `--model` / `--variant` | low, medium, high | codex |
+| `opencode` | `opencode run {prompt}`, model `xai/grok-build-0.1` | `--model` / `--model {model}#{effort}` (variant ghi liền model) | low, medium, high | codex |
+
+Bản 8: OpenCode bỏ `run --variant` ("Unrecognized flag: --variant"); variant giờ ghi liền model dạng
+`provider/model#variant`. `effort_args` có `{model}` là dạng gộp: khi có effort và model, nó thay cho
+`model_args`; không có model thì bỏ effort. Agent cũ (kể cả agent tuỳ chỉnh như `opencode-research`) còn
+`effort_args = ["--variant", "{effort}"]` được đổi khi đọc (`LEGACY_EFFORT_ARGS` trong `config.py`).
 
 Bản 6 đổi `grok` từ OpenCode sang Grok Build CLI. Khi nâng cấp, `ensure_global_config` chuyển các mục
 `state.json` của `grok` cũ (`agents.grok`, `models_found.grok`, `lead`) sang `opencode` (sao lưu

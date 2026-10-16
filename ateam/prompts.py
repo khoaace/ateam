@@ -178,6 +178,36 @@ Do NOT modify any files.
 End your answer with a line 'SUMMARY:' followed by the bullet points (nothing after them)."""
 
 
+def commit_message_prompt(*, diff: str, recent: str, cwd: str) -> str:
+    return f"""You are writing a git COMMIT MESSAGE for the changes below, in the repository at: {cwd}
+
+RECENT COMMIT MESSAGES of this repository (match their language, tone and format — e.g. Conventional
+Commits prefixes if they use them):
+{recent or '(no commits yet — write in English)'}
+
+CHANGES TO COMMIT (git diff --stat, then the diff; may be truncated):
+{diff}
+
+Write one commit message: a subject line of at most ~72 characters in the imperative mood, then
+(only if the change is not trivial) a blank line and a short body (2-5 lines) explaining WHAT changed
+and WHY. No code blocks, no quotes, no trailers.
+Do NOT modify any files and do NOT run git yourself.
+
+End your answer with a line 'SUMMARY:' followed by the commit message only (nothing after it)."""
+
+
+def extract_commit_message(text: str) -> str:
+    """Commit message sau dòng SUMMARY: cuối cùng (bỏ rào ``` và ngoặc kép bao ngoài)."""
+    if "SUMMARY:" not in text:
+        return ""
+    msg = text[text.rfind("SUMMARY:") + len("SUMMARY:"):].strip()
+    lines = [ln for ln in msg.splitlines() if not ln.strip().startswith("```")]
+    msg = "\n".join(lines).strip()
+    if len(msg) >= 2 and msg[0] == msg[-1] and msg[0] in "\"'`":
+        msg = msg[1:-1].strip()
+    return msg
+
+
 # ---------------- tách kết quả ----------------
 
 def extract_json(text: str, kind: type):

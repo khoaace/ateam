@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.0 — 16/10/2026
+
+- **Sửa: task của OpenCode lỗi "Unrecognized flag: --variant in command opencode run"** khi đặt effort. Bản
+  OpenCode mới bỏ `--variant`; variant giờ ghi liền model (`--model xai/grok-4.7#medium`). Agent cũ và agent tuỳ
+  chỉnh (vd `opencode-research`) tự được đổi khi đọc cấu hình. Cấu hình lên bản 8.
+- **Tab 🌿 Git — quản lý git ngay trong app** (`/git`, Ctrl+T): nhánh, upstream, ↑ chưa push / ↓ chưa pull;
+  file thay đổi theo nhóm (xung đột / đã stage / chưa stage) — Space stage/bỏ stage, `a` stage tất cả, `u` bỏ
+  stage, Enter xem diff, `x` bỏ thay đổi (hỏi lại); commit, sửa commit trước (amend); **✨ trưởng nhóm viết commit
+  message** từ diff theo kiểu các commit trước; lịch sử commit (xem diff, revert, bỏ commit cuối chưa push);
+  nhánh (chuyển, tạo, đổi tên, merge, xoá, nhánh remote → nhánh local); fetch / pull / push (lần đầu tự tạo nhánh
+  trên remote); stash (cất, lấy lại, áp dụng, xoá); huỷ merge dở. Lệnh tắt `/commit`, `/push`, `/pull`, `/fetch`,
+  `/branch`, `/checkout`, `/stash`; `/git <lệnh>` chạy git bất kỳ ở tab Terminal. Không bao giờ hỏi mật khẩu
+  trong app; đổi nhánh/pull/stash bị chặn khi agent đang chạy task.
+- Cấu hình lên bản 8 (vì sửa OpenCode ở trên): file `~/.config/ateam/config.toml` cũ được sao lưu rồi thay
+  bằng bản mới; model/effort đã chọn vẫn giữ.
+
 ## 0.6.1 — 16/10/2026
 
 - **Sửa: Grok Build không sửa được file** (đã thử với grok thật): ở chế độ `-p`, `--permission-mode acceptEdits` của

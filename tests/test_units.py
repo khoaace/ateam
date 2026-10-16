@@ -31,6 +31,24 @@ def test_argv_placeholder_in_command_and_missing_prompt_placeholder():
     assert a.argv("P", model="m1") == ["tool", "--model", "m1", "run", "P"]
 
 
+def test_argv_opencode_variant_joins_model():
+    # OpenCode bỏ `run --variant` ("Unrecognized flag: --variant"): variant ghi liền model, model#variant
+    from ateam.config import agent_from_dict, provider_template
+    oc = agent_from_dict("opencode", provider_template("opencode"))
+    assert oc.argv("P", model="xai/grok-4.7", effort="medium") == [
+        "opencode", "run", "--model", "xai/grok-4.7#medium", "P"]
+    assert oc.argv("P", model="xai/grok-4.7") == ["opencode", "run", "--model", "xai/grok-4.7", "P"]
+    oc.model = ""
+    assert oc.argv("P", effort="high") == ["opencode", "run", "P"]  # không có model: bỏ variant
+    # cấu hình / agent tuỳ chỉnh cũ còn --variant được đổi khi đọc
+    old = agent_from_dict("opencode-research", {"command": ["opencode", "run", "{prompt}"],
+                                                "model_args": ["--model", "{model}"],
+                                                "effort_args": ["--variant", "{effort}"],
+                                                "model": "xai/grok-4.7", "effort": "high"})
+    assert old.argv("P") == ["opencode", "run", "--model", "xai/grok-4.7#high", "P"]
+    assert "--variant" not in old.argv("P")
+
+
 def test_extract_json_from_noisy_output():
     out = 'Đây là kế hoạch:\n```json\n[{"id": 1, "agent": "codex"}]\n```\nxong'
     assert P.extract_json(out, list) == [{"id": 1, "agent": "codex"}]

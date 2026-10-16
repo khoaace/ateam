@@ -147,7 +147,7 @@ Trong app (được lưu lại cho lần sau, ở `~/.config/ateam/state.json`):
 /model codex gpt-5.5           /effort codex xhigh
 /model antigravity <tên>       /effort antigravity high      (xem tên: agy models)
 /model grok grok-4.7-build-fast   /effort grok high
-/model opencode xai/grok-4.7   /effort opencode high         (OpenCode gọi là --variant)
+/model opencode xai/grok-4.7   /effort opencode high         (OpenCode gọi là variant: chạy --model xai/grok-4.7#high)
 /model codex -                 quay về mặc định
 /model claude   /effort codex  mở bảng chọn từ danh sách agent đó hỗ trợ
 /models                        xem model + effort mỗi agent hỗ trợ (● = đang dùng)
@@ -192,7 +192,7 @@ nút **Nâng cao…** mở form đầy đủ.
 ## Chạy lệnh terminal (dev server, test, build…)
 
 Gõ `!` rồi lệnh ở ô nhập, ví dụ `!yarn dev`, `!make test` (hoặc `/sh yarn dev`). Lệnh chạy trong thư mục
-dự án, output hiện trực tiếp ở tab **💻 Terminal** (Ctrl+T xoay vòng Bảng việc → Đội → Terminal):
+dự án, output hiện trực tiếp ở tab **💻 Terminal** (Ctrl+T xoay vòng Bảng việc → Đội → Terminal → Git):
 danh sách lệnh bên trái (đang chạy / ✓ xong / ✗ lỗi / ■ đã dừng, port phát hiện được như `:3000`),
 output của lệnh đang chọn bên phải kèm link `http://localhost:<port>`, nút **■ Dừng**, **↻ Chạy lại**, **✗ Xoá**.
 Nhiều lệnh chạy song song được; thanh agent ở tab Bảng việc nhắc khi còn lệnh đang chạy.
@@ -201,6 +201,31 @@ Gõ `!` để xem gợi ý: lệnh chạy gần đây, script trong `package.jso
 lockfile), target trong `Makefile`. ↑↓ chọn rồi Enter chạy, Tab điền vào ô để sửa; Enter khi đã gõ lệnh thì
 chạy đúng lệnh đã gõ. `/stop [số]` dừng lệnh. Thoát app (Ctrl+Q) sẽ dừng mọi lệnh đang chạy. Log đầy đủ ở
 `.ateam/logs/sh<số>.log`.
+
+## Quản lý git (tab 🌿 Git)
+
+`/git` (hoặc Ctrl+T xoay tới tab **🌿 Git**) — làm mọi việc git hằng ngày mà không rời app:
+
+- **Thanh trên**: nhánh hiện tại, upstream, `↑N` chưa push / `↓N` chưa pull, số stash, cảnh báo merge dở; nút
+  **⇣ Fetch**, **⬇ Pull** (fast-forward, không được thì merge), **⬆ Push** (lần đầu tự tạo nhánh trên remote),
+  **⎇ Nhánh**, **📦 Stash**, **✗ Huỷ merge** khi đang xung đột.
+- **File thay đổi** theo nhóm *Xung đột* / *Đã stage* / *Chưa stage*: **Space** stage/bỏ stage, **a** stage tất
+  cả, **u** bỏ stage tất cả, **Enter**/**d** xem diff (màn hình diff hai cột như trên), **x** bỏ thay đổi (hỏi lại;
+  file mới thì bị xoá), **c** tới ô commit.
+- **Commit**: gõ message rồi Enter (chưa stage gì thì commit mọi thay đổi). **✨ Trưởng nhóm viết** (hoặc `/commit`
+  không kèm message): trưởng nhóm đọc diff và viết message theo ngôn ngữ/kiểu các commit trước, bạn sửa rồi Enter.
+  Ô **Sửa commit trước** = `--amend` (tự điền message cũ).
+- **Lịch sử** 80 commit gần nhất: **Enter** xem diff của commit, **r** / **↶ Revert** tạo commit đảo ngược,
+  **⎌ Bỏ commit cuối** (giữ thay đổi để sửa; chỉ khi chưa push).
+- **Nhánh**: danh sách nhánh local + remote (mới nhất trước, `[ahead/behind]`), Enter chuyển sang (nhánh remote →
+  tạo nhánh local theo dõi), tạo mới, đổi tên, merge vào nhánh hiện tại, xoá / xoá hẳn.
+- **Stash**: cất mọi thay đổi (kể cả file mới) kèm ghi chú, lấy lại (pop), áp dụng mà giữ stash, xoá.
+
+Lệnh tắt: `/commit <message>`, `/push [-f]` (`-f` = `--force-with-lease`), `/pull`, `/fetch`, `/branch [tên]`,
+`/checkout <nhánh>`, `/stash [message]`, `/stash pop`. Việc khác (rebase, tag, cherry-pick, thêm remote):
+`/git <lệnh>` chạy `git <lệnh>` ở tab Terminal. ateam không bao giờ hỏi mật khẩu trong app — push/pull cần
+đăng nhập thì cấu hình SSH key hoặc credential helper trước. Đổi nhánh, pull, stash bị chặn khi agent đang chạy
+task (chúng đang sửa thư mục hoặc sắp merge vào nhánh hiện tại).
 
 ## Xem diff và duyệt merge (chế độ worktree)
 
