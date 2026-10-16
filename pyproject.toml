@@ -20,7 +20,7 @@ dev = ["pytest>=7"]
 ateam = "ateam.cli:main"
 
 [tool.setuptools]
-packages = ["ateam"]
+packages = ["ateam", "ateam.locales"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

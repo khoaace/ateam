@@ -18,6 +18,7 @@ from .config import AgentConfig, Config
 from .db import (ACTIVE, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
                  FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Goal, Task)
 from .runner import Run
+from .i18n import tr
 
 GRILL_MAX = 15  # /grill: số câu hỏi tối đa, tới đây trưởng nhóm phải chốt đặc tả
 
@@ -138,16 +139,17 @@ class Orchestrator:
         # dọn trạng thái dở dang từ phiên trước
         for t in self.db.tasks(status=RUNNING):
             self.db.update_task(t.id, status=FAILED,
-                                error="Phiên trước bị dừng giữa chừng — /retry để chạy lại")
+                                error=tr("Phiên trước bị dừng giữa chừng — /retry để chạy lại"))
         for g in self.db.goals():
             if g.status == "planning":
-                self.db.update_goal(g.id, status="failed", summary="Bị dừng khi đang lập kế hoạch")
+                self.db.update_goal(g.id, status="failed", summary=tr("Bị dừng khi đang lập kế hoạch"))
             elif g.status == "reviewing":
                 self.db.update_goal(g.id, status="running")
             elif g.status == "grilling" and not self.grill_question(g):
                 # trưởng nhóm đang nghĩ câu hỏi thì app bị tắt: chờ người dùng bấm "Hỏi tiếp"
-                self.db.set_grill(g.id, dict(g.grill or {}, error="Phiên trước dừng khi trưởng nhóm đang "
-                                                               "nghĩ câu hỏi — bấm ↻ Hỏi tiếp"))
+                self.db.set_grill(g.id, dict(g.grill or {}, error=tr("Phiên trước dừng khi trưởng "
+                                                                     "nhóm đang nghĩ câu hỏi — bấm "
+                                                                     "↻ Hỏi tiếp")))
         await self.apply_isolation()
 
     async def apply_isolation(self) -> None:
@@ -159,16 +161,16 @@ class Orchestrator:
             if rc == 0 and rc2 == 0 and Path(top.strip()).resolve() == self.root:
                 self.use_worktree = True
             else:
-                self.log("⚠ isolation=worktree cần chạy ở thư mục gốc của git repo đã có commit — "
-                         "chuyển sang chế độ shared.")
-        mode = "worktree (mỗi task 1 nhánh riêng)" if self.use_worktree else "shared (chung thư mục)"
-        self.log(f"Sẵn sàng. Trưởng nhóm: {self.cfg.lead}. Chế độ làm việc: {mode}.")
+                self.log(tr("⚠ isolation=worktree cần chạy ở thư mục gốc của git repo đã có commit "
+                            "— chuyển sang chế độ shared."))
+        mode = tr("worktree (mỗi task 1 nhánh riêng)") if self.use_worktree else tr("shared (chung thư mục)")
+        self.log(tr("Sẵn sàng. Trưởng nhóm: {lead}. Chế độ làm việc: {mode}.", lead=self.cfg.lead, mode=mode))
 
     # ------------------------------------------------------------------ mục tiêu
     def new_goal(self, text: str) -> int:
         gid = self.db.add_goal(text)
         self.lead_busy.add(gid)
-        self.log(f"🎯 Mục tiêu #{gid}: {text}")
+        self.log(tr("🎯 Mục tiêu #{gid}: {text}", gid=gid, text=text))
         self._spawn(self._plan(gid))
         self.emit("changed")
         return gid
@@ -180,24 +182,24 @@ class Orchestrator:
             lead = self.cfg.agents.get(name)
             if not lead or not lead.enabled:
                 if name == self.cfg.lead:
-                    self.log(f"✗ Không tìm thấy trưởng nhóm '{name}' trong cấu hình.")
+                    self.log(tr("✗ Không tìm thấy trưởng nhóm '{name}' trong cấu hình.", name=name))
                 continue
             if not lead.installed():
-                self.log(f"✗ Chưa cài '{lead.binary}' ({name}).")
+                self.log(tr("✗ Chưa cài '{binary}' ({name}).", binary=lead.binary, name=name))
                 continue
             if self.in_cooldown(name):
-                self.log(f"⏸ {name} đang hết hạn mức đến {self.cooldown_label(name)} — thử người khác.")
+                self.log(tr("⏸ {name} đang hết hạn mức đến {v} — thử người khác.", name=name, v=self.cooldown_label(name)))
                 continue
             if name != self.cfg.lead:
-                self.log(f"↪ {name} làm thay trưởng nhóm cho: {label}")
+                self.log(tr("↪ {name} làm thay trưởng nhóm cho: {label}", name=name, label=label))
             out, rc, kind = await self._lead_once(lead, prompt, label)
             if kind == "ratelimit":
                 self._set_cooldown(name, out)
                 continue
             if rc != 0:
-                self.log(f"✗ {label}: {name} thoát với mã {rc}.")
+                self.log(tr("✗ {label}: {name} thoát với mã {rc}.", label=label, name=name, rc=rc))
             return out
-        self.log(f"✗ Không còn agent nào lập kế hoạch/review được ({label}).")
+        self.log(tr("✗ Không còn agent nào lập kế hoạch/review được ({label}).", label=label))
         return None
 
     async def _lead_once(self, lead: AgentConfig, prompt: str, label: str) -> tuple[str, int, str]:
@@ -232,28 +234,28 @@ class Orchestrator:
         """followup: (yêu cầu mới, kết quả các task cũ, đánh giá cũ) khi tiếp tục mục tiêu đã xong."""
         try:
             goal = self.db.goal(gid)
-            self.log(f"🧠 {self.cfg.lead} đang lập kế hoạch cho mục tiêu #{gid}…")
+            self.log(tr("🧠 {lead} đang lập kế hoạch cho mục tiêu #{gid}…", lead=self.cfg.lead, gid=gid))
             if followup:
                 prompt = P.followup_plan_prompt(self.cfg, goal.base_text(), followup[1], followup[2],
                                                 followup[0], str(self.root), self.notes_text(),
                                                 earlier=(goal.followups or [])[:-1])
             else:
                 prompt = P.plan_prompt(self.cfg, goal.base_text(), str(self.root), self.notes_text())
-            out = await self._call_lead(prompt, f"Lập kế hoạch mục tiêu #{gid}")
+            out = await self._call_lead(prompt, tr("Lập kế hoạch mục tiêu #{gid}", gid=gid))
             plan = P.extract_json(out or "", list)
             if not plan:
-                self.db.update_goal(gid, status="failed", summary="Trưởng nhóm không trả về kế hoạch JSON hợp lệ")
-                self.log(f"✗ Không đọc được kế hoạch cho mục tiêu #{gid} (xem .ateam/logs/lead.log). "
-                         f"Bạn vẫn có thể giao tay bằng /task.")
+                self.db.update_goal(gid, status="failed", summary=tr("Trưởng nhóm không trả về kế hoạch JSON hợp lệ"))
+                self.log(tr("✗ Không đọc được kế hoạch cho mục tiêu #{gid} (xem "
+                            ".ateam/logs/lead.log). Bạn vẫn có thể giao tay bằng /task.", gid=gid))
                 return
             ids = self._insert_plan(gid, plan, source="followup" if followup else "plan")
             if self.cfg.approve_plan:
                 self.db.update_goal(gid, status="awaiting")
-                self.log(f"📋 Kế hoạch #{gid}: {len(ids)} task ở trạng thái NHÁP. "
-                         f"Duyệt bằng /go {gid} (trong TUI: F2 hoặc Ctrl+G); sửa trước bằng /edit, /assign, /cancel.")
+                self.log(tr("📋 Kế hoạch #{gid}: {v} task ở trạng thái NHÁP. Duyệt bằng /go {gid} "
+                            "(trong TUI: F2 hoặc Ctrl+G); sửa trước bằng /edit, /assign, /cancel.", gid=gid, v=len(ids)))
             else:
                 self.db.update_goal(gid, status="running")
-                self.log(f"📋 Kế hoạch #{gid}: {len(ids)} task — bắt đầu chạy.")
+                self.log(tr("📋 Kế hoạch #{gid}: {v} task — bắt đầu chạy.", gid=gid, v=len(ids)))
         finally:
             self.lead_busy.discard(gid)
             self.emit("changed")
@@ -264,7 +266,7 @@ class Orchestrator:
         gid = self.db.add_goal(text)
         self.db.update_goal(gid, status="grilling")
         self.db.set_grill(gid, {"qa": [], "spec": "", "error": ""})
-        self.log(f"🔎 Mục tiêu #{gid} (hỏi đáp trước): {text}")
+        self.log(tr("🔎 Mục tiêu #{gid} (hỏi đáp trước): {text}", gid=gid, text=text))
         self._grill_spawn(gid)
         return gid
 
@@ -298,7 +300,7 @@ class Orchestrator:
             finish = finish or len(answered) >= GRILL_MAX
             prompt = P.grill_prompt(self.cfg, g.text, answered, str(self.root), self.notes_text(),
                                     finish=finish, max_questions=GRILL_MAX)
-            out = await self._call_lead(prompt, f"Hỏi đáp mục tiêu #{gid}")
+            out = await self._call_lead(prompt, tr("Hỏi đáp mục tiêu #{gid}", gid=gid))
             g = self.db.goal(gid)
             if not g or g.status != "grilling":  # người dùng huỷ trong lúc chờ
                 return
@@ -310,22 +312,22 @@ class Orchestrator:
                                          "options": opts, "rec": str(res.get("recommended") or "").strip(),
                                          "a": None}]
                 self.db.set_grill(gid, data)
-                self.log(f"❓ #{gid} câu {len(data['qa'])}: {question}")
+                self.log(tr("❓ #{gid} câu {v}: {question}", gid=gid, v=len(data['qa']), question=question))
                 return
             spec = str(res.get("spec") or "").strip()
             if not spec and (res.get("done") or finish) and answered:
                 # trưởng nhóm không viết đặc tả: dùng chính các câu hỏi đáp
                 spec = "\n".join(f"- {x['q']} → {x['a']}" for x in answered)
             if not spec:
-                data["error"] = ("Trưởng nhóm không trả về câu hỏi hay đặc tả hợp lệ (xem .ateam/logs/lead.log)"
-                                 " — bấm ↻ Hỏi tiếp để thử lại")
+                data["error"] = (tr("Trưởng nhóm không trả về câu hỏi hay đặc tả hợp lệ (xem "
+                                    ".ateam/logs/lead.log) — bấm ↻ Hỏi tiếp để thử lại"))
                 self.db.set_grill(gid, data)
-                self.log(f"✗ Hỏi đáp #{gid}: {data['error']}")
+                self.log(tr("✗ Hỏi đáp #{gid}: {v}", gid=gid, v=data['error']))
                 return
             data["spec"] = spec
             self.db.set_grill(gid, data)
             self.db.update_goal(gid, status="planning")
-            self.log(f"📝 Đã chốt yêu cầu cho mục tiêu #{gid} sau {len(answered)} câu hỏi:")
+            self.log(tr("📝 Đã chốt yêu cầu cho mục tiêu #{gid} sau {v} câu hỏi:", gid=gid, v=len(answered)))
             for line in spec.splitlines():
                 self.log("   " + line)
             to_plan = True
@@ -339,7 +341,7 @@ class Orchestrator:
     def _grill_goal(self, gid: int | None) -> Goal | str:
         g = self.db.goal(gid) if gid is not None else self.grill_active()
         if not g or g.status != "grilling":
-            return "Không có mục tiêu nào đang hỏi đáp"
+            return tr("Không có mục tiêu nào đang hỏi đáp")
         return g
 
     def answer_grill(self, gid: int | None, answer: str) -> str:
@@ -347,19 +349,19 @@ class Orchestrator:
         if isinstance(g, str):
             return g
         if g.id in self.lead_busy:
-            return "Trưởng nhóm đang nghĩ câu hỏi — đợi chút"
+            return tr("Trưởng nhóm đang nghĩ câu hỏi — đợi chút")
         q = self.grill_question(g)
         if not q:
-            return "Chưa có câu hỏi nào để trả lời — bấm ↻ Hỏi tiếp"
+            return tr("Chưa có câu hỏi nào để trả lời — bấm ↻ Hỏi tiếp")
         answer = answer.strip()
         if not answer:
-            return "Câu trả lời trống"
+            return tr("Câu trả lời trống")
         data = dict(g.grill or {})
         q["a"] = answer
         self.db.set_grill(g.id, data)
         self.log(f"💬 #{g.id}: {answer}")
         self._grill_spawn(g.id)
-        return f"Đã trả lời — {self.cfg.lead} đang nghĩ câu tiếp theo…"
+        return tr("Đã trả lời — {lead} đang nghĩ câu tiếp theo…", lead=self.cfg.lead)
 
     def finish_grill(self, gid: int | None) -> str:
         """Người dùng thấy đủ rồi: trưởng nhóm viết đặc tả từ những gì đã hỏi rồi lập kế hoạch."""
@@ -367,50 +369,50 @@ class Orchestrator:
         if isinstance(g, str):
             return g
         if g.id in self.lead_busy:
-            return "Trưởng nhóm đang nghĩ — đợi chút rồi bấm lại"
+            return tr("Trưởng nhóm đang nghĩ — đợi chút rồi bấm lại")
         data = dict(g.grill or {})
         data["qa"] = [x for x in data.get("qa") or [] if x.get("a") is not None]  # bỏ câu chưa trả lời
         self.db.set_grill(g.id, data)
         self._grill_spawn(g.id, finish=True)
-        return f"{self.cfg.lead} đang chốt yêu cầu rồi lập kế hoạch cho mục tiêu #{g.id}…"
+        return tr("{lead} đang chốt yêu cầu rồi lập kế hoạch cho mục tiêu #{id}…", lead=self.cfg.lead, id=g.id)
 
     def retry_grill(self, gid: int | None) -> str:
         g = self._grill_goal(gid)
         if isinstance(g, str):
             return g
         if g.id in self.lead_busy:
-            return "Trưởng nhóm đang nghĩ — đợi chút"
+            return tr("Trưởng nhóm đang nghĩ — đợi chút")
         if self.grill_question(g):
-            return "Đang chờ bạn trả lời câu hỏi"
+            return tr("Đang chờ bạn trả lời câu hỏi")
         self._grill_spawn(g.id)
-        return f"{self.cfg.lead} đang hỏi tiếp…"
+        return tr("{lead} đang hỏi tiếp…", lead=self.cfg.lead)
 
     def cancel_grill(self, gid: int | None) -> str:
         g = self._grill_goal(gid)
         if isinstance(g, str):
             return g
-        self.db.update_goal(g.id, status="cancelled", summary="Đã bỏ khi đang hỏi đáp")
-        self.log(f"✗ Bỏ mục tiêu #{g.id} (đang hỏi đáp)")
+        self.db.update_goal(g.id, status="cancelled", summary=tr("Đã bỏ khi đang hỏi đáp"))
+        self.log(tr("✗ Bỏ mục tiêu #{id} (đang hỏi đáp)", id=g.id))
         self.emit("changed")
-        return f"Đã bỏ mục tiêu #{g.id}"
+        return tr("Đã bỏ mục tiêu #{id}", id=g.id)
 
     def run_workflow(self, name: str, text: str) -> int | str:
         """Tạo mục tiêu từ workflow dựng sẵn: các bước thành task ngay, không gọi trưởng nhóm.
         Trả về id mục tiêu, hoặc chuỗi lỗi."""
         wf = self.cfg.workflows.get(name)
         if not wf:
-            return f"Không có workflow '{name}'. Có: {', '.join(self.cfg.workflows) or '(chưa có)'}"
+            return tr("Không có workflow '{name}'. Có: {v}", name=name, v=', '.join(self.cfg.workflows) or tr("(chưa có)"))
         if not wf.steps:
-            return f"Workflow '{name}' chưa có bước nào"
+            return tr("Workflow '{name}' chưa có bước nào", name=name)
         gid = self.db.add_goal(text, workflow=name)
-        self.log(f"🎯 Mục tiêu #{gid} theo workflow '{name}': {text}")
+        self.log(tr("🎯 Mục tiêu #{gid} theo workflow '{name}': {text}", gid=gid, name=name, text=text))
         ids = self._insert_plan(gid, wf.plan(text, self.cfg.lead), source="workflow", from_user=True)
         if self.cfg.approve_plan:
             self.db.update_goal(gid, status="awaiting")
-            self.log(f"📋 {len(ids)} bước ở trạng thái NHÁP — gõ /go {gid} để chạy.")
+            self.log(tr("📋 {v} bước ở trạng thái NHÁP — gõ /go {gid} để chạy.", v=len(ids), gid=gid))
         else:
             self.db.update_goal(gid, status="running")
-            self.log(f"📋 {len(ids)} bước — bắt đầu chạy.")
+            self.log(tr("📋 {v} bước — bắt đầu chạy.", v=len(ids)))
         self.emit("changed")
         return gid
 
@@ -419,19 +421,19 @@ class Orchestrator:
         đã làm. Trả về id mục tiêu, hoặc chuỗi lỗi."""
         g = self.db.goal(gid)
         if not g:
-            return f"Không có mục tiêu #{gid}"
+            return tr("Không có mục tiêu #{gid}", gid=gid)
         if g.status not in GOAL_ENDED or gid in self.lead_busy:
-            return f"Mục tiêu #{gid} chưa kết thúc — đợi xong (hoặc /review {gid}) rồi tiếp tục"
+            return tr("Mục tiêu #{gid} chưa kết thúc — đợi xong (hoặc /review {gid}) rồi tiếp tục", gid=gid)
         if not self.cfg.agents.get(self.cfg.lead):
-            return f"Không có trưởng nhóm '{self.cfg.lead}' trong cấu hình"
+            return tr("Không có trưởng nhóm '{lead}' trong cấu hình", lead=self.cfg.lead)
         text = text.strip()
         if not text:
-            return "Thiếu yêu cầu mới"
+            return tr("Thiếu yêu cầu mới")
         history, summary = self._results_text(gid), g.summary or ""
         self.db.add_followup(gid, text)
         self.db.update_goal(gid, status="planning", round=1, summary=None)  # max_rounds tính lại
         self.lead_busy.add(gid)
-        self.log(f"↪ Tiếp tục mục tiêu #{gid}: {text}")
+        self.log(tr("↪ Tiếp tục mục tiêu #{gid}: {text}", gid=gid, text=text))
         self._spawn(self._plan(gid, followup=(text, history, summary)))
         self.emit("changed")
         return gid
@@ -441,13 +443,13 @@ class Orchestrator:
         mục tiêu thì là mục tiêu đó). Trả về ("goal"|"task", id) hoặc chuỗi lỗi."""
         m = re.fullmatch(r"#?([mMtT]?)(\d+)", ref.strip())
         if not m:
-            return f"Không hiểu '{ref}' — dùng m<số> cho mục tiêu, t<số> cho task"
+            return tr("Không hiểu '{ref}' — dùng m<số> cho mục tiêu, t<số> cho task", ref=ref)
         n = int(m.group(2))
         if m.group(1).lower() == "m":
-            return ("goal", n) if self.db.goal(n) else f"Không có mục tiêu #{n}"
+            return ("goal", n) if self.db.goal(n) else tr("Không có mục tiêu #{n}", n=n)
         t = self.db.task(n)
         if not t:
-            return f"Không có task #{n}"
+            return tr("Không có task #{n}", n=n)
         if t.goal_id is not None and self.db.goal(t.goal_id):
             return ("goal", t.goal_id)
         return ("task", n)
@@ -466,19 +468,19 @@ class Orchestrator:
         Trả về id task mới, hoặc chuỗi lỗi."""
         t = self.db.task(tid)
         if not t:
-            return f"Không có task #{tid}"
+            return tr("Không có task #{tid}", tid=tid)
         if t.status in ACTIVE:
-            return (f"Task #{tid} đang chờ duyệt — merge (Ctrl+Y) hoặc /reject trước" if t.status == REVIEW
-                    else f"Task #{tid} chưa xong — đợi chạy xong rồi tiếp tục")
+            return (tr("Task #{tid} đang chờ duyệt — merge (Ctrl+Y) hoặc /reject trước", tid=tid) if t.status == REVIEW
+                    else tr("Task #{tid} chưa xong — đợi chạy xong rồi tiếp tục", tid=tid))
         if t.agent not in self.cfg.active_agents():
-            return f"Agent '{t.agent}' không còn trong đội"
+            return tr("Agent '{agent}' không còn trong đội", agent=t.agent)
         text = text.strip()
         if not text:
-            return "Thiếu yêu cầu mới"
+            return tr("Thiếu yêu cầu mới")
         title = text[:60] + ("…" if len(text) > 60 else "")
         nid = self.db.add_task(t.agent, title, text, status=QUEUED, source="followup",
                                parent_id=tid, model=t.model, effort=t.effort)
-        self.log(f"↪ Task #{nid} hỏi tiếp {t.agent} (sau #{tid}): {title}")
+        self.log(tr("↪ Task #{nid} hỏi tiếp {agent} (sau #{tid}): {title}", nid=nid, agent=t.agent, tid=tid, title=title))
         self.emit("changed")
         return nid
 
@@ -503,7 +505,7 @@ class Orchestrator:
         for i, item in enumerate(plan, 1):
             agent = str(item.get("agent", "")).strip()
             if agent not in agents:
-                self.log(f"⚠ Agent '{agent}' không có trong đội — giao cho {self.cfg.lead}.")
+                self.log(tr("⚠ Agent '{agent}' không có trong đội — giao cho {lead}.", agent=agent, lead=self.cfg.lead))
                 agent = self.cfg.lead
             title = str(item.get("title") or f"Task {i}").strip()
             prompt = str(item.get("prompt") or title).strip()
@@ -532,7 +534,7 @@ class Orchestrator:
             if (gid is None or g.id == gid) and g.status == "awaiting":
                 self.db.update_goal(g.id, status="running")
         if n:
-            self.log(f"▶ Đã duyệt {n} task.")
+            self.log(tr("▶ Đã duyệt {n} task.", n=n))
         self.emit("changed")
         return n
 
@@ -545,8 +547,8 @@ class Orchestrator:
         for t in self.db.tasks(goal_id=gid, status=DRAFT):
             self.db.update_task(t.id, status=CANCELLED, finished=time.time())
             n += 1
-        self.db.update_goal(gid, status="cancelled", summary="Người dùng bỏ kế hoạch")
-        self.log(f"✗ Đã bỏ kế hoạch #{gid} ({n} task nháp).")
+        self.db.update_goal(gid, status="cancelled", summary=tr("Người dùng bỏ kế hoạch"))
+        self.log(tr("✗ Đã bỏ kế hoạch #{gid} ({n} task nháp).", gid=gid, n=n))
         self.emit("changed")
         return n
 
@@ -575,7 +577,7 @@ class Orchestrator:
                 self.log_path(tid).unlink()
             except OSError:
                 pass
-        self.log(f"🗑 Đã dọn {len(tids)} task, {len(gids)} mục tiêu đã kết thúc khỏi bảng việc.")
+        self.log(tr("🗑 Đã dọn {v} task, {v2} mục tiêu đã kết thúc khỏi bảng việc.", v=len(tids), v2=len(gids)))
         self.emit("changed")
         return len(tids), len(gids)
 
@@ -593,11 +595,11 @@ class Orchestrator:
     def assign(self, tid: int, agent: str) -> str:
         t = self.db.task(tid)
         if not t:
-            return f"Không có task #{tid}"
+            return tr("Không có task #{tid}", tid=tid)
         if agent not in self.cfg.active_agents():
-            return f"Không có agent '{agent}'"
+            return tr("Không có agent '{agent}'", agent=agent)
         if t.status == RUNNING:
-            return f"Task #{tid} đang chạy — /cancel trước rồi giao lại"
+            return tr("Task #{tid} đang chạy — /cancel trước rồi giao lại", tid=tid)
         self.db.update_task(tid, agent=agent)
         self.emit("changed")
         return f"Task #{tid} → {agent}"
@@ -605,9 +607,9 @@ class Orchestrator:
     def set_task_option(self, tid: int, key: str, value: str | None) -> str:
         t = self.db.task(tid)
         if not t:
-            return f"Không có task #{tid}"
+            return tr("Không có task #{tid}", tid=tid)
         if t.status == RUNNING:
-            return f"Task #{tid} đang chạy — thay đổi sẽ áp dụng nếu /retry"
+            return tr("Task #{tid} đang chạy — thay đổi sẽ áp dụng nếu /retry", tid=tid)
         self.db.update_task(tid, **{key: (None if value in (None, "", "-") else value)})
         self.emit("changed")
         return f"Task #{tid}: {key} = {value if value not in (None, '', '-') else 'theo agent'}"
@@ -616,7 +618,7 @@ class Orchestrator:
         from .config import save_agent_setting
         a = self.cfg.agents.get(agent)
         if not a:
-            return f"Không có agent '{agent}'"
+            return tr("Không có agent '{agent}'", agent=agent)
         reset = value in (None, "", "-")
         save_agent_setting(agent, key, None if reset else value)
         if reset:  # đọc lại giá trị gốc trong file cấu hình
@@ -624,7 +626,7 @@ class Orchestrator:
             fresh = load_config(self.root).agents.get(agent)
             value = getattr(fresh, key) if fresh else ""
         setattr(a, key, value or "")
-        self.log(f"⚙ {agent}: {key} = {value or 'mặc định của CLI'}")
+        self.log(f"⚙ {agent}: {key} = {value or tr('mặc định của CLI')}")
         self.emit("changed")
         return f"{agent}: {a.label()}"
 
@@ -633,17 +635,17 @@ class Orchestrator:
         from .config import parse_models, parse_models_json, save_found_models
         a = self.cfg.agents.get(agent)
         if not a:
-            return f"Không có agent '{agent}'"
+            return tr("Không có agent '{agent}'", agent=agent)
         if not a.models_command:
-            return f"{agent}: CLI không có lệnh liệt kê model — dùng danh mục có sẵn"
+            return tr("{agent}: CLI không có lệnh liệt kê model — dùng danh mục có sẵn", agent=agent)
         if not shutil.which(a.models_command[0]):
-            return f"{agent}: chưa cài lệnh '{a.models_command[0]}'"
+            return tr("{agent}: chưa cài lệnh '{v}'", agent=agent, v=a.models_command[0])
         run = Run(list(a.models_command), str(self.root), self.env_for(), use_pty=a.pty,
                   timeout=timeout, on_line=lambda _l: None)
         try:
             code = await run.start()
         except Exception as e:
-            return f"{agent}: không chạy được {' '.join(a.models_command)}: {e}"
+            return tr("{agent}: không chạy được {v}: {e}", agent=agent, v=' '.join(a.models_command), e=e)
         found = parse_models(run.output, a.models_filter)
         # danh sách dạng chữ của opencode lẫn model mọi hãng -> giữ model mang tên agent (nếu có);
         # JSON (codex) đã chỉ gồm model dùng được, lọc theo tên sẽ chỉ còn "codex-auto-review"
@@ -651,43 +653,46 @@ class Orchestrator:
                 and any(agent.lower() in m.lower() for m in found)):
             found = [m for m in found if agent.lower() in m.lower()]
         if code != 0 or not found:
-            why = "hết thời gian" if run.timed_out else f"mã thoát {code}" if code else "không thấy model nào"
+            why = tr("hết thời gian") if run.timed_out else tr("mã thoát {code}", code=code) if code else tr("không thấy model nào")
             return f"{agent}: {' '.join(a.models_command)} — {why}"
         save_found_models(agent, found)
         a.models = found + [m for m in a.models if m not in found]
         self.emit("changed")
-        msg = f"{agent}: tìm thấy {len(found)} model"
+        msg = tr("{agent}: tìm thấy {v} model", agent=agent, v=len(found))
         if a.model and a.model not in found:
-            msg += f" ⚠ model đang chọn '{a.model}' không có trong danh sách — chọn lại: /model {agent}"
+            msg += tr(" ⚠ model đang chọn '{model}' không có trong danh sách — chọn lại: /model "
+                      "{agent}", model=a.model, agent=agent)
         return msg
 
     async def agent_usage(self, agent: str, timeout: float = 60) -> tuple[str, list[str]]:
         """Hạn mức / usage do chính CLI của agent báo: (lệnh đã dùng, các dòng kết quả)."""
         a = self.cfg.agents.get(agent)
         if not a:
-            return "", [f"Không có agent '{agent}'"]
+            return "", [tr("Không có agent '{agent}'", agent=agent)]
         if not a.usage_command:
             if Path(a.binary).name == "codex":
                 lines = limits.codex_rate_limits()
-                return "~/.codex/sessions", lines or ["Chưa có phiên codex nào ghi hạn mức — chạy 1 task codex trước."]
-            return "", ["CLI này không có lệnh xem usage (đặt usage_command trong cấu hình nếu có)"]
+                return "~/.codex/sessions", lines or [tr("Chưa có phiên codex nào ghi hạn mức — "
+                                                         "chạy 1 task codex trước.")]
+            return "", [tr("CLI này không có lệnh xem usage (đặt usage_command trong cấu hình nếu "
+                           "có)")]
         cmd = " ".join(a.usage_command)
         if not shutil.which(a.usage_command[0]):
-            return cmd, [f"Chưa cài lệnh '{a.usage_command[0]}'"]
+            return cmd, [tr("Chưa cài lệnh '{v}'", v=a.usage_command[0])]
         run = Run(list(a.usage_command), str(self.root), self.env_for(), use_pty=a.pty,
                   timeout=timeout, on_line=lambda _l: None)
         try:
             code = await run.start()
         except Exception as e:
-            return cmd, [f"Không chạy được: {e}"]
+            return cmd, [tr("Không chạy được: {e}", e=e)]
         lines = [ln for ln in run.lines if ln.strip()]
         if len(lines) > 20:  # opencode stats kèm bảng công cụ dài: giữ phần tổng quan / chi phí
-            lines = lines[:20] + [f"… (còn {len(lines) - 20} dòng — chạy `{cmd}` để xem đủ)"]
+            lines = lines[:20] + [tr("… (còn {v} dòng — chạy `{cmd}` để xem đủ)", v=len(lines) - 20, cmd=cmd)]
         if run.timed_out:
-            lines.append(f"(hết {int(timeout)} giây chờ)")
+            lines.append(tr("(hết {v} giây chờ)", v=int(timeout)))
         elif code != 0:
-            lines.append(f"(mã thoát {code})")
-        return cmd, lines or ["(không in gì)"]
+            lines.append(tr("(mã thoát {code})", code=code))
+        return cmd, lines or [tr("(không in gì)")]
 
     async def usage_all(self, names: list[str] | None = None, on_done=None) -> dict[str, tuple[str, list[str]]]:
         """Hỏi song song hạn mức của các agent đang bật. on_done(agent, cmd, lines) gọi khi từng cái xong."""
@@ -718,19 +723,19 @@ class Orchestrator:
     def edit(self, tid: int, prompt: str) -> str:
         t = self.db.task(tid)
         if not t:
-            return f"Không có task #{tid}"
+            return tr("Không có task #{tid}", tid=tid)
         if t.status == RUNNING:
-            return f"Task #{tid} đang chạy"
+            return tr("Task #{tid} đang chạy", tid=tid)
         self.db.update_task(tid, prompt=prompt)
         self.emit("changed")
-        return f"Đã sửa nội dung task #{tid}"
+        return tr("Đã sửa nội dung task #{tid}", tid=tid)
 
     def retry(self, tid: int) -> str:
         t = self.db.task(tid)
         if not t:
-            return f"Không có task #{tid}"
+            return tr("Không có task #{tid}", tid=tid)
         if t.status in (RUNNING, QUEUED):
-            return f"Task #{tid} đang {t.status}"
+            return tr("Task #{tid} đang {status}", tid=tid, status=t.status)
         self.db.update_task(tid, status=QUEUED, error=None, result=None, started=None, finished=None)
         for o in self.db.tasks(status=BLOCKED):
             if tid in o.depends_on:
@@ -739,33 +744,33 @@ class Orchestrator:
             g = self.db.goal(t.goal_id)
             if g and g.status in ("done", "incomplete", "failed"):
                 self.db.update_goal(g.id, status="running")
-        self.log(f"↻ Chạy lại task #{tid}")
+        self.log(tr("↻ Chạy lại task #{tid}", tid=tid))
         self.emit("changed")
-        return f"Đã xếp lại task #{tid}"
+        return tr("Đã xếp lại task #{tid}", tid=tid)
 
     def cancel(self, tid: int) -> str:
         t = self.db.task(tid)
         if not t:
-            return f"Không có task #{tid}"
+            return tr("Không có task #{tid}", tid=tid)
         if t.status == RUNNING and tid in self.runs:
             run = self.runs[tid]
             if run is not None:
                 run.cancel()
             else:
                 self._cancel_req.add(tid)
-            return f"Đang dừng task #{tid}…"
+            return tr("Đang dừng task #{tid}…", tid=tid)
         if t.status in (DRAFT, QUEUED):
             self.db.update_task(tid, status=CANCELLED, finished=time.time())
             self.emit("changed")
-            return f"Đã huỷ task #{tid}"
+            return tr("Đã huỷ task #{tid}", tid=tid)
         if t.status == REVIEW:
             self._spawn(self.reject(tid, None))
-            return f"Đang huỷ task #{tid} và xoá nhánh của nó…"
-        return f"Task #{tid} đã kết thúc ({t.status})"
+            return tr("Đang huỷ task #{tid} và xoá nhánh của nó…", tid=tid)
+        return tr("Task #{tid} đã kết thúc ({status})", tid=tid, status=t.status)
 
     def note(self, text: str, author: str = "user") -> None:
         self.db.add_note(author, text)
-        self.log(f"📝 Ghi chú ({author}): {text}")
+        self.log(tr("📝 Ghi chú ({author}): {text}", author=author, text=text))
 
     def compact_sources(self) -> tuple[str, str, str]:
         """Ghi chú, mục tiêu và log hệ thống kể từ lần /compact trước — thứ sẽ được tóm tắt."""
@@ -783,26 +788,26 @@ class Orchestrator:
         """/compact: trưởng nhóm tóm tắt ghi chú + mục tiêu + log thành 1 ghi chú ngắn; prompt sau chỉ
         mang bản tóm tắt này (cùng ghi chú mới hơn) thay vì cả chuỗi ghi chú cũ. Trả về (thành công, lời nhắn)."""
         if self.compacting:
-            return False, "Đang thu gọn ngữ cảnh rồi, chờ chút…"
+            return False, tr("Đang thu gọn ngữ cảnh rồi, chờ chút…")
         notes, goals, log = self.compact_sources()
         if not notes and not goals:
-            return False, "Chưa có ghi chú hay mục tiêu nào để thu gọn."
+            return False, tr("Chưa có ghi chú hay mục tiêu nào để thu gọn.")
         self.compacting = True
         try:
-            self.log(f"🗜 {self.cfg.lead} đang thu gọn ngữ cảnh…")
+            self.log(tr("🗜 {lead} đang thu gọn ngữ cảnh…", lead=self.cfg.lead))
             out = await self._call_lead(P.compact_prompt(notes=notes, goals=goals, log=log, focus=focus,
-                                                         cwd=str(self.root)), "Thu gọn ngữ cảnh")
+                                                         cwd=str(self.root)), tr("Thu gọn ngữ cảnh"))
             summary = P.extract_summary(out) if out and "SUMMARY:" in out else ""
             if not summary:
-                self.log("✗ Không thu gọn được: trưởng nhóm không trả về dòng SUMMARY: "
-                         "(xem .ateam/logs/lead.log). Ghi chú cũ vẫn giữ nguyên.")
-                return False, "Không thu gọn được — ghi chú cũ vẫn giữ nguyên"
+                self.log(tr("✗ Không thu gọn được: trưởng nhóm không trả về dòng SUMMARY: (xem "
+                            ".ateam/logs/lead.log). Ghi chú cũ vẫn giữ nguyên."))
+                return False, tr("Không thu gọn được — ghi chú cũ vẫn giữ nguyên")
             self.db.add_note(COMPACT_AUTHOR, summary)
             before = len(notes) + len(goals)
-            self.log(f"🗜 Đã thu gọn ngữ cảnh: ~{before} → {len(summary)} ký tự. Bản tóm tắt:")
+            self.log(tr("🗜 Đã thu gọn ngữ cảnh: ~{before} → {v} ký tự. Bản tóm tắt:", before=before, v=len(summary)))
             for line in summary.splitlines():
                 self.log("   " + line)
-            return True, f"Đã thu gọn ngữ cảnh (~{before} → {len(summary)} ký tự)"
+            return True, tr("Đã thu gọn ngữ cảnh (~{before} → {v} ký tự)", before=before, v=len(summary))
         finally:
             self.compacting = False
             self.emit("changed")
@@ -821,24 +826,24 @@ class Orchestrator:
             if others.strip():
                 diff += "\n\nNew untracked files:\n" + others.strip()
         if not diff.strip():
-            return False, "Không có thay đổi nào để viết commit message"
+            return False, tr("Không có thay đổi nào để viết commit message")
         recent = "\n".join("- " + c.subject for c in await repo.log(8))
         out = await self._call_lead(P.commit_message_prompt(diff=diff, recent=recent, cwd=str(self.root)),
-                                    "Viết commit message")
+                                    tr("Viết commit message"))
         msg = P.extract_commit_message(out or "")
         if not msg:
-            return False, "Trưởng nhóm không trả về commit message (xem .ateam/logs/lead.log)"
+            return False, tr("Trưởng nhóm không trả về commit message (xem .ateam/logs/lead.log)")
         return True, msg
 
     def force_review(self, gid: int) -> str:
         g = self.db.goal(gid)
         if not g:
-            return f"Không có mục tiêu #{gid}"
+            return tr("Không có mục tiêu #{gid}", gid=gid)
         if gid in self.lead_busy:
-            return "Trưởng nhóm đang xử lý mục tiêu này"
+            return tr("Trưởng nhóm đang xử lý mục tiêu này")
         self.lead_busy.add(gid)
         self._spawn(self._review(gid))
-        return f"Trưởng nhóm đang review mục tiêu #{gid}…"
+        return tr("Trưởng nhóm đang review mục tiêu #{gid}…", gid=gid)
 
     # ------------------------------------------------------------------ lịch chạy
     def running_count(self, agent: str | None = None) -> int:
@@ -866,7 +871,7 @@ class Orchestrator:
             if t.id in self.runs:
                 continue
             if t.agent not in agents:
-                self.db.update_task(t.id, status=FAILED, error=f"Không có agent '{t.agent}'")
+                self.db.update_task(t.id, status=FAILED, error=tr("Không có agent '{agent}'", agent=t.agent))
                 changed = True
                 continue
             dep_status = [(d, (self.db.task(d).status if self.db.task(d) else "missing"))
@@ -874,8 +879,8 @@ class Orchestrator:
             bad = [d for d, s in dep_status if s in FINISHED_BAD or s in (CONFLICT, "missing")]
             if bad:
                 self.db.update_task(t.id, status=BLOCKED,
-                                    error=f"Task phụ thuộc lỗi/huỷ: {', '.join('#'+str(b) for b in bad)}")
-                self.log(f"⛔ Task #{t.id} bị chặn vì #{', #'.join(map(str, bad))} không xong.")
+                                    error=tr("Task phụ thuộc lỗi/huỷ: {v}", v=', '.join('#' + str(b) for b in bad)))
+                self.log(tr("⛔ Task #{id} bị chặn vì #{v} không xong.", id=t.id, v=', #'.join(map(str, bad))))
                 changed = True
                 continue
             if any(s != DONE for _, s in dep_status):
@@ -887,8 +892,7 @@ class Orchestrator:
                 if not fb:
                     continue  # chờ hạn mức hồi lại
                 self.db.update_task(t.id, agent=fb, model=None, effort=None)
-                self.log(f"↪ #{t.id} chuyển từ {t.agent} sang {fb} vì {t.agent} hết hạn mức "
-                         f"(đến {self.cooldown_label(t.agent)}).")
+                self.log(tr("↪ #{id} chuyển từ {agent} sang {fb} vì {agent} hết hạn mức (đến {v}).", id=t.id, agent=t.agent, fb=fb, v=self.cooldown_label(t.agent)))
                 t = self.db.task(t.id)
                 changed = True
             a = agents[t.agent]
@@ -896,8 +900,8 @@ class Orchestrator:
                 continue
             if not a.installed():
                 self.db.update_task(t.id, status=FAILED,
-                                    error=f"Chưa cài lệnh '{a.binary}' (kiểm tra bằng `ateam doctor`)")
-                self.log(f"✗ Task #{t.id}: chưa cài '{a.binary}'.")
+                                    error=tr("Chưa cài lệnh '{binary}' (kiểm tra bằng `ateam doctor`)", binary=a.binary))
+                self.log(tr("✗ Task #{id}: chưa cài '{binary}'.", id=t.id, binary=a.binary))
                 changed = True
                 continue
             # chiếm chỗ ngay để không chạy trùng
@@ -928,7 +932,7 @@ class Orchestrator:
             else:
                 ok = all(t.status == DONE for t in tasks)
                 self.db.update_goal(g.id, status="done" if ok else "incomplete")
-                self.log(f"🏁 Mục tiêu #{g.id} kết thúc ({'xong' if ok else 'còn task lỗi'}).")
+                self.log(tr("🏁 Mục tiêu #{id} kết thúc ({v}).", id=g.id, v='xong' if ok else tr("còn task lỗi")))
             changed = True
         return changed
 
@@ -937,7 +941,7 @@ class Orchestrator:
             try:
                 self.tick()
             except Exception as e:  # không để vòng lặp chết
-                self.log(f"Lỗi bộ lập lịch: {e!r}")
+                self.log(tr("Lỗi bộ lập lịch: {e!r}", e=e))
             await asyncio.sleep(interval)
 
     async def run_until_idle(self, interval: float = 0.5) -> None:
@@ -958,7 +962,7 @@ class Orchestrator:
         if until:
             self.cooldown.pop(agent, None)
             limits.save_cooldown(agent, None)
-            self.log(f"▶ {agent} đã hồi hạn mức.")
+            self.log(tr("▶ {agent} đã hồi hạn mức.", agent=agent))
         return False
 
     def cooldown_label(self, agent: str) -> str:
@@ -969,24 +973,24 @@ class Orchestrator:
         until = limits.reset_time(output, self.cfg.cooldown_minutes)
         self.cooldown[agent] = until
         limits.save_cooldown(agent, until)
-        self.log(f"⏸ {agent} hết hạn mức — tạm nghỉ đến {self.cooldown_label(agent)}.")
+        self.log(tr("⏸ {agent} hết hạn mức — tạm nghỉ đến {v}.", agent=agent, v=self.cooldown_label(agent)))
         self.emit("changed")
 
     def set_cooldown_manual(self, agent: str, minutes: int | None) -> str:
         if agent not in self.cfg.agents:
-            return f"Không có agent '{agent}'"
+            return tr("Không có agent '{agent}'", agent=agent)
         if not minutes:
             self.cooldown.pop(agent, None)
             limits.save_cooldown(agent, None)
-            self.log(f"▶ Bỏ tạm nghỉ cho {agent}.")
+            self.log(tr("▶ Bỏ tạm nghỉ cho {agent}.", agent=agent))
             self.emit("changed")
-            return f"{agent} hoạt động lại"
+            return tr("{agent} hoạt động lại", agent=agent)
         until = time.time() + minutes * 60
         self.cooldown[agent] = until
         limits.save_cooldown(agent, until)
-        self.log(f"⏸ {agent} tạm nghỉ đến {self.cooldown_label(agent)} (đặt tay).")
+        self.log(tr("⏸ {agent} tạm nghỉ đến {v} (đặt tay).", agent=agent, v=self.cooldown_label(agent)))
         self.emit("changed")
-        return f"{agent} tạm nghỉ {minutes} phút"
+        return tr("{agent} tạm nghỉ {minutes} phút", agent=agent, minutes=minutes)
 
     def pick_fallback(self, agent: str, exclude: set[str] | None = None) -> str | None:
         a = self.cfg.agents.get(agent)
@@ -1050,8 +1054,8 @@ class Orchestrator:
 
     async def _verify(self, t: Task, workdir: Path, log_file) -> tuple[bool, int, str]:
         cmd = self.cfg.verify.command
-        act = self._begin_activity(t.agent, t.id, f"kiểm tra: {cmd}", "test")
-        log_file.write(f"\n$ [kiểm tra] {cmd}\n")
+        act = self._begin_activity(t.agent, t.id, tr("kiểm tra: {cmd}", cmd=cmd), "test")
+        log_file.write(tr("\n$ [kiểm tra] {cmd}\n", cmd=cmd))
         rid = self.db.add_run(t.id, t.agent, "test", len(cmd))
 
         def on_line(line: str) -> None:
@@ -1070,7 +1074,7 @@ class Orchestrator:
         self._end_activity(t.agent, act)
         tail = "\n".join(run.output.splitlines()[-120:])[-6000:]
         if run.timed_out:
-            tail += f"\n(Lệnh kiểm tra quá {self.cfg.verify.timeout}s)"
+            tail += tr("\n(Lệnh kiểm tra quá {timeout}s)", timeout=self.cfg.verify.timeout)
         return ok, rc, tail
 
     async def _fingerprint(self, workdir: Path) -> str | None:
@@ -1134,20 +1138,20 @@ class Orchestrator:
             while status == DONE and gate:
                 if v.only_when_changed and before is not None:
                     if await self._fingerprint(workdir) == before:
-                        log_file.write("\n(không có thay đổi file nào — bỏ qua kiểm tra)\n")
+                        log_file.write(tr("\n(không có thay đổi file nào — bỏ qua kiểm tra)\n"))
                         break
                 ok, trc, tail = await self._verify(t, workdir, log_file)
                 if ok:
-                    self.log(f"✅ #{tid} qua kiểm tra `{v.command}`"
-                             + (f" sau {attempts} lần sửa" if attempts else ""))
+                    self.log(tr("✅ #{tid} qua kiểm tra `{command}`", tid=tid, command=v.command)
+                             + (tr(" sau {attempts} lần sửa", attempts=attempts) if attempts else ""))
                     break
                 if run.cancelled or tid in self._cancel_req:
-                    status, error = CANCELLED, "Bị huỷ"
+                    status, error = CANCELLED, tr("Bị huỷ")
                     break
                 if attempts >= v.max_fix_attempts:
                     status = FAILED
-                    error = (f"Kiểm tra `{v.command}` vẫn fail (mã {trc})"
-                             + (f" sau {attempts} lần sửa" if attempts else "") + " — xem log [test]")
+                    error = (tr("Kiểm tra `{command}` vẫn fail (mã {trc})", command=v.command, trc=trc)
+                             + (tr(" sau {attempts} lần sửa", attempts=attempts) if attempts else "") + " — xem log [test]")
                     break
                 attempts += 1
                 self.db.update_task(tid, attempts=attempts)
@@ -1155,7 +1159,8 @@ class Orchestrator:
                 if self.in_cooldown(fixer):
                     fixer = self.pick_fallback(fixer) or fixer
                 fa = self.cfg.agents[fixer]
-                self.log(f"🔧 #{tid} test fail (mã {trc}) — {fixer} sửa lần {attempts}/{v.max_fix_attempts}")
+                self.log(tr("🔧 #{tid} test fail (mã {trc}) — {fixer} sửa lần "
+                            "{attempts}/{max_fix_attempts}", tid=tid, trc=trc, fixer=fixer, attempts=attempts, max_fix_attempts=v.max_fix_attempts))
                 fprompt = P.fix_prompt(agent=fixer, task_id=tid, title=t.title, prompt=t.prompt,
                                        command=v.command, rc=trc, output=tail, attempt=attempts,
                                        max_attempts=v.max_fix_attempts, cwd=str(workdir),
@@ -1163,18 +1168,18 @@ class Orchestrator:
                 same = fixer == t.agent
                 run, rc, res = await self._run_agent(
                     t, fa, fprompt, workdir, log_file, kind="fix",
-                    title=f"sửa lỗi test #{tid} ({attempts}/{v.max_fix_attempts})",
+                    title=tr("sửa lỗi test #{tid} ({attempts}/{max_fix_attempts})", tid=tid, attempts=attempts, max_fix_attempts=v.max_fix_attempts),
                     model=t.model if same else None, effort=t.effort if same else None)
                 outputs.append(run.output)
                 if res == "ratelimit":
                     self._set_cooldown(fixer, run.output)
-                    status, error = FAILED, f"{fixer} hết hạn mức khi đang sửa lỗi test — /retry sau"
+                    status, error = FAILED, tr("{fixer} hết hạn mức khi đang sửa lỗi test — /retry sau", fixer=fixer)
                     break
                 status, error = self._status_of(res, rc, fa)
 
             summary = P.extract_summary(outputs[0]) if outputs else None
             if len(outputs) > 1 and status == DONE:
-                summary = (summary or "") + f"\n(Đã sửa để qua kiểm tra: {P.extract_summary(outputs[-1])[:600]})"
+                summary = (summary or "") + tr("\n(Đã sửa để qua kiểm tra: {v})", v=P.extract_summary(outputs[-1])[:600])
             for out in outputs:
                 for n in P.parse_notes(out):
                     self.db.add_note(t.agent, n)
@@ -1184,7 +1189,7 @@ class Orchestrator:
             if status == DONE:
                 self._delegations(t, "\n".join(outputs))
         except Exception as e:
-            status, error = FAILED, f"Lỗi nội bộ: {e!r}"
+            status, error = FAILED, tr("Lỗi nội bộ: {e!r}", e=e)
         finally:
             log_file.close()
             self.runs.pop(tid, None)
@@ -1193,8 +1198,8 @@ class Orchestrator:
                 if new_agent:
                     fields.update(agent=new_agent, model=None, effort=None)
                 self.db.update_task(tid, **fields)
-                self.log(f"↪ #{tid} xếp hàng lại" + (f", chuyển sang {new_agent}" if new_agent
-                                                     else f", chờ {t.agent} hồi hạn mức"))
+                self.log(tr("↪ #{tid} xếp hàng lại", tid=tid) + (tr(", chuyển sang {new_agent}", new_agent=new_agent) if new_agent
+                                                     else tr(", chờ {agent} hồi hạn mức", agent=t.agent)))
             else:
                 self.db.update_task(tid, status=status, error=error, result=summary,
                                     finished=time.time())
@@ -1205,15 +1210,16 @@ class Orchestrator:
     def _status_of(self, res: str, rc: int, a: AgentConfig) -> tuple[str, str | None]:
         return {
             "ok": (DONE, None),
-            "cancelled": (CANCELLED, "Bị huỷ"),
-            "timeout": (FAILED, f"Quá thời gian ({a.timeout}s)"),
-            "failed": (FAILED, f"Thoát với mã {rc}"),
-            "badflag": (FAILED, f"{a.binary} không nhận một cờ trong lệnh (CLI có thể đã đổi phiên bản)"
-                                " — chạy `ateam doctor` rồi sửa command trong cấu hình"),
-            "empty": (FAILED, "Agent không in ra gì (kiểm tra đăng nhập / quyền / pty)"),
-            "denied": (FAILED, f"{a.name} bị chặn chạy lệnh (thiếu quyền) — bật Toàn quyền cho agent này ở "
-                               "/setup (agent có sẵn) hoặc /custom (agent tuỳ chỉnh), rồi /retry"),
-            "ratelimit": (FAILED, f"{a.name} hết hạn mức"),
+            "cancelled": (CANCELLED, tr("Bị huỷ")),
+            "timeout": (FAILED, tr("Quá thời gian ({timeout}s)", timeout=a.timeout)),
+            "failed": (FAILED, tr("Thoát với mã {rc}", rc=rc)),
+            "badflag": (FAILED, tr("{binary} không nhận một cờ trong lệnh (CLI có thể đã đổi phiên "
+                                   "bản) — chạy `ateam doctor` rồi sửa command trong cấu hình", binary=a.binary)),
+            "empty": (FAILED, tr("Agent không in ra gì (kiểm tra đăng nhập / quyền / pty)")),
+            "denied": (FAILED, tr("{name} bị chặn chạy lệnh (thiếu quyền) — bật Toàn quyền cho "
+                                  "agent này ở /setup (agent có sẵn) hoặc /custom (agent tuỳ "
+                                  "chỉnh), rồi /retry", name=a.name)),
+            "ratelimit": (FAILED, tr("{name} hết hạn mức", name=a.name)),
         }[res]
 
     def _delegations(self, t: Task, output: str) -> None:
@@ -1221,12 +1227,12 @@ class Orchestrator:
         if not dels:
             return
         if t.depth >= self.cfg.max_delegation_depth:
-            self.log(f"⚠ #{t.id} muốn giao việc nhưng đã chạm giới hạn {self.cfg.max_delegation_depth} tầng.")
+            self.log(tr("⚠ #{id} muốn giao việc nhưng đã chạm giới hạn {max_delegation_depth} tầng.", id=t.id, max_delegation_depth=self.cfg.max_delegation_depth))
             return
         agents = self.cfg.active_agents()
         for to, title, body in dels[:MAX_DELEGATIONS_PER_TASK]:
             if to not in agents:
-                self.log(f"⚠ #{t.id} giao việc cho '{to}' — không có trong đội, bỏ qua.")
+                self.log(tr("⚠ #{id} giao việc cho '{to}' — không có trong đội, bỏ qua.", id=t.id, to=to))
                 continue
             nid = self.db.add_task(to, title or body[:60], body, goal_id=t.goal_id,
                                    parent_id=t.id, depth=t.depth + 1,
@@ -1239,32 +1245,32 @@ class Orchestrator:
             g = self.db.goal(gid)
             self.db.update_goal(gid, status="reviewing")
             self.emit("changed")
-            self.log(f"🔍 {self.cfg.lead} đang review mục tiêu #{gid} (vòng {g.round})…")
+            self.log(tr("🔍 {lead} đang review mục tiêu #{gid} (vòng {round})…", lead=self.cfg.lead, gid=gid, round=g.round))
             out = await self._call_lead(
                 P.review_prompt(self.cfg, g.full_text(), g.round, self._results_text(gid), str(self.root)),
-                f"Review mục tiêu #{gid} vòng {g.round}")
+                tr("Review mục tiêu #{gid} vòng {round}", gid=gid, round=g.round))
             data = P.extract_json(out or "", dict)
             if not data:
                 self.db.update_goal(gid, status="incomplete",
-                                    summary="Không đọc được kết quả review (xem .ateam/logs/lead.log)")
-                self.log(f"⚠ Không đọc được review của mục tiêu #{gid}.")
+                                    summary=tr("Không đọc được kết quả review (xem .ateam/logs/lead.log)"))
+                self.log(tr("⚠ Không đọc được review của mục tiêu #{gid}.", gid=gid))
                 return
             summary = str(data.get("summary", "")).strip()
             new = data.get("new_tasks") or []
             if data.get("done") or not new:
                 self.db.update_goal(gid, status="done" if data.get("done") else "incomplete",
                                     summary=summary)
-                self.log(f"🏁 Mục tiêu #{gid} {'HOÀN THÀNH' if data.get('done') else 'kết thúc'}: {summary}")
+                self.log(tr("🏁 Mục tiêu #{gid} {v}: {summary}", gid=gid, v=tr("HOÀN THÀNH") if data.get('done') else tr("kết thúc"), summary=summary))
             elif g.round >= self.cfg.max_rounds:
                 self.db.update_goal(gid, status="incomplete", summary=summary)
-                self.log(f"🏁 Mục tiêu #{gid} đã hết {self.cfg.max_rounds} vòng. Đánh giá: {summary}")
+                self.log(tr("🏁 Mục tiêu #{gid} đã hết {max_rounds} vòng. Đánh giá: {summary}", gid=gid, max_rounds=self.cfg.max_rounds, summary=summary))
             else:
                 self.db.update_goal(gid, round=g.round + 1, summary=summary,
                                     status="awaiting" if self.cfg.approve_plan else "running")
                 self.log(f"🔁 Review #{gid}: {summary}")
                 ids = self._insert_plan(gid, new, source="review")
                 if self.cfg.approve_plan:
-                    self.log(f"📋 {len(ids)} task bổ sung đang ở trạng thái NHÁP — /go {gid} để chạy.")
+                    self.log(tr("📋 {v} task bổ sung đang ở trạng thái NHÁP — /go {gid} để chạy.", v=len(ids), gid=gid))
         finally:
             self.lead_busy.discard(gid)
             self.emit("changed")
@@ -1313,7 +1319,7 @@ class Orchestrator:
         self._wt_base[t.id] = base.strip()
         rc, out = await self._git("worktree", "add", "-B", branch, str(path), "HEAD")
         if rc != 0:
-            raise RuntimeError(f"git worktree add thất bại: {out.strip()}")
+            raise RuntimeError(tr("git worktree add thất bại: {v}", v=out.strip()))
         self.db.update_task(t.id, branch=branch, base=base.strip(), head=None)
         return path
 
@@ -1342,7 +1348,7 @@ class Orchestrator:
         if status != DONE:
             return status, error  # giữ nhánh để xem lại
         if self.cfg.merge == "review":
-            self.log(f"👀 #{t.id} chờ duyệt merge — /diff {t.id} để xem, /merge {t.id} hoặc /reject {t.id}")
+            self.log(tr("👀 #{id} chờ duyệt merge — /diff {id} để xem, /merge {id} hoặc /reject {id}", id=t.id))
             return REVIEW, None
         ok, msg = await self._merge_branch(t)
         if ok:
@@ -1356,9 +1362,10 @@ class Orchestrator:
                                       f"ateam: merge #{t.id} ({t.agent}) {t.title}", branch)
             if rc != 0:
                 await self._git("merge", "--abort")
-                self.log(f"⚠ Merge #{t.id} lỗi: {out.strip()[:300]}")
-                return False, (f"Không merge được nhánh {branch} (xung đột hoặc thư mục chính đang "
-                               f"có thay đổi) — tự merge tay, /merge {t.id} để thử lại, hoặc /retry")
+                self.log(tr("⚠ Merge #{id} lỗi: {v}", id=t.id, v=out.strip()[:300]))
+                return False, (tr("Không merge được nhánh {branch} (xung đột hoặc thư mục chính "
+                                  "đang có thay đổi) — tự merge tay, /merge {id} để thử lại, hoặc "
+                                  "/retry", branch=branch, id=t.id))
         await self._git("branch", "-D", branch)
         return True, None
 
@@ -1366,29 +1373,29 @@ class Orchestrator:
     async def merge(self, tid: int) -> str:
         t = self.db.task(tid)
         if not t:
-            return f"Không có task #{tid}"
+            return tr("Không có task #{tid}", tid=tid)
         if t.status not in (REVIEW, CONFLICT) or not t.branch:
-            return f"Task #{tid} không có nhánh chờ merge ({t.status})"
+            return tr("Task #{tid} không có nhánh chờ merge ({status})", tid=tid, status=t.status)
         ok, msg = await self._merge_branch(t)
         if not ok:
             self.db.update_task(tid, status=CONFLICT, error=msg)
             self.emit("changed")
-            return f"Merge #{tid} thất bại — xem log hệ thống"
+            return tr("Merge #{tid} thất bại — xem log hệ thống", tid=tid)
         self.db.update_task(tid, status=DONE, error=None, branch=None, finished=time.time())
-        self.log(f"✓ Đã merge #{tid} ({t.agent}): {t.title}")
+        self.log(tr("✓ Đã merge #{tid} ({agent}): {title}", tid=tid, agent=t.agent, title=t.title))
         try:
             self._delegations(t, self.log_path(tid).read_text(encoding="utf-8", errors="replace"))
         except OSError:
             pass
         self.emit("changed")
-        return f"Đã merge #{tid}"
+        return tr("Đã merge #{tid}", tid=tid)
 
     async def reject(self, tid: int, feedback: str | None) -> str:
         t = self.db.task(tid)
         if not t:
-            return f"Không có task #{tid}"
+            return tr("Không có task #{tid}", tid=tid)
         if t.status not in (REVIEW, CONFLICT):
-            return f"Task #{tid} không ở trạng thái chờ duyệt ({t.status})"
+            return tr("Task #{tid} không ở trạng thái chờ duyệt ({status})", tid=tid, status=t.status)
         if t.branch:
             await self._git("branch", "-D", t.branch)
         if feedback:
@@ -1396,13 +1403,13 @@ class Orchestrator:
                       f"\n{feedback}")
             self.db.update_task(tid, status=QUEUED, prompt=prompt, branch=None, head=None,
                                 error=None, result=None, started=None, finished=None)
-            self.log(f"↩ Từ chối #{tid}, giao làm lại kèm góp ý: {feedback}")
-            msg = f"Đã giao làm lại #{tid} kèm góp ý"
+            self.log(tr("↩ Từ chối #{tid}, giao làm lại kèm góp ý: {feedback}", tid=tid, feedback=feedback))
+            msg = tr("Đã giao làm lại #{tid} kèm góp ý", tid=tid)
         else:
-            self.db.update_task(tid, status=CANCELLED, branch=None, error="Bị từ chối khi duyệt",
+            self.db.update_task(tid, status=CANCELLED, branch=None, error=tr("Bị từ chối khi duyệt"),
                                 finished=time.time())
-            self.log(f"✗ Từ chối và huỷ #{tid}")
-            msg = f"Đã huỷ #{tid}"
+            self.log(tr("✗ Từ chối và huỷ #{tid}", tid=tid))
+            msg = tr("Đã huỷ #{tid}", tid=tid)
         self.emit("changed")
         return msg
 
@@ -1418,20 +1425,21 @@ class Orchestrator:
         from .diffview import DiffSet, added_file, parse_unified
         t = self.db.task(tid)
         if not t:
-            return f"Không có task #{tid}"
+            return tr("Không có task #{tid}", tid=tid)
         git = ("-c", "core.quotePath=false", "diff", "-M", "--no-color")
         if t.base and (t.head or t.branch):
             head = t.head or t.branch
             rc, body = await self._git(*git, t.base, head)
             if rc != 0:
-                return f"Không lấy được diff của task #{tid}: {body.strip()[:200]}"
+                return tr("Không lấy được diff của task #{tid}: {v}", tid=tid, v=body.strip()[:200])
             files = parse_unified(body)
             if not files:
-                return f"Task #{tid} không thay đổi file nào."
+                return tr("Task #{tid} không thay đổi file nào.", tid=tid)
             return DiffSet(tid, f"Diff #{tid} · {t.base[:8]}..{head[:12]}", files, t.base, head)
         rc, body = await self._git(*git, "HEAD")
         if rc != 0:
-            return "Thư mục này không phải git repo (hoặc chưa có commit nào) — không xem được diff."
+            return tr("Thư mục này không phải git repo (hoặc chưa có commit nào) — không xem được "
+                      "diff.")
         files = parse_unified(body)
         _, others = await self._git("ls-files", "--others", "--exclude-standard", "-z")
         for path in [p for p in others.split("\0") if p and not p.startswith(".ateam/")]:
@@ -1446,8 +1454,9 @@ class Orchestrator:
                 text = None
             files.append(added_file(path, text))
         if not files:
-            return "Không có thay đổi nào chưa commit."
-        return DiffSet(tid, f"Thay đổi chưa commit của thư mục (chế độ shared, không tách theo task #{tid})",
+            return tr("Không có thay đổi nào chưa commit.")
+        return DiffSet(tid, tr("Thay đổi chưa commit của thư mục (chế độ shared, không tách theo "
+                               "task #{tid})", tid=tid),
                        files, "HEAD", None)
 
     async def diff_versions(self, ds, fd) -> tuple[Path, Path]:
@@ -1473,17 +1482,17 @@ class Orchestrator:
         """Diff của task (chế độ worktree), hoặc diff hiện tại của cả thư mục (shared)."""
         t = self.db.task(tid)
         if not t:
-            return f"Không có task #{tid}"
+            return tr("Không có task #{tid}", tid=tid)
         if t.base and (t.head or t.branch):
             head = t.head or t.branch
             _, stat = await self._git("diff", "--stat", t.base, head)
             _, body = await self._git("diff", t.base, head)
             if not body.strip():
-                return f"Task #{tid} không thay đổi file nào."
+                return tr("Task #{tid} không thay đổi file nào.", tid=tid)
             return f"Diff #{tid} ({t.base[:8]}..{head[:12]}):\n{stat}\n{body}"
         rc, stat = await self._git("diff", "HEAD", "--stat")
         if rc != 0:
-            return "Thư mục này không phải git repo — không xem được diff."
+            return tr("Thư mục này không phải git repo — không xem được diff.")
         _, body = await self._git("diff", "HEAD")
-        return ("(Chế độ shared không tách được diff theo từng task — đây là mọi thay đổi chưa commit "
-                "của thư mục)\n" + (stat + "\n" + body if body.strip() else "Không có thay đổi nào."))
+        return (tr("(Chế độ shared không tách được diff theo từng task — đây là mọi thay đổi chưa "
+                   "commit của thư mục)\n") + (stat + "\n" + body if body.strip() else tr("Không có thay đổi nào.")))

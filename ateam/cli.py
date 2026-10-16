@@ -15,6 +15,7 @@ from .config import (DEFAULT_CONFIG, GLOBAL_CONFIG, ensure_global_config, help_c
                      load_config, needs_setup, save_agent_setting, unknown_flags)
 from .db import DB, QUEUED
 from .orchestrator import SYSTEM, Orchestrator
+from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, tr
 
 
 def find_root(arg: str | None) -> Path:
@@ -44,21 +45,51 @@ def cmd_tui(args) -> int:
     cfg.notices = notes
     from .tui import TeamApp
     # Lần đầu mở app (hoặc `ateam setup`): màn hình chọn agent/model/effort, hỏi sẵn model của CLI
-    TeamApp(root, cfg, open_db(root), setup=args.cmd == "setup" or needs_setup()).run()
+    app = TeamApp(root, cfg, open_db(root), setup=args.cmd == "setup" or needs_setup())
+    app.run()
+    if getattr(app, "restart_requested", False):
+        # /lang: nhiều chuỗi được tính lúc import -> mở lại cả tiến trình với ngôn ngữ mới
+        argv, skip = [], False
+        for a in sys.argv[1:]:  # bỏ --lang của lần chạy trước: dùng ngôn ngữ vừa lưu
+            if skip or a.startswith("--lang="):
+                skip = False
+                continue
+            if a == "--lang":
+                skip = True
+                continue
+            argv.append(a)
+        if args.cmd == "setup":
+            argv = [a for a in argv if a != "setup"]
+        os.execv(sys.executable, [sys.executable, "-m", "ateam", *argv])
+    return 0
+
+
+def cmd_lang(args) -> int:
+    if not args.code:
+        print(tr("Ngôn ngữ hiện tại: {v} — đổi bằng `ateam lang en` hoặc `ateam lang vi`",
+                 v=LANG_NAMES[get_lang()]))
+        return 0
+    code = normalize(args.code)
+    if not code:
+        print(tr("Không hỗ trợ '{code}' — chọn: {v}", code=args.code, v=", ".join(LANGS)))
+        return 2
+    save_lang(code)
+    set_lang(code)
+    print(tr("✓ Đã đổi ngôn ngữ sang {v}", v=LANG_NAMES[code]))
     return 0
 
 
 def cmd_init(args) -> int:
     setup_config()
-    print(f"Cấu hình chung: {GLOBAL_CONFIG}")
+    print(tr("Cấu hình chung: {GLOBAL_CONFIG}", GLOBAL_CONFIG=GLOBAL_CONFIG))
     if args.project:
         p = find_root(args.dir) / ".ateam" / "config.toml"
         if p.exists():
-            print(f"Đã có: {p}")
+            print(tr("Đã có: {p}", p=p))
         else:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(DEFAULT_CONFIG, encoding="utf-8")
-            print(f"Đã tạo cấu hình dự án: {p}")
+            print(tr("Đã tạo cấu hình dự án: {p}", p=p))
     return 0
 
 
@@ -67,12 +98,11 @@ def cmd_doctor(args) -> int:
     setup_config()
     cfg = load_config(root)
     print(f"ateam {__version__}  ·  Python {sys.version.split()[0]}")
-    print("Cấu hình:", ", ".join(map(str, cfg.sources)) or "(mặc định)")
-    print(f"Trưởng nhóm: {cfg.lead}   ·   isolation: {cfg.isolation}"
+    print(tr("Cấu hình:"), ", ".join(map(str, cfg.sources)) or tr("(mặc định)"))
+    print(tr("Trưởng nhóm: {lead}   ·   isolation: {isolation}", lead=cfg.lead, isolation=cfg.isolation)
           + (f" (merge: {cfg.merge})" if cfg.isolation == "worktree" else "")
           + f"   ·   song song: {cfg.max_parallel}")
-    print(f"Kiểm tra sau task: {cfg.verify.command or '(tắt)'}   ·   "
-          f"trưởng nhóm dự phòng: {', '.join(cfg.lead_fallback) or '(không)'}\n")
+    print(tr("Kiểm tra sau task: {v}   ·   trưởng nhóm dự phòng: {v2}\n", v=cfg.verify.command or tr("(tắt)"), v2=', '.join(cfg.lead_fallback) or tr("(không)")))
     ok = True
     for name, a in cfg.agents.items():
         path = shutil.which(a.binary) if a.binary else None
@@ -83,36 +113,38 @@ def cmd_doctor(args) -> int:
                 r = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=15)
                 ver = (r.stdout or r.stderr).strip().splitlines()[0][:60] if (r.stdout or r.stderr) else ""
             except Exception:
-                ver = "(không lấy được version)"
+                ver = tr("(không lấy được version)")
         else:
             ok = ok and not a.enabled
-        state = "" if a.enabled else " (đang tắt)"
-        state += " (tuỳ chỉnh)" if name in cfg.custom_agents else ""
+        state = "" if a.enabled else tr(" (đang tắt)")
+        state += tr(" (tuỳ chỉnh)") if name in cfg.custom_agents else ""
         print(f" {flag} {name:12} {a.binary:10} {ver}{state}")
         if a.fallback:
-            print(f"     dự phòng khi hết hạn mức: {', '.join(a.fallback)}")
+            print(tr("     dự phòng khi hết hạn mức: {v}", v=', '.join(a.fallback)))
         print(f"     model/effort: {a.label()}"
-              + (f"   (effort hợp lệ: {', '.join(a.efforts)})" if a.efforts else ""))
+              + (tr("   (effort hợp lệ: {v})", v=', '.join(a.efforts)) if a.efforts else ""))
         if a.models:
-            print(f"     model gợi ý: {', '.join(a.models[:8])}" + (" …" if len(a.models) > 8 else ""))
+            print(tr("     model gợi ý: {v}", v=', '.join(a.models[:8])) + (" …" if len(a.models) > 8 else ""))
         print(f"     {' '.join(a.argv('<prompt>'))}")
         if path:
             bad = _check_flags(path, a)
             if bad:
                 ok = ok and not a.enabled
-                print(f"     ✗ cờ không thấy trong `{' '.join(bad[0])}`: {', '.join(bad[1])}"
-                      " — CLI có thể đã đổi cờ; sửa command trong cấu hình")
+                print(tr("     ✗ cờ không thấy trong `{v}`: {v2} — CLI có thể đã đổi cờ; sửa "
+                         "command trong cấu hình", v=' '.join(bad[0]), v2=', '.join(bad[1])))
         print(f"     @file trong prompt → {mentions.describe(a.binary, a.file_ref, a.file_args, a.image_args)}")
     if cfg.lead not in cfg.agents:
-        print(f"\n✗ Trưởng nhóm '{cfg.lead}' không có trong [agents].")
+        print(tr("\n✗ Trưởng nhóm '{lead}' không có trong [agents].", lead=cfg.lead))
         ok = False
     if shutil.which("git") is None:
-        print("\n⚠ Chưa có git — chế độ worktree sẽ không dùng được.")
+        print(tr("\n⚠ Chưa có git — chế độ worktree sẽ không dùng được."))
     if cfg.workflows:
         print(f"\nWorkflow: {', '.join(cfg.workflows)}  (xem: ateam flows)")
-    print("\nChọn agent, model, effort: ateam setup (hoặc /setup trong app).")
-    print("Thêm agent / workflow riêng: /custom trong app (hoặc nút ở màn hình thiết lập).")
-    print("\nMọi thứ sẵn sàng." if ok else "\nCài các CLI còn thiếu hoặc đặt enabled = false cho agent đó trong config.")
+    print(tr("\nChọn agent, model, effort: ateam setup (hoặc /setup trong app)."))
+    print(tr("Thêm agent / workflow riêng: /custom trong app (hoặc nút ở màn hình thiết lập)."))
+    print(tr("\nMọi thứ sẵn sàng.") if ok else tr("\n"
+                                                     "Cài các CLI còn thiếu hoặc đặt enabled = "
+                                                     "false cho agent đó trong config."))
     return 0 if ok else 1
 
 
@@ -184,20 +216,21 @@ def cmd_goal(args) -> int:
             if g.status == "awaiting":
                 drafts = db.tasks(goal_id=gid, status="draft")
                 if not args.yes:
-                    print("\nKế hoạch:")
+                    print(tr("\nKế hoạch:"))
                     for t in drafts:
                         dep = f" (sau #{', #'.join(map(str, t.depends_on))})" if t.depends_on else ""
                         print(f"  #{t.id} [{t.agent}] {t.title}{dep}")
-                    ans = await asyncio.to_thread(input, "Chạy kế hoạch này? [Y/n] ")
+                    ans = await asyncio.to_thread(input, tr("Chạy kế hoạch này? [Y/n] "))
                     if ans.strip().lower() in ("n", "no", "k", "không"):
-                        print("Đã dừng. Task vẫn ở trạng thái nháp — mở `ateam` để chỉnh và chạy.")
+                        print(tr("Đã dừng. Task vẫn ở trạng thái nháp — mở `ateam` để chỉnh và "
+                                 "chạy."))
                         return 0
                 orch.approve(gid)
             await orch.run_until_idle()
             g = db.goal(gid)
             if g.status != "awaiting":
                 break
-        print(f"\n=== Mục tiêu #{gid}: {g.status} ===")
+        print(tr("\n=== Mục tiêu #{gid}: {status} ===", gid=gid, status=g.status))
         if g.summary:
             print(g.summary)
         for t in db.tasks(goal_id=gid):
@@ -212,15 +245,15 @@ def cmd_flows(args) -> int:
     setup_config()
     cfg = load_config(root)
     if not cfg.workflows:
-        print("Chưa có workflow nào. Tạo trong app: /custom (hoặc nút ở màn hình `ateam setup`).")
+        print(tr("Chưa có workflow nào. Tạo trong app: /custom (hoặc nút ở màn hình `ateam setup`)."))
         return 0
     for n, w in cfg.workflows.items():
         print(f"{n}  ({w.summary()})" + (f" — {w.description}" if w.description else ""))
         for i, st in enumerate(w.steps, 1):
             after = "" if st.after is None else (
-                f" (sau bước {', '.join(map(str, st.after))})" if st.after else " (chạy ngay)")
+                tr(" (sau bước {v})", v=', '.join(map(str, st.after))) if st.after else tr(" (chạy ngay)"))
             print(f"  {i}. [{st.agent}{('@' + st.effort) if st.effort else ''}] {st.title}{after}")
-    print("\nChạy: ateam flow <tên> \"mục tiêu\"   ·   trong app: /flow <tên> <mục tiêu>")
+    print(tr("\nChạy: ateam flow <tên> \"mục tiêu\"   ·   trong app: /flow <tên> <mục tiêu>"))
     return 0
 
 
@@ -229,13 +262,13 @@ def cmd_add(args) -> int:
     cfg = load_config(root)
     db = open_db(root)
     if args.to not in cfg.active_agents():
-        print(f"Không có agent '{args.to}'. Có: {', '.join(cfg.active_agents())}", file=sys.stderr)
+        print(tr("Không có agent '{to}'. Có: {v}", to=args.to, v=', '.join(cfg.active_agents())), file=sys.stderr)
         return 1
     parent = os.environ.get("ATEAM_TASK_ID")
     parent_task = db.task(int(parent)) if parent and parent.isdigit() else None
     depth = (parent_task.depth + 1) if parent_task else 0
     if parent_task and depth > cfg.max_delegation_depth:
-        print("Đã chạm giới hạn số tầng giao việc.", file=sys.stderr)
+        print(tr("Đã chạm giới hạn số tầng giao việc."), file=sys.stderr)
         return 1
     prompt = " ".join(args.prompt)
     tid = db.add_task(args.to, args.title or prompt[:60], prompt, model=args.model, effort=args.effort,
@@ -243,14 +276,14 @@ def cmd_add(args) -> int:
                       parent_id=parent_task.id if parent_task else None, depth=depth,
                       status=QUEUED,
                       source=f"delegate:{parent_task.agent}" if parent_task else "cli")
-    print(f"Đã thêm task #{tid} cho {args.to}. (Chạy khi `ateam` đang mở, hoặc `ateam run`)")
+    print(tr("Đã thêm task #{tid} cho {to}. (Chạy khi `ateam` đang mở, hoặc `ateam run`)", tid=tid, to=args.to))
     return 0
 
 
 def cmd_note(args) -> int:
     db = open_db(find_root(args.dir))
     db.add_note(os.environ.get("ATEAM_AGENT", "user"), " ".join(args.text))
-    print("Đã ghi chú.")
+    print(tr("Đã ghi chú."))
     return 0
 
 
@@ -277,7 +310,7 @@ def cmd_log(args) -> int:
     root = find_root(args.dir)
     p = root / ".ateam" / "logs" / ("system.log" if args.id in ("sys", "0") else f"t{args.id.lstrip('#')}.log")
     if not p.exists():
-        print("Chưa có log.")
+        print(tr("Chưa có log."))
         return 1
     print(p.read_text(encoding="utf-8", errors="replace"))
     return 0
@@ -301,13 +334,13 @@ def cmd_set(args) -> int:
     cfg = load_config(find_root(args.dir))
     a = cfg.agents.get(args.agent)
     if not a:
-        print(f"Không có agent '{args.agent}'. Có: {', '.join(cfg.agents)}", file=sys.stderr)
+        print(tr("Không có agent '{agent}'. Có: {v}", agent=args.agent, v=', '.join(cfg.agents)), file=sys.stderr)
         return 1
     if args.model is None and args.effort is None:
         print(f"{a.name}: {a.label()}")
         return 0
     if args.effort not in (None, "-") and a.efforts and args.effort not in a.efforts:
-        print(f"⚠ '{args.effort}' không nằm trong {a.efforts} — vẫn lưu, nhưng CLI có thể báo lỗi.")
+        print(tr("⚠ '{effort}' không nằm trong {efforts} — vẫn lưu, nhưng CLI có thể báo lỗi.", effort=args.effort, efforts=a.efforts))
     if args.model is not None:
         save_agent_setting(a.name, "model", args.model)
     if args.effort is not None:
@@ -324,7 +357,7 @@ def cmd_models(args) -> int:
     root = find_root(args.dir)
     cfg = load_config(root)
     if args.agent and args.agent not in cfg.agents:
-        print(f"Không có agent '{args.agent}'. Có: {', '.join(cfg.agents)}", file=sys.stderr)
+        print(tr("Không có agent '{agent}'. Có: {v}", agent=args.agent, v=', '.join(cfg.agents)), file=sys.stderr)
         return 1
     if args.refresh:
         orch = Orchestrator(root, cfg, open_db(root))
@@ -332,7 +365,7 @@ def cmd_models(args) -> int:
         for n, msg in asyncio.run(orch.discover_all(names)).items():
             print(msg)
     print(describe_models(cfg, args.agent))
-    print("Đặt: ateam set <agent> --model <tên> --effort <mức>")
+    print(tr("Đặt: ateam set <agent> --model <tên> --effort <mức>"))
     return 0
 
 
@@ -356,7 +389,7 @@ def cmd_reject(args) -> int:
     fb = " ".join(args.feedback) or None
     print(asyncio.run(_orch(args).reject(int(args.id.lstrip("#")), fb)))
     if fb:
-        print("Task đã xếp hàng lại — mở `ateam` hoặc chạy `ateam run` để làm lại.")
+        print(tr("Task đã xếp hàng lại — mở `ateam` hoặc chạy `ateam run` để làm lại."))
     return 0
 
 
@@ -364,11 +397,11 @@ def cmd_verify(args) -> int:
     from .config import save_project_setting
     root = find_root(args.dir)
     if not args.command:
-        print(f"Lệnh kiểm tra: {load_config(root).verify.command or '(tắt)'}")
+        print(tr("Lệnh kiểm tra: {v}", v=load_config(root).verify.command or tr("(tắt)")))
         return 0
     cmd = " ".join(args.command)
     save_project_setting(root, "verify_command", None if cmd in ("off", "-") else cmd)
-    print(f"Lệnh kiểm tra của dự án: {load_config(root).verify.command or '(tắt)'}")
+    print(tr("Lệnh kiểm tra của dự án: {v}", v=load_config(root).verify.command or tr("(tắt)")))
     return 0
 
 
@@ -376,15 +409,15 @@ def cmd_usage(args) -> int:
     import time as _t
     from .limits import load_cooldowns
     db = open_db(find_root(args.dir))
-    for label, since in (("7 ngày", _t.time() - 7 * 86400), ("24 giờ", _t.time() - 86400)):
+    for label, since in ((tr("7 ngày"), _t.time() - 7 * 86400), (tr("24 giờ"), _t.time() - 86400)):
         print(f"{label}:")
         for name, r in db.usage(since).items():
             tok = (r["prompt_chars"] + r["output_chars"]) // 4
-            print(f"  {name:12} {r['runs']:>4} lượt  {int(r['secs']) // 60:>5} phút  ~{tok // 1000}k token"
-                  f"  lỗi {r['failed']}  hết hạn mức {r['ratelimits']}")
+            print(tr("  {name:12} {v:>4} lượt  {v2:>5} phút  ~{v3}k token  lỗi {v4}  hết hạn mức "
+                     "{v5}", name=name, v=r['runs'], v2=int(r['secs']) // 60, v3=tok // 1000, v4=r['failed'], v5=r['ratelimits']))
     cds = load_cooldowns()
-    print("Đang tạm nghỉ: " + (", ".join(f"{a} đến {_t.strftime('%H:%M %d/%m', _t.localtime(t))}"
-                                         for a, t in cds.items()) or "không"))
+    print(tr("Đang tạm nghỉ: ") + (", ".join(tr("{a} đến {v}", a=a, v=_t.strftime('%H:%M %d/%m', _t.localtime(t)))
+                                         for a, t in cds.items()) or tr("không")))
     if args.local:
         return 0
     # hạn mức thật do CLI của từng agent báo (song song, in theo thứ tự xong trước)
@@ -402,7 +435,8 @@ def cmd_update(args) -> int:
     from .update import run_update
     ok, msg = asyncio.run(run_update(print, force=args.force))
     print(("✓ " if ok else "ℹ ") + msg)
-    return 0 if ok or "mới nhất" in msg else 1
+    from . import __version__ as cur
+    return 0 if ok or msg == tr("Đang dùng bản mới nhất ({version}).", version=cur) else 1
 
 
 def cmd_cooldown(args) -> int:
@@ -410,82 +444,90 @@ def cmd_cooldown(args) -> int:
     import time as _t
     if args.minutes in (None, "off", "0", "-"):
         save_cooldown(args.agent, None)
-        print(f"{args.agent} hoạt động lại.")
+        print(tr("{agent} hoạt động lại.", agent=args.agent))
     else:
         save_cooldown(args.agent, _t.time() + int(args.minutes) * 60)
-        print(f"{args.agent} tạm nghỉ {args.minutes} phút.")
+        print(tr("{agent} tạm nghỉ {minutes} phút.", agent=args.agent, minutes=args.minutes))
     return 0
 
 
 # ---------------------------------------------------------------------------- main
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="ateam", description="AI Team — điều phối nhiều AI agent CLI.")
+    p = argparse.ArgumentParser(prog="ateam", description=tr("AI Team — điều phối nhiều AI agent CLI."))
     p.add_argument("--version", action="version", version=f"ateam {__version__}")
-    p.add_argument("-C", "--dir", help="thư mục dự án (mặc định: thư mục hiện tại)")
+    p.add_argument("-C", "--dir", help=tr("thư mục dự án (mặc định: thư mục hiện tại)"))
+    p.add_argument("--lang", choices=LANGS, help=tr("ngôn ngữ giao diện cho lần chạy này (vi | en)"))
     sub = p.add_subparsers(dest="cmd")
 
-    sub.add_parser("tui", help="mở giao diện terminal (mặc định)")
-    sub.add_parser("setup", help="mở giao diện ở màn hình thiết lập: agent, trưởng nhóm, model, effort")
-    s = sub.add_parser("init", help="tạo file cấu hình")
-    s.add_argument("--project", action="store_true", help="tạo thêm .ateam/config.toml cho dự án")
-    sub.add_parser("doctor", help="kiểm tra các agent đã cài chưa")
-    s = sub.add_parser("goal", help="giao mục tiêu và chạy không cần giao diện")
+    sub.add_parser("tui", help=tr("mở giao diện terminal (mặc định)"))
+    s = sub.add_parser("lang", help=tr("xem / đổi ngôn ngữ giao diện (vi | en), lưu cho các lần sau"))
+    s.add_argument("code", nargs="?")
+    sub.add_parser("setup", help=tr("mở giao diện ở màn hình thiết lập: agent, trưởng nhóm, model, "
+                                    "effort"))
+    s = sub.add_parser("init", help=tr("tạo file cấu hình"))
+    s.add_argument("--project", action="store_true", help=tr("tạo thêm .ateam/config.toml cho dự án"))
+    sub.add_parser("doctor", help=tr("kiểm tra các agent đã cài chưa"))
+    s = sub.add_parser("goal", help=tr("giao mục tiêu và chạy không cần giao diện"))
     s.add_argument("text", nargs="+")
-    s.add_argument("-y", "--yes", action="store_true", help="không hỏi duyệt kế hoạch")
-    s.add_argument("-q", "--quiet", action="store_true", help="không in log chi tiết của agent")
-    s = sub.add_parser("continue", help="tiếp tục mục tiêu (m12) hoặc thread /task (t40) đã xong")
-    s.add_argument("ref", help="m<số> = mục tiêu, t<số> = task")
-    s.add_argument("text", nargs="+", help="yêu cầu mới")
-    s.add_argument("-y", "--yes", action="store_true", help="không hỏi duyệt kế hoạch")
+    s.add_argument("-y", "--yes", action="store_true", help=tr("không hỏi duyệt kế hoạch"))
+    s.add_argument("-q", "--quiet", action="store_true", help=tr("không in log chi tiết của agent"))
+    s = sub.add_parser("continue", help=tr("tiếp tục mục tiêu (m12) hoặc thread /task (t40) đã xong"))
+    s.add_argument("ref", help=tr("m<số> = mục tiêu, t<số> = task"))
+    s.add_argument("text", nargs="+", help=tr("yêu cầu mới"))
+    s.add_argument("-y", "--yes", action="store_true", help=tr("không hỏi duyệt kế hoạch"))
     s.add_argument("-q", "--quiet", action="store_true")
-    s = sub.add_parser("flow", help="chạy mục tiêu theo workflow tuỳ chỉnh (không cần giao diện)")
+    s = sub.add_parser("flow", help=tr("chạy mục tiêu theo workflow tuỳ chỉnh (không cần giao diện)"))
     s.add_argument("workflow")
     s.add_argument("text", nargs="+")
-    s.add_argument("-y", "--yes", action="store_true", help="tự duyệt các bước")
+    s.add_argument("-y", "--yes", action="store_true", help=tr("tự duyệt các bước"))
     s.add_argument("-q", "--quiet", action="store_true")
-    sub.add_parser("flows", help="liệt kê workflow tuỳ chỉnh")
-    s = sub.add_parser("add", help="thêm 1 task vào bảng (agent cũng gọi được lệnh này)")
-    s.add_argument("--to", required=True, help="tên agent")
+    sub.add_parser("flows", help=tr("liệt kê workflow tuỳ chỉnh"))
+    s = sub.add_parser("add", help=tr("thêm 1 task vào bảng (agent cũng gọi được lệnh này)"))
+    s.add_argument("--to", required=True, help=tr("tên agent"))
     s.add_argument("--title")
-    s.add_argument("--model", help="model riêng cho task này")
-    s.add_argument("--effort", help="effort riêng cho task này")
+    s.add_argument("--model", help=tr("model riêng cho task này"))
+    s.add_argument("--effort", help=tr("effort riêng cho task này"))
     s.add_argument("prompt", nargs="+")
-    s = sub.add_parser("set", help="đặt model / effort mặc định cho 1 agent")
+    s = sub.add_parser("set", help=tr("đặt model / effort mặc định cho 1 agent"))
     s.add_argument("agent")
-    s.add_argument("--model", help="tên model, '-' để về mặc định")
-    s.add_argument("--effort", help="mức effort, '-' để về mặc định")
-    s = sub.add_parser("models", help="xem model / effort mỗi agent hỗ trợ")
+    s.add_argument("--model", help=tr("tên model, '-' để về mặc định"))
+    s.add_argument("--effort", help=tr("mức effort, '-' để về mặc định"))
+    s = sub.add_parser("models", help=tr("xem model / effort mỗi agent hỗ trợ"))
     s.add_argument("agent", nargs="?")
     s.add_argument("--refresh", action="store_true",
-                   help="hỏi CLI danh sách model thật (opencode models, agy models)")
-    s = sub.add_parser("note", help="ghi chú chung cho cả đội")
+                   help=tr("hỏi CLI danh sách model thật (opencode models, agy models)"))
+    s = sub.add_parser("note", help=tr("ghi chú chung cho cả đội"))
     s.add_argument("text", nargs="+")
-    s = sub.add_parser("compact", help="trưởng nhóm tóm tắt ghi chú & mục tiêu thành 1 ghi chú ngắn")
-    s.add_argument("focus", nargs="*", help="điều cần giữ trong bản tóm tắt (tuỳ chọn)")
-    sub.add_parser("list", help="liệt kê mục tiêu và task")
-    s = sub.add_parser("log", help="in log của 1 task (hoặc 'sys')")
+    s = sub.add_parser("compact", help=tr("trưởng nhóm tóm tắt ghi chú & mục tiêu thành 1 ghi chú "
+                                          "ngắn"))
+    s.add_argument("focus", nargs="*", help=tr("điều cần giữ trong bản tóm tắt (tuỳ chọn)"))
+    sub.add_parser("list", help=tr("liệt kê mục tiêu và task"))
+    s = sub.add_parser("log", help=tr("in log của 1 task (hoặc 'sys')"))
     s.add_argument("id")
-    s = sub.add_parser("diff", help="xem thay đổi của 1 task")
+    s = sub.add_parser("diff", help=tr("xem thay đổi của 1 task"))
     s.add_argument("id")
-    s = sub.add_parser("merge", help="merge task đang chờ duyệt")
+    s = sub.add_parser("merge", help=tr("merge task đang chờ duyệt"))
     s.add_argument("id")
-    s = sub.add_parser("reject", help="từ chối task đang chờ duyệt (kèm góp ý = giao làm lại)")
+    s = sub.add_parser("reject", help=tr("từ chối task đang chờ duyệt (kèm góp ý = giao làm lại)"))
     s.add_argument("id")
     s.add_argument("feedback", nargs="*")
-    s = sub.add_parser("verify", help="đặt lệnh kiểm tra sau mỗi task cho dự án (off = tắt)")
+    s = sub.add_parser("verify", help=tr("đặt lệnh kiểm tra sau mỗi task cho dự án (off = tắt)"))
     s.add_argument("command", nargs="*")
-    s = sub.add_parser("usage", help="thống kê lượt chạy và hạn mức theo agent (hỏi cả CLI của từng agent)")
-    s.add_argument("--local", action="store_true", help="chỉ thống kê của ateam, không hỏi các CLI")
-    s = sub.add_parser("update", help="cập nhật ateam lên bản mới nhất")
-    s.add_argument("--force", action="store_true", help="cài lại kể cả khi đã là bản mới nhất")
-    s = sub.add_parser("cooldown", help="cho agent tạm nghỉ N phút, hoặc 'off'")
+    s = sub.add_parser("usage", help=tr("thống kê lượt chạy và hạn mức theo agent (hỏi cả CLI của "
+                                        "từng agent)"))
+    s.add_argument("--local", action="store_true", help=tr("chỉ thống kê của ateam, không hỏi các CLI"))
+    s = sub.add_parser("update", help=tr("cập nhật ateam lên bản mới nhất"))
+    s.add_argument("--force", action="store_true", help=tr("cài lại kể cả khi đã là bản mới nhất"))
+    s = sub.add_parser("cooldown", help=tr("cho agent tạm nghỉ N phút, hoặc 'off'"))
     s.add_argument("agent")
     s.add_argument("minutes", nargs="?")
-    s = sub.add_parser("run", help="chạy hết các task đang chờ rồi thoát")
+    s = sub.add_parser("run", help=tr("chạy hết các task đang chờ rồi thoát"))
     s.add_argument("-q", "--quiet", action="store_true")
 
     args = p.parse_args(argv)
-    handlers = {None: cmd_tui, "tui": cmd_tui, "setup": cmd_tui, "init": cmd_init, "doctor": cmd_doctor,
+    if args.lang:
+        set_lang(args.lang)
+    handlers = {None: cmd_tui, "tui": cmd_tui, "lang": cmd_lang, "setup": cmd_tui, "init": cmd_init, "doctor": cmd_doctor,
                 "goal": cmd_goal, "flow": cmd_goal, "continue": cmd_goal, "flows": cmd_flows, "add": cmd_add, "note": cmd_note,
                 "compact": cmd_compact, "list": cmd_list,
                 "log": cmd_log, "run": cmd_run, "set": cmd_set, "models": cmd_models, "diff": cmd_diff,

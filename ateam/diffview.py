@@ -14,6 +14,7 @@ from typing import Optional
 from rich.style import Style
 from rich.syntax import Syntax
 from rich.text import Span, Text
+from .i18n import tr
 
 MAX_ROWS = 4000  # mỗi file; dài hơn thì cắt, mở bằng VS Code (phím o) để xem đủ
 
@@ -282,10 +283,10 @@ def _num(n: Optional[int], w: int) -> Text:
 
 def _notice(fd: FileDiff) -> Text | None:
     if fd.binary:
-        return Text("  (file nhị phân — không hiện nội dung; nhấn o để mở bằng VS Code)", "dim italic")
+        return Text(tr("  (file nhị phân — không hiện nội dung; nhấn o để mở bằng VS Code)"), "dim italic")
     if not fd.hunks:
-        what = {"R": "chỉ đổi tên, nội dung giữ nguyên", "A": "file rỗng", "D": "file rỗng bị xoá"}
-        return Text(f"  ({what.get(fd.status, 'chỉ đổi quyền file')})", "dim italic")
+        what = {"R": tr("chỉ đổi tên, nội dung giữ nguyên"), "A": tr("file rỗng"), "D": tr("file rỗng bị xoá")}
+        return Text(f"  ({what.get(fd.status, tr('chỉ đổi quyền file'))})", "dim italic")
     return None
 
 
@@ -341,7 +342,7 @@ def render(fd: FileDiff, width: int, split: bool) -> tuple[Text, list[int]]:
                 row.append_text(_cell(styled[i], body, bg))
                 lines.append(row)
     if len(lines) >= MAX_ROWS:
-        lines.append(Text("  … còn nữa — file quá dài, nhấn o để xem đủ bằng VS Code", "yellow"))
+        lines.append(Text(tr("  … còn nữa — file quá dài, nhấn o để xem đủ bằng VS Code"), "yellow"))
     return Text("\n").join(lines), starts
 
 

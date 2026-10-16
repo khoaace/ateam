@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import __version__
+from .i18n import tr
 
 VERSION_URL = "https://ateam.khoaace.workers.dev/version.txt"
 GET_SH = "https://raw.githubusercontent.com/khoaace/ateam/main/scripts/get.sh"
@@ -59,17 +60,18 @@ async def run_update(on_line: Callable[[str], None], force: bool = False) -> tup
     src = editable_source()
     latest = await latest_version()
     if latest is None:
-        return False, "Không kiểm tra được phiên bản mới (mất mạng?). Thử lại sau."
+        return False, tr("Không kiểm tra được phiên bản mới (mất mạng?). Thử lại sau.")
     if not force and parse_version(latest) <= parse_version(__version__):
-        return False, f"Đang dùng bản mới nhất ({__version__})."
+        return False, tr("Đang dùng bản mới nhất ({version}).", version=__version__)
     if src is not None:
-        return False, (f"Có bản {latest} (đang chạy {__version__}), nhưng ateam được cài từ mã nguồn ở {src}: "
-                       f"cập nhật bằng `git -C {src} pull`, rồi mở lại app.")
-    on_line(f"→ Cập nhật ateam {__version__} → {latest}")
+        return False, (tr("Có bản {latest} (đang chạy {version}), nhưng ateam được cài từ mã nguồn "
+                          "ở {src}: cập nhật bằng `git -C {src} pull`, rồi mở lại app.", latest=latest, version=__version__, src=src))
+    on_line(tr("→ Cập nhật ateam {version} → {latest}", version=__version__, latest=latest))
     from .runner import Run
     run = Run(list(UPDATE_CMD), str(Path.home()), dict(os.environ), use_pty=False,
               timeout=600, on_line=on_line)
     code = await run.start()
     if code != 0:
-        return False, f"Cập nhật thất bại (mã thoát {code}) — xem log ở trên, hoặc chạy tay: curl -fsSL {GET_SH} | bash"
-    return True, f"Đã cập nhật lên {latest}. Thoát (Ctrl+Q) rồi mở lại ateam để dùng bản mới."
+        return False, tr("Cập nhật thất bại (mã thoát {code}) — xem log ở trên, hoặc chạy tay: "
+                         "curl -fsSL {GET_SH} | bash", code=code, GET_SH=GET_SH)
+    return True, tr("Đã cập nhật lên {latest}. Thoát (Ctrl+Q) rồi mở lại ateam để dùng bản mới.", latest=latest)
