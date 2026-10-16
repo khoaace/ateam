@@ -207,7 +207,8 @@ trong `.ateam/state.json` của dự án. Enter chạy lệnh đã gõ, chỉ ch
 `gitops.GitRepo` (một instance trong `TeamApp`, không phụ thuộc Textual): mọi lệnh chạy qua
 `asyncio.create_subprocess_exec("git", "-c", "core.quotePath=false", …)` với `GIT_TERMINAL_PROMPT=0` (không bao giờ
 hỏi mật khẩu trong TUI — sẽ treo), `GIT_EDITOR=true`, `LANGUAGE=C` (thông báo tiếng Anh ổn định để dò `CONFLICT`,
-`rejected`…), timeout 30 giây (fetch/pull/push 120 giây). Thao tác thay đổi repo giữ `GitRepo.lock`; commit/merge/
+`rejected`…), timeout 30 giây (fetch/pull/push 120 giây). `commit(no_verify=True)` thêm `--no-verify`; commit lỗi mà repo có hook (`has_commit_hooks`: thư mục hooks hoặc
+`core.hooksPath` của husky) thì lời nhắn gợi ý ô *Bỏ qua hook*. Thao tác thay đổi repo giữ `GitRepo.lock`; commit/merge/
 stash/revert có cờ `-c user.*` dự phòng như `Orchestrator.git_ident`. Mỗi hàm trả `(ok, lời nhắn tiếng Việt)`.
 
 - Trạng thái: `git status --porcelain=v2 --branch --show-stash -z --untracked-files=all` → `parse_status` →

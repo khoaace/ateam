@@ -214,14 +214,16 @@ chạy đúng lệnh đã gõ. `/stop [số]` dừng lệnh. Thoát app (Ctrl+Q)
   file mới thì bị xoá), **c** tới ô commit.
 - **Commit**: gõ message rồi Enter (chưa stage gì thì commit mọi thay đổi). **✨ Trưởng nhóm viết** (hoặc `/commit`
   không kèm message): trưởng nhóm đọc diff và viết message theo ngôn ngữ/kiểu các commit trước, bạn sửa rồi Enter.
-  Ô **Sửa commit trước** = `--amend` (tự điền message cũ).
+  Ô **Sửa commit trước** = `--amend` (tự điền message cũ). Ô **Bỏ qua hook (--no-verify)** commit mà không
+  chạy git hook (pre-commit, commit-msg — husky, lint-staged…); ô giữ nguyên tới khi bạn bỏ tick. Commit bị hook
+  chặn thì thông báo lỗi nhắc ô này.
 - **Lịch sử** 80 commit gần nhất: **Enter** xem diff của commit, **r** / **↶ Revert** tạo commit đảo ngược,
   **⎌ Bỏ commit cuối** (giữ thay đổi để sửa; chỉ khi chưa push).
 - **Nhánh**: danh sách nhánh local + remote (mới nhất trước, `[ahead/behind]`), Enter chuyển sang (nhánh remote →
   tạo nhánh local theo dõi), tạo mới, đổi tên, merge vào nhánh hiện tại, xoá / xoá hẳn.
 - **Stash**: cất mọi thay đổi (kể cả file mới) kèm ghi chú, lấy lại (pop), áp dụng mà giữ stash, xoá.
 
-Lệnh tắt: `/commit <message>`, `/push [-f]` (`-f` = `--force-with-lease`), `/pull`, `/fetch`, `/branch [tên]`,
+Lệnh tắt: `/commit <message>`, `/commit --no-verify <message>` (hoặc `-n`), `/push [-f]` (`-f` = `--force-with-lease`), `/pull`, `/fetch`, `/branch [tên]`,
 `/checkout <nhánh>`, `/stash [message]`, `/stash pop`. Việc khác (rebase, tag, cherry-pick, thêm remote):
 `/git <lệnh>` chạy `git <lệnh>` ở tab Terminal. ateam không bao giờ hỏi mật khẩu trong app — push/pull cần
 đăng nhập thì cấu hình SSH key hoặc credential helper trước. Đổi nhánh, pull, stash bị chặn khi agent đang chạy

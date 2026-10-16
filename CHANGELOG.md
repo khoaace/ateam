@@ -1,5 +1,10 @@
 # Changelog
 
+## Chưa phát hành
+
+- Tab 🌿 Git: ô **Bỏ qua hook (--no-verify)** dưới nút Commit và `/commit --no-verify <message>` (hoặc `-n`) để
+  commit khi hook pre-commit/commit-msg (husky, lint-staged…) chặn. Commit bị hook chặn thì thông báo nhắc cách này.
+
 ## 0.7.0 — 16/10/2026
 
 - **Sửa: task của OpenCode lỗi "Unrecognized flag: --variant in command opencode run"** khi đặt effort. Bản

@@ -386,7 +386,9 @@ class GitRepo:
                     return False, short_error(out)
         return True, f"Đã bỏ thay đổi của {len(tracked) + len(untracked)} file"
 
-    async def commit(self, message: str, amend: bool = False, all_changes: bool = False) -> tuple[bool, str]:
+    async def commit(self, message: str, amend: bool = False, all_changes: bool = False,
+                     no_verify: bool = False) -> tuple[bool, str]:
+        """no_verify: `git commit --no-verify` — bỏ qua hook pre-commit/commit-msg (husky, lint-staged…)."""
         message = message.strip()
         if not message and not amend:
             return False, "Chưa có nội dung commit"
@@ -402,6 +404,8 @@ class GitRepo:
             return False, ("Chưa stage file nào — bấm Space ở file cần commit, hoặc 'a' để stage tất cả"
                            if st.files else "Không có thay đổi nào để commit")
         args = ["commit", "-q"]
+        if no_verify:
+            args.append("--no-verify")
         if amend:
             args.append("--amend")
             args += ["-m", message] if message else ["--no-edit"]
@@ -411,9 +415,28 @@ class GitRepo:
         async with self.lock:
             rc, out = await self.run(*pre, *args)
         if rc != 0:
-            return False, short_error(out)
+            msg = short_error(out)
+            if not no_verify and await self.has_commit_hooks():
+                msg += " — nếu do git hook chặn: tick 'Bỏ qua hook' hoặc /commit --no-verify <message>"
+            return False, msg
         _, sha = await self.run("rev-parse", "--short", "HEAD")
-        return True, (f"Đã sửa commit trước ({sha.strip()})" if amend else f"Đã commit {sha.strip()}")
+        skipped = " (bỏ qua hook)" if no_verify else ""
+        return True, (f"Đã sửa commit trước ({sha.strip()}){skipped}" if amend
+                      else f"Đã commit {sha.strip()}{skipped}")
+
+    async def has_commit_hooks(self) -> bool:
+        """Repo có hook chạy khi commit (pre-commit, commit-msg…) — kể cả core.hooksPath của husky."""
+        rc, p = await self.run("rev-parse", "--git-path", "hooks")
+        dirs = [p.strip()] if rc == 0 and p.strip() else []
+        rc, hp = await self.run("config", "core.hooksPath")
+        if rc == 0 and hp.strip():
+            dirs.insert(0, hp.strip())
+        for d in dirs:
+            path = Path(d) if Path(d).is_absolute() else self.root / d
+            for name in ("pre-commit", "prepare-commit-msg", "commit-msg"):
+                if (path / name).is_file():
+                    return True
+        return False
 
     async def last_message(self) -> str:
         rc, out = await self.run("log", "-1", "--format=%B")

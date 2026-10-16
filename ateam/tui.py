@@ -157,6 +157,8 @@ Git (tab 🌿 Git — Ctrl+T xoay tới, hoặc /git):
   /git <lệnh>                       chạy git <lệnh> bất kỳ ở tab Terminal, vd /git tag v1.0,
                                     /git cherry-pick abc123, /git remote add origin <url>
   /commit <message>                 commit file đã stage (chưa stage gì thì commit mọi thay đổi)
+  /commit --no-verify <message>     commit bỏ qua git hook (pre-commit, commit-msg); /commit -n cũng được.
+                                    Trong tab Git: ô "Bỏ qua hook (--no-verify)" dưới nút Commit
   /commit                           trưởng nhóm đọc diff và viết commit message (nút ✨ trong tab Git)
   /push [-f]   /pull   /fetch       đồng bộ với remote (-f = --force-with-lease)
   /branch [tên]   /checkout <nhánh> tạo & chuyển nhánh / chuyển nhánh (trống: mở danh sách nhánh)
@@ -189,7 +191,7 @@ COMMANDS = [
     ("stop", "[số]", "dừng lệnh terminal đang chọn (hoặc lệnh số đó)"),
     ("term", "", "mở tab Terminal (lệnh đang chạy)"),
     ("git", "[lệnh git]", "mở tab Git; kèm lệnh thì chạy git <lệnh> ở tab Terminal"),
-    ("commit", "[message]", "commit (chưa stage gì thì commit tất cả); trống: trưởng nhóm viết message"),
+    ("commit", "[--no-verify] [message]", "commit (chưa stage gì thì commit tất cả); trống: trưởng nhóm viết message"),
     ("push", "[-f]", "push nhánh hiện tại (lần đầu tự tạo nhánh trên remote)"),
     ("pull", "", "pull nhánh hiện tại (fast-forward, không được thì merge)"),
     ("fetch", "", "fetch mọi remote"),
@@ -2939,9 +2941,10 @@ class TeamApp(App):
     #git-files { height: 1fr; border: none; }
     #git-empty { height: 1fr; padding: 1 2; }
     .git-row { height: auto; }
-    .git-row Button { margin-right: 1; }
+    .git-row Button { padding: 0; margin-right: 1; }
     #git-msg { margin: 0; }
-    #git-amend { height: auto; border: none; padding: 0; background: transparent; }
+    #git-amend, #git-no-verify { height: auto; border: none; padding: 0; background: transparent;
+                                 margin-right: 2; }
     #git-hist { width: 1fr; }
     #git-log-title { height: 1; padding: 0 1; background: $panel; }
     #git-log { height: 1fr; border: none; }
@@ -3079,15 +3082,17 @@ class TeamApp(App):
                             yield GitFileList(id="git-files")
                             yield Static(id="git-empty")
                             with Horizontal(classes="git-row"):
-                                yield Btn("± Stage/bỏ", id="git-stage")
-                                yield Btn("＋ Stage tất cả", id="git-stage-all")
+                                yield Btn("± Stage", id="git-stage")
+                                yield Btn("+ Tất cả", id="git-stage-all")
                                 yield Btn("↺ Bỏ thay đổi", id="git-discard", variant="error")
                                 yield Btn("Δ Diff", id="git-diff")
                             yield TextInput(id="git-msg", placeholder="Commit message — Enter để commit")
                             with Horizontal(classes="git-row"):
                                 yield Btn("✓ Commit", id="git-commit", variant="success")
                                 yield Btn("✨ Trưởng nhóm viết", id="git-ai", variant="primary")
+                            with Horizontal(classes="git-row"):
                                 yield Checkbox("Sửa commit trước", id="git-amend")
+                                yield Checkbox("Bỏ qua hook (--no-verify)", id="git-no-verify")
                         with Vertical(id="git-hist"):
                             yield Static(id="git-log-title")
                             yield GitLogList(id="git-log")
@@ -3427,10 +3432,11 @@ class TeamApp(App):
             empty.update(Text("✓ Không có thay đổi nào chưa commit.", "green"))
         n_staged = len(st.staged)
         amend = self.query_one("#git-amend", Checkbox).value
+        skip = " (bỏ qua hook)" if self.query_one("#git-no-verify", Checkbox).value else ""
         self.query_one("#git-msg", Input).placeholder = (
-            "Message mới cho commit trước — Enter để sửa commit" if amend else
-            f"Commit message cho {n_staged} file đã stage — Enter để commit" if n_staged else
-            "Commit message (chưa stage gì: commit mọi thay đổi) — Enter để commit")
+            f"Message mới cho commit trước — Enter để sửa commit{skip}" if amend else
+            f"Commit message cho {n_staged} file đã stage — Enter để commit{skip}" if n_staged else
+            f"Commit message (chưa stage gì: commit mọi thay đổi) — Enter để commit{skip}")
 
         log = self.query_one("#git-log", GitLogList)
         sigs = [c.sha for c in self.git_commits]
@@ -3557,10 +3563,11 @@ class TeamApp(App):
     def action_git_focus_msg(self) -> None:
         self.query_one("#git-msg", Input).focus()
 
-    def git_commit(self, message: str | None = None) -> None:
+    def git_commit(self, message: str | None = None, no_verify: bool | None = None) -> None:
         box = self.query_one("#git-msg", Input)
         msg = (box.value if message is None else message).strip()
         amend = self.query_one("#git-amend", Checkbox).value
+        skip = self.query_one("#git-no-verify", Checkbox).value if no_verify is None else no_verify
         if not msg and not amend:
             self.notify("Gõ commit message trước (hoặc bấm ✨ để trưởng nhóm viết)", severity="warning")
             box.focus()
@@ -3572,7 +3579,9 @@ class TeamApp(App):
             box.value = ""
             self._git_body = ""
             self.query_one("#git-amend", Checkbox).value = False
-        self.git_do(lambda: self.git.commit(msg, amend=amend, all_changes=all_changes), then=clear)
+        # ô "Bỏ qua hook" giữ nguyên sau khi commit (hook hỏng thường hỏng cho nhiều lần commit liền)
+        self.git_do(lambda: self.git.commit(msg, amend=amend, all_changes=all_changes, no_verify=skip),
+                    then=clear)
 
     async def git_ai_message(self) -> None:
         btn = self.query_one("#git-ai", Button)
@@ -3706,7 +3715,13 @@ class TeamApp(App):
                 self.run_worker(self.git_ai_message(), exclusive=False)
                 return
             self._git_body = ""
-            self.git_commit(rest)
+            words = rest.split()
+            skip = any(w in ("--no-verify", "-n") for w in words[:1])
+            msg = " ".join(words[1:]) if skip else rest
+            if not msg:
+                self.notify("Dùng: /commit [--no-verify] <message>", severity="warning")
+                return
+            self.git_commit(msg, no_verify=True if skip else None)
         elif cmd == "push":
             self.git_do(lambda: g.push(force=rest in ("-f", "--force", "force")))
         elif cmd == "pull":
@@ -4344,6 +4359,10 @@ class TeamApp(App):
             if wf else "Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file")
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if event.checkbox.id == "git-no-verify":
+            event.stop()
+            self._render_git()
+            return
         if event.checkbox.id != "git-amend":
             return
         event.stop()
