@@ -271,7 +271,7 @@ def test_tui_git_tab(env, project, monkeypatch):
             # stash qua popup rồi /stash pop
             app.git_button("git-stash")
             assert await wait(lambda: isinstance(app.screen, GitStashScreen))
-            await pilot.click("#gs-push")
+            app.screen.query_one("#gs-push").press()  # không theo toạ độ (popup vừa mở)
             assert await wait(lambda: app.git_status.clean and app.git_status.stashes == 1)
             app.run_command("/stash pop")
             assert await wait(lambda: app.git_status.stashes == 0 and not app.git_status.clean)

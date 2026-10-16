@@ -111,7 +111,9 @@ def test_tui_grill_flow(env, project, monkeypatch, tmp_path):
             app.run_command("/grill Thêm trang cài đặt")
             assert await wait(lambda: bar.question is not None and bar.goal_id not in (gid, gid2))
             gid3 = bar.goal_id
-            await pilot.click("#grill-cancel")
+            # bấm nút trực tiếp (Button.press) chứ không theo toạ độ: khung vừa vẽ lại, máy CI chậm thì
+            # cú bấm chuột có thể rơi vào chỗ nút chưa kịp hiện
+            app.query_one("#grill-cancel").press()
             assert await wait(lambda: app.db.goal(gid3).status == "cancelled")
             assert await wait(lambda: not bar.display)
             await pilot.press("ctrl+q")
