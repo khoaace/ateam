@@ -25,6 +25,22 @@ def test_argv_codex_effort_is_toml_string():
     assert codex.argv("X") == ["codex", "exec", "-c", 'model_reasoning_effort="xhigh"', "X"]
 
 
+def test_argv_model_with_effort_suffix_drops_effort_flag():
+    # agy: "--model gemini-4-argon-medium conflicts with --effort=high" -> đổi sang biến thể -high
+    agy = AgentConfig("antigravity", ["agy", "-p", "{prompt}"], model_args=["--model", "{model}"],
+                      effort_args=["--effort", "{effort}"],
+                      models=["gemini-4-argon-medium", "gemini-4-argon-high", "claude-sonnet-4-6"])
+    assert agy.argv("P", model="gemini-4-argon-medium", effort="high") == [
+        "agy", "--model", "gemini-4-argon-high", "-p", "P"]
+    # không có biến thể đúng effort: giữ model, vẫn bỏ cờ effort
+    assert agy.argv("P", model="gemini-4-argon-medium", effort="xhigh") == [
+        "agy", "--model", "gemini-4-argon-medium", "-p", "P"]
+    # model không mang effort: giữ nguyên --effort
+    assert agy.argv("P", model="claude-sonnet-4-6", effort="high") == [
+        "agy", "--model", "claude-sonnet-4-6", "--effort", "high", "-p", "P"]
+    assert agy.label("gemini-4-argon-medium", "high") == "gemini-4-argon-high"  # log ghi model chạy thật
+
+
 def test_argv_placeholder_in_command_and_missing_prompt_placeholder():
     a = AgentConfig("x", ["tool", "--model", "{model}", "run"])
     assert a.argv("P") == ["tool", "run", "P"]  # model rỗng: bỏ cả cờ đứng trước

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.1 — 16/10/2026
+
+- Sửa lỗi Antigravity `--model gemini-4-argon-medium conflicts with --effort=high`: model đã có effort trong tên
+  thì không thêm cờ `--effort` nữa mà đổi sang biến thể đúng effort (vd `gemini-4-argon-high`) nếu `agy models` có.
+
 ## 0.11.0 — 16/10/2026
 
 - **`ateam web` — giao diện web hiện đại, đủ chức năng như terminal** (http://127.0.0.1:8000, `--open`, `--port`):

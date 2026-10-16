@@ -26,6 +26,8 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 LEAD_ALIAS = "lead"  # agent của bước workflow = trưởng nhóm hiện tại
 CONFIG_VERSION = 8
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
+# hậu tố effort trong tên model (vd agy: gemini-4-argon-medium) — model đã cố định effort
+EFFORT_SUFFIXES = ("minimal", "low", "medium", "high", "xhigh", "max")
 
 DEFAULT_CONFIG = """\
 # ============================================================
@@ -335,19 +337,30 @@ class AgentConfig:
         return bool(self.binary) and shutil.which(self.binary) is not None
 
     def label(self, model: str | None = None, effort: str | None = None) -> str:
-        m = (model if model is not None else self.model) or tr("mặc định")
-        e = effort if effort is not None else self.effort
+        m, e = self.split_effort((model if model is not None else self.model) or "",
+                                 (effort if effort is not None else self.effort) or "")
+        m = m or tr("mặc định")
         return f"{m}" + (f" · {e}" if e else "")
 
     def model_choices(self) -> list[str]:
         """Model gợi ý; model đang dùng (nếu là tên ngoài danh sách) đứng đầu."""
         return ([self.model] if self.model and self.model not in self.models else []) + self.models
 
+    def split_effort(self, model: str, effort: str) -> tuple[str, str]:
+        """Model có sẵn effort trong tên (agy: gemini-4-argon-medium) mà vẫn thêm --effort thì CLI báo
+        "conflicts with --effort": đổi sang biến thể đúng effort nếu có trong danh sách model, bỏ cờ effort."""
+        stem, _, tail = model.rpartition("-")
+        if not (effort and stem and tail in EFFORT_SUFFIXES):
+            return model, effort
+        variant = f"{stem}-{effort}"
+        return (variant if variant in self.models else model), ""
+
     def argv(self, prompt: str, *, model: str | None = None, effort: str | None = None,
              plan: bool = False) -> list[str]:
         """Dựng lệnh: thay {prompt}/{model}/{effort}, chèn cờ model/effort ngay trước prompt."""
         model = (model if model else self.model) or ""
         effort = (effort if effort else self.effort) or ""
+        model, effort = self.split_effort(model, effort)
         base = apply_access(self.plan_command if plan and self.plan_command else self.command,
                             self.full_access)
         extra: list[str] = []
