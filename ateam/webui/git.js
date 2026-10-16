@@ -1,0 +1,278 @@
+/* Tab Git — như tab 🌿 Git của TUI (tui.py: refresh_git, git_button…): trạng thái, stage/unstage, bỏ thay đổi,
+   commit (amend, --no-verify, trưởng nhóm viết message), lịch sử (xem, revert, bỏ commit cuối), nhánh, stash,
+   fetch/pull/push. Gọi server: GET /api/git/*, WS {op: "git", action}. */
+"use strict";
+
+window.GitView = (() => {
+  const G = { st: null, log: [], sel: null, timer: null, busy: false, amend: false, noVerify: false };
+  const box = () => $("#git");
+
+  async function refresh() {
+    try {
+      const [st, log] = await Promise.all([fetch("/api/git/status").then((r) => r.json()), fetch("/api/git/log?n=80").then((r) => r.json())]);
+      const sig = JSON.stringify([st, log]);
+      if (sig === G.sig) return;  // không đổi: không vẽ lại (đang gõ message / cuộn danh sách)
+      G.sig = sig; G.st = st; G.log = log;
+      render();
+    } catch (e) { /* server đang khởi động lại */ }
+  }
+  async function act(action, data = {}, busyMsg = "") {
+    if (busyMsg) toast(busyMsg, "info");
+    G.sig = "";
+    const r = await request("git", Object.assign({ action }, data));
+    S.branches = null;  // gợi ý /checkout đọc lại
+    await refresh();
+    return r;
+  }
+
+  function groups() {
+    const g = (G.st && G.st.groups) || { c: [], s: [], w: [] };
+    return [["c", t("git_conflicts"), g.c], ["s", t("git_staged"), g.s], ["w", t("git_changes"), g.w]].filter((x) => x[2].length);
+  }
+  function fileRow(code, f) {
+    const sel = G.sel && G.sel.code === code && G.sel.path === f.path;
+    const name = f.path.split("/").pop(), dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
+    const icon = { M: "review", A: "done", U: "done", D: "failed", R: "draft", C: "draft", "!": "failed" }[f.icon] || "queued";
+    return `<div class="gfile${sel ? " sel" : ""}" data-gact="sel" data-code="${code}" data-path="${esc(f.path)}" tabindex="-1">
+      <span class="fstat s-${icon}">${esc(f.icon)}</span><span class="gname">${esc(name)}</span><span class="gdir">${esc(dir)}${f.orig ? " ← " + esc(f.orig) : ""}</span>
+      <span class="grow-acts">
+        <button class="mini" data-gact="diff" title="d">Δ</button>
+        <button class="mini" data-gact="edit" title="e">✎</button>
+        ${code === "w" ? `<button class="mini danger" data-gact="discard" title="x">↺</button>` : ""}
+        ${code !== "c" ? `<button class="mini" data-gact="toggle" title="space">${code === "s" ? "−" : "+"}</button>` : ""}
+      </span></div>`;
+  }
+
+  function render() {
+    const st = G.st, el = box();
+    if (!st || !el) return;
+    if (!st.is_repo) {
+      el.innerHTML = `<div class="empty"><div class="empty-ico"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="9" r="2.4"/><path d="M6 8.4v7.2M18 11.4c0 3-3 3.6-6 4.2"/></svg></div>
+        <div class="big">${esc(t("git_norepo"))}</div><div>${esc(t("git_norepo_hint"))}</div>
+        <button class="btn primary" data-gact="init">git init</button></div>`;
+      return;
+    }
+    const sync = st.upstream ? [st.ahead ? `↑${st.ahead}` : "", st.behind ? `↓${st.behind}` : ""].filter(Boolean).join(" ") || "✓ " + t("git_synced") : t("git_no_remote");
+    const head = st.branch || (st.oid ? "detached @" + st.oid.slice(0, 8) : t("git_no_commit"));
+    const files = groups().map(([code, title, list]) => `<div class="ggroup"><div class="ghead">${esc(title)} <span class="n">${list.length}</span>
+        ${code === "s" ? `<button class="mini" data-gact="unstage_all" title="u">${esc(t("git_unstage_all"))}</button>` : code === "w" ? `<button class="mini" data-gact="stage_all" title="a">${esc(t("git_stage_all"))}</button>` : ""}</div>
+        ${list.map((f) => fileRow(code, f)).join("")}</div>`).join("") || `<div class="gclean">✓ ${esc(t("git_clean"))}</div>`;
+    const nStaged = st.groups.s.length;
+    const ph = G.amend ? t("git_msg_amend") : nStaged ? t("git_msg_staged", { n: nStaged }) : t("git_msg_all");
+    const log = G.log.map((c, i) => `<div class="gcommit${G.selCommit === c.sha ? " sel" : ""}" data-gact="commit" data-sha="${esc(c.sha)}">
+        <span class="sha">${esc(c.short)}</span>${c.refs ? `<span class="refs">${esc(c.refs)}</span>` : ""}<span class="subj">${esc(c.subject)}</span>
+        <span class="who">${esc(c.author)} · ${esc(c.date)}</span>
+        <span class="grow-acts"><button class="mini" data-gact="show" title="d">Δ</button><button class="mini" data-gact="revert" title="r">↶</button>
+        ${i === 0 ? `<button class="mini" data-gact="undo" title="${esc(t("git_undo"))}">⎌</button>` : ""}</span></div>`).join("")
+      || `<div class="gclean muted">${esc(t("git_no_commit"))}</div>`;
+    const keepMsg = $("#git-msg") ? $("#git-msg").value : "";
+    const focused = document.activeElement && document.activeElement.id === "git-msg";
+    el.innerHTML = `
+      <div class="ghdr panel">
+        <div class="gbranch"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="9" r="2.4"/><path d="M6 8.4v7.2M18 11.4c0 3-3 3.6-6 4.2-2 .4-4 1-5.6 2.4"/></svg>
+          <b>${esc(head)}</b>${st.upstream ? `<span class="muted">→ ${esc(st.upstream)}</span>` : ""}<span class="chip">${esc(sync)}</span>
+          ${st.stashes ? `<span class="chip">📦 ${st.stashes} stash</span>` : ""}
+          ${st.state ? `<span class="chip warn">⚠ ${esc(t("git_state", { v: st.state }))}</span><button class="btn sm danger" data-gact="abort">${esc(t("git_abort"))}</button>` : ""}</div>
+        <div class="panel-actions">
+          <button class="btn sm ghost" data-gact="fetch">⇣ Fetch</button>
+          <button class="btn sm ghost" data-gact="pull">⬇ Pull</button>
+          <button class="btn sm" data-gact="push">⬆ Push</button>
+          <button class="btn sm ghost" data-gact="branches">⎇ ${esc(t("git_branches"))}</button>
+          <button class="btn sm ghost" data-gact="stash">📦 Stash</button>
+          <button class="icon-btn" data-gact="refresh" title="${esc(t("refresh"))}"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.3-5.6M20 4v5h-5"/></svg></button>
+        </div>
+      </div>
+      <div class="gmain">
+        <div class="gleft panel">
+          <div class="gfiles" id="git-files">${files}</div>
+          <div class="gcommitbox">
+            <textarea id="git-msg" class="field" rows="3" placeholder="${esc(ph)}">${esc(keepMsg)}</textarea>
+            <div class="row-actions">
+              <label class="chk"><input type="checkbox" id="git-amend" ${G.amend ? "checked" : ""}> ${esc(t("git_amend"))}</label>
+              <label class="chk"><input type="checkbox" id="git-noverify" ${G.noVerify ? "checked" : ""}> ${esc(t("git_noverify"))}</label>
+              <span style="flex:1"></span>
+              <button class="btn sm" data-gact="ai" ${G.busy ? "disabled" : ""}>✨ ${esc(t("git_ai"))}</button>
+              <button class="btn sm primary" data-gact="commit_now">✓ Commit <kbd>⌘↵</kbd></button>
+            </div>
+          </div>
+        </div>
+        <div class="gright panel"><div class="ghead">${esc(t("git_history"))}</div><div class="glog">${log}</div></div>
+      </div>`;
+    if (focused) { const m = $("#git-msg"); m.focus(); m.setSelectionRange(m.value.length, m.value.length); }
+  }
+
+  function selPath(el) {
+    const row = el.closest(".gfile");
+    return row ? { code: row.dataset.code, path: row.dataset.path } : G.sel;
+  }
+  async function toggle(sel) {
+    if (!sel || sel.code === "c") return;
+    await act(sel.code === "s" ? "unstage" : "stage", { path: sel.path });
+  }
+  async function discard(sel) {
+    if (!sel || sel.code !== "w") return;
+    const f = G.st.groups.w.find((x) => x.path === sel.path);
+    const untracked = f && f.icon === "U";
+    if (await confirmBox(t("git_discard_title"), untracked ? t("git_discard_new", { path: sel.path }) : t("git_discard_q", { path: sel.path }), t("git_discard_yes"))) await act("discard", { path: sel.path });
+  }
+  function diff(sel) {
+    if (!sel) return;
+    DiffView.git({ kind: sel.code === "s" ? "staged" : sel.code === "c" ? "conflict" : "unstaged", path: sel.path });
+  }
+  async function commit() {
+    const box = $("#git-msg"), msg = box.value.trim();
+    if (!msg && !G.amend) { toast(t("git_need_msg"), "warn"); box.focus(); return; }
+    const r = await act("commit", { message: msg, amend: G.amend, no_verify: G.noVerify });
+    if (r.committed) { box.value = ""; G.amend = false; render(); }
+  }
+  async function aiMessage() {
+    if (G.busy) return;
+    G.busy = true; render();
+    toast(t("git_ai_wait", { lead: (S.state && S.state.lead) || "lead" }), "info");
+    const r = await request("git", { action: "ai_message" });
+    G.busy = false; render();
+    if (r.git_msg) { $("#git-msg").value = r.git_msg; $("#git-msg").focus(); }
+  }
+  async function onClick(e) {
+    const b = e.target.closest("[data-gact]");
+    if (!b) return;
+    const a = b.dataset.gact;
+    if (a === "sel") { G.sel = selPath(b); $$(".gfile", box()).forEach((r) => r.classList.toggle("sel", r === b)); return; }
+    const sel = selPath(b);
+    if (b.closest(".gfile")) G.sel = sel;
+    const sha = b.closest(".gcommit") && b.closest(".gcommit").dataset.sha;
+    switch (a) {
+      case "toggle": return toggle(sel);
+      case "discard": return discard(sel);
+      case "diff": return diff(sel);
+      case "edit": setView("code"); return CodeView.open(sel.path);
+      case "stage_all": case "unstage_all": case "init": case "abort": return act(a);
+      case "fetch": return act("fetch", {}, t("git_fetching"));
+      case "pull": return act("pull", {}, t("git_pulling"));
+      case "push": return act("push", {}, t("git_pushing"));
+      case "refresh": G.sig = ""; return refresh();
+      case "branches": return branches();
+      case "stash": return stash();
+      case "ai": return aiMessage();
+      case "commit_now": return commit();
+      case "commit": G.selCommit = sha; $$(".gcommit", box()).forEach((r) => r.classList.toggle("sel", r.dataset.sha === sha)); return;
+      case "show": return DiffView.git({ commit: sha });
+      case "revert": {
+        const c = G.log.find((x) => x.sha === sha);
+        if (await confirmBox("↶ Revert", t("git_revert_q", { v: `${c.short} ${c.subject}` }), "Revert")) await act("revert", { sha });
+        return;
+      }
+      case "undo":
+        if (await confirmBox(t("git_undo"), t("git_undo_q"), t("git_undo_yes"))) await act("undo");
+        return;
+    }
+  }
+  async function onChange(e) {
+    if (e.target.id === "git-noverify") { G.noVerify = e.target.checked; render(); }
+    if (e.target.id === "git-amend") {
+      G.amend = e.target.checked;
+      const msg = $("#git-msg");
+      if (G.amend && !msg.value.trim()) { const r = await request("git", { action: "last_message" }); if (r.git_msg) msg.value = r.git_msg; }
+      render();
+    }
+  }
+  function onKey(e) {
+    if (S.view !== "git") return;
+    if (e.target.id === "git-msg") {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(); }
+      return;
+    }
+    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || topModal() || e.metaKey || e.ctrlKey) return;
+    const k = e.key;
+    const rows = $$(".gfile", box());
+    if (k === "ArrowDown" || k === "ArrowUp" || k === "j" || k === "k") {
+      const i = rows.findIndex((r) => r.classList.contains("sel"));
+      const n = rows[Math.max(0, Math.min(rows.length - 1, i + (k === "ArrowDown" || k === "j" ? 1 : -1)))];
+      if (n) { G.sel = { code: n.dataset.code, path: n.dataset.path }; rows.forEach((r) => r.classList.toggle("sel", r === n)); n.scrollIntoView({ block: "nearest" }); }
+    } else if (k === " ") toggle(G.sel);
+    else if (k === "a") act("stage_all");
+    else if (k === "u") act("unstage_all");
+    else if (k === "x") discard(G.sel);
+    else if (k === "d" || k === "Enter") diff(G.sel);
+    else if (k === "c") $("#git-msg").focus();
+    else if (k === "e" && G.sel) { setView("code"); CodeView.open(G.sel.path); }
+    else return;
+    e.preventDefault();
+  }
+
+  /* ---------------------------------------------------------------- nhánh */
+  async function branches() {
+    const list = await (await fetch("/api/git/branches")).json();
+    const cur = G.st && G.st.branch;
+    const rows = list.map((b) => `<div class="brow${b.current ? " cur" : ""}" data-name="${esc(b.name)}" data-remote="${b.remote ? 1 : 0}">
+        <span class="bdot">${b.current ? "●" : ""}</span><b>${esc(b.name)}</b>${b.name.startsWith("ateam/") ? `<span class="chip">task</span>` : ""}
+        <span class="muted">${esc(b.track || (b.upstream ? "→ " + b.upstream : ""))}</span><span class="muted bsub">${esc(b.date)} · ${esc(b.subject)}</span>
+        <span class="grow-acts">
+          ${b.current ? "" : `<button class="btn sm" data-bact="checkout">${esc(t("git_checkout"))}</button>`}
+          ${b.current || b.remote ? "" : `<button class="btn sm ghost" data-bact="merge">Merge</button>`}
+          ${b.remote ? "" : `<button class="btn sm ghost" data-bact="rename">${esc(t("git_rename"))}</button>`}
+          ${b.current || b.remote ? "" : `<button class="btn sm danger" data-bact="delete">${esc(t("remove"))}</button>`}
+        </span></div>`).join("");
+    const m = openModal(`${modalHead("⎇ " + esc(t("git_branches")) + (cur ? ` <span class="muted">· ${esc(cur)}</span>` : ""))}
+      <div class="modal-pad"><div class="row-actions"><input class="field one" id="gb-name" placeholder="${esc(t("git_new_branch"))}" autofocus>
+      <button class="btn primary" data-bact="create">+ ${esc(t("git_create_branch"))}</button></div>
+      <div class="blist">${rows}</div></div>`, { box: "md" });
+    m.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-bact]");
+      if (!b) return;
+      const row = b.closest(".brow"), name = row ? row.dataset.name : "";
+      const a = b.dataset.bact;
+      if (a === "create") {
+        const n = $("#gb-name", m).value.trim();
+        if (!n) return;
+        closeModal(m); return act("create_branch", { name: n });
+      }
+      if (a === "checkout") { closeModal(m); return act("checkout", { name }); }
+      if (a === "merge") { if (await confirmBox("Merge", t("git_merge_q", { name, cur }), "Merge", false)) { closeModal(m); return act("merge", { name }); } return; }
+      if (a === "rename") {
+        const nn = await inputBox(t("git_rename"), t("git_rename_q", { name }), name);
+        if (nn && nn !== name) { closeModal(m); return act("rename_branch", { name, new: nn }); }
+        return;
+      }
+      if (a === "delete") {
+        const r = await act("delete_branch", { name });
+        if (r.level === "warn" && /merged|merge/.test(r.text || "") && await confirmBox(t("git_force_delete"), t("git_force_delete_q", { name }), t("git_force_delete"))) await act("delete_branch", { name, force: true });
+        closeModal(m); branches();
+      }
+    });
+    $("#gb-name", m).addEventListener("keydown", (e) => { if (e.key === "Enter") m.querySelector("[data-bact=create]").click(); });
+  }
+
+  /* ---------------------------------------------------------------- stash */
+  async function stash() {
+    const list = await (await fetch("/api/git/stashes")).json();
+    const dirty = G.st && !G.st.clean;
+    const rows = list.map((s) => `<div class="brow" data-ref="${esc(s.ref)}"><b>${esc(s.ref)}</b><span class="bsub">${esc(s.subject)}</span><span class="muted">${esc(s.date)}</span>
+        <span class="grow-acts"><button class="btn sm" data-sact="pop">Pop</button><button class="btn sm ghost" data-sact="apply">Apply</button>
+        <button class="btn sm danger" data-sact="drop">${esc(t("remove"))}</button></span></div>`).join("") || `<div class="gclean muted">${esc(t("git_no_stash"))}</div>`;
+    const m = openModal(`${modalHead("📦 Stash")}<div class="modal-pad">
+      <div class="row-actions"><input class="field one" id="gs-msg" placeholder="${esc(t("git_stash_msg"))}" ${dirty ? "autofocus" : "disabled"}>
+      <button class="btn primary" data-sact="push" ${dirty ? "" : "disabled"}>${esc(t("git_stash_push"))}</button></div>
+      <div class="blist">${rows}</div></div>`, { box: "md" });
+    m.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-sact]");
+      if (!b) return;
+      const ref = b.closest(".brow") && b.closest(".brow").dataset.ref, a = b.dataset.sact;
+      if (a === "push") { closeModal(m); return act("stash_push", { message: $("#gs-msg", m).value.trim() }); }
+      if (a === "drop") { if (await confirmBox(t("git_stash_drop"), t("git_stash_drop_q", { ref }), t("remove"))) { closeModal(m); await act("stash_drop", { ref }); stash(); } return; }
+      closeModal(m); return act(a === "pop" ? "stash_pop" : "stash_apply", { ref });
+    });
+    $("#gs-msg", m).addEventListener("keydown", (e) => { if (e.key === "Enter") m.querySelector("[data-sact=push]").click(); });
+  }
+
+  document.addEventListener("click", (e) => { if (e.target.closest("#git")) onClick(e); });
+  document.addEventListener("change", (e) => { if (e.target.closest("#git")) onChange(e); });
+  document.addEventListener("keydown", onKey);
+
+  return {
+    show() { refresh(); clearInterval(G.timer); G.timer = setInterval(() => { if (!document.hidden && !topModal()) refresh(); }, 3000); },
+    hide() { clearInterval(G.timer); G.timer = null; },
+    aiMessage() { setTimeout(aiMessage, 300); },
+    branches, stash,
+  };
+})();

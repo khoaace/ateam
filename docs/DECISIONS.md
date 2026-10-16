@@ -79,3 +79,22 @@ với hướng dẫn tiếng Anh. Prompt dặn agent viết tiêu đề/nội du
 `main` tự deploy; `wrangler.jsonc` có `build.command` nên `npx wrangler deploy` tự dựng `dist/`.
 Python có sẵn trong image build (không cần npm package để nén zip). Cài một lệnh (`scripts/get.sh`)
 tải từ GitHub nên không phụ thuộc domain của trang docs.
+
+## 13. Giao diện web riêng (aiohttp + JS thuần), một server một bộ lập lịch
+
+**Lý do**: người dùng muốn giao diện web hiện đại (Kanban, nút bấm) và đủ chức năng như terminal. Server aiohttp
+giữ *một* `Orchestrator` cho mọi tab → mở nhiều tab không chạy trùng task (bảng việc chưa có bước "nhận task" nguyên
+tử). Trang là HTML/CSS/JS thuần trong gói: không cần npm/build lúc chạy (CI và gói zip chỉ có Python), chạy offline.
+aiohttp là extra không bắt buộc (`ateam[web]`). Đẩy *ảnh chụp* trạng thái thay vì diff sự kiện: đơn giản, đúng cả khi
+CLI/agent khác ghi DB. Logic nằm trong màn hình Textual (wizard /setup, form /custom, báo cáo /usage…) được tách ra
+`wizard.py`/`reports.py` để hai giao diện dùng chung; riêng bộ điều phối lệnh `/…` viết hai nơi (lệnh TUI gắn chặt
+widget) — test đối chiếu `tui.COMMANDS` giữ chúng đồng bộ. Chỉ nghe `127.0.0.1` + kiểm Host/Origin vì giao diện chạy
+được shell.
+**Editor**: CodeMirror 6 + `@replit/codemirror-vim` đóng gói một lần (`scripts/editor/`, esbuild) thành
+`webui/vendor/codemirror.js` (~1,2 MB, ~400 KB nén) và commit vào repo — không CDN, không Node lúc chạy; chỉ gói
+~25 ngôn ngữ phổ biến (gói `language-data` đầy đủ 1,7 MB). Vim thật (`:w`, chế độ, thanh ghi) thay vì port `VimState`
+của TUI sang JS.
+`ateam web --tui` giữ cách cũ (textual-serve chạy chính `ateam tui`, mỗi tab một tiến trình → khoá
+`.ateam/tui.lock`, phiên thứ hai thấy `BusyApp`; `/lang` không `execv` vì tiến trình mới sẽ mồ côi, giữ khoá).
+**Xem lại nếu**: cần truy cập từ máy khác (cần token + TLS); cần nhiều tiến trình cùng lập lịch (nhận task nguyên
+tử trong SQLite); cần đổi theme Textual trên web (hiện web chỉ dùng chung màu nhấn).

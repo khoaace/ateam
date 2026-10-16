@@ -82,6 +82,14 @@ EN: dict[str, str] = {
         "interface language for this run (vi | en)",
     "mở giao diện terminal (mặc định)":
         "open the terminal UI (default)",
+    "mở giao diện trên trình duyệt (http://127.0.0.1:PORT, cần textual-serve)":
+        "open the interface in a browser (http://127.0.0.1:PORT, needs textual-serve)",
+    "Cần cài thêm textual-serve: {v}":
+        "textual-serve is required: {v}",
+    "Mở trên trình duyệt: {v}  (Ctrl+C để dừng)":
+        "Open in your browser: {v}  (Ctrl+C to stop)",
+    "Dự án này đang mở ở một phiên ateam khác (terminal hoặc tab web).\nĐóng phiên đó rồi mở lại.  ·  Ctrl+Q để thoát":
+        "This project is already open in another ateam session (terminal or web tab).\nClose that one and try again.  ·  Ctrl+Q to quit",
     "xem / đổi ngôn ngữ giao diện (vi | en), lưu cho các lần sau":
         "show / change the interface language (vi | en), saved for next time",
     "mở giao diện ở màn hình thiết lập: agent, trưởng nhóm, model, effort":
@@ -2054,4 +2062,428 @@ EN: dict[str, str] = {
         "Version {latest} is available (running {version}), but ateam was installed from source at {src}: update with `git -C {src} pull`, then reopen the app.",
     "Cập nhật thất bại (mã thoát {code}) — xem log ở trên, hoặc chạy tay: curl -fsSL {GET_SH} | bash":
         "Update failed (exit code {code}) — see the log above, or run by hand: curl -fsSL {GET_SH} | bash",
+    # --- giao diện web (ateam/web.py)
+    'Bảng việc':
+        'Board',
+    'Đội':
+        'Team',
+    'Terminal':
+        'Terminal',
+    'Git':
+        'Git',
+    'Code':
+        'Code',
+    'sắp có':
+        'soon',
+    'Đã kết nối':
+        'Connected',
+    'Mất kết nối — đang thử lại…':
+        'Disconnected — retrying…',
+    'Tạm dừng':
+        'Pause',
+    'Tiếp tục nhận task':
+        'Resume',
+    'Đang tạm dừng':
+        'Paused',
+    'Dọn việc đã xong':
+        'Clear finished',
+    'Đổi sáng / tối':
+        'Toggle light / dark',
+    'chờ chạy':
+        'queued',
+    'Nháp':
+        'Draft',
+    'Chờ chạy':
+        'Queued',
+    'Đang chạy':
+        'Running',
+    'Chờ duyệt':
+        'In review',
+    'Xong':
+        'Done',
+    'Lỗi / huỷ':
+        'Failed / cancelled',
+    'Trống':
+        'Empty',
+    'Chưa có mục tiêu nào':
+        'No goals yet',
+    'Gõ yêu cầu ở ô dưới cùng — trưởng nhóm sẽ lập kế hoạch, chia việc cho đội.':
+        'Type a request in the box below — the lead will plan it and split the work across the team.',
+    'Tất cả':
+        'All',
+    'vòng {n}':
+        'round {n}',
+    '↪ Tiếp tục':
+        '↪ Continue',
+    '{n} lần tiếp':
+        '{n} follow-ups',
+    'chờ duyệt kế hoạch':
+        'plan awaiting review',
+    'thất bại':
+        'failed',
+    'đang hỏi đáp':
+        'in Q&A',
+    'Kế hoạch #{id} chờ duyệt':
+        'Plan #{id} awaiting review',
+    '{n} task':
+        '{n} tasks',
+    'Bỏ kế hoạch':
+        'Drop plan',
+    'sau {v}':
+        'after {v}',
+    'Thôi':
+        'Cancel',
+    'Trưởng nhóm hỏi để hiểu rõ yêu cầu':
+        'The lead is clarifying the requirements',
+    'Câu {n}':
+        'Question {n}',
+    'đã trả lời {n} câu':
+        '{n} answered',
+    '{lead} đang nghĩ câu hỏi tiếp theo…':
+        '{lead} is thinking of the next question…',
+    'Bấm một phương án, hoặc gõ câu trả lời ở ô dưới rồi Enter':
+        'Pick an option, or type an answer in the box below and press Enter',
+    'khuyên dùng':
+        'recommended',
+    'Đủ rồi — chốt & lập kế hoạch':
+        "That's enough — finalize & plan",
+    'Để trưởng nhóm tự quyết':
+        'Let the lead decide',
+    'Hỏi tiếp':
+        'Ask more',
+    'Bỏ mục tiêu':
+        'Drop goal',
+    '(Tôi không chắc — bạn tự quyết)':
+        "(I'm not sure — you decide)",
+    '(Tôi không chắc — bạn tự quyết, theo khuyến nghị: {v})':
+        "(I'm not sure — you decide, going with the recommendation: {v})",
+    'Nhập mục tiêu cho trưởng nhóm · / lệnh · ! lệnh terminal · @ nhắc file':
+        'Type a goal for the lead · / commands · ! terminal command · @ mention a file',
+    "Nhập mục tiêu (chạy theo workflow '{wf}') · / lệnh · ! lệnh terminal · @ nhắc file":
+        "Type a goal (runs workflow '{wf}') · / commands · ! terminal command · @ mention a file",
+    'Trả lời câu hỏi của trưởng nhóm (Enter) · gõ số để chọn phương án':
+        "Answer the lead's question (Enter) · type a number to pick an option",
+    'Enter gửi · Shift+Enter xuống dòng':
+        'Enter to send · Shift+Enter for a new line',
+    'Merge':
+        'Merge',
+    'Từ chối':
+        'Reject',
+    'Góp ý (để trống = chỉ từ chối, có góp ý = giao làm lại)':
+        'Feedback (empty = just reject, with feedback = assign a redo)',
+    'Log':
+        'Log',
+    'Nội dung':
+        'Prompt',
+    'Kết quả':
+        'Result',
+    'Chưa có kết quả.':
+        'No result yet.',
+    'Lỗi':
+        'Error',
+    'Bắt đầu':
+        'Started',
+    'Thời gian':
+        'Duration',
+    'Phụ thuộc':
+        'Depends on',
+    'Lần thử':
+        'Attempts',
+    'Nhánh':
+        'Branch',
+    'trưởng nhóm':
+        'lead',
+    'rảnh':
+        'idle',
+    'chưa cài':
+        'not installed',
+    'nghỉ tới {v}':
+        'resting until {v}',
+    'đang chạy {n} việc':
+        'running {n}',
+    'Lệnh terminal':
+        'Terminal commands',
+    'Chưa chạy lệnh nào':
+        'No commands run yet',
+    'Gõ ! rồi lệnh ở ô dưới, vd !npm run dev — hoặc chọn một script gợi ý:':
+        'Type ! and a command in the box below, e.g. !npm run dev — or pick a suggested script:',
+    'Dừng':
+        'Stop',
+    'thoát với mã {rc}':
+        'exited with code {rc}',
+    'Script của dự án':
+        'Project scripts',
+    'Diff task #{id}':
+        'Diff of task #{id}',
+    'Đang tải…':
+        'Loading…',
+    'Lệnh có trên web':
+        'Commands available on the web',
+    'Ctrl+K: ô nhập · F2: duyệt kế hoạch · Esc: đóng':
+        'Ctrl+K: input · F2: approve plan · Esc: close',
+    'worktree':
+        'worktree',
+    'shared':
+        'shared',
+    'Không hiểu thao tác {op}':
+        'Unknown action {op}',
+    'Gõ / để xem các lệnh có trên web':
+        'Type / to see the commands available on the web',
+    'Đã thêm task #{tid} cho {to}':
+        'Added task #{tid} for {to}',
+    '/{cmd} chưa có trên giao diện web — dùng `ateam` trong terminal (hoặc `ateam web --tui`)':
+        '/{cmd} is not available on the web UI yet — use `ateam` in a terminal (or `ateam web --tui`)',
+    'Dùng: /goal <mục tiêu>':
+        'Usage: /goal <goal>',
+    'Dùng: /grill <mục tiêu>':
+        'Usage: /grill <goal>',
+    'Dùng: /flow <tên> <mục tiêu> — workflow: {v}':
+        'Usage: /flow <name> <goal> — workflows: {v}',
+    'Dùng: /continue <m12|t40> <yêu cầu>':
+        'Usage: /continue <m12|t40> <request>',
+    'Dùng: /note <nội dung>':
+        'Usage: /note <text>',
+    'Dự án này đang mở ở một phiên ateam khác — đóng phiên đó rồi chạy lại.':
+        'This project is already open in another ateam session — close it and run again.',
+    'mở giao diện web trên trình duyệt (http://127.0.0.1:PORT, cần aiohttp)':
+        'open the web UI in a browser (http://127.0.0.1:PORT, needs aiohttp)',
+    'tự mở trình duyệt':
+        'open the browser automatically',
+    'giao diện terminal trong trình duyệt (cần textual-serve)':
+        'the terminal UI in a browser (needs textual-serve)',
+    'Cần cài thêm aiohttp: {v}':
+        'aiohttp is required: {v}',
+    # --- giao diện web: Git, Code, diff, /setup, /custom, gợi ý lệnh
+    'Xung đột':
+        'Conflicts',
+    'Đã stage':
+        'Staged',
+    'Thay đổi':
+        'Changes',
+    'Lịch sử':
+        'History',
+    'Huỷ thao tác':
+        'Abort',
+    'đang {v}':
+        '{v} in progress',
+    'đồng bộ':
+        'in sync',
+    'chưa có trên remote':
+        'not on the remote yet',
+    'Thư mục này chưa phải git repo':
+        'This folder is not a git repo yet',
+    'Tạo repo để theo dõi thay đổi, xem diff và dùng chế độ worktree.':
+        'Create a repo to track changes, view diffs and use worktree mode.',
+    'Commit message — chưa stage gì: commit tất cả thay đổi':
+        'Commit message — nothing staged: commits all changes',
+    'Commit message cho {n} file đã stage':
+        'Commit message for {n} staged file(s)',
+    'Message mới cho commit trước (trống = giữ nguyên)':
+        'New message for the previous commit (empty = keep it)',
+    'Sửa commit trước (amend)':
+        'Amend previous commit',
+    'Trưởng nhóm viết':
+        'Lead writes it',
+    'Bỏ mọi thay đổi chưa stage của {path}?':
+        'Discard all unstaged changes to {path}?',
+    'XOÁ file mới {path}? (chưa từng commit — không lấy lại được)':
+        'DELETE new file {path}? (never committed — cannot be recovered)',
+    'Tạo commit đảo ngược {v}?':
+        'Create a commit that reverts {v}?',
+    'Chuyển sang':
+        'Check out',
+    'Đổi tên':
+        'Rename',
+    'Tên mới cho nhánh {name}:':
+        'New name for branch {name}:',
+    'Tên nhánh mới':
+        'New branch name',
+    'Tạo nhánh':
+        'Create branch',
+    'Merge {name} vào {cur}?':
+        'Merge {name} into {cur}?',
+    'Xoá hẳn nhánh':
+        'Force delete branch',
+    'Nhánh {name} chưa merge hết — xoá hẳn (mất các commit chưa merge)?':
+        'Branch {name} is not fully merged — force delete it (losing the unmerged commits)?',
+    'Ghi chú cho stash (tuỳ chọn)':
+        'Stash message (optional)',
+    'Cất thay đổi':
+        'Stash changes',
+    'Xoá {ref}? Không lấy lại được.':
+        'Delete {ref}? This cannot be undone.',
+    'Làm mới':
+        'Refresh',
+    'Đoạn sau':
+        'Next hunk',
+    '2 cột':
+        'Split',
+    'Mở trong Code':
+        'Open in Code',
+    'File nhị phân — không hiện nội dung':
+        'Binary file — content not shown',
+    'File rỗng':
+        'Empty file',
+    'Chỉ đổi tên, nội dung giữ nguyên':
+        'Renamed only, content unchanged',
+    'File dài — chỉ hiện 4000 dòng đầu':
+        'Long file — only the first 4000 lines are shown',
+    'n/p: file · [ ]: đoạn đổi · s: 1 cột / 2 cột · e: mở trong Code · Esc: đóng':
+        'n/p: file · [ ]: hunk · s: unified / split · e: open in Code · Esc: close',
+    'Tìm file… (Enter mở · ⌘P)':
+        'Find file… (Enter opens · ⌘P)',
+    'Không có file':
+        'No files',
+    'Chọn file ở cây bên trái, hoặc /code @file:dòng':
+        'Pick a file in the tree on the left, or /code @file:line',
+    'vim: i sửa · Esc · :w lưu · :q đóng · :bn/:bp đổi file · /vim off để tắt':
+        'vim: i insert · Esc · :w save · :q close · :bn/:bp switch file · /vim off to disable',
+    'Ctrl/⌘+S lưu · /vim on để bật phím vim':
+        'Ctrl/⌘+S saves · /vim on enables vim keys',
+    'dòng {r}/{n}, cột {c}':
+        'line {r}/{n}, col {c}',
+    'chỉ đọc: {v}':
+        'read-only: {v}',
+    'Chỉ đọc':
+        'Read-only',
+    'File đang ở chế độ chỉ đọc ({v}). Vẫn ghi?':
+        'The file is read-only ({v}). Write anyway?',
+    'Vẫn ghi':
+        'Write anyway',
+    '{path} đã bị sửa từ lúc bạn mở (có thể do agent). Ghi đè bằng nội dung của bạn?':
+        '{path} changed since you opened it (maybe by an agent). Overwrite it with your version?',
+    'Chưa lưu':
+        'Unsaved',
+    '{path} còn thay đổi chưa lưu. Đóng và bỏ thay đổi?':
+        '{path} has unsaved changes. Close and discard them?',
+    'File đổi trên đĩa — đã nạp lại':
+        'File changed on disk — reloaded',
+    'File vừa đổi trên đĩa (có thể do agent sửa) — :e! để nạp lại (bỏ phần đang sửa) hoặc :w! để ghi đè':
+        'The file just changed on disk (maybe an agent edited it) — :e! to reload (dropping your edits) or :w! to overwrite',
+    'Không nạp được editor (vendor/codemirror.js)':
+        'Could not load the editor (vendor/codemirror.js)',
+    'Agent':
+        'Agent',
+    'Agent · thêm :model hoặc @effort':
+        'Agent · add :model or @effort',
+    'Model của {v}':
+        'Models of {v}',
+    'Effort của {v}':
+        'Efforts of {v}',
+    'Task':
+        'Task',
+    'Task (hoặc @file để mở trong Code)':
+        'Task (or @file to open in Code)',
+    'Mục tiêu':
+        'Goal',
+    'Tiếp tục mục tiêu / thread':
+        'Continue goal / thread',
+    'Số phút':
+        'Minutes',
+    'hỏi lại danh sách model từ CLI':
+        'ask the CLI for its model list again',
+    'lấy lại và xoá stash':
+        'restore and drop the stash',
+    'lấy lại, giữ stash':
+        'restore, keep the stash',
+    'danh sách stash':
+        'list stashes',
+    'push đè (--force-with-lease)':
+        'force push (--force-with-lease)',
+    'bỏ qua hook':
+        'skip hooks',
+    'tắt kiểm tra':
+        'turn checks off',
+    'Chọn {key} cho {agent} (đang dùng: {v})':
+        'Pick {key} for {agent} (current: {v})',
+    'hoặc gõ tên khác rồi Enter':
+        'or type another name and press Enter',
+    'Bấm để đổi model / effort':
+        'Click to change model / effort',
+    'Giao diện':
+        'Appearance',
+    'Màu nhấn':
+        'Accent color',
+    'Mặc định (tím → ngọc)':
+        'Default (violet → cyan)',
+    'Theo hệ thống':
+        'System',
+    'Màu nhấn lưu chung với giao diện terminal; sáng/tối chỉ áp cho trình duyệt này.':
+        'The accent color is shared with the terminal UI; light/dark applies to this browser only.',
+    'Thiết lập đội AI · Bước {v}/{n} — {title}':
+        'AI team setup · Step {v}/{n} — {title}',
+    'Quay lại':
+        'Back',
+    'Tiếp':
+        'Next',
+    'Lưu & bắt đầu':
+        'Save & start',
+    'đã cài ({p})':
+        'installed ({p})',
+    'chưa cài — {v}':
+        'not installed — {v}',
+    'đang hỏi danh sách model từ các CLI…':
+        'asking the CLIs for their model lists…',
+    'agent thêm':
+        'extra agent',
+    'Agent tuỳ chỉnh giữ nguyên: {v}':
+        'Custom agents kept: {v}',
+    'Cách làm việc':
+        'How the team works',
+    'Chưa có trưởng nhóm — quay lại bước Vai trò.':
+        'No lead yet — go back to the Roles step.',
+    'Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc theo vai trò, bật/tắt ở /setup). Workflow chạy bằng /flow <tên> <mục tiêu>.':
+        'New agents join the team like built-in ones (the lead assigns work by role; enable/disable in /setup). Run workflows with /flow <name> <goal>.',
+    'Sửa agent {name}':
+        'Edit agent {name}',
+    'Sửa workflow {name}':
+        'Edit workflow {name}',
+    '{n} bước: {v}':
+        '{n} steps: {v}',
+    "Xoá '{name}'?":
+        "Delete '{name}'?",
+    'Chọn nhà cung cấp, model, effort và quyền — cờ CLI ateam tự điền. CLI khác (Gemini, Aider, lệnh riêng): Nâng cao…':
+        'Pick a provider, model, effort and access — ateam fills in the CLI flags. Other CLIs (Gemini, Aider, your own command): Advanced…',
+    'Bất kỳ CLI nào có chế độ headless (nhận prompt, in kết quả rồi thoát). Chọn mẫu để điền sẵn.':
+        'Any CLI with a headless mode (takes a prompt, prints the result and exits). Pick a template to prefill.',
+    'Lệnh sẽ chạy:':
+        'Command to run:',
+    "đã cài '{v}'":
+        "'{v}' installed",
+    "chưa cài '{v}'":
+        "'{v}' not installed",
+    'toàn quyền: agent chạy được mọi lệnh trên máy, chỉ dùng với repo tin tưởng':
+        'full access: the agent can run any command on this machine — only for repos you trust',
+    'lệnh không có {prompt}: prompt sẽ được thêm vào cuối':
+        'the command has no {prompt}: the prompt will be appended at the end',
+    'trưởng nhóm ({lead})':
+        'lead ({lead})',
+    '{v} (không có trong đội)':
+        '{v} (not in the team)',
+    'Thêm bước':
+        'Add step',
+    'Đóng tab trình duyệt là xong; dừng hẳn server: Ctrl+C ở terminal chạy `ateam web`':
+        'Just close the browser tab; to stop the server: Ctrl+C in the terminal running `ateam web`',
+    'Thống kê':
+        'Usage',
+    '✨ Đã điền commit message — sửa nếu cần rồi commit':
+        '✨ Commit message filled in — edit it if needed, then commit',
+    'Không thấy commit {v}':
+        'Commit {v} not found',
+    'Đường dẫn không hợp lệ (ngoài dự án): {path}':
+        'Invalid path (outside the project): {path}',
+    'Chỉ đọc ({note}) — :w! để vẫn ghi':
+        'Read-only ({note}) — :w! to write anyway',
+    'File đã đổi trên đĩa (có thể do agent sửa)':
+        'The file changed on disk (maybe an agent edited it)',
+    '{path} là thư mục':
+        '{path} is a folder',
+    'Đã lưu thiết lập':
+        'Setup saved',
+    'Màu nhấn: {v}':
+        'Accent color: {v}',
+    'Chọn nhà cung cấp':
+        'Pick a provider',
+    'Giao diện & màu nhấn':
+        'Appearance & accent',
 }

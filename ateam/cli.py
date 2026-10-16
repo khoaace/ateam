@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -38,16 +39,43 @@ def setup_config() -> None:
         print("ℹ " + n)
 
 
+def acquire_session_lock(root: Path):
+    """Khoá `.ateam/tui.lock` để chỉ 1 phiên giao diện (terminal hoặc tab web) chạy bộ lập lịch trên dự án —
+    2 phiên cùng lúc có thể chạy trùng 1 task. Trả file đang giữ khoá (giữ nó sống suốt tiến trình; khoá tự nhả
+    khi tiến trình thoát), hoặc None nếu phiên khác đang giữ."""
+    try:
+        import fcntl
+    except ImportError:  # Windows: không có flock -> không khoá
+        return True
+    path = root / ".ateam" / "tui.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    f = open(path, "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    return f
+
+
 def cmd_tui(args) -> int:
     root = find_root(args.dir)
     notes = ensure_global_config()
     cfg = load_config(root)
     cfg.notices = notes
+    lock = acquire_session_lock(root)
+    if lock is None:
+        # không print: dưới `ateam web`, stdout là kênh giao thức của driver web
+        from .tui import BusyApp
+        BusyApp().run()
+        return 1
     from .tui import TeamApp
     # Lần đầu mở app (hoặc `ateam setup`): màn hình chọn agent/model/effort, hỏi sẵn model của CLI
     app = TeamApp(root, cfg, open_db(root), setup=args.cmd == "setup" or needs_setup())
     app.run()
-    if getattr(app, "restart_requested", False):
+    # dưới `ateam web`, app thoát là trình duyệt báo "Session ended" -> không execv (tiến trình mới sẽ chạy mồ côi,
+    # giữ khoá phiên); người dùng bấm Restart, textual-serve mở tiến trình mới với ngôn ngữ vừa lưu
+    if getattr(app, "restart_requested", False) and "WebDriver" not in os.environ.get("TEXTUAL_DRIVER", ""):
         # /lang: nhiều chuỗi được tính lúc import -> mở lại cả tiến trình với ngôn ngữ mới
         argv, skip = [], False
         for a in sys.argv[1:]:  # bỏ --lang của lần chạy trước: dùng ngôn ngữ vừa lưu
@@ -61,6 +89,63 @@ def cmd_tui(args) -> int:
         if args.cmd == "setup":
             argv = [a for a in argv if a != "setup"]
         os.execv(sys.executable, [sys.executable, "-m", "ateam", *argv])
+    return 0
+
+
+def cmd_web(args) -> int:
+    if args.tui:
+        return cmd_web_tui(args)
+    try:
+        from . import web
+    except ImportError:
+        print(tr("Cần cài thêm aiohttp: {v}", v=f"{shlex.quote(sys.executable)} -m pip install aiohttp"))
+        return 1
+    root = find_root(args.dir)
+    notes = ensure_global_config()
+    cfg = load_config(root)
+    cfg.notices = notes
+    # một server giữ một bộ lập lịch cho mọi tab trình duyệt; terminal mở `ateam` cùng lúc sẽ bị khoá
+    lock = acquire_session_lock(root)
+    if lock is None:
+        print(tr("Dự án này đang mở ở một phiên ateam khác — đóng phiên đó rồi chạy lại."))
+        return 1
+    url = f"http://127.0.0.1:{args.port}"
+    print(tr("Mở trên trình duyệt: {v}  (Ctrl+C để dừng)", v=url))
+    if args.open:
+        import webbrowser
+        webbrowser.open(url)
+    web.serve(root, cfg, open_db(root), args.port)
+    return 0
+
+
+def cmd_web_tui(args) -> int:
+    """`ateam web --tui`: chính giao diện terminal trong trình duyệt (textual-serve) — đủ mọi tab."""
+    try:
+        from textual_serve.server import Server
+
+        from .web import guard_middleware
+    except ImportError:
+        print(tr("Cần cài thêm textual-serve: {v}", v=f"{shlex.quote(sys.executable)} -m pip install textual-serve"))
+        return 1
+
+    class GuardedServer(Server):
+        """Như `ateam web`: chặn Host/Origin lạ — trang web khác không được mở WebSocket gõ phím vào ateam."""
+
+        async def _make_app(self):
+            app = await super()._make_app()
+            app.middlewares.append(guard_middleware(self.port))
+            return app
+
+    root = find_root(args.dir)
+    # mỗi tab trình duyệt chạy 1 tiến trình `ateam tui` riêng; chỉ nghe 127.0.0.1 vì giao diện chạy được lệnh shell.
+    # --lang (chỉ cho lần chạy này) chuyển qua ATEAM_LANG; không có thì tiến trình con đọc ngôn ngữ đã lưu, nên
+    # /lang + nút Restart đổi được ngôn ngữ (ATEAM_LANG thắng state.json: chọn --lang là ghim cho cả phiên web)
+    if args.lang:
+        os.environ["ATEAM_LANG"] = args.lang
+    argv = [sys.executable, "-m", "ateam", "-C", str(root), "tui"]
+    print(tr("Mở trên trình duyệt: {v}  (Ctrl+C để dừng)", v=f"http://127.0.0.1:{args.port}"))
+    GuardedServer(shlex.join(argv), host="127.0.0.1", port=args.port,
+                  title=f"ateam — {root.name}").serve()
     return 0
 
 
@@ -460,6 +545,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd")
 
     sub.add_parser("tui", help=tr("mở giao diện terminal (mặc định)"))
+    s = sub.add_parser("web", help=tr("mở giao diện web trên trình duyệt (http://127.0.0.1:PORT, cần aiohttp)"))
+    s.add_argument("--port", type=int, default=8000)
+    s.add_argument("--open", action="store_true", help=tr("tự mở trình duyệt"))
+    s.add_argument("--tui", action="store_true", help=tr("giao diện terminal trong trình duyệt (cần textual-serve)"))
     s = sub.add_parser("lang", help=tr("xem / đổi ngôn ngữ giao diện (vi | en), lưu cho các lần sau"))
     s.add_argument("code", nargs="?")
     sub.add_parser("setup", help=tr("mở giao diện ở màn hình thiết lập: agent, trưởng nhóm, model, "
@@ -527,7 +616,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     if args.lang:
         set_lang(args.lang)
-    handlers = {None: cmd_tui, "tui": cmd_tui, "lang": cmd_lang, "setup": cmd_tui, "init": cmd_init, "doctor": cmd_doctor,
+    handlers = {None: cmd_tui, "tui": cmd_tui, "web": cmd_web, "lang": cmd_lang, "setup": cmd_tui, "init": cmd_init, "doctor": cmd_doctor,
                 "goal": cmd_goal, "flow": cmd_goal, "continue": cmd_goal, "flows": cmd_flows, "add": cmd_add, "note": cmd_note,
                 "compact": cmd_compact, "list": cmd_list,
                 "log": cmd_log, "run": cmd_run, "set": cmd_set, "models": cmd_models, "diff": cmd_diff,

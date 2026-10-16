@@ -30,13 +30,13 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import clipboard, diffview, editor, gitops, mentions, shell, theme, update
-from .config import (CATALOG, CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, NAME_RE, PROVIDERS, ROLES, TIERS,
-                     WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan, builtin_agent, default_cli,
+from . import clipboard, diffview, editor, gitops, mentions, reports, shell, theme, update, wizard
+from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
+from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TIERS,
+                     WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan,
                      full_access_supported, plan_team, provider_of, provider_template, save_onboard,
-                     tier_preset,
-                     Workflow, WorkflowStep, agent_from_dict, agent_templates, describe_models,
-                     clear_agent_state, load_config, load_custom, load_state, mark_setup_done, needs_setup,
+                     tier_preset, agent_from_dict, agent_templates,
+                     clear_agent_state, load_config, load_custom, load_state, mark_setup_done,
                      save_custom_item, save_state,
                      save_project_setting, workflow_to_dict)
 from .db import ACTIVE, DB, GOAL_ENDED
@@ -353,25 +353,6 @@ def flow_chunks(chunks: list[Text], width: int) -> Text:
         out.append_text(ch)
         used += w
     return out
-
-
-def fmt_dur(sec: float) -> str:
-    sec = max(0, int(sec))
-    h, rem = divmod(sec, 3600)
-    m, s = divmod(rem, 60)
-    return f"{h}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
-
-
-def fmt_tokens(n: int) -> str:
-    """850 · 1.2k · 37k — số token ước tính, không làm tròn mọi thứ nhỏ thành '0k'."""
-    if n < 1000:
-        return str(n)
-    return f"{n / 1000:.1f}k" if n < 10000 else f"{n // 1000}k"
-
-
-def today_start() -> float:
-    lt = time.localtime()
-    return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))
 
 
 def safe_id(name: str, prefix: str = "pane-") -> str:
@@ -996,89 +977,38 @@ class OnboardScreen(BaseModal):
     #ob-buttons .ob-spacer { width: 1fr; }
     #ob-buttons Button { margin-left: 2; }
     """
-    # (khoá, tiêu đề, tên ngắn trên thanh tiến trình)
-    STEPS = [("cli", tr("CLI bạn đang dùng"), "CLI"), ("style", tr("Kiểu làm việc"), tr("Kiểu")),
-             ("tier", tr("Mức chi phí"), tr("Mức")), ("roles", tr("Vai trò · model · effort"), tr("Vai trò")),
-             ("safety", tr("An toàn & duyệt code"), tr("An toàn")), ("verify", tr("Lệnh kiểm tra"), tr("Kiểm tra")),
-             ("review", tr("Xem lại & lưu"), tr("Xem lại"))]
-    STYLES = [("approve", tr("Trưởng nhóm lập kế hoạch, tôi duyệt rồi mới chạy"),
-               tr("kế hoạch hiện ở khung Duyệt kế hoạch, Enter/F2 để chạy — an toàn, dễ kiểm soát")),
-              ("auto", tr("Trưởng nhóm lập kế hoạch và chạy luôn"), tr("nhanh nhất, không cần duyệt")),
-              ("flow", tr("Theo quy trình cố định: thiết kế → code → test"),
-               tr("gõ mục tiêu là chạy workflow 'tinh-nang'; /goal vẫn để trưởng nhóm lập kế hoạch")),
-              ("manual", tr("Chủ yếu tôi tự giao từng việc (/task)"),
-               tr("tắt trưởng nhóm tự review và giao thêm việc"))]
-    TIER_HINTS = {"eco": tr("model nhỏ/nhanh, effort thấp — tốn ít hạn mức nhất"),
-                  "balanced": tr("model mạnh vừa, effort trung bình; trưởng nhóm và review cao hơn "
-                                 "1 bậc"),
-                  "max": tr("model mạnh nhất, effort cao — chất lượng tốt nhất, tốn hạn mức nhất")}
-    APPLY = [("shared", tr("Sửa thẳng vào thư mục dự án"), tr("đơn giản; các agent làm chung một chỗ")),
-             ("worktree-auto", tr("Mỗi task một nhánh git riêng, xong thì tự merge"),
-              tr("an toàn khi nhiều agent chạy song song")),
-             ("worktree-review", tr("Mỗi task một nhánh git riêng, tôi xem diff rồi mới merge"),
-              tr("Ctrl+D xem diff kiểu VS Code, Ctrl+Y merge"))]
+    STEPS, STYLES, TIER_HINTS, APPLY = wizard.STEPS, wizard.STYLES, wizard.TIER_HINTS, wizard.APPLY
 
     def __init__(self, root: Path, cfg: Config, orch: Orchestrator, timeout: float = 20):
         super().__init__()
         self.root, self.cfg, self.orch, self.timeout = root, cfg, orch, timeout
         self.step = 0
-        self.installed = [p for p in PROVIDERS if shutil.which(p)]
-        team = {provider_of(a.command) for a in cfg.active_agents().values()}
-        self.providers = [p for p in self.installed if p in team] or list(self.installed)
-        self.style = ("flow" if cfg.default_workflow else "manual" if not cfg.auto_review
-                      else "approve" if cfg.approve_plan else "auto")
-        self.tier = "balanced"
-        self.assign: dict[str, tuple[str, str, str] | None] = self._current_assign()
+        init = wizard.initial(cfg, root)
+        self.installed, self.providers = init["installed"], init["providers"]
+        self.style, self.tier, self.assign = init["style"], init["tier"], init["assign"]
         # assign đang ứng với bộ CLI/mức nào; lần đầu thiết lập (None) thì bước Vai trò điền theo mức chi phí,
         # mở lại /setup thì giữ đội hiện tại cho tới khi đổi CLI hoặc mức
-        self._assign_key = (tuple(self.providers), None if needs_setup() else self.tier)
-        self.access = "full" if any(a.full_access for a in cfg.active_agents().values()) else "safe"
-        self.apply = ("shared" if cfg.isolation != "worktree" else
-                      "worktree-review" if cfg.merge == "review" else "worktree-auto")
-        self.verify = cfg.verify.command
+        self._assign_key = (tuple(self.providers), None if init["first"] else self.tier)
+        self.access, self.apply, self.verify = init["access"], init["apply"], init["verify"]
         self.git = (root / ".git").exists()
         self.discovering = True
         self._esc_at = 0.0
 
     # ---------------------------------------------------------------- dữ liệu
     def models_of(self, provider: str) -> list[str]:
-        a = self.cfg.agents.get(builtin_agent(provider))
-        if a is None or provider_of(a.command) != provider:
-            a = next((x for x in self.cfg.agents.values() if provider_of(x.command) == provider), None)
-        return a.model_choices() if a else list(CATALOG.get(provider, {}).get("models", []))
+        return wizard.models_of(self.cfg, provider)
 
     def efforts_of(self, provider: str) -> list[str]:
-        return [str(e) for e in provider_template(provider).get("efforts") or []] if provider in PROVIDERS else []
-
-    def _current_assign(self) -> dict:
-        """Gán vai trò theo đội hiện tại (mở lại /setup): vai trò mà role của agent có nhắc tới; còn lại
-        theo mặc định."""
-        out: dict = {}
-        agents = {n: a for n, a in self.cfg.active_agents().items() if provider_of(a.command)}
-        for key, _label, desc in ROLES:
-            a = agents.get(self.cfg.lead) if key == "lead" else next(
-                (x for x in agents.values() if desc in x.role), None)
-            if a and provider_of(a.command) in self.providers:
-                out[key] = (provider_of(a.command), a.model, a.effort)
-            else:
-                out[key] = self._default(key)
-        return out
+        return wizard.efforts_of(provider)
 
     def _default(self, role: str) -> tuple[str, str, str] | None:
-        p = default_cli(role, self.providers)
-        if not p:
-            return None
-        return (p,) + tier_preset(p, self.tier, role, self.models_of(p), self.efforts_of(p))
+        return wizard.default_role(self.cfg, role, self.providers, self.tier)
 
     def plan(self) -> TeamPlan:
         return plan_team(self.assign)
 
     def settings(self) -> dict:
-        return {"full_access": self.access == "full", "approve_plan": self.style != "auto",
-                "auto_review": self.style != "manual", "flow": self.style == "flow",
-                "isolation": "worktree" if self.apply.startswith("worktree") else "shared",
-                "merge": "review" if self.apply == "worktree-review" else "auto",
-                "verify_command": self.verify.strip()}
+        return wizard.settings_of(self.style, self.access, self.apply, self.verify)
 
     # ---------------------------------------------------------------- khung
     def compose(self) -> ComposeResult:
@@ -1188,7 +1118,7 @@ class OnboardScreen(BaseModal):
     def _step_roles(self) -> list:
         key = (tuple(self.providers), self.tier)
         if self._assign_key != key:  # đổi CLI hoặc mức chi phí: gán lại theo mặc định mới
-            self.assign = {k: self._default(k) for k, _l, _d in ROLES}
+            self.assign = wizard.default_assign(self.cfg, self.providers, self.tier)
             self._assign_key = key
         out = [Static(tr("Giao từng vai trò cho CLI nào, dùng model và effort gì?"), classes="ob-q"),
                Static(tr("Cùng một CLI làm nhiều vai trò với model/effort khác nhau → ateam tự tạo "
@@ -1198,9 +1128,7 @@ class OnboardScreen(BaseModal):
         return out
 
     def _step_safety(self) -> list:
-        access = [("safe", tr("Chỉ sửa file (an toàn)"), tr("agent không chạy lệnh shell / mạng")),
-                  ("full", tr("Toàn quyền — chạy lệnh, mạng (lint, build, git push…)"),
-                   tr("chỉ dùng cho repo bạn tin tưởng; agent tuỳ chỉnh đổi riêng ở /custom"))]
+        access = wizard.ACCESS
         no_git = () if self.git else ("worktree-auto", "worktree-review")
         apply = [(k, label, hint if self.git else hint + tr(" — cần thư mục là git repo có commit"))
                  for k, label, hint in self.APPLY]
@@ -1210,13 +1138,8 @@ class OnboardScreen(BaseModal):
                 self._choice("ob-apply", apply, self.apply, disabled=no_git)]
 
     def _step_verify(self) -> list:
-        words = ("test", "lint", "check", "build", "typecheck", "tsc", "vitest", "jest", "pytest")
-        cmds = [c for c, _d in shell.project_scripts(self.root, recent=[])
-                if any(w in c.lower() for w in words)][:8]
-        items = [(c, c, tr("chạy sau mỗi task có sửa code; lỗi thì giao agent sửa")) for c in cmds]
-        if self.verify and self.verify not in cmds:
-            items.insert(0, (self.verify, self.verify, tr("đang dùng")))
-        items.append(("", tr("Không chạy lệnh kiểm tra"), tr("bật sau bằng /verify <lệnh>")))
+        items = wizard.verify_choices(self.root, self.verify)
+        cmds = [c for c, _l, _h in items]
         return [Static(tr("Lệnh kiểm tra tự chạy sau mỗi task (test, lint, build)?"), classes="ob-q"),
                 self._choice("ob-verify", items, self.verify),
                 TextInput(self.verify if self.verify not in cmds else "",
@@ -1397,17 +1320,6 @@ def form_row(label: str, widget, hint: str = "") -> Horizontal:
                       classes="f-row")
 
 
-def _csv(text: str) -> list[str]:
-    return [x.strip() for x in text.replace(";", ",").split(",") if x.strip()]
-
-
-def _argv_text(v) -> str:
-    """argv -> chuỗi để sửa trong ô nhập; chỉ đặt trong nháy khi cần ({prompt} giữ nguyên cho dễ đọc)."""
-    if not isinstance(v, list):
-        return str(v or "")
-    return " ".join(x if x and not re.search(r"[\s'\"\\]", x) else shlex.quote(x) for x in map(str, v))
-
-
 ACCESS_CHOICES = [(tr("sửa file"), "safe"), (tr("toàn quyền"), "full")]
 ACCESS_LONG = [(tr("Chỉ sửa file (an toàn)"), "safe"),
                (tr("Toàn quyền — chạy lệnh, mạng (build, git push…)"), "full")]
@@ -1462,12 +1374,7 @@ class AgentQuickScreen(BaseModal):
         self.call_after_refresh(self.mark_clean)
 
     def _models(self) -> list[str]:
-        # model hỏi được từ CLI nằm ở agent có sẵn cùng lệnh; không có thì danh mục có sẵn
-        same = [a for n, a in self.cfg.agents.items()
-                if provider_of(a.command) == self.provider and n not in self.cfg.custom_agents]
-        if same:
-            return same[0].model_choices()
-        return list(CATALOG.get(self.provider, {}).get("models", []))
+        return wizard.quick_models(self.cfg, self.provider)
 
     def _fill_choices(self, keep_model: str = "", keep_effort: str = "") -> None:
         models = self._models()
@@ -1491,11 +1398,7 @@ class AgentQuickScreen(BaseModal):
         name = self.query_one("#q-name", TextInput)
         if name.value.strip() and name.value != getattr(self, "_auto", None):
             return
-        base = PROVIDERS[self.provider][1]
-        n, i = base, 2
-        while n in self.cfg.agents:
-            n, i = f"{base}-{i}", i + 1
-        self._auto = name.value = n
+        self._auto = name.value = wizard.auto_name(self.cfg, PROVIDERS[self.provider][1])
 
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "q-provider" and event.value in PROVIDERS and event.value != self.provider:
@@ -1509,19 +1412,12 @@ class AgentQuickScreen(BaseModal):
         self.update_preview()
 
     def body(self) -> dict:
-        body = provider_template(self.provider)
-        for key, wid in (("model", "#q-model"), ("effort", "#q-effort")):
+        def val(wid: str) -> str:
             v = self.query_one(wid, Select).value
-            body.pop(key, None)
-            if v not in (RESET, Select.BLANK, None, ""):
-                body[key] = v
-        role = self.query_one("#q-role", TextInput).value.strip()
-        body["role"] = role
-        if self.query_one("#q-access", Select).value == "full":
-            body["full_access"] = True
-        # dự phòng của mẫu có thể trỏ tới agent đã bị tắt/xoá: chỉ giữ agent đang có
-        body["fallback"] = [f for f in body.get("fallback", []) if f in self.cfg.agents]
-        return body
+            return "" if v in (RESET, Select.BLANK, None) else str(v)
+        return wizard.quick_body(self.cfg, self.provider, val("#q-model"), val("#q-effort"),
+                                 self.query_one("#q-role", TextInput).value,
+                                 self.query_one("#q-access", Select).value == "full")
 
     def update_preview(self) -> None:
         if not self.is_mounted:
@@ -1541,10 +1437,7 @@ class AgentQuickScreen(BaseModal):
 
     def validate(self) -> tuple[str, dict]:
         name = self.query_one("#q-name", TextInput).value.strip()
-        if not NAME_RE.match(name) or name == LEAD_ALIAS:
-            raise ValueError(tr("Tên chỉ gồm chữ, số, - và _ (không dùng 'lead')"))
-        if name in self.cfg.agents and name != self.old_name:
-            raise ValueError(tr("Đã có agent '{name}' — chọn tên khác", name=name))
+        wizard.check_agent_name(self.cfg, name, self.old_name)
         return name, self.body()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -1580,23 +1473,7 @@ class AgentEditScreen(BaseModal):
     DEFAULT_CSS = "AgentEditScreen { align: center middle; }" + FORM_CSS.replace("{box}", "agent-box") + """
     #agent-preview { height: auto; padding: 0 1; background: $boost; margin-top: 1; }
     """
-    FIELDS = [  # (id, nhãn, gợi ý, khoá TOML, kiểu: argv | csv | text | int)
-        ("command", tr("Lệnh"), tr("bắt buộc; {prompt} = nội dung task"), "command", "argv"),
-        ("role", tr("Vai trò"), tr("trưởng nhóm phân việc dựa vào đây"), "role", "text"),
-        ("model", tr("Model mặc định"), tr("trống = để CLI tự chọn"), "model", "text"),
-        ("models", tr("Model gợi ý"), tr("cách nhau dấu phẩy"), "models", "csv"),
-        ("model-args", tr("Cờ model"), "vd: --model {model}", "model_args", "argv"),
-        ("efforts", tr("Mức effort"), tr("vd: low, medium, high · '-' = không có"), "efforts", "csv"),
-        ("effort", tr("Effort mặc định"), tr("trống = để CLI tự chọn"), "effort", "text"),
-        ("effort-args", tr("Cờ effort"), "vd: --effort {effort}", "effort_args", "argv"),
-        ("models-command", tr("Lệnh liệt kê model"), tr("vd: mycli models (tuỳ chọn)"), "models_command", "argv"),
-        ("file-ref", tr("Nhắc file @"), tr("vd: @{path} hoặc {path} · trống = theo lệnh"), "file_ref", "text"),
-        ("file-args", tr("Cờ đính file"), tr("vd: -f {path} · trống = theo lệnh · '-' = tắt"), "file_args", "argv"),
-        ("image-args", tr("Cờ đính ảnh"), tr("vd: --image={path} · trống = theo lệnh · '-' = tắt"), "image_args", "argv"),
-        ("fallback", tr("Dự phòng"), tr("agent thay khi hết hạn mức, cách nhau dấu phẩy"), "fallback", "csv"),
-        ("timeout", tr("Timeout (giây)"), tr("mặc định 1800"), "timeout", "int"),
-        ("max-concurrent", tr("Số task cùng lúc"), tr("mặc định 1"), "max_concurrent", "int"),
-    ]
+    FIELDS = wizard.AGENT_FIELDS
 
     def __init__(self, cfg: Config, name: str | None = None, raw: dict | None = None,
                  new_name: str | None = None):
@@ -1636,16 +1513,7 @@ class AgentEditScreen(BaseModal):
         self.call_after_refresh(self.mark_clean)
 
     def fill(self, raw: dict) -> None:
-        for fid, _l, _h, key, kind in self.FIELDS:
-            v = raw.get(key)
-            if v is None:
-                text = ""
-            elif kind == "argv":
-                text = "-" if key in ("file_args", "image_args") and v == [] else _argv_text(v)
-            elif kind == "csv":
-                text = "-" if v == [] else ", ".join(map(str, v if isinstance(v, list) else [v]))
-            else:
-                text = str(v)
+        for fid, text in wizard.agent_fields_text(raw).items():
             self.query_one(f"#ag-{fid}", Input).value = text
         self.query_one("#ag-pty", Checkbox).value = bool(raw.get("pty", False))
         self.query_one("#ag-verify", Checkbox).value = bool(raw.get("verify", True))
@@ -1659,11 +1527,7 @@ class AgentEditScreen(BaseModal):
         name = self.query_one("#ag-name", Input)
         if not name.value.strip():
             base = str(event.value).split()[0]
-            base = "my-agent" if base == "trống" else base
-            n, i = base, 2
-            while n in self.cfg.agents:
-                n, i = f"{base}-{i}", i + 1
-            name.value = n
+            name.value = wizard.auto_name(self.cfg, "my-agent" if base == "trống" else base)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         self.update_preview()
@@ -1673,34 +1537,10 @@ class AgentEditScreen(BaseModal):
 
     def body(self) -> dict:
         """Đọc form thành dict như trong TOML (chỉ những khoá có điền). Lỗi -> ValueError."""
-        out: dict = {}
-        for fid, label, _h, key, kind in self.FIELDS:
-            text = self.query_one(f"#ag-{fid}", Input).value.strip()
-            if not text:
-                continue
-            if kind == "argv":
-                if key in ("file_args", "image_args") and text == "-":
-                    out[key] = []
-                    continue
-                try:
-                    out[key] = shlex.split(text)
-                except ValueError:
-                    raise ValueError(tr("{label}: thiếu dấu nháy đóng", label=label))
-            elif kind == "csv":
-                out[key] = [] if text == "-" else _csv(text)
-            elif kind == "int":
-                if not text.isdigit() or int(text) < 1:
-                    raise ValueError(tr("{label}: phải là số nguyên dương", label=label))
-                out[key] = int(text)
-            else:
-                out[key] = text
-        if self.query_one("#ag-pty", Checkbox).value:
-            out["pty"] = True
-        if not self.query_one("#ag-verify", Checkbox).value:
-            out["verify"] = False
-        if self.query_one("#ag-full", Checkbox).value:
-            out["full_access"] = True
-        return out
+        return wizard.agent_body({fid: self.query_one(f"#ag-{fid}", Input).value for fid, *_r in self.FIELDS},
+                                 pty=self.query_one("#ag-pty", Checkbox).value,
+                                 verify=self.query_one("#ag-verify", Checkbox).value,
+                                 full=self.query_one("#ag-full", Checkbox).value)
 
     def update_preview(self) -> None:
         t = Text()
@@ -1726,16 +1566,8 @@ class AgentEditScreen(BaseModal):
 
     def validate(self) -> tuple[str, dict]:
         name = self.query_one("#ag-name", Input).value.strip()
-        if not NAME_RE.match(name) or name == LEAD_ALIAS:
-            raise ValueError(tr("Tên chỉ gồm chữ, số, - và _ (không dùng 'lead')"))
-        if name in self.cfg.agents and name != self.old_name:
-            raise ValueError(tr("Đã có agent '{name}' — chọn tên khác", name=name))
         body = self.body()
-        if not body.get("command"):
-            raise ValueError(tr("Cần nhập lệnh chạy agent"))
-        bad = [f for f in body.get("fallback", []) if f not in self.cfg.agents or f == name]
-        if bad:
-            raise ValueError(tr("Dự phòng không có trong đội: {v}", v=', '.join(bad)))
+        wizard.check_agent(self.cfg, name, self.old_name, body)
         return name, body
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -1825,9 +1657,7 @@ class WorkflowEditScreen(BaseModal):
         self.n += 1
         k = self.n
         agent = str(st.get("agent") or LEAD_ALIAS)
-        after = st.get("after")
-        after_text = "" if after is None else ("0" if after == [] else
-                                               ",".join(map(str, after if isinstance(after, list) else [after])))
+        after_text = wizard.after_text(st.get("after"))
         return Horizontal(
             Static("", classes="step-no"),
             Select(self.agent_options(agent), value=agent, allow_blank=False, classes="step-agent",
@@ -1858,11 +1688,7 @@ class WorkflowEditScreen(BaseModal):
     async def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id != "wf-template" or event.value not in WORKFLOW_TEMPLATES:
             return
-        tpl = WORKFLOW_TEMPLATES[event.value]
-        member = next((n for n in self.cfg.active_agents() if n != self.cfg.lead), LEAD_ALIAS)
-        raw = dict(tpl, steps=[dict(st, agent=member if st["agent"] == "*" else st["agent"])
-                               for st in tpl["steps"]])
-        await self.fill(raw)
+        await self.fill(wizard.workflow_template(self.cfg, str(event.value)))
         name = self.query_one("#wf-name", Input)
         if not name.value.strip():
             name.value = str(event.value)
@@ -1885,34 +1711,17 @@ class WorkflowEditScreen(BaseModal):
 
     def validate(self) -> tuple[str, dict]:
         name = self.query_one("#wf-name", Input).value.strip()
-        if not NAME_RE.match(name):
-            raise ValueError(tr("Tên chỉ gồm chữ, số, - và _"))
-        if name in self.cfg.workflows and name != self.old_name:
-            raise ValueError(tr("Đã có workflow '{name}' — chọn tên khác", name=name))
         steps = []
-        for i, row in enumerate(self.query(".step-row"), 1):
+        for row in self.query(".step-row"):
             k = (row.id or "")[len("wf-step-"):]
-            agent = str(row.query_one(f"#wf-agent-{k}", Select).value)
-            title = row.query_one(f"#wf-title-{k}", Input).value.strip()
-            prompt = row.query_one(f"#wf-prompt-{k}", Input).value.strip()
-            if not (title or prompt):
-                raise ValueError(tr("Bước {i}: cần tiêu đề hoặc prompt", i=i))
-            after_text = row.query_one(f"#wf-after-{k}", Input).value.strip()
-            after: list[int] | None = None
-            if after_text in ("0", "-"):
-                after = []
-            elif after_text:
-                parts = _csv(after_text)
-                if not all(p.isdigit() and 0 < int(p) < i for p in parts):
-                    raise ValueError(tr("Bước {i}: 'Sau bước' phải là số bước đứng trước (1…{v})", i=i, v=i - 1))
-                after = [int(p) for p in parts]
-            effort = row.query_one(f"#wf-effort-{k}", Input).value.strip().lower()
-            steps.append(WorkflowStep(agent=agent, title=title, prompt=prompt, after=after, effort=effort))
-        if not steps:
-            raise ValueError(tr("Workflow cần ít nhất 1 bước"))
-        wf = Workflow(name=name, description=self.query_one("#wf-desc", Input).value.strip(),
-                      steps=steps, review=self.query_one("#wf-review", Checkbox).value)
-        return name, workflow_to_dict(wf)
+            steps.append({"agent": str(row.query_one(f"#wf-agent-{k}", Select).value),
+                          "title": row.query_one(f"#wf-title-{k}", Input).value,
+                          "prompt": row.query_one(f"#wf-prompt-{k}", Input).value,
+                          "after": row.query_one(f"#wf-after-{k}", Input).value,
+                          "effort": row.query_one(f"#wf-effort-{k}", Input).value})
+        body = wizard.workflow_body(self.cfg, name, self.old_name, self.query_one("#wf-desc", Input).value,
+                                    self.query_one("#wf-review", Checkbox).value, steps)
+        return name, body
 
     def action_save(self) -> None:
         try:
@@ -5355,63 +5164,30 @@ class TeamApp(App):
     def continue_candidates(self) -> list[tuple[str, Text]]:
         """(ref, dòng hiển thị) cho gợi ý /continue: mục tiêu đã kết thúc rồi thread /task đã xong."""
         out: list[tuple[str, Text]] = []
-        for g in reversed(self.db.goals()):
-            if g.status not in GOAL_ENDED:
-                continue
-            label, style = GOAL_STATUS.get(g.status, (g.status, ""))
+        for c in reports.continue_candidates(self.db):
             t = Text()
-            t.append("🎯 ")
-            t.append(f"m{g.id}".ljust(6), "bold cyan")
-            t.append(f"{label:11}", style)
-            t.append(g.text.splitlines()[0] if g.text else "")
-            if g.summary:
-                t.append(f" — {g.summary.splitlines()[0]}", "dim")
-            out.append((f"m{g.id}", t))
-            if len(out) >= 10:
-                break
-        tasks = self.db.tasks()
-        has_next = {t.parent_id for t in tasks if t.source == "followup" and t.goal_id is None}
-        n = 0
-        for task in reversed(tasks):
-            if task.goal_id is not None or task.status in ACTIVE or task.id in has_next:
-                continue
-            label, style = STATUS.get(task.status, (task.status, ""))
-            t = Text()
-            t.append("💬 ")
-            t.append(f"t{task.id}".ljust(6), "bold cyan")
-            t.append(f"{task.agent} ", "cyan")
-            t.append(f"{STATUS_ICON.get(task.status, '·')} ", style)
-            t.append(task.title)
-            out.append((f"t{task.id}", t))
-            n += 1
-            if n >= 10:
-                break
+            t.append("🎯 " if c["kind"] == "goal" else "💬 ")
+            t.append(c["ref"].ljust(6), "bold cyan")
+            if c["kind"] == "goal":
+                label, style = GOAL_STATUS.get(c["status"], (c["status"], ""))
+                t.append(f"{label:11}", style)
+                t.append(c["title"])
+                if c["summary"]:
+                    t.append(f" — {c['summary']}", "dim")
+            else:
+                _label, style = STATUS.get(c["status"], (c["status"], ""))
+                t.append(f"{c['agent']} ", "cyan")
+                t.append(f"{STATUS_ICON.get(c['status'], '·')} ", style)
+                t.append(c["title"])
+            out.append((c["ref"], t))
         return out
 
     def continue_hint(self, ref: str) -> Text:
         """Dòng giải thích /continue <ref> sẽ làm gì (hoặc vì sao chưa được)."""
-        r = self.orch.continue_ref(ref)
-        if isinstance(r, str):
-            return Text(f"⚠ {r}", "yellow")
-        kind, i = r
-        t = Text()
-        if kind == "goal":
-            g = self.db.goal(i)
-            if g.status not in GOAL_ENDED:
-                return Text(tr("⚠ Mục tiêu #{i} chưa kết thúc — đợi xong rồi tiếp tục", i=i), "yellow")
-            n = len(self.db.tasks(goal_id=i))
-            t.append(tr("↪ Tiếp tục mục tiêu #{i} ", i=i), "bold")
-            t.append(f"«{g.text.splitlines()[0][:60]}»", "cyan")
-            t.append(tr(" — trưởng nhóm lập task bổ sung dựa trên {n} task đã làm", n=n), "")
-        else:
-            task = self.db.task(i)
-            if task.status in ACTIVE:
-                return Text(tr("⚠ Task #{i} chưa xong (hoặc đang chờ duyệt) — đợi xong rồi tiếp tục", i=i),
-                            "yellow")
-            turns = len(self.orch.thread_of(task)) + 1
-            t.append(tr("↪ Hỏi tiếp {agent} ", agent=task.agent), "bold")
-            t.append(f"«{task.title[:60]}»", "cyan")
-            t.append(tr(" — kèm {turns} lượt trước của thread", turns=turns), "")
+        ok, msg = reports.continue_hint(self.db, self.orch, ref)
+        if not ok:
+            return Text(msg if msg.startswith("⚠") else f"⚠ {msg}", "yellow")
+        t = Text(msg, "bold")
         t.append(tr("  (gõ yêu cầu mới rồi Enter, Esc huỷ)"), "dim")
         return t
 
@@ -5530,24 +5306,7 @@ class TeamApp(App):
             self.notify(tr("Lỗi: {e}", e=e), severity="error")
 
     def usage_text(self) -> str:
-        now = time.time()
-        out = []
-        for label, since in ((tr("Hôm nay"), today_start()), (tr("7 ngày"), now - 7 * 86400)):
-            u = self.db.usage(since)
-            out.append(f"{label}:")
-            out.append(f"  {'agent':12} {tr('lượt'):>5} {tr('thời gian'):>10} {'~token':>8} {tr('lỗi'):>4} "
-                       f"{tr('hết HM'):>6}")
-            for name in self.cfg.agents:
-                r = u.get(name)
-                if not r:
-                    continue
-                tok = (r["prompt_chars"] + r["output_chars"]) // 4
-                out.append(f"  {name:12} {r['runs']:>5} {fmt_dur(r['secs']):>10} {fmt_tokens(tok):>8} "
-                           f"{r['failed']:>4} {r['ratelimits']:>6}")
-        cds = [tr("{a} đến {v}", a=a, v=self.orch.cooldown_label(a)) for a in self.cfg.agents if self.orch.in_cooldown(a)]
-        out.append(tr("Đang tạm nghỉ: ") + (", ".join(cds) if cds else tr("không")))
-        out.append(tr("(~token = ước tính từ độ dài prompt và output, chưa gồm file agent tự đọc)"))
-        return "\n".join(out)
+        return reports.usage_text(self.cfg, self.db, self.orch)
 
     async def _cli_usage(self) -> None:
         """Hỏi song song hạn mức của từng agent bằng chính CLI của nó, in vào log hệ thống khi xong."""
@@ -5567,10 +5326,7 @@ class TeamApp(App):
         self.show_task(SYSTEM)
 
     def models_text(self, only: str | None = None) -> str:
-        return (describe_models(self.cfg, only) + tr("\n"
-                                                     "Chọn: /model <agent>, /effort <agent> hoặc "
-                                                     "bấm vào ô agent ở tab Đội. Model ngoài danh "
-                                                     "sách vẫn đặt được: /model <agent> <tên>."))
+        return reports.models_text(self.cfg, only)
 
     def open_picker(self, agent: str, key: str, then_effort: bool = False) -> None:
         a: AgentConfig | None = self.cfg.agents.get(agent)
@@ -5606,18 +5362,8 @@ class TeamApp(App):
             return
         save_onboard(self.root, result["plan"], **result["settings"])
         await self.reload_custom()  # agent thêm (vd claude-review) và workflow mới
-        fresh = load_config(self.root)
         c = self.cfg
-        c.lead, c.default_workflow = fresh.lead, fresh.default_workflow
-        c.approve_plan, c.auto_review, c.merge = fresh.approve_plan, fresh.auto_review, fresh.merge
-        c.verify.command = fresh.verify.command
-        for n, a in c.agents.items():
-            f = fresh.agents.get(n)
-            if f:
-                a.enabled, a.model, a.effort, a.role = f.enabled, f.model, f.effort, f.role
-                a.full_access = f.full_access
-        if c.isolation != fresh.isolation:
-            c.isolation = fresh.isolation
+        if wizard.apply_live(c, load_config(self.root)):
             await self.orch.apply_isolation()
         await self._rebuild_panes()
         self._show_input_mode()
@@ -5636,21 +5382,9 @@ class TeamApp(App):
 
     async def reload_custom(self) -> None:
         """Đọc lại custom.toml: thêm/bớt/sửa agent tuỳ chỉnh và workflow ngay, không cần mở lại app."""
-        fresh = load_config(self.root)
-        before = set(self.cfg.agents)
-        for n in [n for n in self.cfg.agents if n not in fresh.agents]:
-            del self.cfg.agents[n]
-        for n, a in fresh.agents.items():
-            if n not in self.cfg.agents or n in self.cfg.custom_agents or n in fresh.custom_agents:
-                self.cfg.agents[n] = a  # agent có sẵn giữ nguyên đối tượng (model/effort đang dùng)
-        self.cfg.custom_agents = fresh.custom_agents
-        self.cfg.workflows = fresh.workflows
-        self.cfg.default_workflow = fresh.default_workflow  # workflow mặc định vừa bị xoá -> bỏ
+        added, removed = wizard.reload_custom(self.cfg, load_config(self.root))
         self._show_input_mode()
-        if self.cfg.lead not in self.cfg.agents:
-            self.cfg.lead = fresh.lead
         await self._rebuild_panes()
-        added, removed = set(self.cfg.agents) - before, before - set(self.cfg.agents)
         msg = (tr("⚙ Đã cập nhật agent/workflow tuỳ chỉnh. Agent: {v}", v=', '.join(self.cfg.agents))
                + (tr(" (mới: {v})", v=', '.join(sorted(added))) if added else "")
                + (tr(" (đã xoá: {v})", v=', '.join(sorted(removed))) if removed else "")
@@ -5659,16 +5393,7 @@ class TeamApp(App):
         self.refresh_view()
 
     def flows_text(self) -> str:
-        if not self.cfg.workflows:
-            return tr("Chưa có workflow nào. Tạo bằng /custom → '+ Thêm workflow' (có mẫu sẵn).")
-        lines = []
-        for n, w in self.cfg.workflows.items():
-            lines.append(f"⚙ {n}  ({w.summary()})" + (f" — {w.description}" if w.description else ""))
-            for i, st in enumerate(w.steps, 1):
-                lines.append(f"   {i}. [{st.agent}{('@' + st.effort) if st.effort else ''}] "
-                             f"{st.title or st.prompt[:50]}")
-        lines.append(tr("Chạy: /flow <tên> <mục tiêu>   ·   sửa: /custom"))
-        return "\n".join(lines)
+        return reports.flows_text(self.cfg)
 
     async def _rebuild_panes(self) -> None:
         grid = self.query_one("#team-grid", Vertical)
@@ -5832,17 +5557,7 @@ class TeamApp(App):
         elif cmd == "board":
             self.query_one("#tabs", TabbedContent).active = "tab-board"
         elif cmd == "agents":
-            lines = []
-            for n, a in self.cfg.agents.items():
-                st = "✓" if a.installed() else tr("✗ chưa cài")
-                lead = tr(" ★ trưởng nhóm") if n == self.cfg.lead else ""
-                lead += tr(" · tuỳ chỉnh (/custom)") if n in self.cfg.custom_agents else ""
-                lines.append(f"{n:12} {st}{lead}\n   model/effort: {a.label()}"
-                             + (tr("   (effort hợp lệ: {v})", v=', '.join(a.efforts)) if a.efforts else "")
-                             + tr("\n   lệnh: {v}", v=' '.join(a.argv('<prompt>')))
-                             + f"\n   @file → {mentions.describe(a.binary, a.file_ref, a.file_args, a.image_args)}"
-                             + tr("\n   vai trò: {role}", role=a.role))
-            self.write_sys("\n".join(lines))
+            self.write_sys(reports.agents_text(self.cfg))
         elif cmd == "setup":
             self.open_setup()
             return
@@ -5974,3 +5689,14 @@ class TeamApp(App):
             self.notify(tr("Không hiểu lệnh /{cmd}", cmd=cmd) + (tr(" — có phải /{near}?", near=near) if near else "")
                         + tr(" · gõ / để xem danh sách, F1 trợ giúp"), severity="warning")
         self.refresh_view()
+
+
+class BusyApp(App):
+    """Hiện khi dự án đã có phiên giao diện khác giữ khoá (xem cli.acquire_session_lock)."""
+
+    BINDINGS = [Binding("ctrl+q", "quit", tr("Thoát"), priority=True)]
+    CSS = "Screen { align: center middle; } #busy { width: 70; height: auto; padding: 1 2; border: round $warning; }"
+
+    def compose(self) -> ComposeResult:
+        yield Static(tr("Dự án này đang mở ở một phiên ateam khác (terminal hoặc tab web).\n"
+                        "Đóng phiên đó rồi mở lại.  ·  Ctrl+Q để thoát"), id="busy")

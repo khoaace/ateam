@@ -93,9 +93,18 @@ terminal thật vẫn đúng.
 `command`, `model_args`, `effort_args`, `efforts`, `fallback`, `role`; tăng `CONFIG_VERSION`; thêm
 script giả lập vào `tests/fakebin` nếu test cần; cập nhật `docs/CONFIG.md`, README, `site/index.html`.
 
-**Thêm lệnh `/…` trong TUI**: thêm nhánh trong `TeamApp.run_command` (`tui.py`), dòng trong `HELP`,
-và nếu là thao tác dữ liệu thì đặt logic trong `Orchestrator` (TUI chỉ gọi). Thao tác `async` chạy qua
-`self.run_worker(coro, exclusive=False)`.
+**Thêm lệnh `/…`**: dòng trong `COMMANDS` + `HELP` (`tui.py`), nhánh trong `TeamApp.run_command` (TUI) **và**
+`WebApp._command` (`web.py`, giao diện web — `test_web_handles_every_tui_command` báo thiếu). Logic dữ liệu đặt ở
+`Orchestrator`/`reports.py`/`wizard.py` để hai giao diện chỉ gọi. Thao tác `async` trong TUI chạy qua
+`self.run_worker(coro, exclusive=False)`. Có tham số gợi ý được thì thêm luật trong `argSuggestions` (`webui/app.js`).
+
+**Sửa giao diện web**: `ateam/webui/*.js|css` sửa thẳng, tải lại trang là thấy (không build). Chữ mới: khoá trong
+`ui_strings()` (`web.py`) + bản dịch. Thử: `PATH=$PWD/tests/fakebin:$PATH XDG_CONFIG_HOME=/tmp/x python -m ateam -C
+/tmp/demo web`.
+
+**Build lại editor của tab Code** (đổi phiên bản CodeMirror / thêm ngôn ngữ): sửa `scripts/editor/entry.js` (danh
+sách `LANGS`) hoặc `package.json`, rồi `cd scripts/editor && npm ci && npm run build` — sinh
+`ateam/webui/vendor/codemirror.js` + `LICENSES.txt`; commit cả hai (người dùng không cần Node).
 
 **Thêm lệnh dòng lệnh**: hàm `cmd_<tên>(args)` + `sub.add_parser` + mục trong `handlers` (`cli.py`).
 

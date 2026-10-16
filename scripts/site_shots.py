@@ -6,14 +6,21 @@ Dựng một dự án demo nhỏ + các CLI agent giả lập có nội dung "th
 Git, màn hình diff, chọn theme. Không gọi CLI agent thật. Chạy lại khi giao diện đổi:
 
     python scripts/site_shots.py            # ghi đè site/shots/*.svg
+    python scripts/site_shots.py --web      # ảnh giao diện web: site/shots/web-*.webp
+
+`--web` chạy `ateam web` trên dự án demo và chụp bằng Chrome headless qua DevTools protocol (cần aiohttp và
+Google Chrome/Chromium; đặt biến CHROME nếu Chrome nằm chỗ khác).
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -308,6 +315,133 @@ async def shoot(base: Path, proj: Path) -> None:
         await app.action_quit()
 
 
+# ------------------------------------------------------------------ giao diện web (ateam web + Chrome headless)
+GOAL = "Thêm đăng nhập bằng Google, có test và cập nhật README"
+
+
+def free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def find_chrome() -> str:
+    for c in (os.environ.get("CHROME"), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+              shutil.which("google-chrome"), shutil.which("chromium"), shutil.which("chromium-browser")):
+        if c and Path(c).exists():
+            return c
+    raise SystemExit("Không thấy Chrome/Chromium — đặt biến CHROME=<đường dẫn>")
+
+
+# đường dẫn thư mục tạm trên trang -> ~/code (như clean_svg)
+SCRUB = r"""(() => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n;
+  while ((n = w.nextNode())) n.nodeValue = n.nodeValue.replace(/\/\S*?ateam-shots-[^\/\s]+/g, "~/code"); })()"""
+
+
+class CDP:
+    """Client DevTools protocol tối thiểu: gọi lệnh, đợi kết quả, bỏ qua sự kiện."""
+
+    def __init__(self, ws):
+        self.ws, self.seq = ws, 0
+
+    async def call(self, method: str, **params):
+        self.seq += 1
+        await self.ws.send_json({"id": self.seq, "method": method, "params": params})
+        while True:
+            m = json.loads((await self.ws.receive()).data)
+            if m.get("id") == self.seq:
+                if "error" in m:
+                    raise RuntimeError(f"{method}: {m['error']}")
+                return m.get("result", {})
+
+    async def js(self, expr: str):
+        r = await self.call("Runtime.evaluate", expression=expr, awaitPromise=True, returnByValue=True)
+        if "exceptionDetails" in r:
+            raise RuntimeError(f"{expr}: {r['exceptionDetails']}")
+        return r.get("result", {}).get("value")
+
+    async def until(self, expr: str, n: int = 200) -> None:
+        for _ in range(n):
+            if await self.js(f"!!({expr})"):
+                return
+            await asyncio.sleep(0.1)
+        raise RuntimeError(f"hết giờ chờ: {expr}")
+
+    async def shot(self, name: str) -> None:
+        await self.js(SCRUB)
+        r = await self.call("Page.captureScreenshot", format="webp", quality=86)
+        (OUT / f"{name}.webp").write_bytes(base64.b64decode(r["data"]))
+        print("  ✓", name)
+
+
+async def shoot_web(base: Path, proj: Path) -> None:
+    import aiohttp
+
+    from ateam.config import ensure_global_config, mark_setup_done
+
+    ensure_global_config()
+    mark_setup_done()
+    port, dport = free_port(), free_port()
+    server = subprocess.Popen([sys.executable, "-m", "ateam", "-C", str(proj), "web", "--port", str(port)],
+                              cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    chrome = subprocess.Popen([find_chrome(), "--headless=new", f"--remote-debugging-port={dport}",
+                               f"--user-data-dir={base / 'chrome'}", "--hide-scrollbars", "--no-first-run",
+                               "--window-size=1440,900", "about:blank"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        async with aiohttp.ClientSession() as http:
+            ws_url = None
+            for _ in range(100):
+                try:
+                    async with http.get(f"http://127.0.0.1:{dport}/json/list") as r:
+                        pages = [p for p in await r.json() if p["type"] == "page"]
+                    if pages:
+                        ws_url = pages[0]["webSocketDebuggerUrl"]
+                        break
+                except aiohttp.ClientError:
+                    pass
+                await asyncio.sleep(0.1)
+            if not ws_url:
+                raise RuntimeError("Chrome không mở cổng DevTools")
+            async with http.ws_connect(ws_url, max_msg_size=0) as ws:
+                c = CDP(ws)
+                await c.call("Emulation.setDeviceMetricsOverride", width=1440, height=900, deviceScaleFactor=2,
+                             mobile=False)
+                await c.call("Emulation.setEmulatedMedia",
+                             features=[{"name": "prefers-color-scheme", "value": "dark"}])
+                for _ in range(100):  # đợi server lên
+                    try:
+                        async with http.get(f"http://127.0.0.1:{port}/") as r:
+                            if r.status == 200:
+                                break
+                    except aiohttp.ClientError:
+                        pass
+                    await asyncio.sleep(0.1)
+                await c.call("Page.navigate", url=f"http://127.0.0.1:{port}/")
+                await c.until("typeof S !== 'undefined' && S.meta && S.state")
+                # mục tiêu chạy thật: kế hoạch -> duyệt -> các agent làm song song
+                await c.js(f"send('submit', {{text: {json.dumps(GOAL)}}})")
+                await c.until("S.state.tasks.some((t) => t.status === 'draft')")
+                await c.js("send('approve', {goal: S.state.goals[0].id})")
+                await c.until("S.state.tasks.filter((t) => t.status === 'running').length >= 2")
+                await asyncio.sleep(4.5)
+                await c.js("openTask(S.state.tasks.find((t) => t.status === 'running').id)")
+                await asyncio.sleep(1.0)
+                await c.shot("web-board")
+                await c.js("closeDrawer(); setView('code'); CodeView.open('app/auth/google.py', 35)")
+                await c.until("document.querySelector('#code .cm-editor')")
+                await asyncio.sleep(1.2)
+                await c.shot("web-code")
+                await c.js("setView('git')")
+                await c.until("document.querySelectorAll('#git .gfile').length")
+                await asyncio.sleep(1.0)
+                await c.shot("web-git")
+    finally:
+        chrome.terminate()
+        server.terminate()
+        server.wait(10)
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     base = Path(tempfile.mkdtemp(prefix="ateam-shots-"))
@@ -322,7 +456,7 @@ def main() -> None:
         os.environ["GIT_AUTHOR_EMAIL"] = os.environ["GIT_COMMITTER_EMAIL"] = "demo@example.com"
         sys.path.insert(0, str(ROOT))
         print(f"Chụp màn hình vào {OUT.relative_to(ROOT)}/")
-        asyncio.run(shoot(base, proj))
+        asyncio.run(shoot_web(base, proj) if "--web" in sys.argv else shoot(base, proj))
     finally:
         shutil.rmtree(base, ignore_errors=True)
 

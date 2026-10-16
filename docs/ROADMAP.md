@@ -74,6 +74,8 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
 - `max_concurrent > 1` cho cùng agent ở chế độ shared dễ ghi đè lẫn nhau.
 - Token ở `/usage` chỉ là ước tính từ độ dài prompt/output.
 - Chưa có Windows (dùng `pty`, `fcntl`, `os.killpg`).
+- Khoá 1 phiên (`.ateam/tui.lock`) chỉ áp cho giao diện (terminal, `ateam web`, `ateam web --tui`); `ateam goal`/`ateam run`
+  chạy cùng lúc với giao diện vẫn có thể chạy trùng task.
 - CI: job macOS + Python 3.13 từng hỏng ngẫu nhiên. Lần 14/10/2026 trên PR #2 bắt được nguyên nhân:
   `agy` giả lập in qua pty rồi thoát ngay, macOS bỏ phần output chưa đọc khi phía slave đóng hết
   → mất sạch output. `Run._run_pty` giờ giữ slave mở tới khi tiến trình thoát rồi đọc nốt. Nếu còn

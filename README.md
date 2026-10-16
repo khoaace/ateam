@@ -145,6 +145,31 @@ Finder vào terminal cũng ra `@ảnh`. Khi chạy, ảnh đi như `@file` ở t
 `--image=<ảnh>` để thấy ảnh thật (đổi bằng `image_args`). macOS dùng `osascript` có sẵn (hoặc
 `pngpaste` nếu đã cài); Linux cần `wl-paste` hoặc `xclip`. Cmd+V vẫn dán chữ như thường.
 
+## Giao diện web (`ateam web`)
+
+Giao diện web hiện đại, **đủ chức năng như terminal**: bảng Kanban (Nháp · Chờ chạy · Đang chạy · Chờ duyệt · Xong ·
+Lỗi), thẻ mục tiêu có tiến độ, duyệt kế hoạch bằng nút (đổi agent, sửa nội dung task), `/grill` bấm chọn phương án,
+ngăn chi tiết task (log trực tiếp, diff, merge/từ chối, chạy lại, hỏi tiếp), tab **Đội**, **Terminal**, **Git**
+(stage, commit — trưởng nhóm viết message, amend, nhánh, stash, pull/push, lịch sử, revert), **Code** (cây thư mục,
+editor CodeMirror có phím vim `:w :q :wq :e! :bn`, nhiều file, tự nạp lại khi agent sửa file), diff kiểu VS Code
+(2 cột, chữ đổi trong dòng, tô cú pháp), `/setup`, `/custom`, `/help`, `/usage`, `/models`… Sáng/tối, màu nhấn dùng
+chung với terminal, dùng được trên điện thoại.
+
+```bash
+~/.ateam/venv/bin/python -m pip install aiohttp   # một lần (cài từ mã nguồn: pip install -e ".[web]")
+ateam web --open           # mở http://127.0.0.1:8000  ·  đổi cổng: ateam web --port 9000
+```
+
+- Ô nhập dưới cùng dùng như trong terminal và gợi ý cả tham số: `/task ` → agent, `codex:` → model, `@` → effort;
+  `/model <agent>`, `/assign`, `/retry <task>`, `/continue`, `/flow`, `/checkout <nhánh>`, `/code @file`… Ctrl+K về ô
+  nhập, F2 duyệt kế hoạch, F6 tiếp tục, F1 trợ giúp, Esc đóng. Tab Git: phím `space a u x d c e` như TUI. Tab Code:
+  ⌘P tìm file, ⌘S lưu.
+- Một server giữ **một** bộ lập lịch: mở bao nhiêu tab trình duyệt cũng được, không chạy trùng task. Trong lúc
+  đó `ateam` ở terminal sẽ báo dự án đang mở ở phiên khác.
+- Chỉ nghe `127.0.0.1` và từ chối yêu cầu có Host/Origin lạ — trang web khác không điều khiển được ateam (giao
+  diện chạy được lệnh shell). Tab Code không mở/ghi được file ngoài dự án hay trong `.git`.
+- `ateam web --tui` (cần `textual-serve`): chính giao diện terminal vẽ trong trình duyệt; mỗi dự án chỉ 1 phiên.
+
 ## Theme màu và ngôn ngữ
 
 - **`/theme`** mở màn hình chọn theme: 21 theme dựng sẵn (tối và sáng — nord, dracula, gruvbox, tokyo-night,

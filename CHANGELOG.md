@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.11.0 — 16/10/2026
+
+- **`ateam web` — giao diện web hiện đại, đủ chức năng như terminal** (http://127.0.0.1:8000, `--open`, `--port`):
+  - Bảng Kanban, thẻ mục tiêu có tiến độ, duyệt kế hoạch bằng nút (đổi agent, sửa task), `/grill` bấm chọn, ngăn chi
+    tiết task (log trực tiếp, diff, merge/từ chối, chạy lại, hỏi tiếp), tab Đội (bấm agent để đổi model/effort),
+    Terminal (`!lệnh`, gợi ý script, link port).
+  - Tab **Git**: stage/unstage/bỏ thay đổi, commit (trưởng nhóm viết message, amend, `--no-verify`), lịch sử, xem
+    commit, revert, bỏ commit cuối, nhánh (tạo/chuyển/merge/đổi tên/xoá), stash, fetch/pull/push; phím như TUI.
+  - Tab **Code**: cây thư mục + tìm file, nhiều file, editor CodeMirror 6 có phím vim (`:w :q :wq :e! :bn :bp`),
+    tô cú pháp ~25 ngôn ngữ, giữ CRLF, hỏi khi file đổi trên đĩa, tự nạp lại khi agent sửa file đang mở.
+  - Diff kiểu VS Code (2 cột / 1 cột, chữ đổi trong dòng, tô cú pháp, nhảy hunk, mở dòng đó ở tab Code) cho task và git.
+  - `/setup` (wizard 7 bước), `/custom` (agent nhanh/nâng cao có xem trước lệnh, workflow), `/help`, `/usage`,
+    `/models`, `/agents`, `/model`/`/effort` (bảng chọn), `/theme` (sáng/tối + màu nhấn dùng chung terminal), `/vim`,
+    `/lang`, `/update` — mọi lệnh của TUI.
+  - Ô nhập gợi ý cả tham số: `/task ` → agent → `:model` → `@effort`, task/mục tiêu/nhánh/workflow/file…; dòng giải
+    thích `/continue`, F6 tiếp tục.
+  - Một server cho mọi tab — không chạy trùng task. Cần `aiohttp` (extra `ateam[web]`).
+- `ateam web --tui`: chính giao diện terminal trong trình duyệt (cần `textual-serve`).
+- Mỗi dự án chỉ mở 1 phiên giao diện (terminal, `ateam web`, hoặc tab `--tui`) — phiên thứ hai báo đang mở ở
+  phiên khác thay vì chạy bộ lập lịch thứ hai có thể chạy trùng task.
+- Trang docs: mục mới giới thiệu `ateam web` kèm ảnh chụp thật (`scripts/site_shots.py --web`).
+- Bên trong: logic wizard /setup, form /custom và báo cáo /usage, /agents… tách khỏi `tui.py` sang `wizard.py`,
+  `reports.py` để TUI và web dùng chung.
+
 ## 0.10.0 — 16/10/2026
 
 - **Tab 📝 Code — xem & sửa source ngay trong app, phím vim**: `/code @file[:dòng]` (hoặc `/edit @file`, phím

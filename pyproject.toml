@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ateam"
-version = "0.10.0"
+version = "0.11.0"
 description = "Điều phối Claude Code, Codex, Antigravity, Grok (OpenCode)... làm việc như một đội"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -14,13 +14,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+dev = ["pytest>=7", "aiohttp>=3.8"]  # aiohttp: test giao diện web
+web = ["aiohttp>=3.8", "textual-serve>=1.1"]  # `ateam web` (aiohttp); `ateam web --tui` (textual-serve)
 
 [project.scripts]
 ateam = "ateam.cli:main"
 
 [tool.setuptools]
 packages = ["ateam", "ateam.locales"]
+
+[tool.setuptools.package-data]
+ateam = ["webui/*", "webui/vendor/*"]  # trang của `ateam web` (HTML/CSS/JS + editor CodeMirror)
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

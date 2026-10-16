@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ateam — cả một đội AI agent trong terminal của bạn</title>
-<meta name="description" content="ateam điều phối Claude Code, Codex, Antigravity, Grok, OpenCode làm việc như một đội: trưởng nhóm chia việc, các agent làm song song, tự chạy test, đổi người khi hết hạn mức, chờ bạn duyệt diff trước khi merge.">
+<meta name="description" content="ateam điều phối Claude Code, Codex, Antigravity, Grok, OpenCode làm việc như một đội: trưởng nhóm chia việc, các agent làm song song, tự chạy test, đổi người khi hết hạn mức, chờ bạn duyệt diff trước khi merge — trong terminal hoặc trình duyệt.">
 <meta property="og:title" content="ateam — cả một đội AI agent trong terminal">
 <meta property="og:description" content="Claude Code, Codex, Antigravity, Grok, OpenCode làm việc song song trên cùng repo, có trưởng nhóm, bảng việc và duyệt diff.">
 <meta name="theme-color" content="#07090f">
@@ -245,6 +245,11 @@ h3 { font-size: 19px; margin: 0 0 6px; letter-spacing: -0.015em; }
 .shot { border-radius: 14px; overflow: hidden; box-shadow: var(--glow); background: #121212; line-height: 0; }
 .shot img { width: 100%; height: auto; display: block; }
 .shot-panel[hidden] { display: none; }
+.browser { border-radius: 14px; overflow: hidden; box-shadow: var(--glow); background: #0b0d14; border: 1px solid rgba(255,255,255,.08); }
+.browser .term-bar { padding: 10px 14px; }
+.browser .url { flex: 1; max-width: 340px; margin: 0 auto; padding: 4px 12px; border-radius: 8px; background: rgba(255,255,255,.06); color: #8a93a6; font: 12.5px "JetBrains Mono", monospace; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.browser img { width: 100%; height: auto; display: block; }
+.web-cmd { margin: 26px 0 10px; color: var(--ink-2); }
 .shot-note { position: sticky; top: 90px; }
 .shot-note h3 { font-size: 22px; margin-bottom: 10px; }
 .shot-note p { color: var(--ink-2); margin: 0 0 14px; font-size: 16px; }
@@ -422,6 +427,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
     </a>
     <nav aria-label="Mục lục">
       <a class="nl" href="#xem-app">Xem app</a>
+      <a class="nl opt" href="#web">Web</a>
       <a class="nl opt" href="#tinh-nang">Tính năng</a>
       <a class="nl opt" href="#lenh">Lệnh</a>
       <a class="nl opt" href="#faq">Hỏi đáp</a>
@@ -442,7 +448,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
   <section class="hero">
     <div class="wrap hero-grid">
       <div>
-        <a class="pill" href="#xem-app"><b>Mới</b> v{{VERSION}} · tab 📝 Code sửa code kiểu vim ngay trong app →</a>
+        <a class="pill" href="#web"><b>Mới</b> v{{VERSION}} · <code>ateam web</code> — cả đội trong trình duyệt →</a>
         <h1>Cả một <span class="grad">đội AI agent</span>, làm việc trong terminal của bạn.</h1>
         <p class="lede">Gõ một mục tiêu. <strong>Trưởng nhóm</strong> chia việc, <strong>Claude Code, Codex, Antigravity, Grok, OpenCode</strong> làm song song trên cùng repo, tự chạy test, đổi người khi hết hạn mức — rồi chờ <strong>bạn duyệt diff</strong> trước khi merge.</p>
         <div class="actions">
@@ -586,6 +592,59 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
     </div>
   </section>
 
+  <!-- ============================== GIAO DIỆN WEB ============================== -->
+  <section class="block" id="web">
+    <div class="wrap">
+      <p class="eyebrow">Mới · ateam web</p>
+      <h2>Thích trình duyệt? Cả đội cũng ở đó.</h2>
+      <p class="intro"><code>ateam web</code> mở giao diện web hiện đại ngay trên máy bạn — <strong>đủ mọi chức năng như terminal</strong>: cùng bảng việc, cùng lệnh <code>/…</code>, cùng cấu hình. Mở nhiều tab cũng không chạy trùng task.</p>
+
+      <div class="tabs" role="tablist" aria-label="Giao diện web của ateam">
+        <button class="tab" role="tab" id="tab-wboard" aria-controls="p-wboard" aria-selected="true">📋 Bảng Kanban</button>
+        <button class="tab" role="tab" id="tab-wcode" aria-controls="p-wcode" aria-selected="false" tabindex="-1">📝 Code + vim</button>
+        <button class="tab" role="tab" id="tab-wgit" aria-controls="p-wgit" aria-selected="false" tabindex="-1">🌿 Git</button>
+      </div>
+
+      <div class="shot-panel" id="p-wboard" role="tabpanel" aria-labelledby="tab-wboard">
+        <div class="shot-wrap">
+          <div class="browser"><div class="term-bar"><i></i><i></i><i></i><span class="url">127.0.0.1:8000</span></div>
+            <img src="shots/web-board.webp" width="2880" height="1800" loading="lazy" alt="Giao diện web: bảng Kanban với task chờ chạy và đang chạy, ngăn bên phải hiện log trực tiếp của codex"></div>
+          <div class="shot-note">
+            <h3>Bảng Kanban, log trực tiếp</h3>
+            <p>Nháp · Chờ chạy · Đang chạy · Chờ duyệt · Xong. Bấm một thẻ để xem log đang chạy, nội dung, kết quả, diff.</p>
+            <ul><li>Duyệt kế hoạch bằng nút, đổi agent từng task</li><li><code>/grill</code> bấm chọn phương án</li><li>Ô nhập gợi ý cả tham số: <code>/task codex:gpt-6.1@high</code></li></ul>
+          </div>
+        </div>
+      </div>
+      <div class="shot-panel" id="p-wcode" role="tabpanel" aria-labelledby="tab-wcode" hidden>
+        <div class="shot-wrap">
+          <div class="browser"><div class="term-bar"><i></i><i></i><i></i><span class="url">127.0.0.1:8000 · Code</span></div>
+            <img src="shots/web-code.webp" width="2880" height="1800" loading="lazy" alt="Tab Code trên web: cây thư mục bên trái, editor tô màu cú pháp với phím vim, thanh trạng thái NORMAL"></div>
+          <div class="shot-note">
+            <h3>Cây thư mục + editor có phím vim</h3>
+            <p>CodeMirror 6 đóng gói sẵn, không cần mạng: tô màu ~25 ngôn ngữ, nhiều file, tìm file nhanh.</p>
+            <ul><li><code>:w :q :wq :e! :bn :bp</code>, hoặc <kbd>⌘</kbd>+<kbd>S</kbd></li><li>Agent sửa file đang mở → tự nạp lại</li><li>Bật/tắt vim dùng chung với terminal</li></ul>
+          </div>
+        </div>
+      </div>
+      <div class="shot-panel" id="p-wgit" role="tabpanel" aria-labelledby="tab-wgit" hidden>
+        <div class="shot-wrap">
+          <div class="browser"><div class="term-bar"><i></i><i></i><i></i><span class="url">127.0.0.1:8000 · Git</span></div>
+            <img src="shots/web-git.webp" width="2880" height="1800" loading="lazy" alt="Tab Git trên web: danh sách file thay đổi, ô commit với nút trưởng nhóm viết, lịch sử commit"></div>
+          <div class="shot-note">
+            <h3>Git và diff kiểu VS Code</h3>
+            <p>Stage, commit (trưởng nhóm viết message), nhánh, stash, pull/push, revert — phím tắt như terminal.</p>
+            <ul><li>Diff 2 cột / 1 cột, tô chữ đổi trong dòng</li><li><kbd>e</kbd> mở đúng dòng đó ở tab Code</li><li>Sáng/tối + màu nhấn dùng chung terminal</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <p class="web-cmd">Lần đầu cài thêm <code>aiohttp</code> vào môi trường của ateam, rồi mở trong thư mục dự án:</p>
+      <div class="cmd reveal"><pre id="web-run">~/.ateam/venv/bin/python -m pip install aiohttp
+ateam web --open</pre><button class="copy" type="button" data-copy="web-run">Sao chép</button></div>
+    </div>
+  </section>
+
   <!-- ============================== CÁCH HOẠT ĐỘNG ============================== -->
   <section class="block" id="cach-hoat-dong">
     <div class="wrap">
@@ -703,7 +762,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
             <div class="cmd"><pre id="oneliner">curl -fsSL https://raw.githubusercontent.com/khoaace/ateam/main/scripts/get.sh | bash</pre><button class="copy" type="button" data-copy="oneliner">Sao chép</button></div></div></div>
           <div class="istep"><span class="n">2</span><div><h3>Kiểm tra agent</h3><p>Xem agent nào đã cài, đã sẵn sàng, và đúng lệnh sẽ chạy cho từng agent.</p>
             <div class="cmd"><pre id="doctor">ateam doctor</pre><button class="copy" type="button" data-copy="doctor">Sao chép</button></div></div></div>
-          <div class="istep"><span class="n">3</span><div><h3>Mở dự án và giao việc</h3><p>Lần đầu, ateam hỏi danh sách model của từng CLI rồi cho bạn chọn đội (mở lại bằng <code>/setup</code>).</p>
+          <div class="istep"><span class="n">3</span><div><h3>Mở dự án và giao việc</h3><p>Lần đầu, ateam hỏi danh sách model của từng CLI rồi cho bạn chọn đội (mở lại bằng <code>/setup</code>). Thích trình duyệt: <code>ateam web --open</code>.</p>
             <div class="cmd"><pre id="run">cd ~/code/du-an-cua-ban && ateam</pre><button class="copy" type="button" data-copy="run">Sao chép</button></div></div></div>
         </div>
         <div class="box reveal">
@@ -743,6 +802,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
               <tr><td><code>/setup</code> · <code>/custom</code></td><td>Chọn đội · thêm agent & workflow của bạn</td></tr>
               <tr><td><code>/theme nord tím</code> · <code>/lang en</code></td><td>Đổi theme · giao diện tiếng Anh</td></tr>
               <tr><td><code>/usage</code></td><td>Lượt chạy, thời gian, hạn mức còn lại của từng CLI</td></tr>
+              <tr><td><code>ateam web --open</code></td><td>Mở giao diện web (chạy ngoài app, trong thư mục dự án)</td></tr>
             </tbody>
           </table>
         </div>
@@ -805,6 +865,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
         <details class="reveal"><summary>Agent sửa code của tôi có an toàn không?</summary><div class="ans"><p>Bật <code>isolation = "worktree"</code> và <code>merge = "review"</code>: mỗi task làm trên một nhánh git riêng, không đụng thư mục làm việc của bạn; chỉ khi bạn duyệt diff và bấm merge thì thay đổi mới vào nhánh của bạn. Quyền chạy lệnh shell / dùng mạng của agent tắt mặc định, bật ở bước <em>An toàn</em> của <code>/setup</code>.</p></div></details>
         <details class="reveal"><summary>Dữ liệu nằm ở đâu?</summary><div class="ans"><p>Bảng việc, log, ảnh dán vào nằm trong <code>.ateam/</code> của dự án (tự thêm vào <code>.gitignore</code>). Cấu hình chung ở <code>~/.config/ateam/</code>. Mọi thứ chạy trên máy bạn.</p></div></details>
         <details class="reveal"><summary>Khi một agent hết hạn mức thì sao?</summary><div class="ans"><p>ateam nhận ra thông báo rate limit của từng CLI, đoán giờ hồi, cho agent đó nghỉ và chuyển task sang agent dự phòng (<code>fallback</code>) — kể cả vai trưởng nhóm. Xem tình hình bằng <code>/usage</code>; tự cho nghỉ bằng <code>/cooldown</code>.</p></div></details>
+        <details class="reveal"><summary>Giao diện web có an toàn không? Mở từ máy khác được không?</summary><div class="ans"><p><code>ateam web</code> chỉ nghe <code>127.0.0.1</code> và từ chối yêu cầu có Host/Origin lạ, nên trang web khác không điều khiển được ateam; file ngoài thư mục dự án không mở được. Mỗi dự án chỉ một phiên giao diện (terminal hoặc web) để không chạy trùng task. Cần mở từ xa thì dùng SSH tunnel: <code>ssh -L 8000:127.0.0.1:8000 máy-của-bạn</code>.</p></div></details>
         <details class="reveal"><summary>Chạy trên Windows được không?</summary><div class="ans"><p>ateam được phát triển và kiểm thử trên macOS và Linux (Python 3.9 trở lên). Trên Windows, chạy trong WSL là cách gần nhất; bản Windows gốc chưa được kiểm thử.</p></div></details>
         <details class="reveal"><summary>Giao diện có tiếng Anh không?</summary><div class="ans"><p>Có. <code>/lang en</code> trong app (app tự mở lại), hoặc <code>ateam lang en</code> / <code>ateam --lang en …</code>. Lần đầu dùng, ngôn ngữ theo <code>LANG</code> của máy.</p></div></details>
         <details class="reveal"><summary>Có gì đó không chạy — bắt đầu từ đâu?</summary><div class="ans">
@@ -877,22 +938,24 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
   });
 
   // ---------- gallery ảnh chụp ----------
-  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
-  function select(tab, focus) {
-    tabs.forEach(function (t) {
-      var on = t === tab;
-      t.setAttribute("aria-selected", on ? "true" : "false");
-      t.tabIndex = on ? 0 : -1;
-      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
-    });
-    if (focus) tab.focus();
-  }
-  tabs.forEach(function (t, i) {
-    t.addEventListener("click", function () { select(t, false); });
-    t.addEventListener("keydown", function (e) {
-      var j = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : null;
-      if (j === null) return;
-      e.preventDefault(); select(tabs[(j + tabs.length) % tabs.length], true);
+  Array.prototype.forEach.call(document.querySelectorAll('[role="tablist"]'), function (list) {
+    var tabs = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+    function select(tab, focus) {
+      tabs.forEach(function (t) {
+        var on = t === tab;
+        t.setAttribute("aria-selected", on ? "true" : "false");
+        t.tabIndex = on ? 0 : -1;
+        document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+      });
+      if (focus) tab.focus();
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener("click", function () { select(t, false); });
+      t.addEventListener("keydown", function (e) {
+        var j = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : null;
+        if (j === null) return;
+        e.preventDefault(); select(tabs[(j + tabs.length) % tabs.length], true);
+      });
     });
   });
 

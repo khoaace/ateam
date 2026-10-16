@@ -50,6 +50,8 @@ Tái hiện lỗi chỉ có trên Ubuntu: chạy test với `HOME` trống và `
 - `site/shots/*.svg` là ảnh chụp app thật cho gallery "Xem tận mắt", tạo bằng `python scripts/site_shots.py`
   (dự án demo + agent giả lập có nội dung thật, `App.run_test()` + `save_screenshot()`; không gọi CLI thật).
   Chạy lại và commit khi giao diện đổi đáng kể.
+- `site/shots/web-*.webp` là ảnh giao diện web: `python scripts/site_shots.py --web` (chạy `ateam web` trên cùng dự
+  án demo, chụp bằng Chrome headless qua DevTools protocol; cần `aiohttp` và Chrome/Chromium, biến `CHROME` nếu ở chỗ khác).
 - Gói zip chứa thư mục `ateam/` với `pyproject.toml`, `README.md`, `install.sh` và package `ateam/`
   (xem `PACKAGE_FILES`/`PACKAGE_DIRS` trong `build_site.py`).
 - Xem thử cục bộ: `python scripts/build_site.py && python -m http.server -d dist 8000`.

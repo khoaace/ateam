@@ -332,6 +332,37 @@ thành agent `<agent>-<vai trò>`), rồi `save_onboard()` ghi `custom.toml` (ag
 `ATEAM_DB`, `ATEAM_ROOT`, `ATEAM_TASK_ID`, `ATEAM_AGENT` — để agent tự gọi `ateam add --to …`
 (task con có `parent_id`, `depth + 1`, cùng mục tiêu) hoặc `ateam note "…"`.
 
+## Giao diện web (`ateam web`)
+
+`web.WebApp` (aiohttp) giữ **một** `Orchestrator` + `ShellManager` cho mọi tab trình duyệt; trang tĩnh ở
+`ateam/webui/` (HTML/CSS/JS thuần, không build, không CDN): `app.js` (lõi: kết nối, bảng việc, Đội, Terminal, ô
+nhập + gợi ý tham số, modal, theme), `diff.js`, `git.js`, `code.js`, `setup.js`; `vendor/codemirror.js` là CodeMirror 6
++ vim đóng gói sẵn (nạp khi mở tab Code). Server giữ khoá `acquire_session_lock` như TUI.
+
+- `GET /ws` (WebSocket): server gửi `hello` (chuỗi giao diện `ui_strings()`, mọi lệnh của `tui.COMMANDS`, dữ liệu gợi ý
+  — agent + model/effort hợp lệ, workflow, màu nhấn, tuỳ chọn), gửi lại khi cấu hình đổi (/setup, /custom, /models
+  làm mới); `state` — ảnh chụp bảng việc (`snapshot()`), dựng lại mỗi 0,5 giây, chỉ gửi khi khác lần trước; `log`,
+  `job`, `prefs`, `discovered`; `toast` trả lời thao tác (`ref` để trình duyệt chờ kết quả, `open` để mở tab/khung/
+  file). Trình duyệt gửi `{"op": …}` — xem `WebApp.handle`; ô nhập (`submit`) và lệnh `/…` cùng luật với TUI
+  (`WebApp.command`, test đối chiếu mọi lệnh trong `tui.COMMANDS`).
+- Đọc: `/api/log/<task>`, `/api/agent/<tên>`, `/api/job/<id>`, `/api/scripts`, `/api/files?q=`, `/api/continue?ref=`;
+  Git (`web_git.py`, bọc `gitops.GitRepo`): `/api/git/status|log|branches|stashes|diff`, `/api/diff/<task>`
+  (`orch.diff_files`) — diff gửi dạng `diffset_json` (dòng + token pygments + `word_spans` + `split_rows`); Code
+  (`web_code.py`, `editor.read_source/save_source`): `/api/tree?dir=` (từ `FileIndex`), `/api/file`, `/api/file/stat`
+  — `safe_path` chặn đường ra ngoài dự án và `.git`; /setup, /custom, tuỳ chọn (`web_setup.py`): `/api/setup*`,
+  `/api/custom*`, `/api/prefs`.
+- Logic dùng chung với TUI nằm ngoài Textual: `wizard.py` (giá trị khởi tạo/gán vai trò/cài đặt của wizard, kiểm tra
+  form agent/workflow, áp cấu hình mới vào config đang chạy), `reports.py` (/usage, /agents, /flow, /models, gợi ý
+  /continue). Tuỳ chọn `vim` và `accent` trong `state.json` dùng chung hai giao diện.
+- `guard_middleware`: Host phải là `127.0.0.1|localhost|[::1]:<port>` (chặn DNS rebinding), Origin nếu có cũng
+  vậy (chặn trang lạ mở WebSocket). Áp cho cả `ateam web --tui`.
+- Chữ hiển thị nằm ở `ui_strings()` (qua `tr()`, có bản dịch); JS chỉ dùng khoá — `tests/test_web.py` bắt chữ
+  tiếng Việt viết thẳng trong JS/HTML (trừ `vendor/`).
+
+`ateam web --tui` (`cli.cmd_web_tui`): `textual_serve.server.Server` chạy `python -m ateam -C <dự án> tui` cho mỗi
+kết nối (biến `TEXTUAL_DRIVER=…WebDriver`, stdout là kênh giao thức — đừng `print` trong `cmd_tui`); phiên thứ hai
+thấy `tui.BusyApp`; dưới web driver `/lang` chỉ thoát app (không `execv`). Xem DECISIONS #13.
+
 ## File trên đĩa
 
 | Đường dẫn | Nội dung |
@@ -342,6 +373,7 @@ thành agent `<agent>-<vai trò>`), rồi `save_onboard()` ghi `custom.toml` (ag
 | `<dự án>/.ateam/state.json` | `verify_command` đặt bằng `/verify` |
 | `<dự án>/.ateam/team.db` | bảng việc |
 | `<dự án>/.ateam/logs/` | `system.log`, `lead.log`, `t<id>.log` |
+| `<dự án>/.ateam/tui.lock` | khoá chỉ-1-phiên giao diện (flock, tự nhả khi tiến trình thoát) |
 | `<dự án>/.ateam/worktrees/` | worktree tạm của task (chế độ worktree) |
 | `<dự án>/.ateam/.gitignore` | `*` — cả thư mục không vào git |
 | `~/.ateam/venv`, `~/.local/bin/ateam` | bản cài bằng `install.sh` |
