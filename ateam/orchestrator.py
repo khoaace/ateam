@@ -54,7 +54,7 @@ class Orchestrator:
         self.paused = False
         self.use_worktree = False
         self._git_ident: list[str] | None = None  # None = chưa kiểm tra
-        self._merge_lock = asyncio.Lock()
+        self._merge_lock_obj: asyncio.Lock | None = None  # tạo khi dùng (xem _merge_lock)
         self._bg: set[asyncio.Task] = set()
         self._cancel_req: set[int] = set()
         self._wt_base: dict[int, str] = {}
@@ -1147,6 +1147,13 @@ class Orchestrator:
                                ["-c", "user.name=ateam", "-c", "user.email=ateam@localhost"])
         return self._git_ident
 
+    def _merge_lock(self) -> asyncio.Lock:
+        # Python 3.9: asyncio.Lock() gắn vào event loop lúc tạo; tạo trong __init__ (ngoài vòng lặp, sau một
+        # asyncio.run() trước đó) báo "There is no current event loop" -> tạo lần đầu dùng, trong vòng lặp
+        if self._merge_lock_obj is None:
+            self._merge_lock_obj = asyncio.Lock()
+        return self._merge_lock_obj
+
     async def _git(self, *args: str, cwd: Path | None = None) -> tuple[int, str]:
         proc = await asyncio.create_subprocess_exec(
             "git", *args, cwd=str(cwd or self.root), stdin=asyncio.subprocess.DEVNULL,
@@ -1202,7 +1209,7 @@ class Orchestrator:
 
     async def _merge_branch(self, t: Task) -> tuple[bool, str | None]:
         branch = f"ateam/t{t.id}"
-        async with self._merge_lock:
+        async with self._merge_lock():
             rc, out = await self._git(*(await self.git_ident()), "merge", "--no-ff", "--no-edit", "-m",
                                       f"ateam: merge #{t.id} ({t.agent}) {t.title}", branch)
             if rc != 0:

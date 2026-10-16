@@ -209,7 +209,15 @@ class GitRepo:
         self.root = Path(root)
         self._ident: list[str] | None = None
         self._git_dir: Path | None = None
-        self.lock = asyncio.Lock()  # không chạy hai lệnh thay đổi repo cùng lúc (bấm nút liên tục)
+        self._lock: asyncio.Lock | None = None
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        """Không chạy hai lệnh thay đổi repo cùng lúc (bấm nút liên tục). Tạo khi dùng lần đầu, trong vòng
+        lặp — Python 3.9 gắn Lock vào event loop lúc tạo."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     async def run(self, *args: str, timeout: float = LOCAL_TIMEOUT,
                   stdin: bytes | None = None) -> tuple[int, str]:
