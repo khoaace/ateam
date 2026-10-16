@@ -59,6 +59,7 @@ BAR_STYLE = {"running": RUNNING, "done": "green", "failed": "red", "cancelled": 
 GOAL_STATUS = {
     "planning": ("đang lập kế hoạch", RUNNING),
     "awaiting": ("chờ duyệt (F2)", "yellow"),
+    "grilling": ("đang hỏi bạn", "yellow"),
     "cancelled": ("đã bỏ", "dim"),
     "running": ("đang làm", "cyan"),
     "reviewing": ("đang review", RUNNING),
@@ -135,6 +136,10 @@ Agent & workflow tuỳ chỉnh:
   /flow <tên> <mục tiêu>            chạy mục tiêu theo workflow — các bước thành task ngay, không cần lập kế hoạch
   /flow                             xem các workflow đang có
   /goal <mục tiêu>                  trưởng nhóm lập kế hoạch, kể cả khi đã đặt workflow mặc định
+  /grill <mục tiêu>                 "grill me": trưởng nhóm hỏi bạn từng câu (phạm vi, luồng, dữ liệu, ca
+                                    biên, tiêu chí xong…) kèm phương án gợi ý, tới khi đủ rõ thì chốt đặc tả
+                                    rồi lập kế hoạch. Trả lời ở ô nhập; gõ số / bấm để chọn phương án
+  /grill xong   /grill bỏ           chốt luôn với những gì đã trả lời / bỏ mục tiêu đang hỏi đáp
 
 Khác:
   /pause  /resume                   tạm dừng / tiếp tục nhận task mới
@@ -157,6 +162,8 @@ Git (tab 🌿 Git — Ctrl+T xoay tới, hoặc /git):
   /git <lệnh>                       chạy git <lệnh> bất kỳ ở tab Terminal, vd /git tag v1.0,
                                     /git cherry-pick abc123, /git remote add origin <url>
   /commit <message>                 commit file đã stage (chưa stage gì thì commit mọi thay đổi)
+  /commit --no-verify <message>     commit bỏ qua git hook (pre-commit, commit-msg); /commit -n cũng được.
+                                    Trong tab Git: ô "Bỏ qua hook (--no-verify)" dưới nút Commit
   /commit                           trưởng nhóm đọc diff và viết commit message (nút ✨ trong tab Git)
   /push [-f]   /pull   /fetch       đồng bộ với remote (-f = --force-with-lease)
   /branch [tên]   /checkout <nhánh> tạo & chuyển nhánh / chuyển nhánh (trống: mở danh sách nhánh)
@@ -173,6 +180,7 @@ Trợ giúp & thoát:
 WELCOME = """\
 👋 Chào mừng tới ateam — bắt đầu nhanh:
   • Gõ một mục tiêu (vd: Thêm trang đăng nhập) → trưởng nhóm lập kế hoạch, Enter (hoặc F2) để duyệt & chạy
+  • /grill Thêm trang đăng nhập → trưởng nhóm hỏi kỹ từng câu cho rõ yêu cầu rồi mới lập kế hoạch
   • /task codex viết test cho utils.py → giao tay cho 1 agent
   • Gõ / để xem các lệnh · @ để nhắc file · Ctrl+V dán ảnh
   • !yarn dev → chạy lệnh terminal (gõ ! để xem gợi ý) · tab 💻 Terminal
@@ -185,11 +193,12 @@ COMMANDS = [
     ("go", "[mục tiêu]", "duyệt kế hoạch nháp và chạy"),
     ("drop", "[mục tiêu]", "bỏ kế hoạch nháp (huỷ mọi task nháp của nó)"),
     ("goal", "<mục tiêu>", "trưởng nhóm lập kế hoạch (bỏ qua workflow mặc định)"),
+    ("grill", "<mục tiêu|xong|bỏ>", "trưởng nhóm hỏi kỹ từng câu để làm rõ yêu cầu rồi mới lập kế hoạch"),
     ("sh", "<lệnh>", "chạy lệnh terminal (như !lệnh), vd /sh yarn dev"),
     ("stop", "[số]", "dừng lệnh terminal đang chọn (hoặc lệnh số đó)"),
     ("term", "", "mở tab Terminal (lệnh đang chạy)"),
     ("git", "[lệnh git]", "mở tab Git; kèm lệnh thì chạy git <lệnh> ở tab Terminal"),
-    ("commit", "[message]", "commit (chưa stage gì thì commit tất cả); trống: trưởng nhóm viết message"),
+    ("commit", "[--no-verify] [message]", "commit (chưa stage gì thì commit tất cả); trống: trưởng nhóm viết message"),
     ("push", "[-f]", "push nhánh hiện tại (lần đầu tự tạo nhánh trên remote)"),
     ("pull", "", "pull nhánh hiện tại (fast-forward, không được thì merge)"),
     ("fetch", "", "fetch mọi remote"),
@@ -228,7 +237,7 @@ COMMANDS = [
     ("help", "", "toàn bộ lệnh & phím tắt"),
     ("quit", "", "thoát"),
 ]
-COMMAND_ALIASES = {"h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
+COMMAND_ALIASES = {"grill-me": "grill", "hoi": "grill", "h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
                    "workflows": "custom", "agent-moi": "custom", "exit": "quit", "q": "quit"}
 
 
@@ -2366,6 +2375,86 @@ class Timeline(Static):
         return out
 
 
+class GrillBar(Vertical):
+    """Khung hỏi đáp (/grill): câu hỏi hiện tại của trưởng nhóm, các phương án gợi ý (bấm hoặc gõ số),
+    nút chốt / để trưởng nhóm tự quyết / hỏi lại / bỏ. Câu trả lời gõ ở ô nhập chính."""
+
+    BINDINGS = [Binding("escape", "leave", show=False)]
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.goal_id: int | None = None
+        self.question: dict | None = None  # câu đang chờ trả lời (None: trưởng nhóm đang nghĩ / lỗi)
+        self._sig: tuple = ()
+
+    def compose(self) -> ComposeResult:
+        yield Static(id="grill-head")
+        yield Static(id="grill-q")
+        with Horizontal(id="grill-buttons"):
+            yield Btn("✓ Đủ rồi — chốt & lập kế hoạch", id="grill-done", variant="success")
+            yield Btn("⏭ Để trưởng nhóm tự quyết", id="grill-skip")
+            yield Btn("↻ Hỏi tiếp", id="grill-retry")
+            yield Btn("✗ Bỏ mục tiêu", id="grill-cancel", variant="error")
+
+    def update_grill(self, app: "TeamApp") -> bool:
+        """Vẽ lại theo DB. Trả về True khi vừa có câu hỏi MỚI (để app báo và đưa con trỏ về ô nhập)."""
+        g = app.orch.grill_active()
+        if not g:
+            self.goal_id, self.question, self._sig = None, None, ()
+            self.display = False
+            return False
+        busy = g.id in app.orch.lead_busy
+        q = None if busy else app.orch.grill_question(g)
+        data = g.grill or {}
+        qa = data.get("qa") or []
+        err = "" if busy else str(data.get("error") or "")
+        sig = (g.id, len(qa), q is None, err, busy, app._frame if busy else 0)
+        is_new = q is not None and (self.question is None or self.goal_id != g.id
+                                    or self.question.get("q") != q.get("q"))
+        self.goal_id, self.question = g.id, q
+        self.display = True
+        if sig == self._sig:
+            return False
+        self._sig = sig
+        n_answered = sum(1 for x in qa if x.get("a") is not None)
+        head = Text()
+        head.append(f"🎯 #{g.id} ", "bold")
+        head.append(g.text.splitlines()[0][:160] if g.text else "")
+        head.append(f"   · đã trả lời {n_answered} câu", "dim")
+        others = sum(1 for x in app.db.goals() if x.status == "grilling") - 1
+        if others > 0:
+            head.append(f" · còn {others} mục tiêu khác đang hỏi đáp (hiện sau khi xong mục tiêu này)", "dim")
+        self.query_one("#grill-head", Static).update(head)
+        body = Text()
+        if busy:
+            body.append(f"{SPIN[app._frame]} {app.cfg.lead} đang nghĩ câu hỏi tiếp theo…", f"bold {RUNNING}")
+        elif err:
+            body.append(f"⚠ {err}", "bold red")
+        elif q:
+            body.append(f"❓ Câu {len(qa)}: ", "bold yellow")
+            body.append(q.get("q", ""), "bold")
+            if q.get("why"):
+                body.append(f"\n   {q['why']}", "dim")
+            for i, opt in enumerate(q.get("options") or [], 1):
+                body.append("\n   ")
+                body.append(f" {i}. {opt} ", Style(color="black", bgcolor="cyan" if opt != q.get("rec")
+                                                   else "green", bold=True,
+                                                   meta={"@click": f"app.grill_pick({i})"}))
+                if opt == q.get("rec"):
+                    body.append(" ★ khuyên dùng", "green")
+            if q.get("rec") and q["rec"] not in (q.get("options") or []):
+                body.append(f"\n   ★ khuyên dùng: {q['rec']}", "green")
+            body.append("\n   Gõ câu trả lời ở ô dưới rồi Enter · gõ số (1, 2…) hoặc bấm để chọn phương án", "dim")
+        self.query_one("#grill-q", Static).update(body)
+        self.query_one("#grill-done", Button).disabled = busy
+        self.query_one("#grill-skip", Button).display = q is not None
+        self.query_one("#grill-retry", Button).display = not busy and q is None
+        return is_new
+
+    def action_leave(self) -> None:
+        self.app.query_one("#cmd", Input).focus()
+
+
 class PlanBar(Vertical):
     """Khung duyệt kế hoạch: hiện ở cả hai tab khi trưởng nhóm (hoặc workflow) có kế hoạch nháp.
     Liệt kê task nháp (agent, tiêu đề, phụ thuộc) kèm nút duyệt / sửa / đổi agent / bỏ."""
@@ -2939,9 +3028,10 @@ class TeamApp(App):
     #git-files { height: 1fr; border: none; }
     #git-empty { height: 1fr; padding: 1 2; }
     .git-row { height: auto; }
-    .git-row Button { margin-right: 1; }
+    .git-row Button { padding: 0; margin-right: 1; }
     #git-msg { margin: 0; }
-    #git-amend { height: auto; border: none; padding: 0; background: transparent; }
+    #git-amend, #git-no-verify { height: auto; border: none; padding: 0; background: transparent;
+                                 margin-right: 2; }
     #git-hist { width: 1fr; }
     #git-log-title { height: 1; padding: 0 1; background: $panel; }
     #git-log { height: 1fr; border: none; }
@@ -2969,6 +3059,11 @@ class TeamApp(App):
     #plan-buttons { height: auto; margin-top: 1; }
     #plan-buttons Button { margin-right: 2; }
     #plan-hint { color: $text-muted; }
+    #grill { height: auto; max-height: 60%; display: none; border: round $warning;
+             border-title-color: $warning; border-title-style: bold; padding: 0 1; background: $boost; }
+    #grill-q { height: auto; margin-top: 1; }
+    #grill-buttons { height: auto; margin-top: 1; }
+    #grill-buttons Button { margin-right: 2; }
     #continue-hint { height: auto; display: none; padding: 0 1; background: $boost; }
     #mention { dock: bottom; layer: overlay; display: none; height: auto; max-height: 14;
                width: 90; max-width: 100%; margin: 0 0 4 1; border: round $panel-lighten-2;
@@ -3079,15 +3174,17 @@ class TeamApp(App):
                             yield GitFileList(id="git-files")
                             yield Static(id="git-empty")
                             with Horizontal(classes="git-row"):
-                                yield Btn("± Stage/bỏ", id="git-stage")
-                                yield Btn("＋ Stage tất cả", id="git-stage-all")
+                                yield Btn("± Stage", id="git-stage")
+                                yield Btn("+ Tất cả", id="git-stage-all")
                                 yield Btn("↺ Bỏ thay đổi", id="git-discard", variant="error")
                                 yield Btn("Δ Diff", id="git-diff")
                             yield TextInput(id="git-msg", placeholder="Commit message — Enter để commit")
                             with Horizontal(classes="git-row"):
                                 yield Btn("✓ Commit", id="git-commit", variant="success")
                                 yield Btn("✨ Trưởng nhóm viết", id="git-ai", variant="primary")
+                            with Horizontal(classes="git-row"):
                                 yield Checkbox("Sửa commit trước", id="git-amend")
+                                yield Checkbox("Bỏ qua hook (--no-verify)", id="git-no-verify")
                         with Vertical(id="git-hist"):
                             yield Static(id="git-log-title")
                             yield GitLogList(id="git-log")
@@ -3101,6 +3198,7 @@ class TeamApp(App):
                             "Tạo repo để theo dõi thay đổi, commit, và dùng chế độ worktree "
                             "(mỗi task một nhánh riêng).\n"))
                         yield Btn("＋ Tạo git repo (git init)", id="git-init", variant="success")
+        yield GrillBar(id="grill")
         yield PlanBar(id="plan")
         yield Static(id="continue-hint")
         yield MentionList(id="mention")
@@ -3427,10 +3525,11 @@ class TeamApp(App):
             empty.update(Text("✓ Không có thay đổi nào chưa commit.", "green"))
         n_staged = len(st.staged)
         amend = self.query_one("#git-amend", Checkbox).value
+        skip = " (bỏ qua hook)" if self.query_one("#git-no-verify", Checkbox).value else ""
         self.query_one("#git-msg", Input).placeholder = (
-            "Message mới cho commit trước — Enter để sửa commit" if amend else
-            f"Commit message cho {n_staged} file đã stage — Enter để commit" if n_staged else
-            "Commit message (chưa stage gì: commit mọi thay đổi) — Enter để commit")
+            f"Message mới cho commit trước — Enter để sửa commit{skip}" if amend else
+            f"Commit message cho {n_staged} file đã stage — Enter để commit{skip}" if n_staged else
+            f"Commit message (chưa stage gì: commit mọi thay đổi) — Enter để commit{skip}")
 
         log = self.query_one("#git-log", GitLogList)
         sigs = [c.sha for c in self.git_commits]
@@ -3557,10 +3656,11 @@ class TeamApp(App):
     def action_git_focus_msg(self) -> None:
         self.query_one("#git-msg", Input).focus()
 
-    def git_commit(self, message: str | None = None) -> None:
+    def git_commit(self, message: str | None = None, no_verify: bool | None = None) -> None:
         box = self.query_one("#git-msg", Input)
         msg = (box.value if message is None else message).strip()
         amend = self.query_one("#git-amend", Checkbox).value
+        skip = self.query_one("#git-no-verify", Checkbox).value if no_verify is None else no_verify
         if not msg and not amend:
             self.notify("Gõ commit message trước (hoặc bấm ✨ để trưởng nhóm viết)", severity="warning")
             box.focus()
@@ -3572,7 +3672,9 @@ class TeamApp(App):
             box.value = ""
             self._git_body = ""
             self.query_one("#git-amend", Checkbox).value = False
-        self.git_do(lambda: self.git.commit(msg, amend=amend, all_changes=all_changes), then=clear)
+        # ô "Bỏ qua hook" giữ nguyên sau khi commit (hook hỏng thường hỏng cho nhiều lần commit liền)
+        self.git_do(lambda: self.git.commit(msg, amend=amend, all_changes=all_changes, no_verify=skip),
+                    then=clear)
 
     async def git_ai_message(self) -> None:
         btn = self.query_one("#git-ai", Button)
@@ -3706,7 +3808,13 @@ class TeamApp(App):
                 self.run_worker(self.git_ai_message(), exclusive=False)
                 return
             self._git_body = ""
-            self.git_commit(rest)
+            words = rest.split()
+            skip = any(w in ("--no-verify", "-n") for w in words[:1])
+            msg = " ".join(words[1:]) if skip else rest
+            if not msg:
+                self.notify("Dùng: /commit [--no-verify] <message>", severity="warning")
+                return
+            self.git_commit(msg, no_verify=True if skip else None)
         elif cmd == "push":
             self.git_do(lambda: g.push(force=rest in ("-f", "--force", "force")))
         elif cmd == "pull":
@@ -3740,7 +3848,7 @@ class TeamApp(App):
         # một lần đọc DB cho cả lượt vẽ; tab đang ẩn thì không vẽ (vẽ ngay khi chuyển sang — on_tabbed…)
         self._snap = {"tasks": self.db.tasks(), "goals": self.db.goals()}
         tab = self.query_one("#tabs", TabbedContent).active
-        fns = [self._refresh_goals, self._refresh_plan]
+        fns = [self._refresh_goals, self._refresh_plan, self._refresh_grill]
         if tab == "tab-board":
             fns += [self._refresh_agents, self._refresh_table, self._refresh_detail]
         elif tab == "tab-team":
@@ -3823,7 +3931,7 @@ class TeamApp(App):
             label, style = GOAL_STATUS.get(g.status, (g.status, ""))
             if i:
                 t.append("\n")
-            busy = g.status in ("planning", "reviewing")
+            busy = g.status in ("planning", "reviewing") or g.id in self.orch.lead_busy
             t.append(f"{SPIN[self._frame]} " if busy else "🎯 ", f"bold {RUNNING}" if busy else "")
             t.append(f"#{g.id} ", "bold")
             if g.workflow:
@@ -3843,6 +3951,10 @@ class TeamApp(App):
                 t.append(f" {g.summary[:160]}" if ended else f"\n   ↳ {g.summary[:160]}", "dim")
             if g.status == "awaiting":
                 t.append("\n   ↳ xem khung Duyệt kế hoạch phía dưới · F2 duyệt & chạy", "yellow")
+            if g.status == "grilling":
+                t.append("\n   ↳ trả lời câu hỏi ở khung Hỏi đáp phía dưới", "yellow")
+            elif g.spec and g.status not in GOAL_ENDED:
+                t.append(f"\n   📝 đã chốt yêu cầu sau {len((g.grill or {}).get('qa') or [])} câu hỏi", "dim")
         if self.query_one("#tabs", TabbedContent).active == "tab-board":
             set_static(self.query_one("#goals", Static), t)
 
@@ -3867,6 +3979,7 @@ class TeamApp(App):
             first = (f"chạy theo workflow '{self.cfg.default_workflow}' (/goal: trưởng nhóm)"
                      if self.cfg.default_workflow else "trưởng nhóm lập kế hoạch & chia việc")
             for keys, what in (("Gõ một mục tiêu", first),
+                               ("/grill <mục tiêu>", "trưởng nhóm hỏi kỹ cho rõ rồi mới lập kế hoạch"),
                                ("/task <agent> <nội dung>", "giao tay cho 1 agent"),
                                ("/flow <tên> <mục tiêu>", "chạy theo workflow dựng sẵn"),
                                ("F1", "xem mọi lệnh & phím tắt")):
@@ -3989,6 +4102,32 @@ class TeamApp(App):
             pane.set_class(bool(acts), "busy")
             pane.set_class(not a.installed(), "missing")
 
+    def _refresh_grill(self) -> None:
+        bar = self.query_one("#grill", GrillBar)
+        was = bar.question is not None
+        new = bar.update_grill(self)
+        bar.border_title = "🔎 Trưởng nhóm hỏi để hiểu rõ yêu cầu"
+        waiting = bar.question is not None
+        if waiting != was:
+            self._show_input_mode()
+        if new:
+            box = self.query_one("#cmd", Input)
+            if self.screen is self.screen_stack[0]:
+                box.focus()
+            self.notify("❓ Trưởng nhóm hỏi — trả lời ở ô nhập (hoặc gõ số phương án)", timeout=5)
+
+    def answer_grill(self, text: str) -> None:
+        bar = self.query_one("#grill", GrillBar)
+        q = bar.question
+        opts = (q or {}).get("options") or []
+        if text.strip().isdigit() and 1 <= int(text.strip()) <= len(opts):
+            text = opts[int(text.strip()) - 1]  # gõ số = chọn phương án đó
+        self.notify(self.orch.answer_grill(bar.goal_id, text))
+        self.refresh_view()
+
+    def action_grill_pick(self, i: int) -> None:
+        self.answer_grill(str(i))
+
     def _refresh_plan(self) -> None:
         bar = self.query_one("#plan", PlanBar)
         if not bar.update_plan(self):
@@ -4015,6 +4154,22 @@ class TeamApp(App):
         if bid.startswith("git-"):
             event.stop()
             self.git_button(bid)
+            return
+        if bid.startswith("grill-"):
+            event.stop()
+            bar = self.query_one("#grill", GrillBar)
+            o = self.orch
+            if bid == "grill-done":
+                self.notify(o.finish_grill(bar.goal_id))
+            elif bid == "grill-skip":
+                q = bar.question or {}
+                self.answer_grill("(Tôi không chắc — bạn tự quyết"
+                                  + (f", theo khuyến nghị: {q['rec']})" if q.get("rec") else ")"))
+            elif bid == "grill-retry":
+                self.notify(o.retry_grill(bar.goal_id))
+            elif bid == "grill-cancel":
+                self.notify(o.cancel_grill(bar.goal_id))
+            self.refresh_view()
             return
         if bid.startswith("job-"):
             event.stop()
@@ -4339,11 +4494,19 @@ class TeamApp(App):
     def _show_input_mode(self) -> None:
         """Ô nhập cho biết gõ mục tiêu sẽ đi đâu: workflow mặc định hay trưởng nhóm."""
         wf = self.cfg.default_workflow
+        if self.query_one("#grill", GrillBar).question is not None:
+            self.query_one("#cmd", Input).placeholder = (
+                "Trả lời câu hỏi của trưởng nhóm (Enter) · gõ số để chọn phương án · /grill xong để chốt")
+            return
         self.query_one("#cmd", Input).placeholder = (
             f"Nhập mục tiêu (chạy theo workflow '{wf}') · /goal: trưởng nhóm lập kế hoạch · /help · @ nhắc file"
             if wf else "Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file")
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if event.checkbox.id == "git-no-verify":
+            event.stop()
+            self._render_git()
+            return
         if event.checkbox.id != "git-amend":
             return
         event.stop()
@@ -4367,6 +4530,9 @@ class TeamApp(App):
             return
         if text.startswith("!"):  # lệnh terminal: !yarn dev
             self.run_shell(text[1:])
+            return
+        if not text.startswith("/") and self.query_one("#grill", GrillBar).question is not None:
+            self.answer_grill(text)  # đang hỏi đáp: câu gõ vào là câu trả lời
             return
         if not text.startswith("/"):
             self.start_goal(text, self.cfg.default_workflow)
@@ -4694,6 +4860,20 @@ class TeamApp(App):
             return
         elif cmd == "goal":
             self.start_goal(rest.strip())
+        elif cmd in ("grill", "grill-me", "hoi"):
+            sub = rest.strip().lower()
+            if sub in ("xong", "done", "chot", "chốt"):
+                self.notify(o.finish_grill(None))
+            elif sub in ("bỏ", "bo", "huỷ", "huy", "cancel"):
+                self.notify(o.cancel_grill(None))
+            elif sub in ("tiếp", "tiep", "retry"):
+                self.notify(o.retry_grill(None))
+            elif not self.cfg.agents.get(self.cfg.lead):
+                self.notify(f"Không có trưởng nhóm '{self.cfg.lead}' trong cấu hình", severity="error")
+                return
+            else:
+                o.start_grill(rest.strip())
+                self.show_task(SYSTEM)
         elif cmd in ("continue", "tiep", "c"):
             ref, _, req = rest.partition(" ")
             if not req.strip():  # mới có ref: điền sẵn để gõ tiếp yêu cầu

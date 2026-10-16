@@ -16,8 +16,10 @@ from . import mentions
 from . import prompts as P
 from .config import AgentConfig, Config
 from .db import (ACTIVE, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
-                 FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Task)
+                 FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Goal, Task)
 from .runner import Run
+
+GRILL_MAX = 15  # /grill: số câu hỏi tối đa, tới đây trưởng nhóm phải chốt đặc tả
 
 SYSTEM = 0  # id "task" của log hệ thống
 MAX_DELEGATIONS_PER_TASK = 5
@@ -142,6 +144,10 @@ class Orchestrator:
                 self.db.update_goal(g.id, status="failed", summary="Bị dừng khi đang lập kế hoạch")
             elif g.status == "reviewing":
                 self.db.update_goal(g.id, status="running")
+            elif g.status == "grilling" and not self.grill_question(g):
+                # trưởng nhóm đang nghĩ câu hỏi thì app bị tắt: chờ người dùng bấm "Hỏi tiếp"
+                self.db.set_grill(g.id, dict(g.grill or {}, error="Phiên trước dừng khi trưởng nhóm đang "
+                                                               "nghĩ câu hỏi — bấm ↻ Hỏi tiếp"))
         await self.apply_isolation()
 
     async def apply_isolation(self) -> None:
@@ -228,11 +234,11 @@ class Orchestrator:
             goal = self.db.goal(gid)
             self.log(f"🧠 {self.cfg.lead} đang lập kế hoạch cho mục tiêu #{gid}…")
             if followup:
-                prompt = P.followup_plan_prompt(self.cfg, goal.text, followup[1], followup[2],
+                prompt = P.followup_plan_prompt(self.cfg, goal.base_text(), followup[1], followup[2],
                                                 followup[0], str(self.root), self.notes_text(),
                                                 earlier=(goal.followups or [])[:-1])
             else:
-                prompt = P.plan_prompt(self.cfg, goal.text, str(self.root), self.notes_text())
+                prompt = P.plan_prompt(self.cfg, goal.base_text(), str(self.root), self.notes_text())
             out = await self._call_lead(prompt, f"Lập kế hoạch mục tiêu #{gid}")
             plan = P.extract_json(out or "", list)
             if not plan:
@@ -251,6 +257,142 @@ class Orchestrator:
         finally:
             self.lead_busy.discard(gid)
             self.emit("changed")
+
+    # ------------------------------------------------------------------ /grill: hỏi đáp trước khi lập kế hoạch
+    def start_grill(self, text: str) -> int:
+        """Mục tiêu mới, nhưng trưởng nhóm phỏng vấn người dùng (từng câu một) trước khi lập kế hoạch."""
+        gid = self.db.add_goal(text)
+        self.db.update_goal(gid, status="grilling")
+        self.db.set_grill(gid, {"qa": [], "spec": "", "error": ""})
+        self.log(f"🔎 Mục tiêu #{gid} (hỏi đáp trước): {text}")
+        self._grill_spawn(gid)
+        return gid
+
+    def grill_question(self, g: Goal) -> dict | None:
+        """Câu hỏi đang chờ người dùng trả lời (None nếu trưởng nhóm đang nghĩ / chưa hỏi)."""
+        qa = (g.grill or {}).get("qa") or []
+        return qa[-1] if qa and qa[-1].get("a") is None else None
+
+    def grill_active(self) -> Goal | None:
+        """Mục tiêu đang hỏi đáp mới nhất (khung hỏi đáp ở TUI hiện mục tiêu này)."""
+        goals = [g for g in self.db.goals() if g.status == "grilling"]
+        return goals[-1] if goals else None
+
+    def _grill_spawn(self, gid: int, finish: bool = False) -> None:
+        self.lead_busy.add(gid)
+        self.emit("changed")
+        self._spawn(self._grill_step(gid, finish))
+
+    async def _grill_step(self, gid: int, finish: bool) -> None:
+        to_plan = False
+        try:
+            g = self.db.goal(gid)
+            if not g or g.status != "grilling":
+                return
+            data = dict(g.grill or {})
+            data.setdefault("qa", [])
+            data["error"] = ""
+            self.db.set_grill(gid, data)
+            self.emit("changed")
+            answered = [x for x in data["qa"] if x.get("a") is not None]
+            finish = finish or len(answered) >= GRILL_MAX
+            prompt = P.grill_prompt(self.cfg, g.text, answered, str(self.root), self.notes_text(),
+                                    finish=finish, max_questions=GRILL_MAX)
+            out = await self._call_lead(prompt, f"Hỏi đáp mục tiêu #{gid}")
+            g = self.db.goal(gid)
+            if not g or g.status != "grilling":  # người dùng huỷ trong lúc chờ
+                return
+            res = P.extract_json(out or "", dict) or {}
+            question = str(res.get("question") or "").strip()
+            if question and not finish and not res.get("done"):
+                opts = [str(x).strip() for x in res.get("options") or [] if str(x).strip()][:6]
+                data["qa"] = answered + [{"q": question, "why": str(res.get("why") or "").strip(),
+                                         "options": opts, "rec": str(res.get("recommended") or "").strip(),
+                                         "a": None}]
+                self.db.set_grill(gid, data)
+                self.log(f"❓ #{gid} câu {len(data['qa'])}: {question}")
+                return
+            spec = str(res.get("spec") or "").strip()
+            if not spec and (res.get("done") or finish) and answered:
+                # trưởng nhóm không viết đặc tả: dùng chính các câu hỏi đáp
+                spec = "\n".join(f"- {x['q']} → {x['a']}" for x in answered)
+            if not spec:
+                data["error"] = ("Trưởng nhóm không trả về câu hỏi hay đặc tả hợp lệ (xem .ateam/logs/lead.log)"
+                                 " — bấm ↻ Hỏi tiếp để thử lại")
+                self.db.set_grill(gid, data)
+                self.log(f"✗ Hỏi đáp #{gid}: {data['error']}")
+                return
+            data["spec"] = spec
+            self.db.set_grill(gid, data)
+            self.db.update_goal(gid, status="planning")
+            self.log(f"📝 Đã chốt yêu cầu cho mục tiêu #{gid} sau {len(answered)} câu hỏi:")
+            for line in spec.splitlines():
+                self.log("   " + line)
+            to_plan = True
+        finally:
+            if to_plan:
+                self._spawn(self._plan(gid))  # lead_busy giữ nguyên, _plan tự bỏ khi xong
+            else:
+                self.lead_busy.discard(gid)
+            self.emit("changed")
+
+    def _grill_goal(self, gid: int | None) -> Goal | str:
+        g = self.db.goal(gid) if gid is not None else self.grill_active()
+        if not g or g.status != "grilling":
+            return "Không có mục tiêu nào đang hỏi đáp"
+        return g
+
+    def answer_grill(self, gid: int | None, answer: str) -> str:
+        g = self._grill_goal(gid)
+        if isinstance(g, str):
+            return g
+        if g.id in self.lead_busy:
+            return "Trưởng nhóm đang nghĩ câu hỏi — đợi chút"
+        q = self.grill_question(g)
+        if not q:
+            return "Chưa có câu hỏi nào để trả lời — bấm ↻ Hỏi tiếp"
+        answer = answer.strip()
+        if not answer:
+            return "Câu trả lời trống"
+        data = dict(g.grill or {})
+        q["a"] = answer
+        self.db.set_grill(g.id, data)
+        self.log(f"💬 #{g.id}: {answer}")
+        self._grill_spawn(g.id)
+        return f"Đã trả lời — {self.cfg.lead} đang nghĩ câu tiếp theo…"
+
+    def finish_grill(self, gid: int | None) -> str:
+        """Người dùng thấy đủ rồi: trưởng nhóm viết đặc tả từ những gì đã hỏi rồi lập kế hoạch."""
+        g = self._grill_goal(gid)
+        if isinstance(g, str):
+            return g
+        if g.id in self.lead_busy:
+            return "Trưởng nhóm đang nghĩ — đợi chút rồi bấm lại"
+        data = dict(g.grill or {})
+        data["qa"] = [x for x in data.get("qa") or [] if x.get("a") is not None]  # bỏ câu chưa trả lời
+        self.db.set_grill(g.id, data)
+        self._grill_spawn(g.id, finish=True)
+        return f"{self.cfg.lead} đang chốt yêu cầu rồi lập kế hoạch cho mục tiêu #{g.id}…"
+
+    def retry_grill(self, gid: int | None) -> str:
+        g = self._grill_goal(gid)
+        if isinstance(g, str):
+            return g
+        if g.id in self.lead_busy:
+            return "Trưởng nhóm đang nghĩ — đợi chút"
+        if self.grill_question(g):
+            return "Đang chờ bạn trả lời câu hỏi"
+        self._grill_spawn(g.id)
+        return f"{self.cfg.lead} đang hỏi tiếp…"
+
+    def cancel_grill(self, gid: int | None) -> str:
+        g = self._grill_goal(gid)
+        if isinstance(g, str):
+            return g
+        self.db.update_goal(g.id, status="cancelled", summary="Đã bỏ khi đang hỏi đáp")
+        self.log(f"✗ Bỏ mục tiêu #{g.id} (đang hỏi đáp)")
+        self.emit("changed")
+        return f"Đã bỏ mục tiêu #{g.id}"
 
     def run_workflow(self, name: str, text: str) -> int | str:
         """Tạo mục tiêu từ workflow dựng sẵn: các bước thành task ngay, không gọi trưởng nhóm.

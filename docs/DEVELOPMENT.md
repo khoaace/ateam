@@ -29,6 +29,7 @@ Bỏ dòng `PATH=…fakebin` để chạy với CLI thật.
 | `tests/test_units.py` | `AgentConfig.argv`, bóc JSON/DELEGATE/NOTE/SUMMARY, nhận diện hết hạn mức, nâng cấp config |
 | `tests/test_flows.py` | Luồng đầu-cuối qua `python -m ateam`: kế hoạch → chạy → giao chéo → review; cờ model/effort; lỗi thiếu CLI / im lặng / timeout / bị chặn; worktree merge + xung đột; chế độ review (diff/merge/reject); verify sửa được / hết lượt / bỏ qua; hết hạn mức + dự phòng; `run` không treo |
 | `tests/test_git.py` | `gitops`: bóc porcelain v2, tên nhánh, commit message; mọi thao tác trên repo thật + remote bare (stage, commit/amend, bỏ commit, push lần đầu, fetch/pull, nhánh local/remote, merge xung đột + huỷ, stash, revert) khi máy không có git identity; tab Git trong TUI (Space stage, Enter diff, x hỏi lại, `/commit` để trưởng nhóm viết message, nhánh, stash, chặn đổi nhánh khi agent đang chạy) |
+| `tests/test_grill.py` | `/grill`: prompt, `Goal.base_text()` kèm đặc tả, DB cũ thiếu cột `grill`; luồng TUI (gõ số chọn phương án, câu gõ vào là câu trả lời, chốt → kế hoạch có `CLARIFIED REQUIREMENTS`, `/grill xong`, bỏ giữa chừng) |
 | `tests/test_tui.py` | Mở TUI headless (`App.run_test`), giao task, đổi tab, Ctrl+D, Ctrl+Y, `/usage`; danh sách gợi ý `@file`; Ctrl+V dán ảnh và kéo-thả ảnh (`clipboard.grab_image` giả); wizard thiết lập (`TeamApp(..., setup=True)`) đi hết 7 bước, hỏi model từ CLI giả lập rồi lưu; Esc/✕ ở popup; bố cục hẹp + log vẽ lại khi đổi bề rộng |
 
 Helper trong `tests/conftest.py`: fixture `env` (PATH có fakebin, XDG riêng, thư mục hạn mức,
@@ -44,7 +45,7 @@ mkdir -p /tmp/cihome && HOME=/tmp/cihome GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_
 
 | Script | Hành vi |
 | --- | --- |
-| `claude` | Prompt có "git COMMIT MESSAGE" → trả commit message sau `SUMMARY:`. Prompt có "Reply with ONLY a JSON array" → kế hoạch 3 task (codex effort xhigh, grok, antigravity phụ thuộc 1+2 với effort sai). "Review round 1" → chưa xong, giao `Tạo c.txt` cho claude. Vòng sau → xong. Còn lại: tạo `c.txt`. |
+| `claude` | Prompt có "you INTERVIEW the user" (/grill) → hỏi 2 câu (`Câu hỏi số N?`, phương án A/B), đủ 2 câu trả lời hoặc "STOP the interview" → `{"done": true, "spec"}`. Prompt có "git COMMIT MESSAGE" → trả commit message sau `SUMMARY:`. Prompt có "Reply with ONLY a JSON array" → kế hoạch 3 task (codex effort xhigh, grok, antigravity phụ thuộc 1+2 với effort sai). "Review round 1" → chưa xong, giao `Tạo c.txt` cho claude. Vòng sau → xong. Còn lại: tạo `c.txt`. |
 | `codex` | Tạo `a.txt`, giao README cho grok (nếu prompt cho phép DELEGATE), để NOTE. Prompt có "VERIFICATION COMMAND" → tạo `fixed.txt`. Làm trưởng nhóm thay khi prompt có "TEAM LEAD". |
 | `opencode` | Tạo `b.txt`, hoặc `README.md` nếu prompt nhắc README. |
 | `agy` | Không in gì nếu stdout không phải tty (như agy thật); in mã ANSI và `\r`. |
@@ -56,7 +57,7 @@ Biến điều khiển (đọc trong `_common.sh`): `ATEAM_FAKE_SLOW` (giây gi�
 nội dung prompt, vd cú pháp `@file`). Lưu ý tên file hạn mức của OpenCode là
 `grok` (tên agent trong ateam), không phải `opencode`.
 
-Khi đổi prompt trong `prompts.py`, kiểm tra các chuỗi mà fakebin dò (`git COMMIT MESSAGE`, `Reply with ONLY a JSON array`,
+Khi đổi prompt trong `prompts.py`, kiểm tra các chuỗi mà fakebin dò (`you INTERVIEW the user`, `git COMMIT MESSAGE`, `Reply with ONLY a JSON array`,
 `Review round`, `TEAM LEAD`, `VERIFICATION COMMAND`, `DELEGATE`, `#1 by codex`).
 
 ### Kiểm tra giao diện

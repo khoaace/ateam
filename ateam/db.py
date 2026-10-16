@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS goals (
     summary TEXT,
     created REAL,
     workflow TEXT,
-    followups TEXT
+    followups TEXT,
+    grill TEXT
 );
 CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,16 +117,31 @@ class Goal:
     created: float | None
     workflow: str | None = None
     followups: list[str] | None = None  # yêu cầu "tiếp tục" người dùng thêm sau khi mục tiêu kết thúc
+    # /grill: trưởng nhóm phỏng vấn người dùng trước khi lập kế hoạch —
+    # {"qa": [{"q", "why", "options", "rec", "a"}], "spec": "", "error": ""}
+    grill: dict | None = None
 
     @classmethod
     def from_row(cls, r: sqlite3.Row) -> "Goal":
         d = dict(r)
         d["followups"] = json.loads(d.get("followups") or "[]")
+        d["grill"] = json.loads(d["grill"]) if d.get("grill") else None
         return cls(**d)
 
+    @property
+    def spec(self) -> str:
+        return str((self.grill or {}).get("spec") or "")
+
+    def base_text(self) -> str:
+        """Text gốc + bản đặc tả chốt sau khi hỏi đáp (/grill), nếu có."""
+        if not self.spec:
+            return self.text
+        return (f"{self.text}\n\nCLARIFIED REQUIREMENTS (agreed with the user in a Q&A interview — "
+                f"follow them):\n{self.spec}")
+
     def full_text(self) -> str:
-        """Mục tiêu gửi agent: text gốc + các yêu cầu tiếp theo (tiếng Anh vì gửi agent)."""
-        out = self.text
+        """Mục tiêu gửi agent: text gốc (+ đặc tả /grill) + các yêu cầu tiếp theo (tiếng Anh vì gửi agent)."""
+        out = self.base_text()
         for i, f in enumerate(self.followups or [], 1):
             out += f"\n\nFOLLOW-UP {i}: {f}"
         return out
@@ -147,7 +163,7 @@ class DB:
             if col not in cols:  # nâng cấp DB cũ
                 self.conn.execute(f"ALTER TABLE tasks ADD COLUMN {col} {typ}")
         gcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(goals)")}
-        for col in ("workflow", "followups"):
+        for col in ("workflow", "followups", "grill"):
             if col not in gcols:  # nâng cấp DB cũ
                 self.conn.execute(f"ALTER TABLE goals ADD COLUMN {col} TEXT")
 
@@ -170,6 +186,9 @@ class DB:
         if g:
             self.conn.execute("UPDATE goals SET followups=? WHERE id=?",
                               (json.dumps((g.followups or []) + [text], ensure_ascii=False), gid))
+
+    def set_grill(self, gid: int, data: dict) -> None:
+        self.conn.execute("UPDATE goals SET grill=? WHERE id=?", (json.dumps(data, ensure_ascii=False), gid))
 
     def update_goal(self, gid: int, **fields) -> None:
         if not fields:

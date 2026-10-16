@@ -178,6 +178,44 @@ Do NOT modify any files.
 End your answer with a line 'SUMMARY:' followed by the bullet points (nothing after them)."""
 
 
+def grill_prompt(cfg: Config, goal: str, qa: list[dict], cwd: str, notes: str, *, finish: bool,
+                 max_questions: int) -> str:
+    """/grill: trưởng nhóm phỏng vấn người dùng từng câu một trước khi lập kế hoạch."""
+    lines = []
+    for i, x in enumerate(qa, 1):
+        lines.append(f"Q{i}: {x.get('q', '')}")
+        lines.append(f"A{i}: {x.get('a', '')}")
+    history = "\n".join(lines) or "(no questions asked yet)"
+    if finish:
+        task = ("The user wants to STOP the interview now. Do not ask anything else: write the spec from "
+                "what you know, and mark open points as your best assumptions.")
+    else:
+        task = (f"Ask the NEXT single most important question, or finish if you already have enough to "
+                f"plan well. You have asked {len(qa)} of at most {max_questions} questions.")
+    return f"""You are the TEAM LEAD of a team of AI coding agents working in: {cwd}
+
+Before planning this GOAL, you INTERVIEW the user to reach a shared understanding of what to build.
+Walk down each branch of the design tree (scope, user flows, data, edge cases, UX, constraints,
+acceptance criteria), resolving dependencies between decisions one at a time. Ask ONE question per
+turn. If a question can be answered by exploring the codebase, explore it instead of asking. Never
+ask something already answered below. Give 2-4 short concrete options and your recommended answer.
+Write questions, options and the spec in the same language as the goal.
+You may inspect the project, but DO NOT modify any files.
+
+GOAL from the user:
+{goal}
+
+INTERVIEW SO FAR:
+{history}
+{('Shared team notes:' + chr(10) + notes + chr(10)) if notes else ''}
+{task}
+
+Reply with ONLY a JSON object, no other text. Either the next question:
+{{"question": "...", "why": "why this matters, one line", "options": ["...", "..."], "recommended": "..."}}
+or, when you have enough information (or the user stopped):
+{{"done": true, "spec": "concise requirements: scope, decisions agreed with the user, out of scope, acceptance criteria"}}"""
+
+
 def commit_message_prompt(*, diff: str, recent: str, cwd: str) -> str:
     return f"""You are writing a git COMMIT MESSAGE for the changes below, in the repository at: {cwd}
 

@@ -294,3 +294,67 @@ def test_tui_git_tab(env, project, monkeypatch):
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
+
+
+def test_commit_no_verify_skips_hooks(env, project, monkeypatch):
+    # hook pre-commit luôn chặn (như husky/lint-staged lỗi): commit thường bị chặn kèm gợi ý,
+    # --no-verify thì qua — cả qua GitRepo, ô tick ở tab Git và /commit --no-verify
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+    hook = project / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\necho 'lint failed'\nexit 1\n")
+    hook.chmod(0o755)
+
+    async def repo_level():
+        g = gitops.GitRepo(project)
+        assert await g.has_commit_hooks()
+        (project / "a.txt").write_text("a\n")
+        ok, msg = await g.commit("bị chặn", all_changes=True)
+        assert not ok and "lint failed" in msg and "--no-verify" in msg
+        ok, msg = await g.commit("qua hook", no_verify=True)
+        assert ok and "bỏ qua hook" in msg, msg
+        assert (await g.log(1))[0].subject == "qua hook"
+    asyncio.run(repo_level())
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import TeamApp
+
+    async def tui_level():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(160, 48)) as pilot:
+            app.run_command("/git")
+            await pilot.pause(0.5)
+            (project / "b.txt").write_text("b\n")
+            app.run_command("/commit sẽ bị hook chặn")
+            await pilot.pause(1.0)
+            assert git(project, "log", "-1", "--format=%s").strip() == "qua hook"
+            app.run_command("/commit --no-verify qua bằng lệnh")
+            for _ in range(30):
+                await pilot.pause(0.15)
+                if git(project, "log", "-1", "--format=%s").strip() == "qua bằng lệnh":
+                    break
+            assert git(project, "log", "-1", "--format=%s").strip() == "qua bằng lệnh"
+            # ô tick: giữ nguyên sau khi commit
+            (project / "c.txt").write_text("c\n")
+            app.query_one("#git-no-verify").value = True
+            await pilot.pause(0.2)
+            assert "bỏ qua hook" in app.query_one("#git-msg").placeholder
+            box = app.query_one("#git-msg")
+            box.value = "qua bằng ô tick"
+            box.focus()
+            await pilot.press("enter")
+            for _ in range(30):
+                await pilot.pause(0.15)
+                if git(project, "log", "-1", "--format=%s").strip() == "qua bằng ô tick":
+                    break
+            assert git(project, "log", "-1", "--format=%s").strip() == "qua bằng ô tick"
+            assert app.query_one("#git-no-verify").value is True
+            await pilot.press("ctrl+q")
+    asyncio.run(tui_level())

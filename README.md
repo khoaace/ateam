@@ -122,6 +122,21 @@ Chỉ đổi khi đường dẫn có thật trong dự án, nên `a@b.com`, `@pr
 Đường dẫn có dấu cách viết `@"thư mục/file.md"`. Đổi cú pháp cho một agent bằng `file_ref` /
 `file_args` trong config (xem `docs/CONFIG.md`); `ateam doctor` và `/agents` in cú pháp đang dùng.
 
+### Để trưởng nhóm hỏi kỹ trước khi làm — `/grill`
+
+Yêu cầu còn mơ hồ? `/grill Thêm trang đăng nhập` (kiểu "grill me"): thay vì lập kế hoạch ngay, trưởng nhóm
+**hỏi bạn từng câu một** — phạm vi, luồng người dùng, dữ liệu, ca biên, giao diện, tiêu chí hoàn thành —
+mỗi câu kèm 2–4 phương án và phương án nó khuyên dùng. Câu hỏi nào tự tìm được trong code thì nó tự đọc code
+thay vì hỏi. Khung **Hỏi đáp** hiện phía trên ô nhập:
+
+- gõ câu trả lời rồi Enter, hoặc gõ số / bấm vào phương án để chọn;
+- **⏭ Để trưởng nhóm tự quyết** khi bạn không chắc;
+- **✓ Đủ rồi** (`/grill xong`) để chốt luôn với những gì đã trả lời; **✗ Bỏ mục tiêu** (`/grill bỏ`).
+
+Khi đủ rõ (tối đa 15 câu), trưởng nhóm viết **bản đặc tả** (phạm vi, quyết định đã chốt, ngoài phạm vi, tiêu
+chí xong — hiện trong log hệ thống), rồi lập kế hoạch như thường. Bản đặc tả đi kèm mục tiêu trong mọi prompt
+sau đó (lập kế hoạch, task, review). Chạy được với mọi CLI làm trưởng nhóm.
+
 ### Dán ảnh (Ctrl+V)
 
 Chụp màn hình vào clipboard (vd **Cmd+Ctrl+Shift+4** trên macOS) rồi bấm **Ctrl+V** trong ô nhập: ảnh
@@ -214,14 +229,16 @@ chạy đúng lệnh đã gõ. `/stop [số]` dừng lệnh. Thoát app (Ctrl+Q)
   file mới thì bị xoá), **c** tới ô commit.
 - **Commit**: gõ message rồi Enter (chưa stage gì thì commit mọi thay đổi). **✨ Trưởng nhóm viết** (hoặc `/commit`
   không kèm message): trưởng nhóm đọc diff và viết message theo ngôn ngữ/kiểu các commit trước, bạn sửa rồi Enter.
-  Ô **Sửa commit trước** = `--amend` (tự điền message cũ).
+  Ô **Sửa commit trước** = `--amend` (tự điền message cũ). Ô **Bỏ qua hook (--no-verify)** commit mà không
+  chạy git hook (pre-commit, commit-msg — husky, lint-staged…); ô giữ nguyên tới khi bạn bỏ tick. Commit bị hook
+  chặn thì thông báo lỗi nhắc ô này.
 - **Lịch sử** 80 commit gần nhất: **Enter** xem diff của commit, **r** / **↶ Revert** tạo commit đảo ngược,
   **⎌ Bỏ commit cuối** (giữ thay đổi để sửa; chỉ khi chưa push).
 - **Nhánh**: danh sách nhánh local + remote (mới nhất trước, `[ahead/behind]`), Enter chuyển sang (nhánh remote →
   tạo nhánh local theo dõi), tạo mới, đổi tên, merge vào nhánh hiện tại, xoá / xoá hẳn.
 - **Stash**: cất mọi thay đổi (kể cả file mới) kèm ghi chú, lấy lại (pop), áp dụng mà giữ stash, xoá.
 
-Lệnh tắt: `/commit <message>`, `/push [-f]` (`-f` = `--force-with-lease`), `/pull`, `/fetch`, `/branch [tên]`,
+Lệnh tắt: `/commit <message>`, `/commit --no-verify <message>` (hoặc `-n`), `/push [-f]` (`-f` = `--force-with-lease`), `/pull`, `/fetch`, `/branch [tên]`,
 `/checkout <nhánh>`, `/stash [message]`, `/stash pop`. Việc khác (rebase, tag, cherry-pick, thêm remote):
 `/git <lệnh>` chạy `git <lệnh>` ở tab Terminal. ateam không bao giờ hỏi mật khẩu trong app — push/pull cần
 đăng nhập thì cấu hình SSH key hoặc credential helper trước. Đổi nhánh, pull, stash bị chặn khi agent đang chạy

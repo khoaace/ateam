@@ -63,7 +63,7 @@ Hằng số trạng thái ở đầu `db.py`; `ACTIVE = (draft, queued, running,
 
 ### Mục tiêu (`goals`)
 
-`planning` → `awaiting` (có task nháp chờ /go) hoặc `running` → `reviewing` → `done` |
+(`grilling` →) `planning` → `awaiting` (có task nháp chờ /go) hoặc `running` → `reviewing` → `done` |
 `incomplete` | quay lại `awaiting`/`running` với `round + 1` nếu review giao thêm việc. `failed` khi
 không lập được kế hoạch. `cancelled` khi người dùng bỏ kế hoạch nháp (`discard_plan`). Khi có mục
 tiêu `awaiting`, TUI hiện `PlanBar` (`#plan`, nằm ngoài các tab) cho mục tiêu chờ lâu nhất và chuyển
@@ -71,6 +71,18 @@ focus vào nút duyệt nếu ô nhập đang trống. Mục tiêu tạo từ wo
 các bước chèn thẳng qua `_insert_plan(from_user=True)` (giữ effort/model của bước); `workflow.review`
 (nếu đặt) thay `auto_review` khi `_check_goals` quyết định có review không. Task giao tay (`/task`, `ateam add` ngoài agent) không thuộc mục tiêu nào
 nên không được review.
+
+**Hỏi đáp trước** (`/grill`, "grill me"): `start_grill` tạo mục tiêu ở trạng thái `grilling`, cột `grill`
+(JSON `{"qa": [{"q", "why", "options", "rec", "a"}], "spec", "error"}`). Mỗi lượt `_grill_step` gửi
+`grill_prompt` (mục tiêu + các cặp hỏi–đáp đã có) qua `_call_lead` — mỗi lần gọi CLI là một phiên riêng nên
+lịch sử nằm trong prompt, chạy được với mọi CLI. Trưởng nhóm trả object JSON: `{"question", "why", "options",
+"recommended"}` (thêm câu hỏi, `a = null`, chờ người dùng) hoặc `{"done": true, "spec"}` → lưu `spec`,
+`planning`, `_plan` ngay (`lead_busy` giữ suốt). `answer_grill` điền `a` rồi hỏi tiếp; `finish_grill` gửi
+`finish=True` ("STOP the interview", bỏ câu chưa trả lời); quá `GRILL_MAX` (15) câu cũng vậy. Không có `spec`
+thì dùng chính các cặp hỏi–đáp. `Goal.base_text()` = text + `CLARIFIED REQUIREMENTS:` + spec, dùng cho mọi
+prompt lập kế hoạch/review (qua `full_text()`). TUI: `GrillBar` (`#grill`) hiện câu hỏi của mục tiêu
+`grilling` mới nhất; khi đang chờ trả lời, câu gõ ở ô nhập (không bắt đầu bằng `/` `!`) là câu trả lời, gõ số
+= chọn phương án. Mở lại app khi trưởng nhóm đang nghĩ: `setup()` ghi `error`, người dùng bấm "↻ Hỏi tiếp".
 
 **Tiếp tục** (`/continue`, F6, nút "↪ Tiếp tục", `ateam continue`): `continue_goal` mở lại mục tiêu đã
 kết thúc (`GOAL_ENDED`) → `planning` với `round = 1` (giới hạn `max_rounds` tính lại), yêu cầu mới thêm vào
@@ -207,7 +219,8 @@ trong `.ateam/state.json` của dự án. Enter chạy lệnh đã gõ, chỉ ch
 `gitops.GitRepo` (một instance trong `TeamApp`, không phụ thuộc Textual): mọi lệnh chạy qua
 `asyncio.create_subprocess_exec("git", "-c", "core.quotePath=false", …)` với `GIT_TERMINAL_PROMPT=0` (không bao giờ
 hỏi mật khẩu trong TUI — sẽ treo), `GIT_EDITOR=true`, `LANGUAGE=C` (thông báo tiếng Anh ổn định để dò `CONFLICT`,
-`rejected`…), timeout 30 giây (fetch/pull/push 120 giây). Thao tác thay đổi repo giữ `GitRepo.lock`; commit/merge/
+`rejected`…), timeout 30 giây (fetch/pull/push 120 giây). `commit(no_verify=True)` thêm `--no-verify`; commit lỗi mà repo có hook (`has_commit_hooks`: thư mục hooks hoặc
+`core.hooksPath` của husky) thì lời nhắn gợi ý ô *Bỏ qua hook*. Thao tác thay đổi repo giữ `GitRepo.lock`; commit/merge/
 stash/revert có cờ `-c user.*` dự phòng như `Orchestrator.git_ident`. Mỗi hàm trả `(ok, lời nhắn tiếng Việt)`.
 
 - Trạng thái: `git status --porcelain=v2 --branch --show-stash -z --untracked-files=all` → `parse_status` →
