@@ -46,7 +46,10 @@ Tái hiện lỗi chỉ có trên Ubuntu: chạy test với `HOME` trống và `
 - Nội dung: `site/index.html` (một file, CSS/JS nội tuyến, font Be Vietnam Pro + JetBrains Mono từ
   Google Fonts). Placeholder `{{VERSION}}`, `{{ZIP_NAME}}`, `{{ZIP_SIZE}}`, `{{BUILD_DATE}}` do
   `build_site.py` điền; build báo lỗi nếu còn placeholder chưa điền.
-- File khác trong `site/` (vd `404.html`) được chép nguyên vào `dist/`.
+- File và thư mục khác trong `site/` (vd `404.html`, `shots/`) được chép nguyên vào `dist/`.
+- `site/shots/*.svg` là ảnh chụp app thật cho gallery "Xem tận mắt", tạo bằng `python scripts/site_shots.py`
+  (dự án demo + agent giả lập có nội dung thật, `App.run_test()` + `save_screenshot()`; không gọi CLI thật).
+  Chạy lại và commit khi giao diện đổi đáng kể.
 - Gói zip chứa thư mục `ateam/` với `pyproject.toml`, `README.md`, `install.sh` và package `ateam/`
   (xem `PACKAGE_FILES`/`PACKAGE_DIRS` trong `build_site.py`).
 - Xem thử cục bộ: `python scripts/build_site.py && python -m http.server -d dist 8000`.
