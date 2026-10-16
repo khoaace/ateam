@@ -1,3 +1,3 @@
 """AI Team — điều phối nhiều AI agent CLI (Claude Code, Codex, Antigravity, Grok/OpenCode) như một đội."""
 
-__version__ = "0.8.1"
+__version__ = "0.9.0"

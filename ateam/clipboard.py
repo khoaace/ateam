@@ -19,6 +19,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
+from .i18n import tr
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic"}
 KEEP_DAYS = 7  # ảnh dán cũ hơn chừng này ngày bị xoá khi dán ảnh mới
@@ -155,8 +156,8 @@ async def grab_image(folder: Path) -> tuple[Path | None, str]:
     tried = methods()
     if not tried:
         if sys.platform == "darwin":
-            return None, "không tìm thấy osascript để đọc clipboard"
-        return None, "cần cài wl-paste (Wayland) hoặc xclip (X11) để dán ảnh"
+            return None, tr("không tìm thấy osascript để đọc clipboard")
+        return None, tr("cần cài wl-paste (Wayland) hoặc xclip (X11) để dán ảnh")
     folder.mkdir(parents=True, exist_ok=True)
     prune(folder)
     dest = new_path(folder)
@@ -164,7 +165,7 @@ async def grab_image(folder: Path) -> tuple[Path | None, str]:
         got = await _try(m, dest)
         if got:
             return got, ""
-    return None, "clipboard không có ảnh"
+    return None, tr("clipboard không có ảnh")
 
 
 def dropped_images(text: str) -> list[str] | None:

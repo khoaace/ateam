@@ -10,6 +10,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from .i18n import tr
 
 NET_TIMEOUT = 120      # giây cho fetch/pull/push (mạng chậm, hỏi credential helper…)
 LOCAL_TIMEOUT = 30
@@ -198,7 +199,7 @@ def valid_branch_name(name: str) -> bool:
 def short_error(out: str, limit: int = 300) -> str:
     """Dòng có ích nhất của output lỗi git (bỏ dòng 'hint:')."""
     lines = [ln.strip() for ln in out.splitlines() if ln.strip() and not ln.startswith("hint:")]
-    msg = " · ".join(lines[-3:]) if lines else "lỗi không rõ"
+    msg = " · ".join(lines[-3:]) if lines else tr("lỗi không rõ")
     return msg[:limit]
 
 
@@ -231,13 +232,13 @@ class GitRepo:
                 stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env)
         except FileNotFoundError:
-            return 127, "Chưa cài git"
+            return 127, tr("Chưa cài git")
         try:
             out, _ = await asyncio.wait_for(proc.communicate(stdin), timeout)
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
-            return 124, f"git {args[0] if args else ''} quá {int(timeout)} giây — đã dừng"
+            return 124, tr("git {v} quá {v2} giây — đã dừng", v=args[0] if args else '', v2=int(timeout))
         return proc.returncode, out.decode("utf-8", "replace")
 
     async def ident(self) -> list[str]:
@@ -321,7 +322,7 @@ class GitRepo:
         stat = await self.diff_text("--cached", "--stat")
         body = await self.diff_text("--cached")
         if len(body) > limit:
-            body = body[:limit] + "\n… (diff đã được cắt bớt)"
+            body = body[:limit] + tr("\n… (diff đã được cắt bớt)")
         return (stat + "\n" + body).strip()
 
     # ------------------------------------------------------------------ diff cho màn hình xem diff
@@ -331,12 +332,12 @@ class GitRepo:
         from .diffview import DiffSet, parse_unified
         if staged:
             files = parse_unified(await self.diff_text("--cached"))
-            return DiffSet(0, title or "Thay đổi đã stage", files, "HEAD", "")
+            return DiffSet(0, title or tr("Thay đổi đã stage"), files, "HEAD", "")
         files = parse_unified(await self.diff_text())
         rc, others = await self.run("ls-files", "--others", "--exclude-standard", "-z")
         for path in [p for p in others.split("\0") if p] if rc == 0 else []:
             files.append(untracked_file(self.root, path))
-        return DiffSet(0, title or "Thay đổi chưa stage", files, "", None)
+        return DiffSet(0, title or tr("Thay đổi chưa stage"), files, "", None)
 
     async def commit_diffset(self, c: "Commit"):
         from .diffview import DiffSet, parse_unified
@@ -347,25 +348,25 @@ class GitRepo:
     # ------------------------------------------------------------------ thư mục làm việc
     async def init(self) -> tuple[bool, str]:
         self._git_dir = None
-        return await self._do("Đã tạo git repo", "init")
+        return await self._do(tr("Đã tạo git repo"), "init")
 
     async def stage(self, paths: list[str]) -> tuple[bool, str]:
         if not paths:
-            return False, "Không có file nào để stage"
-        return await self._do(f"Đã stage {len(paths)} file", "add", "-A", "--", *paths)
+            return False, tr("Không có file nào để stage")
+        return await self._do(tr("Đã stage {v} file", v=len(paths)), "add", "-A", "--", *paths)
 
     async def stage_all(self) -> tuple[bool, str]:
-        return await self._do("Đã stage mọi thay đổi", "add", "-A")
+        return await self._do(tr("Đã stage mọi thay đổi"), "add", "-A")
 
     async def unstage(self, paths: list[str] | None = None) -> tuple[bool, str]:
         st = await self.status()
         paths = paths or [f.path for f in st.staged]
         if not paths:
-            return False, "Không có file nào đã stage"
+            return False, tr("Không có file nào đã stage")
         if not st.oid:  # chưa có commit: không có HEAD để reset về
-            return await self._do(f"Đã bỏ stage {len(paths)} file", "rm", "--cached", "-r", "-q", "--", *paths)
+            return await self._do(tr("Đã bỏ stage {v} file", v=len(paths)), "rm", "--cached", "-r", "-q", "--", *paths)
         extra = [f.orig for f in st.files if f.kind == "2" and f.path in paths and f.orig]
-        return await self._do(f"Đã bỏ stage {len(paths)} file", "reset", "-q", "HEAD", "--", *paths, *extra)
+        return await self._do(tr("Đã bỏ stage {v} file", v=len(paths)), "reset", "-q", "HEAD", "--", *paths, *extra)
 
     async def discard(self, paths: list[str]) -> tuple[bool, str]:
         """Bỏ thay đổi CHƯA stage của file (file chưa theo dõi bị xoá). Không thể hoàn tác."""
@@ -374,7 +375,7 @@ class GitRepo:
         untracked = [p for p in paths if p in by and by[p].untracked]
         tracked = [p for p in paths if p in by and not by[p].untracked and by[p].work != "."]
         if not untracked and not tracked:
-            return False, "Không có thay đổi chưa stage nào để bỏ"
+            return False, tr("Không có thay đổi chưa stage nào để bỏ")
         async with self.lock:
             if tracked:
                 rc, out = await self.run("checkout", "--", *tracked)
@@ -384,25 +385,26 @@ class GitRepo:
                 rc, out = await self.run("clean", "-f", "-q", "--", *untracked)
                 if rc != 0:
                     return False, short_error(out)
-        return True, f"Đã bỏ thay đổi của {len(tracked) + len(untracked)} file"
+        return True, tr("Đã bỏ thay đổi của {v} file", v=len(tracked) + len(untracked))
 
     async def commit(self, message: str, amend: bool = False, all_changes: bool = False,
                      no_verify: bool = False) -> tuple[bool, str]:
         """no_verify: `git commit --no-verify` — bỏ qua hook pre-commit/commit-msg (husky, lint-staged…)."""
         message = message.strip()
         if not message and not amend:
-            return False, "Chưa có nội dung commit"
+            return False, tr("Chưa có nội dung commit")
         st = await self.status()
         if st.conflicts:
-            return False, f"Còn {len(st.conflicts)} file xung đột — sửa xong rồi stage trước khi commit"
+            return False, tr("Còn {v} file xung đột — sửa xong rồi stage trước khi commit", v=len(st.conflicts))
         if all_changes and not st.staged:
             ok, msg = await self.stage_all()
             if not ok:
                 return ok, msg
             st = await self.status()
         if not st.staged and not amend and st.state != "merge":
-            return False, ("Chưa stage file nào — bấm Space ở file cần commit, hoặc 'a' để stage tất cả"
-                           if st.files else "Không có thay đổi nào để commit")
+            return False, (tr("Chưa stage file nào — bấm Space ở file cần commit, hoặc 'a' để "
+                              "stage tất cả")
+                           if st.files else tr("Không có thay đổi nào để commit"))
         args = ["commit", "-q"]
         if no_verify:
             args.append("--no-verify")
@@ -417,12 +419,13 @@ class GitRepo:
         if rc != 0:
             msg = short_error(out)
             if not no_verify and await self.has_commit_hooks():
-                msg += " — nếu do git hook chặn: tick 'Bỏ qua hook' hoặc /commit --no-verify <message>"
+                msg += tr(" — nếu do git hook chặn: tick 'Bỏ qua hook' hoặc /commit --no-verify "
+                          "<message>")
             return False, msg
         _, sha = await self.run("rev-parse", "--short", "HEAD")
-        skipped = " (bỏ qua hook)" if no_verify else ""
-        return True, (f"Đã sửa commit trước ({sha.strip()}){skipped}" if amend
-                      else f"Đã commit {sha.strip()}{skipped}")
+        skipped = tr(" (bỏ qua hook)") if no_verify else ""
+        return True, (tr("Đã sửa commit trước ({v}){skipped}", v=sha.strip(), skipped=skipped) if amend
+                      else tr("Đã commit {v}{skipped}", v=sha.strip(), skipped=skipped))
 
     async def has_commit_hooks(self) -> bool:
         """Repo có hook chạy khi commit (pre-commit, commit-msg…) — kể cả core.hooksPath của husky."""
@@ -451,28 +454,29 @@ class GitRepo:
             rem, _, short = name.partition("/")
             if rem in remote_names and short:
                 if short in local:
-                    return await self._do(f"Đã chuyển sang {short}", "checkout", "-q", short)
-                return await self._do(f"Đã tạo nhánh {short} theo dõi {name}", "checkout", "-q", "--track", name)
-        return await self._do(f"Đã chuyển sang {name}", "checkout", "-q", name)
+                    return await self._do(tr("Đã chuyển sang {short}", short=short), "checkout", "-q", short)
+                return await self._do(tr("Đã tạo nhánh {short} theo dõi {name}", short=short, name=name), "checkout", "-q", "--track", name)
+        return await self._do(tr("Đã chuyển sang {name}", name=name), "checkout", "-q", name)
 
     async def create_branch(self, name: str, start: str = "", switch: bool = True) -> tuple[bool, str]:
         name = name.strip()
         if not valid_branch_name(name):
-            return False, f"Tên nhánh không hợp lệ: '{name}'"
+            return False, tr("Tên nhánh không hợp lệ: '{name}'", name=name)
         if switch:
-            return await self._do(f"Đã tạo và chuyển sang nhánh {name}", "checkout", "-q", "-b", name,
+            return await self._do(tr("Đã tạo và chuyển sang nhánh {name}", name=name), "checkout", "-q", "-b", name,
                                   *([start] if start else []))
-        return await self._do(f"Đã tạo nhánh {name}", "branch", name, *([start] if start else []))
+        return await self._do(tr("Đã tạo nhánh {name}", name=name), "branch", name, *([start] if start else []))
 
     async def rename_branch(self, old: str, new: str) -> tuple[bool, str]:
         if not valid_branch_name(new):
-            return False, f"Tên nhánh không hợp lệ: '{new}'"
-        return await self._do(f"Đã đổi tên {old} → {new}", "branch", "-m", old, new)
+            return False, tr("Tên nhánh không hợp lệ: '{new}'", new=new)
+        return await self._do(tr("Đã đổi tên {old} → {new}", old=old, new=new), "branch", "-m", old, new)
 
     async def delete_branch(self, name: str, force: bool = False) -> tuple[bool, str]:
-        ok, msg = await self._do(f"Đã xoá nhánh {name}", "branch", "-D" if force else "-d", name)
+        ok, msg = await self._do(tr("Đã xoá nhánh {name}", name=name), "branch", "-D" if force else "-d", name)
         if not ok and "not fully merged" in msg:
-            return False, f"Nhánh {name} còn commit chưa merge — xoá hẳn (mất các commit đó) bằng nút 'Xoá hẳn'"
+            return False, tr("Nhánh {name} còn commit chưa merge — xoá hẳn (mất các commit đó) "
+                             "bằng nút 'Xoá hẳn'", name=name)
         return ok, msg
 
     async def merge(self, name: str) -> tuple[bool, str]:
@@ -480,32 +484,31 @@ class GitRepo:
         async with self.lock:
             rc, out = await self.run(*pre, "merge", "--no-edit", name)
         if rc == 0:
-            return True, ("Đã cập nhật, không có gì mới" if "Already up to date" in out
-                          else f"Đã merge {name} vào nhánh hiện tại")
+            return True, (tr("Đã cập nhật, không có gì mới") if "Already up to date" in out
+                          else tr("Đã merge {name} vào nhánh hiện tại", name=name))
         if "CONFLICT" in out:
             n = out.count("CONFLICT")
-            return False, (f"Merge {name} có {n} file xung đột — sửa file rồi stage và commit, "
-                           f"hoặc 'Huỷ merge'")
+            return False, (tr("Merge {name} có {n} file xung đột — sửa file rồi stage và commit, "
+                              "hoặc 'Huỷ merge'", name=name, n=n))
         return False, short_error(out)
 
     async def abort(self) -> tuple[bool, str]:
         """Huỷ merge/rebase/cherry-pick/revert đang dở."""
         state = await self._op_state()
         if not state:
-            return False, "Không có merge/rebase nào đang dở"
-        return await self._do(f"Đã huỷ {state}", state, "--abort")
+            return False, tr("Không có merge/rebase nào đang dở")
+        return await self._do(tr("Đã huỷ {state}", state=state), state, "--abort")
 
     # ------------------------------------------------------------------ remote
     async def fetch(self) -> tuple[bool, str]:
         if not await self.remotes():
-            return False, "Repo chưa có remote nào (git remote add origin <url>)"
-        return await self._do("Đã fetch mọi remote", "fetch", "--all", "--prune", timeout=NET_TIMEOUT)
+            return False, tr("Repo chưa có remote nào (git remote add origin <url>)")
+        return await self._do(tr("Đã fetch mọi remote"), "fetch", "--all", "--prune", timeout=NET_TIMEOUT)
 
     async def pull(self) -> tuple[bool, str]:
         st = await self.status()
         if not st.upstream:
-            return False, (f"Nhánh {st.branch or '(detached)'} chưa có upstream — Push trước để tạo nhánh "
-                           f"trên remote")
+            return False, (tr("Nhánh {v} chưa có upstream — Push trước để tạo nhánh trên remote", v=st.branch or '(detached)'))
         pre = await self.ident()
         async with self.lock:
             rc, out = await self.run(*pre, "pull", "--ff-only", timeout=NET_TIMEOUT)
@@ -513,56 +516,56 @@ class GitRepo:
                 # hai bên cùng có commit mới: merge (không rebase — không viết lại lịch sử người dùng)
                 rc, out = await self.run(*pre, "pull", "--no-rebase", "--no-edit", timeout=NET_TIMEOUT)
         if rc == 0:
-            return True, "Đã cập nhật, không có gì mới" if "Already up to date" in out else "Đã pull"
+            return True, tr("Đã cập nhật, không có gì mới") if "Already up to date" in out else tr("Đã pull")
         if "CONFLICT" in out:
-            return False, "Pull bị xung đột — sửa file rồi stage và commit, hoặc 'Huỷ merge'"
+            return False, tr("Pull bị xung đột — sửa file rồi stage và commit, hoặc 'Huỷ merge'")
         return False, short_error(out)
 
     async def push(self, force: bool = False) -> tuple[bool, str]:
         st = await self.status()
         if not st.branch:
-            return False, "Đang ở detached HEAD — tạo nhánh trước khi push"
+            return False, tr("Đang ở detached HEAD — tạo nhánh trước khi push")
         args = ["push"]
         if force:
             args.append("--force-with-lease")
         if not st.upstream:
             remotes = await self.remotes()
             if not remotes:
-                return False, "Repo chưa có remote nào (git remote add origin <url>)"
+                return False, tr("Repo chưa có remote nào (git remote add origin <url>)")
             remote = "origin" if "origin" in remotes else remotes[0]
             args += ["-u", remote, st.branch]
         async with self.lock:
             rc, out = await self.run(*args, timeout=NET_TIMEOUT)
         if rc == 0:
-            return True, "Đã cập nhật, không có gì mới" if "Everything up-to-date" in out else f"Đã push {st.branch}"
+            return True, tr("Đã cập nhật, không có gì mới") if "Everything up-to-date" in out else tr("Đã push {branch}", branch=st.branch)
         if "rejected" in out and ("fetch first" in out or "non-fast-forward" in out):
-            return False, "Remote có commit mới hơn — Pull trước rồi push lại"
+            return False, tr("Remote có commit mới hơn — Pull trước rồi push lại")
         return False, short_error(out)
 
     # ------------------------------------------------------------------ stash
     async def stash_push(self, message: str = "", untracked: bool = True) -> tuple[bool, str]:
         st = await self.status()
         if st.clean:
-            return False, "Không có thay đổi nào để stash"
+            return False, tr("Không có thay đổi nào để stash")
         args = ["stash", "push"]
         if untracked:
             args.append("--include-untracked")
         if message:
             args += ["-m", message]
-        return await self._do("Đã cất thay đổi vào stash", *args, ident=True)
+        return await self._do(tr("Đã cất thay đổi vào stash"), *args, ident=True)
 
     async def stash_apply(self, ref: str = "stash@{0}", pop: bool = True) -> tuple[bool, str]:
         pre = await self.ident()
         async with self.lock:
             rc, out = await self.run(*pre, "stash", "pop" if pop else "apply", ref)
         if rc == 0:
-            return True, f"Đã lấy lại {ref}" + ("" if pop else " (vẫn giữ trong stash)")
+            return True, tr("Đã lấy lại {ref}", ref=ref) + ("" if pop else tr(" (vẫn giữ trong stash)"))
         if "CONFLICT" in out:
-            return False, f"Lấy {ref} bị xung đột — sửa file rồi stage; stash vẫn được giữ"
+            return False, tr("Lấy {ref} bị xung đột — sửa file rồi stage; stash vẫn được giữ", ref=ref)
         return False, short_error(out)
 
     async def stash_drop(self, ref: str) -> tuple[bool, str]:
-        return await self._do(f"Đã xoá {ref}", "stash", "drop", ref)
+        return await self._do(tr("Đã xoá {ref}", ref=ref), "stash", "drop", ref)
 
     # ------------------------------------------------------------------ lịch sử
     async def revert(self, sha: str) -> tuple[bool, str]:
@@ -570,9 +573,9 @@ class GitRepo:
         async with self.lock:
             rc, out = await self.run(*pre, "revert", "--no-edit", sha)
         if rc == 0:
-            return True, f"Đã tạo commit đảo ngược {sha[:8]}"
+            return True, tr("Đã tạo commit đảo ngược {v}", v=sha[:8])
         if "CONFLICT" in out:
-            return False, "Revert bị xung đột — sửa file rồi stage và commit, hoặc 'Huỷ revert'"
+            return False, tr("Revert bị xung đột — sửa file rồi stage và commit, hoặc 'Huỷ revert'")
         return False, short_error(out)
 
     async def reset_soft(self) -> tuple[bool, str]:
@@ -580,10 +583,10 @@ class GitRepo:
         st = await self.status()
         rc, _ = await self.run("rev-parse", "--verify", "-q", "HEAD~1")
         if rc != 0:
-            return False, "Không có commit trước để quay về"
+            return False, tr("Không có commit trước để quay về")
         if st.upstream and st.ahead == 0:
-            return False, "Commit cuối đã push lên remote — dùng Revert thay vì bỏ commit"
-        return await self._do("Đã bỏ commit cuối, thay đổi vẫn giữ (đã stage)", "reset", "--soft", "HEAD~1")
+            return False, tr("Commit cuối đã push lên remote — dùng Revert thay vì bỏ commit")
+        return await self._do(tr("Đã bỏ commit cuối, thay đổi vẫn giữ (đã stage)"), "reset", "--soft", "HEAD~1")
 
     async def commit_parent(self, sha: str) -> str:
         rc, out = await self.run("rev-parse", "--verify", "-q", f"{sha}^")
@@ -619,8 +622,8 @@ def file_icon(f: FileChange, staged: bool) -> tuple[str, str]:
 def summary_line(st: RepoStatus) -> str:
     """Một dòng tóm tắt trạng thái (cho thanh trạng thái / thông báo)."""
     if not st.is_repo:
-        return "không phải git repo"
-    head = st.branch or (f"detached @ {st.oid[:8]}" if st.oid else "(chưa có commit)")
+        return tr("không phải git repo")
+    head = st.branch or (f"detached @ {st.oid[:8]}" if st.oid else tr("(chưa có commit)"))
     parts = [f"⎇ {head}"]
     if st.upstream:
         sync = []
@@ -628,14 +631,14 @@ def summary_line(st: RepoStatus) -> str:
             sync.append(f"↑{st.ahead}")
         if st.behind:
             sync.append(f"↓{st.behind}")
-        parts.append(" ".join(sync) or "✓ đồng bộ")
+        parts.append(" ".join(sync) or tr("✓ đồng bộ"))
     if st.files:
-        parts.append(f"{len(st.staged)} đã stage · {len(st.unstaged) + len(st.untracked)} chưa stage")
+        parts.append(tr("{v} đã stage · {v2} chưa stage", v=len(st.staged), v2=len(st.unstaged) + len(st.untracked)))
         if st.conflicts:
-            parts.append(f"{len(st.conflicts)} xung đột")
+            parts.append(tr("{v} xung đột", v=len(st.conflicts)))
     else:
-        parts.append("sạch")
+        parts.append(tr("sạch"))
     if st.state:
-        parts.append(f"đang {st.state}")
+        parts.append(tr("đang {state}", state=st.state))
     return " · ".join(parts)
 

@@ -279,6 +279,19 @@ cho timeline. TUI chỉ đọc hai cấu trúc này, không sửa.
   ghi, nên log ghi khi cột hẹp (1–2 ký tự) thành chữ dọc mãi. Dưới `NARROW_WIDTH` (110) cột, `#board` thêm
   class `narrow` và xếp dọc.
 
+### Ngôn ngữ và theme
+
+- `i18n.tr(vi, **kw)`: khoá là chuỗi tiếng Việt, tiếng Anh tra ở `locales/en.py`, thiếu thì dùng tiếng Việt.
+  Ngôn ngữ chọn một lần lúc import `ateam.i18n` (`--lang` > `ATEAM_LANG` > `state.json` `lang` > đã có
+  `state.json` → `vi` > `LANG`/`LC_ALL`). `/lang` lưu rồi đặt `restart_requested`; `cli.cmd_tui` `os.execv` lại
+  tiến trình sau khi app thoát (từ chối tự mở lại khi agent đang chạy).
+- `theme.py`: theme dựng sẵn của Textual + màu nhấn (`make_theme` thay `primary`/`accent`, tên `gốc+màu`).
+  `TeamApp.apply_theme` đăng ký theme, gán `App.theme`, dựng lại bảng màu chữ Rich (`apply_palette`), đổi màu
+  diff sáng/tối (`diffview.set_light`), lưu `theme`/`accent` vào `state.json`. `ThemeScreen` xem trước khi di
+  chuyển, Esc trả theme cũ.
+- `StatusBar` (`#statusbar`, dock dưới, cùng `#cmd` và Footer — đẩy nhau bằng margin): vẽ mỗi lượt
+  `refresh_view`; ngoài tab Git đọc lại git status mỗi 10 giây cho nhánh ↑↓.
+
 ### Popup (`BaseModal`)
 
 Mọi `ModalScreen` kế thừa `BaseModal`: dòng tiêu đề có nút ✕ (`title_bar`), Esc **không** dùng `priority` nên

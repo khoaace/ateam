@@ -110,8 +110,19 @@ nhận *mặc định mới* (file của họ bị thay, có sao lưu).
 `IN_RE`/`AT_RE`/`EPOCH_RE`) trong `limits.py` + một assert trong `test_rate_limit_detection`.
 Dùng nguyên văn thông báo người dùng gửi (`ateam log <task>`).
 
+**Thêm chữ hiển thị cho người dùng**: viết tiếng Việt trong `tr(...)` (`ateam/i18n.py`), biến dùng placeholder
+có tên — `tr("Đã merge #{tid}", tid=tid)`, không f-string bên trong `tr`. Thêm bản dịch vào dict `EN` ở
+`ateam/locales/en.py` (khoá = chuỗi tiếng Việt nguyên văn, placeholder giống hệt). `tests/test_i18n.py` báo
+chuỗi tiếng Việt chưa bọc `tr` và chuỗi thiếu bản dịch. Chữ tính lúc import (HELP, COMMANDS, BINDINGS) dịch theo
+ngôn ngữ lúc khởi động, vì vậy `/lang` lưu rồi mở lại app. Prompt gửi agent (`prompts.py`) không bọc `tr`.
+Chạy thử tiếng Anh: `ATEAM_LANG=en python -m ateam …`.
+
+**Màu chữ Rich trong TUI**: dùng `STATUS`/`BAR_STYLE`/`GOAL_STATUS`/`RUNNING`/`PAL[...]` (dựng lại theo theme ở
+`apply_palette`, `theme.palette`) thay vì tên màu viết cứng, để theme sáng vẫn đọc được. CSS dùng biến theme
+(`$primary`, `$accent`, `$warning`…).
+
 **Đổi trạng thái task**: hằng trong `db.py`, `ACTIVE`/`FINISHED_BAD` nếu cần, nhãn + màu trong
-`STATUS`/`BAR_STYLE` (`tui.py`), máy trạng thái trong `docs/ARCHITECTURE.md`.
+`STATUS`/`BAR_STYLE` (`apply_palette`, `tui.py`), máy trạng thái trong `docs/ARCHITECTURE.md`.
 
 ## Gỡ lỗi
 

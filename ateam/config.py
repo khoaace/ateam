@@ -9,6 +9,7 @@ import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from .i18n import tr
 
 try:
     import tomllib  # Python 3.11+
@@ -334,7 +335,7 @@ class AgentConfig:
         return bool(self.binary) and shutil.which(self.binary) is not None
 
     def label(self, model: str | None = None, effort: str | None = None) -> str:
-        m = (model if model is not None else self.model) or "mặc định"
+        m = (model if model is not None else self.model) or tr("mặc định")
         e = effort if effort is not None else self.effort
         return f"{m}" + (f" · {e}" if e else "")
 
@@ -404,7 +405,7 @@ class Workflow:
             out.append({
                 "id": i,
                 "agent": lead if st.agent in ("", LEAD_ALIAS) else st.agent,
-                "title": (st.title or f"Bước {i}").replace("{goal}", goal),
+                "title": (st.title or tr("Bước {i}", i=i)).replace("{goal}", goal),
                 "prompt": (st.prompt or st.title or goal).replace("{goal}", goal),
                 "depends_on": [a for a in after if 0 < a < i],
                 "effort": st.effort,
@@ -413,7 +414,7 @@ class Workflow:
         return out
 
     def summary(self) -> str:
-        return " → ".join(st.agent or LEAD_ALIAS for st in self.steps) or "(chưa có bước)"
+        return " → ".join(st.agent or LEAD_ALIAS for st in self.steps) or tr("(chưa có bước)")
 
 
 @dataclass
@@ -456,14 +457,14 @@ def describe_models(cfg: Config, only: str | None = None) -> str:
     for n, a in cfg.agents.items():
         if only and n != only:
             continue
-        lines.append(f"{n}  ({a.binary})  đang dùng: {a.label()}")
+        lines.append(tr("{n}  ({binary})  đang dùng: {v}", n=n, binary=a.binary, v=a.label()))
         models = a.model_choices()
         lines.append("  model:  " + (" · ".join(("●" if m == a.model else "") + m for m in models)
-                                     if models else "(để CLI tự chọn)"))
+                                     if models else tr("(để CLI tự chọn)")))
         lines.append("  effort: " + (" · ".join(("●" if e == a.effort else "") + e for e in a.efforts)
-                                     if a.efforts else "(không có)"))
+                                     if a.efforts else tr("(không có)")))
         if a.models_command:
-            lines.append(f"  danh sách thật: {' '.join(a.models_command)}  (làm mới: /models {n} làm mới)")
+            lines.append(tr("  danh sách thật: {v}  (làm mới: /models {n} làm mới)", v=' '.join(a.models_command), n=n))
     return "\n".join(lines)
 
 
@@ -488,8 +489,8 @@ def ensure_global_config() -> list[str]:
         bak = GLOBAL_CONFIG.with_name(f"config.v{data.get('config_version', 1)}.{int(time.time())}.bak.toml")
         shutil.copy2(GLOBAL_CONFIG, bak)
         GLOBAL_CONFIG.write_text(DEFAULT_CONFIG, encoding="utf-8")
-        notes.append(f"Đã nâng cấp cấu hình lên bản {CONFIG_VERSION} (thêm tính năng mới). "
-                     f"Bản cũ sao lưu ở {bak}")
+        notes.append(tr("Đã nâng cấp cấu hình lên bản {CONFIG_VERSION} (thêm tính năng mới). Bản "
+                        "cũ sao lưu ở {bak}", CONFIG_VERSION=CONFIG_VERSION, bak=bak))
     return notes
 
 
@@ -519,8 +520,8 @@ def migrate_grok_to_opencode(old_config: dict) -> str:
         return ""
     shutil.copy2(STATE_FILE, STATE_FILE.with_name(f"state.v5.{int(time.time())}.bak.json"))
     save_state(state)
-    return ('Agent "grok" giờ chạy Grok Build CLI (lệnh grok); lựa chọn cũ của nó (qua OpenCode) chuyển '
-            'sang agent mới "opencode".')
+    return (tr("Agent \"grok\" giờ chạy Grok Build CLI (lệnh grok); lựa chọn cũ của nó (qua "
+               "OpenCode) chuyển sang agent mới \"opencode\"."))
 
 
 def load_state() -> dict:
@@ -722,10 +723,9 @@ def dump_toml(data: dict, prefix: str = "") -> str:
     return out.strip("\n") + ("\n" if not prefix else "")
 
 
-CUSTOM_HEADER = """\
-# Agent và workflow tuỳ chỉnh của ateam. Sửa trong app: /custom (hoặc nút ở màn hình /setup).
-# File này được giữ nguyên khi config.toml nâng cấp lên bản mới.
-"""
+CUSTOM_HEADER = tr("# Agent và workflow tuỳ chỉnh của ateam. Sửa trong app: /custom (hoặc nút ở "
+                   "màn hình /setup).\n"
+                   "# File này được giữ nguyên khi config.toml nâng cấp lên bản mới.\n")
 
 
 def save_custom(data: dict) -> None:
@@ -858,12 +858,12 @@ def clear_agent_state(name: str, keys=("model", "effort", "role", "full_access")
 # ------------------------------------------------------------------ wizard thiết lập (/setup)
 # Vai trò trong đội: (khoá, nhãn hiển thị, mô tả gửi trưởng nhóm để phân việc)
 ROLES: list[tuple[str, str, str]] = [
-    ("lead", "★ Trưởng nhóm", "Trưởng nhóm: lập kế hoạch, thiết kế kiến trúc, review kết quả."),
-    ("code", "Code chính", "Viết code, sửa bug, refactor."),
+    ("lead", tr("★ Trưởng nhóm"), "Trưởng nhóm: lập kế hoạch, thiết kế kiến trúc, review kết quả."),
+    ("code", tr("Code chính"), "Viết code, sửa bug, refactor."),
     ("review", "Review code", "Review code, tìm lỗi, đề xuất cải thiện."),
     ("ui", "Frontend/UI", "Frontend, giao diện, CSS, trải nghiệm người dùng."),
-    ("test", "Test & tài liệu", "Viết test, script, tài liệu."),
-    ("research", "Nghiên cứu", "Nghiên cứu, tìm tài liệu, phân tích codebase lớn."),
+    ("test", tr("Test & tài liệu"), "Viết test, script, tài liệu."),
+    ("research", tr("Nghiên cứu"), "Nghiên cứu, tìm tài liệu, phân tích codebase lớn."),
 ]
 # CLI ưu tiên cho từng vai trò (lấy CLI đầu tiên người dùng có)
 ROLE_PREFS: dict[str, list[str]] = {
@@ -874,7 +874,7 @@ ROLE_PREFS: dict[str, list[str]] = {
     "test": ["grok", "opencode", "codex", "claude", "agy"],
     "research": ["agy", "claude", "codex", "grok", "opencode"],
 }
-TIERS = [("eco", "Tiết kiệm"), ("balanced", "Cân bằng"), ("max", "Tối đa")]
+TIERS = [("eco", tr("Tiết kiệm")), ("balanced", tr("Cân bằng")), ("max", tr("Tối đa"))]
 # Mức model/effort theo nhà cung cấp, từ rẻ tới mạnh: (từ khoá chọn model trong danh sách có sẵn, effort).
 # Tiết kiệm = mức 0, Cân bằng = 1, Tối đa = 2; trưởng nhóm và review được nâng 1 mức. Không có model khớp
 # từ khoá thì để CLI tự chọn; effort không hợp lệ với CLI thì bỏ.
@@ -890,7 +890,7 @@ TIER_PRESETS: dict[str, list[tuple[list[str], str]]] = {
 INSTALL_HINTS: dict[str, str] = {
     "claude": "npm i -g @anthropic-ai/claude-code",
     "codex": "npm i -g @openai/codex",
-    "agy": "cài Antigravity rồi bật lệnh agy",
+    "agy": tr("cài Antigravity rồi bật lệnh agy"),
     "grok": "curl -fsSL https://x.ai/cli/install.sh | bash",
     "opencode": "npm i -g opencode-ai",
 }

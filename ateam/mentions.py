@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 from .clipboard import is_image
+from .i18n import tr
 
 # Cú pháp mặc định theo tên lệnh (command[0]). Ghi đè từng agent bằng file_ref / file_args trong config.
 #   file_ref   cách viết đường dẫn trong prompt; {path} được thay
@@ -68,7 +69,7 @@ def describe(binary: str, file_ref: str | None = None, file_args: list[str] | No
         out += " + " + " ".join(a.replace("{path}", "src/app.py") for a in args)
     img = image_args_for(binary, file_args, image_args)
     if img != args:
-        out += " · ảnh: " + ref.replace("{path}", "a.png")
+        out += tr(" · ảnh: ") + ref.replace("{path}", "a.png")
         if img:
             out += " + " + " ".join(a.replace("{path}", "a.png") for a in img)
     return out

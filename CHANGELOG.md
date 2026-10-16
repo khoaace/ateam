@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.0 — 16/10/2026
+
+- **Đa ngôn ngữ — tiếng Việt / English** cho toàn bộ app: TUI, trợ giúp, thông báo, log hệ thống, wizard, tab
+  Git, lệnh `ateam …`. Đổi bằng `/lang en|vi` (app tự mở lại), `ateam lang en|vi` (lưu lâu dài) hoặc
+  `ateam --lang en …` (một lần) / biến `ATEAM_LANG`. Máy mới tự chọn theo `LANG`; người dùng cũ giữ tiếng Việt.
+  Prompt gửi agent vẫn tiếng Anh như trước.
+- **Theme màu**: `/theme` mở màn hình chọn 1 trong 21 theme dựng sẵn (tối/sáng: nord, dracula, gruvbox,
+  tokyo-night, catppuccin, solarized…) cộng màu nhấn tuỳ chọn (xanh dương, tím, xanh lá, cam, hồng, vàng, xanh
+  ngọc, đỏ), xem trước trực tiếp khi di chuyển, Esc trả theme cũ. Lệnh nhanh `/theme nord tím`. Màu trạng thái
+  (đang chạy, xong, lỗi, chờ duyệt), viền popup, khung agent và diff đổi theo theme (diff dùng màu nền sáng trên
+  theme sáng). Lựa chọn lưu ở `state.json`, dùng chung mọi dự án.
+- **Thanh trạng thái** phía trên phím tắt: nhánh git ↑↓ và số file đổi, số task đang chạy / chờ / chờ duyệt /
+  lỗi, tạm dừng, agent đang nghỉ vì hết hạn mức, theme và ngôn ngữ hiện tại (bấm để đổi).
+- Tab Đội: viền khung agent theo trạng thái (đang chạy, đang nghỉ, lỗi gần nhất). Bảng việc: cột thời gian
+  căn phải. Popup dùng viền màu chủ đạo của theme.
+
 ## 0.8.1 — 16/10/2026
 
 - Khung hỏi đáp `/grill` dễ đọc hơn: phương án là chữ thường trên nền mặc định (trước đây nền cyan/xanh lá + chữ

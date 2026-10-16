@@ -7,6 +7,7 @@ import re
 import time
 
 from .config import load_state, save_state
+from .i18n import tr
 
 LIMIT_RE = re.compile(
     r"rate[ _-]?limit|usage[ _-]?limit|quota|too many requests|\b429\b|limit (?:reached|exceeded)"
@@ -77,12 +78,12 @@ def _window(minutes) -> str:
     except (TypeError, ValueError):
         return "?"
     if m % 10080 == 0:
-        return f"{m // 10080} tuần" if m > 10080 else "tuần"
+        return tr("{v} tuần", v=m // 10080) if m > 10080 else tr("tuần")
     if m % 1440 == 0:
-        return f"{m // 1440} ngày"
+        return tr("{v} ngày", v=m // 1440)
     if m % 60 == 0:
-        return f"{m // 60} giờ"
-    return f"{m} phút"
+        return tr("{v} giờ", v=m // 60)
+    return tr("{m} phút", m=m)
 
 
 def codex_rate_limits(home=None, max_files: int = 30) -> list[str] | None:
@@ -115,27 +116,27 @@ def codex_rate_limits(home=None, max_files: int = 30) -> list[str] | None:
             continue
         out = []
         if snap.get("plan_type"):
-            out.append(f"Gói: {snap['plan_type']}")
-        for key, label in (("primary", "Hạn mức chính"), ("secondary", "Hạn mức phụ")):
+            out.append(tr("Gói: {v}", v=snap['plan_type']))
+        for key, label in (("primary", tr("Hạn mức chính")), ("secondary", tr("Hạn mức phụ"))):
             w = snap.get(key)
             if not isinstance(w, dict):
                 continue
             used = w.get("used_percent")
-            line = f"{label} ({_window(w.get('window_minutes'))}): đã dùng {used:g}%" if isinstance(
+            line = tr("{label} ({v}): đã dùng {used:g}%", label=label, v=_window(w.get('window_minutes')), used=used) if isinstance(
                 used, (int, float)) else f"{label}: ?"
             if w.get("resets_at"):
-                line += " · hồi lúc " + time.strftime("%H:%M %d/%m", time.localtime(int(w["resets_at"])))
+                line += tr(" · hồi lúc ") + time.strftime("%H:%M %d/%m", time.localtime(int(w["resets_at"])))
             out.append(line)
         cr = snap.get("credits")
         if isinstance(cr, dict) and (cr.get("has_credits") or cr.get("unlimited")):
-            out.append("Credits: " + ("không giới hạn" if cr.get("unlimited") else str(cr.get("balance"))))
+            out.append("Credits: " + (tr("không giới hạn") if cr.get("unlimited") else str(cr.get("balance"))))
         if snap.get("rate_limit_reached_type"):
-            out.append(f"⚠ Đang chạm hạn mức: {snap['rate_limit_reached_type']}")
+            out.append(tr("⚠ Đang chạm hạn mức: {v}", v=snap['rate_limit_reached_type']))
         if when:
             try:
                 t = dt.datetime.fromisoformat(str(when).replace("Z", "+00:00")).timestamp()
-                out.append("(số liệu lúc " + time.strftime("%H:%M %d/%m", time.localtime(t))
-                           + " — lần chạy codex gần nhất)")
+                out.append(tr("(số liệu lúc ") + time.strftime("%H:%M %d/%m", time.localtime(t))
+                           + tr(" — lần chạy codex gần nhất)"))
             except ValueError:
                 pass
         return out

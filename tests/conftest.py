@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
+# test so chuỗi tiếng Việt: cố định ngôn ngữ (test tiếng Anh tự đặt ATEAM_LANG=en)
+os.environ["ATEAM_LANG"] = "vi"
 FAKEBIN = Path(__file__).resolve().parent / "fakebin"
 
 
@@ -25,6 +27,7 @@ def env(tmp_path) -> dict:
     e["ATEAM_FAKE_LIMIT_DIR"] = str(tmp_path / "limits")
     e["ATEAM_FAKE_ARGS_LOG"] = str(tmp_path / "args.log")
     e["ATEAM_FAKE_SLOW"] = "0"
+    e["ATEAM_LANG"] = "vi"
     e["CODEX_HOME"] = str(tmp_path / "codex")  # không đọc phiên codex thật của máy (/usage)
     e["PYTHONPATH"] = str(ROOT)
     for k in ("ATEAM_DB", "ATEAM_ROOT", "ATEAM_TASK_ID", "ATEAM_AGENT"):

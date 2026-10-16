@@ -16,6 +16,7 @@ from typing import Callable, Optional
 
 from .config import load_project_state, save_project_setting
 from .runner import Run
+from .i18n import tr
 
 MAX_LINES = 5000           # giữ trong bộ nhớ cho mỗi lệnh (file log có đủ)
 RECENT_MAX = 20
@@ -71,7 +72,7 @@ def project_scripts(root: Path, recent: list[str] | None = None) -> list[tuple[s
             out.append((cmd, desc))
 
     for cmd in recent if recent is not None else recent_commands(root):
-        add(cmd, "chạy gần đây")
+        add(cmd, tr("chạy gần đây"))
     try:
         scripts = json.loads((root / "package.json").read_text(encoding="utf-8")).get("scripts") or {}
     except (OSError, ValueError, AttributeError):
@@ -147,12 +148,12 @@ class ShellManager:
             try:
                 rc = await job.run.start()
             except Exception as e:  # không chạy được shell
-                on_line(f"✗ Không chạy được: {e}")
+                on_line(tr("✗ Không chạy được: {e}", e=e))
                 rc = 127
             job.rc, job.finished = rc, time.time()
             if job.status == "running":
                 job.status = "done" if rc == 0 else "failed"
-            log.write(f"\n[thoát với mã {rc}]\n")
+            log.write(tr("\n[thoát với mã {rc}]\n", rc=rc))
             log.close()
             self.on_event("exit", job, "")
 

@@ -45,7 +45,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 
 ```bash
 pip install -e ".[dev]"          # cài từ mã nguồn + pytest
-python -m pytest -q              # ~3 phút, 78 test, dùng agent giả lập — PHẢI xanh trước khi commit
+python -m pytest -q              # ~3 phút, 91 test, dùng agent giả lập — PHẢI xanh trước khi commit
 python -m ateam doctor           # xem lệnh thật sẽ chạy cho từng agent
 python -m ateam -C /tmp/demo     # mở TUI trên một thư mục nháp
 python scripts/build_site.py     # dựng trang docs vào dist/
@@ -61,7 +61,8 @@ Chạy thử với agent giả lập thay vì CLI thật:
 3. **Tương thích Python 3.9** (macOS có sẵn 3.9): luôn `from __future__ import annotations`,
    không dùng `match`, không dùng cú pháp `X | Y` ngoài annotation, không `tomllib` trực tiếp.
 4. **Không thêm dependency** ngoài `textual` (và `tomli` cho 3.9/3.10) trừ khi thật cần.
-5. **Chữ cho người dùng tiếng Việt; prompt gửi agent tiếng Anh** (agent tuân thủ tốt hơn), nhưng
+5. **Chữ cho người dùng viết bằng `tr("tiếng Việt")` và có bản dịch trong `ateam/locales/en.py`**
+   (`tests/test_i18n.py` bắt chuỗi thiếu bọc/thiếu dịch); **prompt gửi agent tiếng Anh** (agent tuân thủ tốt hơn), nhưng
    prompt luôn dặn agent viết theo ngôn ngữ của mục tiêu.
 6. **Giữ nguyên giao thức output** mà `prompts.py` bóc: `SUMMARY:`, `<<<DELEGATE to="…" title="…">>> … <<<END>>>`,
    `<<<NOTE>>> … <<<END>>>`, kế hoạch là mảng JSON, review là object JSON, câu hỏi `/grill` là object JSON

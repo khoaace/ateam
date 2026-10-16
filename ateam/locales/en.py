@@ -1,0 +1,1967 @@
+"""Bản dịch tiếng Anh: khoá = chuỗi tiếng Việt gốc trong tr(...). Thêm chuỗi mới: bọc tr("…") ở code
+rồi thêm một dòng ở đây (tests/test_i18n.py báo chuỗi nào còn thiếu)."""
+
+from __future__ import annotations
+
+EN: dict[str, str] = {
+    "✓ Đã đổi ngôn ngữ sang {v}":
+        "✓ Language changed to {v}",
+    "Cấu hình chung: {GLOBAL_CONFIG}":
+        "Global config: {GLOBAL_CONFIG}",
+    "Cấu hình:":
+        "Config:",
+    "Kiểm tra sau task: {v}   ·   trưởng nhóm dự phòng: {v2}\n":
+        "Check after each task: {v}   ·   backup leads: {v2}\n",
+    "\nChọn agent, model, effort: ateam setup (hoặc /setup trong app).":
+        "\nPick agents, models, effort: ateam setup (or /setup in the app).",
+    "Thêm agent / workflow riêng: /custom trong app (hoặc nút ở màn hình thiết lập).":
+        "Add your own agents / workflows: /custom in the app (or the button on the setup screen).",
+    "\nChạy: ateam flow <tên> \"mục tiêu\"   ·   trong app: /flow <tên> <mục tiêu>":
+        "\nRun: ateam flow <name> \"goal\"   ·   in the app: /flow <name> <goal>",
+    "Đã thêm task #{tid} cho {to}. (Chạy khi `ateam` đang mở, hoặc `ateam run`)":
+        "Added task #{tid} for {to}. (Runs while `ateam` is open, or with `ateam run`)",
+    "Đã ghi chú.":
+        "Note saved.",
+    "Đặt: ateam set <agent> --model <tên> --effort <mức>":
+        "Set: ateam set <agent> --model <name> --effort <level>",
+    "Lệnh kiểm tra của dự án: {v}":
+        "Project check command: {v}",
+    "Ngôn ngữ hiện tại: {v} — đổi bằng `ateam lang en` hoặc `ateam lang vi`":
+        "Current language: {v} — change with `ateam lang en` or `ateam lang vi`",
+    "Không hỗ trợ '{code}' — chọn: {v}":
+        "'{code}' is not supported — choose: {v}",
+    "(mặc định)":
+        "(default)",
+    " (đang tắt)":
+        " (disabled)",
+    " (tuỳ chỉnh)":
+        " (custom)",
+    "\n✗ Trưởng nhóm '{lead}' không có trong [agents].":
+        "\n✗ Lead '{lead}' is not in [agents].",
+    "\n⚠ Chưa có git — chế độ worktree sẽ không dùng được.":
+        "\n⚠ git is not installed — worktree mode won't work.",
+    "\nWorkflow: {v}  (xem: ateam flows)":
+        "\nWorkflows: {v}  (see: ateam flows)",
+    "\nMọi thứ sẵn sàng.":
+        "\nAll set.",
+    "\nCài các CLI còn thiếu hoặc đặt enabled = false cho agent đó trong config.":
+        "\nInstall the missing CLIs, or set enabled = false for that agent in the config.",
+    "\n=== Mục tiêu #{gid}: {status} ===":
+        "\n=== Goal #{gid}: {status} ===",
+    "Chưa có workflow nào. Tạo trong app: /custom (hoặc nút ở màn hình `ateam setup`).":
+        "No workflows yet. Create one in the app: /custom (or the button on the `ateam setup` screen).",
+    "Không có agent '{to}'. Có: {v}":
+        "No agent '{to}'. Available: {v}",
+    "Đã chạm giới hạn số tầng giao việc.":
+        "Delegation depth limit reached.",
+    "Chưa có log.":
+        "No log yet.",
+    "Không có agent '{agent}'. Có: {v}":
+        "No agent '{agent}'. Available: {v}",
+    "⚠ '{effort}' không nằm trong {efforts} — vẫn lưu, nhưng CLI có thể báo lỗi.":
+        "⚠ '{effort}' is not in {efforts} — saved anyway, but the CLI may reject it.",
+    "Task đã xếp hàng lại — mở `ateam` hoặc chạy `ateam run` để làm lại.":
+        "Task re-queued — open `ateam` or run `ateam run` to redo it.",
+    "Lệnh kiểm tra: {v}":
+        "Check command: {v}",
+    "7 ngày":
+        "7 days",
+    "24 giờ":
+        "24 hours",
+    "Đang tạm nghỉ: ":
+        "Cooling down: ",
+    "{agent} hoạt động lại.":
+        "{agent} is active again.",
+    "{agent} tạm nghỉ {minutes} phút.":
+        "{agent} is cooling down for {minutes} min.",
+    "AI Team — điều phối nhiều AI agent CLI.":
+        "AI Team — orchestrate several AI coding agent CLIs.",
+    "thư mục dự án (mặc định: thư mục hiện tại)":
+        "project directory (default: current directory)",
+    "ngôn ngữ giao diện cho lần chạy này (vi | en)":
+        "interface language for this run (vi | en)",
+    "mở giao diện terminal (mặc định)":
+        "open the terminal UI (default)",
+    "xem / đổi ngôn ngữ giao diện (vi | en), lưu cho các lần sau":
+        "show / change the interface language (vi | en), saved for next time",
+    "mở giao diện ở màn hình thiết lập: agent, trưởng nhóm, model, effort":
+        "open the UI on the setup screen: agents, lead, model, effort",
+    "tạo file cấu hình":
+        "create the config file",
+    "tạo thêm .ateam/config.toml cho dự án":
+        "also create .ateam/config.toml for the project",
+    "kiểm tra các agent đã cài chưa":
+        "check which agents are installed",
+    "giao mục tiêu và chạy không cần giao diện":
+        "give a goal and run it without the UI",
+    "không hỏi duyệt kế hoạch":
+        "don't ask to approve the plan",
+    "không in log chi tiết của agent":
+        "don't print detailed agent logs",
+    "tiếp tục mục tiêu (m12) hoặc thread /task (t40) đã xong":
+        "continue a finished goal (m12) or /task thread (t40)",
+    "m<số> = mục tiêu, t<số> = task":
+        "m<number> = goal, t<number> = task",
+    "yêu cầu mới":
+        "new request",
+    "chạy mục tiêu theo workflow tuỳ chỉnh (không cần giao diện)":
+        "run a goal with a custom workflow (no UI)",
+    "tự duyệt các bước":
+        "auto-approve the steps",
+    "liệt kê workflow tuỳ chỉnh":
+        "list custom workflows",
+    "thêm 1 task vào bảng (agent cũng gọi được lệnh này)":
+        "add a task to the board (agents can call this too)",
+    "tên agent":
+        "agent name",
+    "model riêng cho task này":
+        "model just for this task",
+    "effort riêng cho task này":
+        "effort just for this task",
+    "đặt model / effort mặc định cho 1 agent":
+        "set the default model / effort of an agent",
+    "tên model, '-' để về mặc định":
+        "model name, '-' to reset to default",
+    "mức effort, '-' để về mặc định":
+        "effort level, '-' to reset to default",
+    "xem model / effort mỗi agent hỗ trợ":
+        "show the models / effort levels each agent supports",
+    "hỏi CLI danh sách model thật (opencode models, agy models)":
+        "ask the CLI for its real model list (opencode models, agy models)",
+    "ghi chú chung cho cả đội":
+        "shared note for the whole team",
+    "trưởng nhóm tóm tắt ghi chú & mục tiêu thành 1 ghi chú ngắn":
+        "the lead summarizes notes & goals into one short note",
+    "điều cần giữ trong bản tóm tắt (tuỳ chọn)":
+        "what to keep in the summary (optional)",
+    "liệt kê mục tiêu và task":
+        "list goals and tasks",
+    "in log của 1 task (hoặc 'sys')":
+        "print a task's log (or 'sys')",
+    "xem thay đổi của 1 task":
+        "show a task's changes",
+    "merge task đang chờ duyệt":
+        "merge a task waiting for review",
+    "từ chối task đang chờ duyệt (kèm góp ý = giao làm lại)":
+        "reject a task waiting for review (with feedback = redo it)",
+    "đặt lệnh kiểm tra sau mỗi task cho dự án (off = tắt)":
+        "set the check command run after each task for this project (off = disable)",
+    "thống kê lượt chạy và hạn mức theo agent (hỏi cả CLI của từng agent)":
+        "run and usage-limit stats per agent (also asks each agent's CLI)",
+    "chỉ thống kê của ateam, không hỏi các CLI":
+        "only ateam's own stats, don't ask the CLIs",
+    "cập nhật ateam lên bản mới nhất":
+        "update ateam to the latest version",
+    "cài lại kể cả khi đã là bản mới nhất":
+        "reinstall even if already on the latest version",
+    "cho agent tạm nghỉ N phút, hoặc 'off'":
+        "let an agent cool down for N minutes, or 'off'",
+    "chạy hết các task đang chờ rồi thoát":
+        "run all queued tasks, then exit",
+    "Đã có: {p}":
+        "Already exists: {p}",
+    "Đã tạo cấu hình dự án: {p}":
+        "Created project config: {p}",
+    "Trưởng nhóm: {lead}   ·   isolation: {isolation}":
+        "Lead: {lead}   ·   isolation: {isolation}",
+    "     dự phòng khi hết hạn mức: {v}":
+        "     backup when out of quota: {v}",
+    "  {name:12} {v:>4} lượt  {v2:>5} phút  ~{v3}k token  lỗi {v4}  hết hạn mức {v5}":
+        "  {name:12} {v:>4} runs  {v2:>5} min  ~{v3}k tokens  failed {v4}  out of quota {v5}",
+    "không":
+        "no",
+    "Đang dùng bản mới nhất ({version}).":
+        "You are on the latest version ({version}).",
+    "(tắt)":
+        "(off)",
+    "(không)":
+        "(none)",
+    "(không lấy được version)":
+        "(could not get version)",
+    "   (effort hợp lệ: {v})":
+        "   (valid effort: {v})",
+    "     model gợi ý: {v}":
+        "     suggested models: {v}",
+    "     ✗ cờ không thấy trong `{v}`: {v2} — CLI có thể đã đổi cờ; sửa command trong cấu hình":
+        "     ✗ flags not found in `{v}`: {v2} — the CLI may have changed its flags; fix the command in the config",
+    " (sau bước {v})":
+        " (after step {v})",
+    " (chạy ngay)":
+        " (runs now)",
+    "\nKế hoạch:":
+        "\nPlan:",
+    "{a} đến {v}":
+        "{a} until {v}",
+    "Chạy kế hoạch này? [Y/n] ":
+        "Run this plan? [Y/n] ",
+    "Đã dừng. Task vẫn ở trạng thái nháp — mở `ateam` để chỉnh và chạy.":
+        "Stopped. Tasks stay as drafts — open `ateam` to edit and run them.",
+    "clipboard không có ảnh":
+        "clipboard has no image",
+    "cần cài wl-paste (Wayland) hoặc xclip (X11) để dán ảnh":
+        "install wl-paste (Wayland) or xclip (X11) to paste images",
+    "không tìm thấy osascript để đọc clipboard":
+        "osascript not found to read the clipboard",
+    "# Agent và workflow tuỳ chỉnh của ateam. Sửa trong app: /custom (hoặc nút ở màn hình /setup).\n# File này được giữ nguyên khi config.toml nâng cấp lên bản mới.\n":
+        "# ateam custom agents and workflows. Edit in the app: /custom (or the button on the /setup screen).\n# This file is kept when config.toml is upgraded to a new version.\n",
+    "Agent \"grok\" giờ chạy Grok Build CLI (lệnh grok); lựa chọn cũ của nó (qua OpenCode) chuyển sang agent mới \"opencode\".":
+        "Agent \"grok\" now runs the Grok Build CLI (command grok); its old choices (via OpenCode) moved to the new agent \"opencode\".",
+    "cài Antigravity rồi bật lệnh agy":
+        "install Antigravity, then enable the agy command",
+    "★ Trưởng nhóm":
+        "★ Lead",
+    "Code chính":
+        "Main coder",
+    "Test & tài liệu":
+        "Tests & docs",
+    "Nghiên cứu":
+        "Research",
+    "Tiết kiệm":
+        "Economy",
+    "Cân bằng":
+        "Balanced",
+    "Tối đa":
+        "Maximum",
+    "mặc định":
+        "default",
+    "(chưa có bước)":
+        "(no steps yet)",
+    "{n}  ({binary})  đang dùng: {v}":
+        "{n}  ({binary})  using: {v}",
+    "Đã nâng cấp cấu hình lên bản {CONFIG_VERSION} (thêm tính năng mới). Bản cũ sao lưu ở {bak}":
+        "Config upgraded to version {CONFIG_VERSION} (new features). The old one is backed up at {bak}",
+    "  danh sách thật: {v}  (làm mới: /models {n} làm mới)":
+        "  real list: {v}  (refresh: /models {n} refresh)",
+    "(để CLI tự chọn)":
+        "(let the CLI choose)",
+    "(không có)":
+        "(none)",
+    "Bước {i}":
+        "Step {i}",
+    "  (file nhị phân — không hiện nội dung; nhấn o để mở bằng VS Code)":
+        "  (binary file — content not shown; press o to open in VS Code)",
+    "chỉ đổi tên, nội dung giữ nguyên":
+        "renamed only, content unchanged",
+    "file rỗng":
+        "empty file",
+    "file rỗng bị xoá":
+        "empty file deleted",
+    "  … còn nữa — file quá dài, nhấn o để xem đủ bằng VS Code":
+        "  … more — file too long, press o to see it all in VS Code",
+    "chỉ đổi quyền file":
+        "file mode changed only",
+    "lỗi không rõ":
+        "unknown error",
+    "không phải git repo":
+        "not a git repo",
+    "Đã bỏ thay đổi của {v} file":
+        "Discarded changes in {v} file(s)",
+    " (bỏ qua hook)":
+        " (hooks skipped)",
+    "(chưa có commit)":
+        "(no commits yet)",
+    "{v} đã stage · {v2} chưa stage":
+        "{v} staged · {v2} unstaged",
+    "sạch":
+        "clean",
+    "đang {state}":
+        "{state} in progress",
+    "\n… (diff đã được cắt bớt)":
+        "\n… (diff truncated)",
+    "Thay đổi chưa stage":
+        "Unstaged changes",
+    "Đã tạo git repo":
+        "Created a git repo",
+    "Không có file nào để stage":
+        "No files to stage",
+    "Đã stage {v} file":
+        "Staged {v} file(s)",
+    "Đã stage mọi thay đổi":
+        "Staged all changes",
+    "Không có file nào đã stage":
+        "No staged files",
+    "Đã bỏ stage {v} file":
+        "Unstaged {v} file(s)",
+    "Không có thay đổi chưa stage nào để bỏ":
+        "No unstaged changes to discard",
+    "Chưa có nội dung commit":
+        "Commit message is empty",
+    "Còn {v} file xung đột — sửa xong rồi stage trước khi commit":
+        "{v} file(s) still in conflict — fix them and stage before committing",
+    " — nếu do git hook chặn: tick 'Bỏ qua hook' hoặc /commit --no-verify <message>":
+        " — if a git hook blocked it: tick 'Skip hooks' or use /commit --no-verify <message>",
+    "Đã sửa commit trước ({v}){skipped}":
+        "Amended the last commit ({v}){skipped}",
+    "Đã commit {v}{skipped}":
+        "Committed {v}{skipped}",
+    "Đã chuyển sang {name}":
+        "Switched to {name}",
+    "Tên nhánh không hợp lệ: '{name}'":
+        "Invalid branch name: '{name}'",
+    "Đã tạo nhánh {name}":
+        "Created branch {name}",
+    "Tên nhánh không hợp lệ: '{new}'":
+        "Invalid branch name: '{new}'",
+    "Đã đổi tên {old} → {new}":
+        "Renamed {old} → {new}",
+    "Đã xoá nhánh {name}":
+        "Deleted branch {name}",
+    "Nhánh {name} còn commit chưa merge — xoá hẳn (mất các commit đó) bằng nút 'Xoá hẳn'":
+        "Branch {name} has unmerged commits — force delete (losing those commits) with the 'Force delete' button",
+    "Merge {name} có {n} file xung đột — sửa file rồi stage và commit, hoặc 'Huỷ merge'":
+        "Merging {name} left {n} conflicting file(s) — fix them, stage and commit, or 'Abort merge'",
+    "Không có merge/rebase nào đang dở":
+        "No merge/rebase in progress",
+    "Đã huỷ {state}":
+        "Aborted {state}",
+    "Repo chưa có remote nào (git remote add origin <url>)":
+        "This repo has no remote yet (git remote add origin <url>)",
+    "Đã fetch mọi remote":
+        "Fetched all remotes",
+    "Nhánh {v} chưa có upstream — Push trước để tạo nhánh trên remote":
+        "Branch {v} has no upstream — Push first to create it on the remote",
+    "Pull bị xung đột — sửa file rồi stage và commit, hoặc 'Huỷ merge'":
+        "Pull hit conflicts — fix the files, stage and commit, or 'Abort merge'",
+    "Đang ở detached HEAD — tạo nhánh trước khi push":
+        "Detached HEAD — create a branch before pushing",
+    "Remote có commit mới hơn — Pull trước rồi push lại":
+        "The remote has newer commits — Pull first, then push again",
+    "Không có thay đổi nào để stash":
+        "No changes to stash",
+    "Đã cất thay đổi vào stash":
+        "Stashed your changes",
+    "Lấy {ref} bị xung đột — sửa file rồi stage; stash vẫn được giữ":
+        "Applying {ref} hit conflicts — fix the files and stage; the stash is kept",
+    "Đã xoá {ref}":
+        "Dropped {ref}",
+    "Đã tạo commit đảo ngược {v}":
+        "Created a revert commit for {v}",
+    "Revert bị xung đột — sửa file rồi stage và commit, hoặc 'Huỷ revert'":
+        "Revert hit conflicts — fix the files, stage and commit, or 'Abort revert'",
+    "Không có commit trước để quay về":
+        "No earlier commit to go back to",
+    "Commit cuối đã push lên remote — dùng Revert thay vì bỏ commit":
+        "The last commit is already pushed — use Revert instead of undoing it",
+    "Đã bỏ commit cuối, thay đổi vẫn giữ (đã stage)":
+        "Undid the last commit; its changes are kept (staged)",
+    "✓ đồng bộ":
+        "✓ in sync",
+    "{v} xung đột":
+        "{v} conflicts",
+    "Chưa cài git":
+        "git is not installed",
+    "git {v} quá {v2} giây — đã dừng":
+        "git {v} took more than {v2} seconds — stopped",
+    "Thay đổi đã stage":
+        "Staged changes",
+    "Chưa stage file nào — bấm Space ở file cần commit, hoặc 'a' để stage tất cả":
+        "Nothing staged — press Space on a file to stage it, or 'a' to stage everything",
+    "Không có thay đổi nào để commit":
+        "No changes to commit",
+    "Đã tạo và chuyển sang nhánh {name}":
+        "Created and switched to branch {name}",
+    "Đã cập nhật, không có gì mới":
+        "Already up to date",
+    "Đã merge {name} vào nhánh hiện tại":
+        "Merged {name} into the current branch",
+    "Đã pull":
+        "Pulled",
+    "Đã push {branch}":
+        "Pushed {branch}",
+    "Đã lấy lại {ref}":
+        "Restored {ref}",
+    "Đã tạo nhánh {short} theo dõi {name}":
+        "Created branch {short} tracking {name}",
+    " (vẫn giữ trong stash)":
+        " (still kept in the stash)",
+    "Đã chuyển sang {short}":
+        "Switched to {short}",
+    "{m} phút":
+        "{m} min",
+    "{v} ngày":
+        "{v} days",
+    "{v} giờ":
+        "{v} hours",
+    "{v} tuần":
+        "{v} weeks",
+    "tuần":
+        "week",
+    "Gói: {v}":
+        "Plan: {v}",
+    "Hạn mức chính":
+        "Primary limit",
+    "Hạn mức phụ":
+        "Secondary limit",
+    "{label} ({v}): đã dùng {used:g}%":
+        "{label} ({v}): {used:g}% used",
+    "⚠ Đang chạm hạn mức: {v}":
+        "⚠ Hitting the limit: {v}",
+    " · hồi lúc ":
+        " · resets at ",
+    "không giới hạn":
+        "unlimited",
+    " — lần chạy codex gần nhất)":
+        " — from the latest codex run)",
+    "(số liệu lúc ":
+        "(data as of ",
+    " · ảnh: ":
+        " · images: ",
+    "Đã trả lời — {lead} đang nghĩ câu tiếp theo…":
+        "Answered — {lead} is thinking of the next question…",
+    "{lead} đang chốt yêu cầu rồi lập kế hoạch cho mục tiêu #{id}…":
+        "{lead} is finalizing the requirements, then planning goal #{id}…",
+    "{lead} đang hỏi tiếp…":
+        "{lead} is asking the next question…",
+    "Đã bỏ mục tiêu #{id}":
+        "Dropped goal #{id}",
+    "{agent}: tìm thấy {v} model":
+        "{agent}: found {v} models",
+    "Đã sửa nội dung task #{tid}":
+        "Updated the content of task #{tid}",
+    "Đã xếp lại task #{tid}":
+        "Re-queued task #{tid}",
+    "Task #{tid} đã kết thúc ({status})":
+        "Task #{tid} has already finished ({status})",
+    "Trưởng nhóm đang review mục tiêu #{gid}…":
+        "The lead is reviewing goal #{gid}…",
+    "{agent} tạm nghỉ {minutes} phút":
+        "{agent} cooling down for {minutes} min",
+    "Đã merge #{tid}":
+        "Merged #{tid}",
+    "worktree (mỗi task 1 nhánh riêng)":
+        "worktree (one branch per task)",
+    "shared (chung thư mục)":
+        "shared (same folder)",
+    "Sẵn sàng. Trưởng nhóm: {lead}. Chế độ làm việc: {mode}.":
+        "Ready. Lead: {lead}. Work mode: {mode}.",
+    "🎯 Mục tiêu #{gid}: {text}":
+        "🎯 Goal #{gid}: {text}",
+    "✗ Không còn agent nào lập kế hoạch/review được ({label}).":
+        "✗ No agent left that can plan/review ({label}).",
+    "🔎 Mục tiêu #{gid} (hỏi đáp trước): {text}":
+        "🔎 Goal #{gid} (Q&A first): {text}",
+    "Không có mục tiêu nào đang hỏi đáp":
+        "No goal is in a Q&A session",
+    "Trưởng nhóm đang nghĩ câu hỏi — đợi chút":
+        "The lead is thinking of a question — just a moment",
+    "Chưa có câu hỏi nào để trả lời — bấm ↻ Hỏi tiếp":
+        "No question to answer yet — press ↻ Ask again",
+    "Câu trả lời trống":
+        "The answer is empty",
+    "Trưởng nhóm đang nghĩ — đợi chút rồi bấm lại":
+        "The lead is thinking — wait a moment, then press again",
+    "Trưởng nhóm đang nghĩ — đợi chút":
+        "The lead is thinking — just a moment",
+    "Đang chờ bạn trả lời câu hỏi":
+        "Waiting for your answer",
+    "✗ Bỏ mục tiêu #{id} (đang hỏi đáp)":
+        "✗ Dropped goal #{id} (during Q&A)",
+    "Không có workflow '{name}'. Có: {v}":
+        "No workflow '{name}'. Available: {v}",
+    "Workflow '{name}' chưa có bước nào":
+        "Workflow '{name}' has no steps yet",
+    "🎯 Mục tiêu #{gid} theo workflow '{name}': {text}":
+        "🎯 Goal #{gid} with workflow '{name}': {text}",
+    "Không có mục tiêu #{gid}":
+        "No goal #{gid}",
+    "Mục tiêu #{gid} chưa kết thúc — đợi xong (hoặc /review {gid}) rồi tiếp tục":
+        "Goal #{gid} hasn't finished — wait for it (or /review {gid}), then continue",
+    "Không có trưởng nhóm '{lead}' trong cấu hình":
+        "No lead '{lead}' in the config",
+    "Thiếu yêu cầu mới":
+        "The new request is missing",
+    "↪ Tiếp tục mục tiêu #{gid}: {text}":
+        "↪ Continuing goal #{gid}: {text}",
+    "Không hiểu '{ref}' — dùng m<số> cho mục tiêu, t<số> cho task":
+        "Can't parse '{ref}' — use m<number> for a goal, t<number> for a task",
+    "Không có task #{n}":
+        "No task #{n}",
+    "Không có task #{tid}":
+        "No task #{tid}",
+    "Agent '{agent}' không còn trong đội":
+        "Agent '{agent}' is no longer on the team",
+    "↪ Task #{nid} hỏi tiếp {agent} (sau #{tid}): {title}":
+        "↪ Task #{nid} follows up with {agent} (after #{tid}): {title}",
+    "✗ Đã bỏ kế hoạch #{gid} ({n} task nháp).":
+        "✗ Dropped plan #{gid} ({n} draft tasks).",
+    "🗑 Đã dọn {v} task, {v2} mục tiêu đã kết thúc khỏi bảng việc.":
+        "🗑 Cleared {v} task(s) and {v2} finished goal(s) from the board.",
+    "➕ Task #{tid} giao cho {agent}{extra}: {title}":
+        "➕ Task #{tid} assigned to {agent}{extra}: {title}",
+    "Không có agent '{agent}'":
+        "No agent '{agent}'",
+    "Task #{tid} đang chạy — /cancel trước rồi giao lại":
+        "Task #{tid} is running — /cancel it first, then reassign",
+    "Task #{tid} đang chạy — thay đổi sẽ áp dụng nếu /retry":
+        "Task #{tid} is running — the change applies on /retry",
+    "{agent}: CLI không có lệnh liệt kê model — dùng danh mục có sẵn":
+        "{agent}: the CLI has no command to list models — using the built-in catalog",
+    "{agent}: chưa cài lệnh '{v}'":
+        "{agent}: command '{v}' is not installed",
+    " ⚠ model đang chọn '{model}' không có trong danh sách — chọn lại: /model {agent}":
+        " ⚠ the selected model '{model}' is not in the list — pick again: /model {agent}",
+    "Task #{tid} đang chạy":
+        "Task #{tid} is running",
+    "Task #{tid} đang {status}":
+        "Task #{tid} is {status}",
+    "↻ Chạy lại task #{tid}":
+        "↻ Re-running task #{tid}",
+    "Đang dừng task #{tid}…":
+        "Stopping task #{tid}…",
+    "Đã huỷ task #{tid}":
+        "Cancelled task #{tid}",
+    "Đang huỷ task #{tid} và xoá nhánh của nó…":
+        "Cancelling task #{tid} and deleting its branch…",
+    "📝 Ghi chú ({author}): {text}":
+        "📝 Note ({author}): {text}",
+    "Trưởng nhóm đang xử lý mục tiêu này":
+        "The lead is already working on this goal",
+    "⏸ {agent} hết hạn mức — tạm nghỉ đến {v}.":
+        "⏸ {agent} is out of quota — cooling down until {v}.",
+    "{agent} hoạt động lại":
+        "{agent} is active again",
+    "⏸ {agent} tạm nghỉ đến {v} (đặt tay).":
+        "⏸ {agent} cooling down until {v} (set manually).",
+    "kiểm tra: {cmd}":
+        "check: {cmd}",
+    "\n$ [kiểm tra] {cmd}\n":
+        "\n$ [check] {cmd}\n",
+    "\n(Lệnh kiểm tra quá {timeout}s)":
+        "\n(Check command exceeded {timeout}s)",
+    "Task #{tid} không có nhánh chờ merge ({status})":
+        "Task #{tid} has no branch waiting to merge ({status})",
+    "Merge #{tid} thất bại — xem log hệ thống":
+        "Merging #{tid} failed — see the system log",
+    "✓ Đã merge #{tid} ({agent}): {title}":
+        "✓ Merged #{tid} ({agent}): {title}",
+    "Task #{tid} không ở trạng thái chờ duyệt ({status})":
+        "Task #{tid} is not waiting for review ({status})",
+    "Đã giao làm lại #{tid} kèm góp ý":
+        "Sent #{tid} back for rework with your feedback",
+    "Đã huỷ #{tid}":
+        "Cancelled #{tid}",
+    "Thư mục này không phải git repo (hoặc chưa có commit nào) — không xem được diff.":
+        "This folder is not a git repo (or has no commits yet) — can't show a diff.",
+    "Không có thay đổi nào chưa commit.":
+        "No uncommitted changes.",
+    "Thay đổi chưa commit của thư mục (chế độ shared, không tách theo task #{tid})":
+        "Uncommitted changes in the folder (shared mode, not split per task #{tid})",
+    "Thư mục này không phải git repo — không xem được diff.":
+        "This folder is not a git repo — can't show a diff.",
+    "(Chế độ shared không tách được diff theo từng task — đây là mọi thay đổi chưa commit của thư mục)\n":
+        "(Shared mode can't split the diff per task — these are all uncommitted changes in the folder)\n",
+    "🧠 {lead} đang lập kế hoạch cho mục tiêu #{gid}…":
+        "🧠 {lead} is planning goal #{gid}…",
+    "Trưởng nhóm không trả về câu hỏi hay đặc tả hợp lệ (xem .ateam/logs/lead.log) — bấm ↻ Hỏi tiếp để thử lại":
+        "The lead returned neither a valid question nor a spec (see .ateam/logs/lead.log) — press ↻ Ask again to retry",
+    "📝 Đã chốt yêu cầu cho mục tiêu #{gid} sau {v} câu hỏi:":
+        "📝 Requirements for goal #{gid} agreed after {v} question(s):",
+    "Đã bỏ khi đang hỏi đáp":
+        "Dropped during Q&A",
+    "📋 {v} bước ở trạng thái NHÁP — gõ /go {gid} để chạy.":
+        "📋 {v} step(s) as DRAFT — type /go {gid} to run.",
+    "📋 {v} bước — bắt đầu chạy.":
+        "📋 {v} step(s) — starting.",
+    "Không có mục tiêu #{n}":
+        "No goal #{n}",
+    "Task #{tid} đang chờ duyệt — merge (Ctrl+Y) hoặc /reject trước":
+        "Task #{tid} is waiting for review — merge it (Ctrl+Y) or /reject it first",
+    "Task #{tid} chưa xong — đợi chạy xong rồi tiếp tục":
+        "Task #{tid} hasn't finished — wait for it, then continue",
+    "▶ Đã duyệt {n} task.":
+        "▶ Approved {n} task(s).",
+    "Người dùng bỏ kế hoạch":
+        "Plan dropped by the user",
+    "{agent}: không chạy được {v}: {e}":
+        "{agent}: could not run {v}: {e}",
+    "hết thời gian":
+        "timed out",
+    "(hết {v} giây chờ)":
+        "(timed out after {v} s)",
+    "Đang thu gọn ngữ cảnh rồi, chờ chút…":
+        "Already compacting the context, one moment…",
+    "Chưa có ghi chú hay mục tiêu nào để thu gọn.":
+        "No notes or goals to compact yet.",
+    "🗜 {lead} đang thu gọn ngữ cảnh…":
+        "🗜 {lead} is compacting the context…",
+    "🗜 Đã thu gọn ngữ cảnh: ~{before} → {v} ký tự. Bản tóm tắt:":
+        "🗜 Context compacted: ~{before} → {v} characters. Summary:",
+    "Đã thu gọn ngữ cảnh (~{before} → {v} ký tự)":
+        "Context compacted (~{before} → {v} characters)",
+    "Không có thay đổi nào để viết commit message":
+        "No changes to write a commit message for",
+    "Viết commit message":
+        "Write commit message",
+    "Trưởng nhóm không trả về commit message (xem .ateam/logs/lead.log)":
+        "The lead returned no commit message (see .ateam/logs/lead.log)",
+    "▶ {agent} đã hồi hạn mức.":
+        "▶ {agent}'s quota is back.",
+    "▶ Bỏ tạm nghỉ cho {agent}.":
+        "▶ Cooldown cleared for {agent}.",
+    "⚠ #{id} muốn giao việc nhưng đã chạm giới hạn {max_delegation_depth} tầng.":
+        "⚠ #{id} wants to delegate but hit the {max_delegation_depth}-level limit.",
+    "🤝 {agent} giao task #{nid} cho {to}: {title}":
+        "🤝 {agent} delegated task #{nid} to {to}: {title}",
+    "🔍 {lead} đang review mục tiêu #{gid} (vòng {round})…":
+        "🔍 {lead} is reviewing goal #{gid} (round {round})…",
+    "git worktree add thất bại: {v}":
+        "git worktree add failed: {v}",
+    "👀 #{id} chờ duyệt merge — /diff {id} để xem, /merge {id} hoặc /reject {id}":
+        "👀 #{id} awaits merge review — /diff {id} to view, /merge {id} or /reject {id}",
+    "↩ Từ chối #{tid}, giao làm lại kèm góp ý: {feedback}":
+        "↩ Rejected #{tid}, sent back for rework with feedback: {feedback}",
+    "✗ Từ chối và huỷ #{tid}":
+        "✗ Rejected and cancelled #{tid}",
+    "Không lấy được diff của task #{tid}: {v}":
+        "Could not get the diff of task #{tid}: {v}",
+    "Task #{tid} không thay đổi file nào.":
+        "Task #{tid} changed no files.",
+    "Không có thay đổi nào.":
+        "No changes.",
+    "Phiên trước bị dừng giữa chừng — /retry để chạy lại":
+        "The previous session stopped midway — /retry to run it again",
+    "⚠ isolation=worktree cần chạy ở thư mục gốc của git repo đã có commit — chuyển sang chế độ shared.":
+        "⚠ isolation=worktree must run at the root of a git repo with at least one commit — switching to shared mode.",
+    "✗ Chưa cài '{binary}' ({name}).":
+        "✗ '{binary}' is not installed ({name}).",
+    "⏸ {name} đang hết hạn mức đến {v} — thử người khác.":
+        "⏸ {name} is out of quota until {v} — trying someone else.",
+    "↪ {name} làm thay trưởng nhóm cho: {label}":
+        "↪ {name} stands in for the lead on: {label}",
+    "✗ {label}: {name} thoát với mã {rc}.":
+        "✗ {label}: {name} exited with code {rc}.",
+    "Lập kế hoạch mục tiêu #{gid}":
+        "Plan goal #{gid}",
+    "✗ Không đọc được kế hoạch cho mục tiêu #{gid} (xem .ateam/logs/lead.log). Bạn vẫn có thể giao tay bằng /task.":
+        "✗ Could not read the plan for goal #{gid} (see .ateam/logs/lead.log). You can still assign work by hand with /task.",
+    "📋 Kế hoạch #{gid}: {v} task ở trạng thái NHÁP. Duyệt bằng /go {gid} (trong TUI: F2 hoặc Ctrl+G); sửa trước bằng /edit, /assign, /cancel.":
+        "📋 Plan #{gid}: {v} task(s) as DRAFT. Approve with /go {gid} (in the TUI: F2 or Ctrl+G); edit first with /edit, /assign, /cancel.",
+    "📋 Kế hoạch #{gid}: {v} task — bắt đầu chạy.":
+        "📋 Plan #{gid}: {v} task(s) — starting.",
+    "Hỏi đáp mục tiêu #{gid}":
+        "Q&A for goal #{gid}",
+    "❓ #{gid} câu {v}: {question}":
+        "❓ #{gid} question {v}: {question}",
+    "✗ Hỏi đáp #{gid}: {v}":
+        "✗ Q&A #{gid}: {v}",
+    "⚠ Agent '{agent}' không có trong đội — giao cho {lead}.":
+        "⚠ Agent '{agent}' is not on the team — assigning to {lead}.",
+    "theo agent":
+        "per agent",
+    "mã thoát {code}":
+        "exit code {code}",
+    "không thấy model nào":
+        "no models found",
+    "CLI này không có lệnh xem usage (đặt usage_command trong cấu hình nếu có)":
+        "This CLI has no usage command (set usage_command in the config if it has one)",
+    "Chưa cài lệnh '{v}'":
+        "Command '{v}' is not installed",
+    "… (còn {v} dòng — chạy `{cmd}` để xem đủ)":
+        "… ({v} more lines — run `{cmd}` to see everything)",
+    "(mã thoát {code})":
+        "(exit code {code})",
+    "(không in gì)":
+        "(no output)",
+    "Thu gọn ngữ cảnh":
+        "Compact context",
+    "✗ Không thu gọn được: trưởng nhóm không trả về dòng SUMMARY: (xem .ateam/logs/lead.log). Ghi chú cũ vẫn giữ nguyên.":
+        "✗ Could not compact: the lead returned no SUMMARY: line (see .ateam/logs/lead.log). The old notes are kept.",
+    "Không thu gọn được — ghi chú cũ vẫn giữ nguyên":
+        "Could not compact — the old notes are kept",
+    "⛔ Task #{id} bị chặn vì #{v} không xong.":
+        "⛔ Task #{id} is blocked because #{v} did not finish.",
+    "↪ #{id} chuyển từ {agent} sang {fb} vì {agent} hết hạn mức (đến {v}).":
+        "↪ #{id} moved from {agent} to {fb} because {agent} is out of quota (until {v}).",
+    "✗ Task #{id}: chưa cài '{binary}'.":
+        "✗ Task #{id}: '{binary}' is not installed.",
+    "🏁 Mục tiêu #{id} kết thúc ({v}).":
+        "🏁 Goal #{id} ended ({v}).",
+    "🔧 #{tid} test fail (mã {trc}) — {fixer} sửa lần {attempts}/{max_fix_attempts}":
+        "🔧 #{tid} tests failed (code {trc}) — {fixer} fixing, attempt {attempts}/{max_fix_attempts}",
+    "\n(Đã sửa để qua kiểm tra: {v})":
+        "\n(Fixed to pass the check: {v})",
+    "Lỗi nội bộ: {e!r}":
+        "Internal error: {e!r}",
+    "Bị huỷ":
+        "Cancelled",
+    "Quá thời gian ({timeout}s)":
+        "Timed out ({timeout}s)",
+    "Thoát với mã {rc}":
+        "Exited with code {rc}",
+    "{binary} không nhận một cờ trong lệnh (CLI có thể đã đổi phiên bản) — chạy `ateam doctor` rồi sửa command trong cấu hình":
+        "{binary} rejected a flag in the command (the CLI may have changed version) — run `ateam doctor`, then fix the command in the config",
+    "Agent không in ra gì (kiểm tra đăng nhập / quyền / pty)":
+        "The agent printed nothing (check login / permissions / pty)",
+    "{name} bị chặn chạy lệnh (thiếu quyền) — bật Toàn quyền cho agent này ở /setup (agent có sẵn) hoặc /custom (agent tuỳ chỉnh), rồi /retry":
+        "{name} was blocked from running commands (missing permission) — enable Full access for this agent in /setup (built-in agent) or /custom (custom agent), then /retry",
+    "{name} hết hạn mức":
+        "{name} is out of quota",
+    "⚠ #{id} giao việc cho '{to}' — không có trong đội, bỏ qua.":
+        "⚠ #{id} delegated to '{to}' — not on the team, skipped.",
+    "Review mục tiêu #{gid} vòng {round}":
+        "Review goal #{gid} round {round}",
+    "⚠ Không đọc được review của mục tiêu #{gid}.":
+        "⚠ Could not read the review of goal #{gid}.",
+    "🏁 Mục tiêu #{gid} {v}: {summary}":
+        "🏁 Goal #{gid} {v}: {summary}",
+    "⚠ Merge #{id} lỗi: {v}":
+        "⚠ Merging #{id} failed: {v}",
+    "Không merge được nhánh {branch} (xung đột hoặc thư mục chính đang có thay đổi) — tự merge tay, /merge {id} để thử lại, hoặc /retry":
+        "Could not merge branch {branch} (conflicts, or the main folder has changes) — merge it by hand, /merge {id} to retry, or /retry",
+    "Bị từ chối khi duyệt":
+        "Rejected during review",
+    "Bị dừng khi đang lập kế hoạch":
+        "Stopped while planning",
+    "✗ Không tìm thấy trưởng nhóm '{name}' trong cấu hình.":
+        "✗ Lead '{name}' not found in the config.",
+    "Trưởng nhóm không trả về kế hoạch JSON hợp lệ":
+        "The lead did not return a valid JSON plan",
+    "(chưa có)":
+        "(none yet)",
+    "mặc định của CLI":
+        "CLI default",
+    "Không chạy được: {e}":
+        "Could not run: {e}",
+    "Task phụ thuộc lỗi/huỷ: {v}":
+        "Dependency failed/cancelled: {v}",
+    "Chưa cài lệnh '{binary}' (kiểm tra bằng `ateam doctor`)":
+        "Command '{binary}' is not installed (check with `ateam doctor`)",
+    "Lỗi bộ lập lịch: {e!r}":
+        "Scheduler error: {e!r}",
+    " — xem log [test]":
+        " — see the [test] log",
+    "{fixer} hết hạn mức khi đang sửa lỗi test — /retry sau":
+        "{fixer} ran out of quota while fixing the tests — /retry later",
+    "↪ #{tid} xếp hàng lại":
+        "↪ #{tid} re-queued",
+    "Không đọc được kết quả review (xem .ateam/logs/lead.log)":
+        "Could not read the review result (see .ateam/logs/lead.log)",
+    "🏁 Mục tiêu #{gid} đã hết {max_rounds} vòng. Đánh giá: {summary}":
+        "🏁 Goal #{gid} used up all {max_rounds} rounds. Assessment: {summary}",
+    "Chưa có phiên codex nào ghi hạn mức — chạy 1 task codex trước.":
+        "No codex session has recorded limits yet — run a codex task first.",
+    "\n(không có thay đổi file nào — bỏ qua kiểm tra)\n":
+        "\n(no files changed — skipping the check)\n",
+    "✅ #{tid} qua kiểm tra `{command}`":
+        "✅ #{tid} passed the check `{command}`",
+    "Kiểm tra `{command}` vẫn fail (mã {trc})":
+        "Check `{command}` still fails (code {trc})",
+    "sửa lỗi test #{tid} ({attempts}/{max_fix_attempts})":
+        "fix failing tests #{tid} ({attempts}/{max_fix_attempts})",
+    ", chuyển sang {new_agent}":
+        ", switching to {new_agent}",
+    ", chờ {agent} hồi hạn mức":
+        ", waiting for {agent}'s quota",
+    "📋 {v} task bổ sung đang ở trạng thái NHÁP — /go {gid} để chạy.":
+        "📋 {v} follow-up task(s) as DRAFT — /go {gid} to run.",
+    "còn task lỗi":
+        "some tasks failed",
+    " sau {attempts} lần sửa":
+        " after {attempts} fix attempt(s)",
+    "HOÀN THÀNH":
+        "DONE",
+    "kết thúc":
+        "ended",
+    "Phiên trước dừng khi trưởng nhóm đang nghĩ câu hỏi — bấm ↻ Hỏi tiếp":
+        "The previous session stopped while the lead was thinking of a question — press ↻ Ask again",
+    "chạy gần đây":
+        "recently run",
+    "\n[thoát với mã {rc}]\n":
+        "\n[exited with code {rc}]\n",
+    "✗ Không chạy được: {e}":
+        "✗ Could not run: {e}",
+    "Màu của theme":
+        "Theme color",
+    "Xanh dương":
+        "Blue",
+    "Tím":
+        "Purple",
+    "Xanh lá":
+        "Green",
+    "Cam":
+        "Orange",
+    "Hồng":
+        "Pink",
+    "Vàng":
+        "Yellow",
+    "Xanh ngọc":
+        "Cyan",
+    "Đỏ":
+        "Red",
+    "Gõ một câu bình thường  → giao MỤC TIÊU cho trưởng nhóm lập kế hoạch & chia việc\n                          (hoặc chạy theo workflow mặc định nếu đã chọn trong /setup).\n\nGiao việc:\n  /task <agent> <nội dung>          giao tay (vd: /task codex viết test cho utils.py)\n                                    agent nhận đúng nguyên văn bạn gõ (gõ /task rồi chọn agent)\n  /task <agent>@<effort> <nội dung> giao kèm effort riêng (vd: /task codex@xhigh tìm lỗi deadlock)\n  /task <agent>:<model>@<effort> …  giao kèm cả model riêng\n  /go [mục tiêu]                    duyệt kế hoạch nháp và chạy (F2 hoặc Ctrl+G, hoặc nút trong khung\n                                    \"Duyệt kế hoạch\" hiện phía trên ô nhập khi có kế hoạch chờ)\n  /drop [mục tiêu]                  bỏ kế hoạch nháp (huỷ mọi task nháp của nó)\n  /assign <task> <agent>            đổi người làm 1 task\n  /edit <task> <nội dung>           sửa nội dung task (khi chưa chạy)\n  /set <task> effort|model <giá trị>\n                                    đổi effort/model riêng cho 1 task ('-' = theo agent)\n  /retry <task>   /cancel <task>    chạy lại (F5 hoặc Ctrl+R) / huỷ (Ctrl+K) task\n  /review <mục tiêu>                bắt trưởng nhóm review ngay\n  /continue <m12|t40> <yêu cầu>     tiếp tục mục tiêu (m) hoặc thread /task (t) đã xong: trưởng nhóm\n                                    lập task bổ sung dựa trên việc đã làm / agent nhận kèm các lượt trước.\n                                    F6 (Ctrl+O) với task đang chọn, hoặc bấm \"↪ Tiếp tục\" ở khung mục tiêu\n  /note <nội dung>                  ghi chú chung cho cả đội\n\nLệnh, file, ảnh trong ô nhập:\n  gõ / ở đầu ô nhập                 hiện danh sách lệnh kèm mô tả, gõ tiếp để lọc\n  gõ @ trong ô nhập                 hiện danh sách file/thư mục của dự án, gõ tiếp để lọc\n                                    ↑↓ chọn · Tab/Enter chèn · Esc đóng (chọn thư mục để đi vào trong)\n                                    khi chạy, @đường-dẫn được đổi sang cú pháp của từng agent (xem /agents)\n  Ctrl+V trong ô nhập               dán ảnh từ clipboard (lưu vào .ateam/images, chèn @ảnh);\n                                    kéo-thả file ảnh vào terminal cũng thành @ảnh. Mỗi agent nhận ảnh\n                                    theo cách CLI đó hỗ trợ (codex: --image, opencode: -f)\n\nKiểm tra & duyệt code:\n  /verify <lệnh>                    lệnh kiểm tra sau mỗi task cho dự án này (vd: /verify npm test)\n  /verify off   /verify             tắt / xem lệnh đang dùng\n  /diff <task>                      xem thay đổi của task (Ctrl+D với task đang chọn)\n  /merge <task>                     duyệt và merge task đang chờ (Ctrl+Y)\n  /reject <task> [góp ý]            từ chối; có góp ý thì giao làm lại kèm góp ý đó\n\nHạn mức:\n  /usage                            thống kê lượt chạy, thời gian, token ước tính theo agent, rồi hỏi\n                                    hạn mức thật từ từng CLI (claude/agy: /usage, opencode stats, codex)\n  /update                           kiểm tra và cập nhật ateam lên bản mới nhất (mở lại app sau đó)\n  /cooldown <agent> <phút>          cho agent tạm nghỉ (vd khi bạn biết nó sắp hết hạn mức)\n  /cooldown <agent> off             cho agent làm việc lại ngay\n\nModel & effort của từng agent (được lưu lại cho lần sau):\n  /model <agent> <tên model>        vd: /model claude opus   ·   /model grok grok-4.7-build-fast\n  /effort <agent> <mức>             vd: /effort codex xhigh  ·   /effort claude high\n  /model <agent>   /effort <agent>  mở bảng chọn từ danh sách agent hỗ trợ (hoặc bấm vào ô agent ở tab Đội)\n  /model <agent> -                  quay về mặc định trong config (tương tự /effort <agent> -)\n  /models [agent]                   xem model & effort mỗi agent hỗ trợ\n  /models <agent> làm mới           hỏi CLI danh sách model thật (opencode models, agy models)\n  /agents                           xem model, effort, mức effort hợp lệ của từng agent\n  /setup                            mở lại màn hình thiết lập: bật/tắt agent, trưởng nhóm, model, effort\n  /theme [tên] [màu nhấn]           chọn theme màu (xem trước trực tiếp), vd /theme nord tím\n  /lang en|vi                       đổi ngôn ngữ giao diện (app tự mở lại)\n\nAgent & workflow tuỳ chỉnh:\n  /custom                           thêm/sửa/xoá agent riêng (CLI bất kỳ) và workflow (chuỗi bước dựng sẵn)\n  /flow <tên> <mục tiêu>            chạy mục tiêu theo workflow — các bước thành task ngay, không cần lập kế hoạch\n  /flow                             xem các workflow đang có\n  /goal <mục tiêu>                  trưởng nhóm lập kế hoạch, kể cả khi đã đặt workflow mặc định\n  /grill <mục tiêu>                 \"grill me\": trưởng nhóm hỏi bạn từng câu (phạm vi, luồng, dữ liệu, ca\n                                    biên, tiêu chí xong…) kèm phương án gợi ý, tới khi đủ rõ thì chốt đặc tả\n                                    rồi lập kế hoạch. Trả lời ở ô nhập; gõ số / bấm để chọn phương án\n  /grill xong   /grill bỏ           chốt luôn với những gì đã trả lời / bỏ mục tiêu đang hỏi đáp\n\nKhác:\n  /pause  /resume                   tạm dừng / tiếp tục nhận task mới\n  /clear                            dọn task & mục tiêu đã kết thúc khỏi bảng (nút 🗑 trên bảng)\n  /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn\n  /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)\n  /team  /board  /term  /git        chuyển tab Đội / Bảng việc / Terminal / Git (Ctrl+T xoay vòng)\n\nLệnh terminal (tab 💻 Terminal):\n  !<lệnh>                           chạy lệnh trong thư mục dự án, vd !yarn dev, !make test\n  !                                 gợi ý script package.json, target Makefile, lệnh gần đây (Enter chạy)\n  /sh <lệnh>                        như !<lệnh>\n  /stop [số]                        dừng lệnh đang chọn (nút ■ Dừng / ↻ Chạy lại / ✗ Xoá trong tab)\n\nGit (tab 🌿 Git — Ctrl+T xoay tới, hoặc /git):\n  /git                              mở tab Git: file thay đổi, commit, nhánh, lịch sử, stash, pull/push\n                                    trong danh sách file: Space stage/bỏ stage · a stage tất cả · u bỏ stage\n                                    tất cả · x bỏ thay đổi · Enter/d xem diff · c tới ô commit message\n                                    trong lịch sử: Enter/d xem commit · r revert\n  /git <lệnh>                       chạy git <lệnh> bất kỳ ở tab Terminal, vd /git tag v1.0,\n                                    /git cherry-pick abc123, /git remote add origin <url>\n  /commit <message>                 commit file đã stage (chưa stage gì thì commit mọi thay đổi)\n  /commit --no-verify <message>     commit bỏ qua git hook (pre-commit, commit-msg); /commit -n cũng được.\n                                    Trong tab Git: ô \"Bỏ qua hook (--no-verify)\" dưới nút Commit\n  /commit                           trưởng nhóm đọc diff và viết commit message (nút ✨ trong tab Git)\n  /push [-f]   /pull   /fetch       đồng bộ với remote (-f = --force-with-lease)\n  /branch [tên]   /checkout <nhánh> tạo & chuyển nhánh / chuyển nhánh (trống: mở danh sách nhánh)\n  /stash [message]   /stash pop     cất tạm / lấy lại thay đổi chưa commit (/stash list: danh sách)\n                                    đổi nhánh, pull, stash bị chặn khi agent đang chạy task\n\nTrợ giúp & thoát:\n  /help                             trợ giúp này (F1)\n  F2 = Ctrl+G, F5 = Ctrl+R, F6 = Ctrl+O   dùng F2/F5/F6 khi terminal chặn phím Ctrl (vd terminal trong VS Code/\n                                    Cursor trên Mac: Ctrl+G là Go to Line, Ctrl+R là Run Recent).\n                                    MacBook: giữ fn khi bấm F2/F5\n  /quit                             thoát (Ctrl+Q) — agent đang chạy sẽ bị dừng":
+        "Type a plain sentence    → give the lead a GOAL to plan & split into tasks\n                          (or run it with the default workflow, if you picked one in /setup).\n\nAssigning work:\n  /task <agent> <content>           assign by hand (e.g. /task codex write tests for utils.py)\n                                    the agent gets exactly what you typed (type /task, then pick an agent)\n  /task <agent>@<effort> <content>  assign with its own effort (e.g. /task codex@xhigh find the deadlock)\n  /task <agent>:<model>@<effort> …  assign with its own model too\n  /go [goal]                        approve the draft plan and run it (F2 or Ctrl+G, or the button in\n                                    the \"Review plan\" box above the input when a plan is waiting)\n  /drop [goal]                      drop the draft plan (cancels all its draft tasks)\n  /assign <task> <agent>            change who does a task\n  /edit <task> <content>            edit a task's content (before it runs)\n  /set <task> effort|model <value>\n                                    set a task's own effort/model ('-' = follow the agent)\n  /retry <task>   /cancel <task>    re-run (F5 or Ctrl+R) / cancel (Ctrl+K) a task\n  /review <goal>                    make the lead review now\n  /continue <m12|t40> <request>     continue a finished goal (m) or /task thread (t): the lead adds\n                                    tasks based on the work done / the agent gets the earlier turns.\n                                    F6 (Ctrl+O) on the selected task, or press \"↪ Continue\" in the goals box\n  /note <content>                   shared note for the whole team\n\nCommands, files, images in the input:\n  type / at the start               show the command list with descriptions, keep typing to filter\n  type @ in the input               show the project's files/folders, keep typing to filter\n                                    ↑↓ select · Tab/Enter insert · Esc close (pick a folder to go inside)\n                                    when run, @path becomes each agent's own syntax (see /agents)\n  Ctrl+V in the input               paste an image from the clipboard (saved to .ateam/images, inserts @image);\n                                    dragging an image file into the terminal also becomes @image. Each agent\n                                    gets images the way its CLI supports (codex: --image, opencode: -f)\n\nChecking & reviewing code:\n  /verify <command>                 check command run after each task in this project (e.g. /verify npm test)\n  /verify off   /verify             disable / show the current command\n  /diff <task>                      show a task's changes (Ctrl+D on the selected task)\n  /merge <task>                     approve and merge a waiting task (Ctrl+Y)\n  /reject <task> [feedback]         reject; with feedback, the task is redone with it\n\nUsage limits:\n  /usage                            runs, time and estimated tokens per agent, then asks each CLI\n                                    for its real limits (claude/agy: /usage, opencode stats, codex)\n  /update                           check for and install the latest ateam (reopen the app afterwards)\n  /cooldown <agent> <minutes>       let an agent rest (e.g. when you know it's about to hit its limit)\n  /cooldown <agent> off             let the agent work again right away\n\nModel & effort per agent (remembered for next time):\n  /model <agent> <model name>       e.g. /model claude opus   ·   /model grok grok-4.7-build-fast\n  /effort <agent> <level>           e.g. /effort codex xhigh  ·   /effort claude high\n  /model <agent>   /effort <agent>  open a picker with what the agent supports (or click the agent box in Team)\n  /model <agent> -                  back to the config default (same for /effort <agent> -)\n  /models [agent]                   show the models & effort levels each agent supports\n  /models <agent> refresh           ask the CLI for its real model list (opencode models, agy models)\n  /agents                           show each agent's model, effort and valid effort levels\n  /setup                            reopen the setup screen: enable/disable agents, lead, model, effort\n  /theme [name] [accent]            pick a color theme (live preview), e.g. /theme nord purple\n  /lang en|vi                       change the interface language (the app reopens)\n\nCustom agents & workflows:\n  /custom                           add/edit/delete your own agents (any CLI) and workflows (step chains)\n  /flow <name> <goal>               run a goal with a workflow — steps become tasks right away, no planning\n  /flow                             list the available workflows\n  /goal <goal>                      the lead makes a plan, even when a default workflow is set\n  /grill <goal>                     \"grill me\": the lead asks you one question at a time (scope, flows, data,\n                                    edge cases, definition of done…) with suggested options, then writes a\n                                    spec and plans. Answer in the input; type a number / click to pick an option\n  /grill done   /grill drop         finalize with what you've answered so far / drop the goal in Q&A\n\nOther:\n  /pause  /resume                   pause / resume picking up new tasks\n  /clear                            clear finished tasks & goals from the board (🗑 button on the board)\n  /compact [focus]                  the lead summarizes notes, goals & log so later prompts are shorter\n  /log <task>   /log sys            show a task's log / the system log (Ctrl+L)\n  /team  /board  /term  /git        switch to Team / Board / Terminal / Git (Ctrl+T cycles)\n\nTerminal commands (💻 Terminal tab):\n  !<command>                        run a command in the project folder, e.g. !yarn dev, !make test\n  !                                 suggest package.json scripts, Makefile targets, recent commands (Enter runs)\n  /sh <command>                     same as !<command>\n  /stop [number]                    stop the selected command (■ Stop / ↻ Restart / ✗ Remove buttons in the tab)\n\nGit (🌿 Git tab — Ctrl+T to reach it, or /git):\n  /git                              open the Git tab: changed files, commit, branches, history, stash, pull/push\n                                    in the file list: Space stage/unstage · a stage all · u unstage all\n                                    · x discard changes · Enter/d view diff · c jump to the commit message\n                                    in the history: Enter/d view commit · r revert\n  /git <command>                    run any git <command> in the Terminal tab, e.g. /git tag v1.0,\n                                    /git cherry-pick abc123, /git remote add origin <url>\n  /commit <message>                 commit staged files (if nothing is staged, commit all changes)\n  /commit --no-verify <message>     commit skipping git hooks (pre-commit, commit-msg); /commit -n works too.\n                                    In the Git tab: the \"Skip hooks (--no-verify)\" box under Commit\n  /commit                           the lead reads the diff and writes the commit message (✨ in the Git tab)\n  /push [-f]   /pull   /fetch       sync with the remote (-f = --force-with-lease)\n  /branch [name]   /checkout <br>   create & switch branch / switch branch (empty: open the branch list)\n  /stash [message]   /stash pop     stash / restore uncommitted changes (/stash list: the list)\n                                    switching branches, pull and stash are blocked while agents run tasks\n\nHelp & quit:\n  /help                             this help (F1)\n  F2 = Ctrl+G, F5 = Ctrl+R, F6 = Ctrl+O   use F2/F5/F6 when the terminal grabs Ctrl keys (e.g. the VS Code/\n                                    Cursor terminal on Mac: Ctrl+G is Go to Line, Ctrl+R is Run Recent).\n                                    MacBook: hold fn when pressing F2/F5\n  /quit                             quit (Ctrl+Q) — running agents will be stopped",
+    "👋 Chào mừng tới ateam — bắt đầu nhanh:\n  • Gõ một mục tiêu (vd: Thêm trang đăng nhập) → trưởng nhóm lập kế hoạch, Enter (hoặc F2) để duyệt & chạy\n  • /grill Thêm trang đăng nhập → trưởng nhóm hỏi kỹ từng câu cho rõ yêu cầu rồi mới lập kế hoạch\n  • /task codex viết test cho utils.py → giao tay cho 1 agent\n  • Gõ / để xem các lệnh · @ để nhắc file · Ctrl+V dán ảnh\n  • !yarn dev → chạy lệnh terminal (gõ ! để xem gợi ý) · tab 💻 Terminal\n  • /git → tab 🌿 Git: stage, commit (trưởng nhóm viết message), nhánh, pull/push, stash, lịch sử\n  • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: đổi tab (Bảng việc / Đội / Terminal / Git)":
+        "👋 Welcome to ateam — quick start:\n  • Type a goal (e.g. Add a login page) → the lead plans it; press Enter (or F2) to approve & run\n  • /grill Add a login page → the lead asks you questions one by one to pin down the requirements, then plans\n  • /task codex write tests for utils.py → assign one agent by hand\n  • Type / to see commands · @ to mention files · Ctrl+V to paste images\n  • !yarn dev → run a terminal command (type ! for suggestions) · 💻 Terminal tab\n  • /git → 🌿 Git tab: stage, commit (the lead writes the message), branches, pull/push, stash, history\n  • F1 or /help: all commands & shortcuts · Ctrl+T: switch tabs (Board / Team / Terminal / Git)",
+    "📋 Kế hoạch":
+        "📋 Plan",
+    "<agent> <nội dung>":
+        "<agent> <content>",
+    "giao tay cho 1 agent, gửi nguyên văn":
+        "assign one agent by hand, sent verbatim",
+    "[mục tiêu]":
+        "[goal]",
+    "duyệt kế hoạch nháp và chạy":
+        "approve the draft plan and run it",
+    "bỏ kế hoạch nháp (huỷ mọi task nháp của nó)":
+        "drop the draft plan (cancels all its draft tasks)",
+    "<mục tiêu>":
+        "<goal>",
+    "trưởng nhóm lập kế hoạch (bỏ qua workflow mặc định)":
+        "the lead makes a plan (ignores the default workflow)",
+    "<mục tiêu|xong|bỏ>":
+        "<goal|done|drop>",
+    "trưởng nhóm hỏi kỹ từng câu để làm rõ yêu cầu rồi mới lập kế hoạch":
+        "the lead asks you questions one by one to clarify the requirements, then plans",
+    "<lệnh>":
+        "<command>",
+    "chạy lệnh terminal (như !lệnh), vd /sh yarn dev":
+        "run a terminal command (like !command), e.g. /sh yarn dev",
+    "[số]":
+        "[number]",
+    "dừng lệnh terminal đang chọn (hoặc lệnh số đó)":
+        "stop the selected terminal command (or that number)",
+    "mở tab Terminal (lệnh đang chạy)":
+        "open the Terminal tab (running commands)",
+    "[tên] [màu nhấn]":
+        "[name] [accent]",
+    "chọn theme màu (xem trước trực tiếp)":
+        "pick a color theme (live preview)",
+    "đổi ngôn ngữ giao diện (app tự mở lại)":
+        "change the interface language (the app reopens)",
+    "[lệnh git]":
+        "[git command]",
+    "mở tab Git; kèm lệnh thì chạy git <lệnh> ở tab Terminal":
+        "open the Git tab; with a command, run git <command> in the Terminal tab",
+    "commit (chưa stage gì thì commit tất cả); trống: trưởng nhóm viết message":
+        "commit (nothing staged: commit everything); empty: the lead writes the message",
+    "push nhánh hiện tại (lần đầu tự tạo nhánh trên remote)":
+        "push the current branch (creates it on the remote the first time)",
+    "pull nhánh hiện tại (fast-forward, không được thì merge)":
+        "pull the current branch (fast-forward, else merge)",
+    "fetch mọi remote":
+        "fetch all remotes",
+    "[tên]":
+        "[name]",
+    "tạo & chuyển sang nhánh mới; trống: danh sách nhánh":
+        "create & switch to a new branch; empty: branch list",
+    "<nhánh>":
+        "<branch>",
+    "chuyển sang nhánh (nhánh remote → tạo nhánh local)":
+        "switch branch (remote branch → creates a local one)",
+    "cất tạm / lấy lại thay đổi chưa commit":
+        "stash / restore uncommitted changes",
+    "<tên> <mục tiêu>":
+        "<name> <goal>",
+    "chạy mục tiêu theo workflow":
+        "run a goal with a workflow",
+    "đổi người làm 1 task":
+        "change who does a task",
+    "<task> <nội dung>":
+        "<task> <content>",
+    "sửa nội dung task chưa chạy":
+        "edit a task that hasn't run",
+    "<task> effort|model <giá trị>":
+        "<task> effort|model <value>",
+    "effort/model riêng cho 1 task":
+        "a task's own effort/model",
+    "chạy lại task":
+        "re-run a task",
+    "huỷ task":
+        "cancel a task",
+    "bắt trưởng nhóm review ngay":
+        "make the lead review now",
+    "<m12|t40> <yêu cầu>":
+        "<m12|t40> <request>",
+    "tiếp tục mục tiêu / thread đã xong (F6)":
+        "continue a finished goal / thread (F6)",
+    "<nội dung>":
+        "<content>",
+    "xem thay đổi của task":
+        "show a task's changes",
+    "duyệt và merge task đang chờ":
+        "approve and merge a waiting task",
+    "<task> [góp ý]":
+        "<task> [feedback]",
+    "từ chối, có góp ý thì giao làm lại":
+        "reject; with feedback the task is redone",
+    "[lệnh|off]":
+        "[command|off]",
+    "lệnh kiểm tra sau mỗi task":
+        "check command after each task",
+    "<agent> [tên|-]":
+        "<agent> [name|-]",
+    "đổi model của agent":
+        "change an agent's model",
+    "<agent> [mức|-]":
+        "<agent> [level|-]",
+    "đổi effort của agent":
+        "change an agent's effort",
+    "[agent] [làm mới]":
+        "[agent] [refresh]",
+    "xem model & effort hỗ trợ":
+        "show supported models & effort",
+    "cấu hình, lệnh chạy của từng agent":
+        "each agent's config and run command",
+    "màn hình thiết lập đội":
+        "team setup screen",
+    "agent & workflow tuỳ chỉnh":
+        "custom agents & workflows",
+    "thống kê lượt chạy + hạn mức còn lại báo bởi từng CLI":
+        "run stats + remaining limits reported by each CLI",
+    "<agent> <phút|off>":
+        "<agent> <minutes|off>",
+    "cho agent tạm nghỉ":
+        "let an agent cool down",
+    "[trọng tâm]":
+        "[focus]",
+    "tóm tắt ngữ cảnh chung cho prompt gọn lại":
+        "summarize the shared context so prompts stay short",
+    "dọn task & mục tiêu đã kết thúc khỏi bảng việc":
+        "clear finished tasks & goals from the board",
+    "tạm dừng nhận task mới":
+        "pause picking up new tasks",
+    "tiếp tục nhận task":
+        "resume picking up tasks",
+    "xem log 1 task / log hệ thống":
+        "show a task's log / the system log",
+    "chuyển sang tab Đội":
+        "switch to the Team tab",
+    "chuyển sang tab Bảng việc":
+        "switch to the Board tab",
+    "toàn bộ lệnh & phím tắt":
+        "all commands & shortcuts",
+    "thoát":
+        "quit",
+    "Không hiểu lệnh /{cmd}":
+        "Unknown command /{cmd}",
+    "model nhỏ/nhanh, effort thấp — tốn ít hạn mức nhất":
+        "small/fast models, low effort — uses the least quota",
+    "model mạnh vừa, effort trung bình; trưởng nhóm và review cao hơn 1 bậc":
+        "medium-strong models, medium effort; lead and review one step higher",
+    "model mạnh nhất, effort cao — chất lượng tốt nhất, tốn hạn mức nhất":
+        "strongest models, high effort — best quality, uses the most quota",
+    "sửa file":
+        "edit files",
+    "toàn quyền":
+        "full access",
+    "Chỉ sửa file (an toàn)":
+        "Edit files only (safe)",
+    "Toàn quyền — chạy lệnh, mạng (build, git push…)":
+        "Full access — run commands, network (build, git push…)",
+    "@ file / thư mục":
+        "@ file / folder",
+    "↑↓ chọn · Tab/Enter chèn · Esc đóng":
+        "↑↓ select · Tab/Enter insert · Esc close",
+    "/ lệnh":
+        "/ commands",
+    "! lệnh terminal":
+        "! terminal commands",
+    "↑↓ chọn rồi Enter chạy · Tab chèn để sửa · Esc đóng":
+        "↑↓ select, then Enter to run · Tab inserts to edit · Esc close",
+    "/task — chọn agent":
+        "/task — pick an agent",
+    "/continue — chọn mục tiêu (m) hoặc thread /task (t) để tiếp tục":
+        "/continue — pick a goal (m) or /task thread (t) to continue",
+    "↑↓ chọn file · ] [ đoạn kế/trước · s hai cột/một cột · PgUp/PgDn cuộn":
+        "↑↓ pick file · ] [ next/prev hunk · s split/unified · PgUp/PgDn scroll",
+    "Đồng ý":
+        "OK",
+    "🔎 Trưởng nhóm hỏi để hiểu rõ yêu cầu":
+        "🔎 The lead is asking to understand the requirements",
+    "Duyệt kế hoạch":
+        "Review plan",
+    "Chọn {key} cho {agent}  (đang dùng: {v})":
+        "Pick {key} for {agent}  (current: {v})",
+    "Dùng: /{name} {args} — {desc}":
+        "Usage: /{name} {args} — {desc}",
+    "🔎 Review: ✓ hoàn thành":
+        "🔎 Review: ✓ done",
+    "🔎 Review: cần làm thêm":
+        "🔎 Review: more work needed",
+    "Đóng":
+        "Close",
+    "Lưu":
+        "Save",
+    "CLI bạn đang dùng":
+        "CLIs you use",
+    "Kiểu làm việc":
+        "How you work",
+    "Kiểu":
+        "Style",
+    "Mức chi phí":
+        "Cost level",
+    "Mức":
+        "Level",
+    "Vai trò · model · effort":
+        "Roles · model · effort",
+    "Vai trò":
+        "Roles",
+    "An toàn & duyệt code":
+        "Safety & code review",
+    "An toàn":
+        "Safety",
+    "Lệnh kiểm tra":
+        "Check command",
+    "Kiểm tra":
+        "Check",
+    "Xem lại & lưu":
+        "Review & save",
+    "Xem lại":
+        "Review",
+    "Trưởng nhóm lập kế hoạch, tôi duyệt rồi mới chạy":
+        "The lead plans, I approve before it runs",
+    "kế hoạch hiện ở khung Duyệt kế hoạch, Enter/F2 để chạy — an toàn, dễ kiểm soát":
+        "the plan shows in the Review plan box, Enter/F2 to run — safe and easy to control",
+    "Trưởng nhóm lập kế hoạch và chạy luôn":
+        "The lead plans and runs right away",
+    "nhanh nhất, không cần duyệt":
+        "fastest, no approval",
+    "Theo quy trình cố định: thiết kế → code → test":
+        "Fixed process: design → code → test",
+    "gõ mục tiêu là chạy workflow 'tinh-nang'; /goal vẫn để trưởng nhóm lập kế hoạch":
+        "typing a goal runs the 'tinh-nang' workflow; /goal still lets the lead plan",
+    "Chủ yếu tôi tự giao từng việc (/task)":
+        "I mostly assign tasks myself (/task)",
+    "tắt trưởng nhóm tự review và giao thêm việc":
+        "turns off the lead's automatic review and follow-up tasks",
+    "Sửa thẳng vào thư mục dự án":
+        "Edit the project folder directly",
+    "đơn giản; các agent làm chung một chỗ":
+        "simple; agents work in the same place",
+    "Mỗi task một nhánh git riêng, xong thì tự merge":
+        "One git branch per task, merged automatically when done",
+    "an toàn khi nhiều agent chạy song song":
+        "safe when many agents run in parallel",
+    "Mỗi task một nhánh git riêng, tôi xem diff rồi mới merge":
+        "One git branch per task, I review the diff before merging",
+    "Ctrl+D xem diff kiểu VS Code, Ctrl+Y merge":
+        "Ctrl+D shows a VS Code-style diff, Ctrl+Y merges",
+    "Lưu & bắt đầu (Ctrl+S)":
+        "Save & start (Ctrl+S)",
+    "Tiếp →":
+        "Next →",
+    "Đội\n":
+        "Team\n",
+    "\nCách làm việc\n":
+        "\nHow you work\n",
+    "Lệnh sẽ chạy: ":
+        "Command to run: ",
+    "Lệnh":
+        "Command",
+    "bắt buộc; {prompt} = nội dung task":
+        "required; {prompt} = the task content",
+    "trưởng nhóm phân việc dựa vào đây":
+        "the lead assigns work based on this",
+    "Model mặc định":
+        "Default model",
+    "trống = để CLI tự chọn":
+        "empty = let the CLI choose",
+    "Model gợi ý":
+        "Suggested models",
+    "cách nhau dấu phẩy":
+        "comma-separated",
+    "Cờ model":
+        "Model flag",
+    "Mức effort":
+        "Effort levels",
+    "vd: low, medium, high · '-' = không có":
+        "e.g. low, medium, high · '-' = none",
+    "Effort mặc định":
+        "Default effort",
+    "Cờ effort":
+        "Effort flag",
+    "Lệnh liệt kê model":
+        "Model list command",
+    "vd: mycli models (tuỳ chọn)":
+        "e.g. mycli models (optional)",
+    "Nhắc file @":
+        "@file mention",
+    "vd: @{path} hoặc {path} · trống = theo lệnh":
+        "e.g. @{path} or {path} · empty = per command",
+    "Cờ đính file":
+        "File attach flag",
+    "vd: -f {path} · trống = theo lệnh · '-' = tắt":
+        "e.g. -f {path} · empty = per command · '-' = off",
+    "Cờ đính ảnh":
+        "Image attach flag",
+    "vd: --image={path} · trống = theo lệnh · '-' = tắt":
+        "e.g. --image={path} · empty = per command · '-' = off",
+    "Dự phòng":
+        "Fallback",
+    "agent thay khi hết hạn mức, cách nhau dấu phẩy":
+        "agents that take over when out of quota, comma-separated",
+    "Timeout (giây)":
+        "Timeout (seconds)",
+    "mặc định 1800":
+        "default 1800",
+    "Số task cùng lúc":
+        "Concurrent tasks",
+    "mặc định 1":
+        "default 1",
+    "Đã lưu {v} '{name}'":
+        "Saved {v} '{name}'",
+    "   {v} → bây giờ ({v2})":
+        "   {v} → now ({v2})",
+    "Xem trước: ":
+        "Preview: ",
+    "Theme: ":
+        "Theme: ",
+    "   · đã trả lời {n_answered} câu":
+        "   · answered {n_answered} question(s)",
+    "📋 Kế hoạch chờ duyệt ":
+        "📋 Plan awaiting review ",
+    "File kế":
+        "Next file",
+    "File trước":
+        "Previous file",
+    "Đoạn kế":
+        "Next hunk",
+    "Đoạn trước":
+        "Previous hunk",
+    "Đổi kiểu":
+        "Toggle view",
+    " · o mở VS Code":
+        " · o open in VS Code",
+    "\n{keys} · Esc đóng":
+        "\n{keys} · Esc close",
+    "Đang mở {path} trong VS Code…":
+        "Opening {path} in VS Code…",
+    "Stage/bỏ stage":
+        "Stage/unstage",
+    "Stage tất cả":
+        "Stage all",
+    "Bỏ stage tất cả":
+        "Unstage all",
+    "Bỏ thay đổi":
+        "Discard changes",
+    "Xem diff":
+        "View diff",
+    "Xem commit":
+        "View commit",
+    "Trợ giúp":
+        "Help",
+    "Thoát":
+        "Quit",
+    "Đổi tab":
+        "Switch tab",
+    "Duyệt & chạy":
+        "Approve & run",
+    "Chạy lại":
+        "Re-run",
+    "Huỷ task":
+        "Cancel task",
+    "Tiếp tục":
+        "Continue",
+    "Log hệ thống":
+        "System log",
+    "Trạng thái":
+        "Status",
+    "Xung đột — sửa xong thì stage":
+        "Conflicts — stage once fixed",
+    "Đã stage — sẽ vào commit":
+        "Staged — goes into the commit",
+    "Chưa stage":
+        "Unstaged",
+    "Message mới cho commit trước — Enter để sửa commit{skip}":
+        "New message for the last commit — Enter to amend{skip}",
+    "XOÁ file chưa theo dõi":
+        "DELETE the untracked file",
+    "bỏ mọi thay đổi chưa stage của":
+        "discard all unstaged changes in",
+    "✨ {lead} đang viết commit message…":
+        "✨ {lead} is writing the commit message…",
+    "🗑 Dọn {v} task đã xong":
+        "🗑 Clear {v} finished task(s)",
+    "📋 Kế hoạch #{goal_id} sẵn sàng — Enter hoặc F2 để duyệt & chạy":
+        "📋 Plan #{goal_id} is ready — Enter or F2 to approve & run",
+    "  (gõ yêu cầu mới rồi Enter, Esc huỷ)":
+        "  (type the new request, then Enter; Esc to cancel)",
+    "Trả lời câu hỏi của trưởng nhóm (Enter) · gõ số để chọn phương án · /grill xong để chốt":
+        "Answer the lead's question (Enter) · type a number to pick an option · /grill done to finalize",
+    "Nhập mục tiêu (chạy theo workflow '{wf}') · /goal: trưởng nhóm lập kế hoạch · /help · @ nhắc file":
+        "Type a goal (runs workflow '{wf}') · /goal: the lead plans · /help · @ to mention files",
+    "Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file":
+        "Type a goal for the lead, /help, or @ to mention files",
+    "(~token = ước tính từ độ dài prompt và output, chưa gồm file agent tự đọc)":
+        "(~token = estimated from prompt and output length; excludes files the agent reads itself)",
+    "\nĐang hỏi hạn mức từ CLI của {v}…":
+        "\nAsking {v}'s CLI for usage limits…",
+    "Đang kiểm tra bản mới…":
+        "Checking for a new version…",
+    "\nChọn: /model <agent>, /effort <agent> hoặc bấm vào ô agent ở tab Đội. Model ngoài danh sách vẫn đặt được: /model <agent> <tên>.":
+        "\nPick with /model <agent>, /effort <agent> or click an agent box in the Team tab. Models not in the list can still be set: /model <agent> <name>.",
+    " Gõ mục tiêu → workflow '{default_workflow}' (/goal: trưởng nhóm lập kế hoạch).":
+        " Typing a goal → workflow '{default_workflow}' (/goal: the lead plans).",
+    "⚙ Đã lưu thiết lập. Trưởng nhóm: {lead}. Đội: {v}.{flow} Đổi lại: /setup, /model, /effort.":
+        "⚙ Settings saved. Lead: {lead}. Team: {v}.{flow} Change later: /setup, /model, /effort.",
+    "Chưa có workflow nào. Tạo bằng /custom → '+ Thêm workflow' (có mẫu sẵn).":
+        "No workflows yet. Create one with /custom → '+ Add workflow' (templates included).",
+    "Chạy: /flow <tên> <mục tiêu>   ·   sửa: /custom":
+        "Run: /flow <name> <goal>   ·   edit: /custom",
+    "nháp":
+        "draft",
+    "chờ":
+        "queued",
+    "đang chạy":
+        "running",
+    "xong":
+        "done",
+    "lỗi":
+        "failed",
+    "đã huỷ":
+        "cancelled",
+    "bị chặn":
+        "blocked",
+    "xung đột":
+        "conflict",
+    "chờ duyệt":
+        "in review",
+    "đang lập kế hoạch":
+        "planning",
+    "chờ duyệt (F2)":
+        "awaiting review (F2)",
+    "đang hỏi bạn":
+        "asking you",
+    "đã bỏ":
+        "dropped",
+    "đang làm":
+        "in progress",
+    "đang review":
+        "reviewing",
+    "hoàn thành":
+        "done",
+    "chưa xong":
+        "incomplete",
+    " · hay ý bạn là ":
+        " · did you mean ",
+    "  ➕ Việc giao thêm":
+        "  ➕ Extra tasks",
+    "‹prompt ateam gửi agent — đã ẩn›":
+        "‹ateam's prompt to the agent — hidden›",
+    "✔ Tóm tắt:":
+        "✔ Summary:",
+    "📝 Ghi chú: ":
+        "📝 Note: ",
+    "↪ Giao cho {to}":
+        "↪ Delegated to {to}",
+    "Còn thay đổi chưa lưu — Esc lần nữa để bỏ, Ctrl+S để lưu":
+        "Unsaved changes — press Esc again to discard, Ctrl+S to save",
+    "Thiết lập đội AI · Bước {v}/{v2} — {title}":
+        "AI team setup · Step {v}/{v2} — {title}",
+    "Bạn đang dùng những CLI nào? Đội chỉ gồm các CLI được chọn.":
+        "Which CLIs do you use? The team only includes the selected ones.",
+    "Space: chọn/bỏ · Tab: sang nút Tiếp":
+        "Space: select/unselect · Tab: go to Next",
+    "Bạn muốn đội làm việc thế nào?":
+        "How should the team work?",
+    "↑↓ chọn · Enter: chọn và sang bước tiếp":
+        "↑↓ select · Enter: choose and go to the next step",
+    "Ưu tiên tiết kiệm hạn mức hay chất lượng?":
+        "Save quota or maximize quality?",
+    "Bước sau điền sẵn model & effort theo mức này — vẫn đổi được từng vai trò.":
+        "The next step pre-fills models & effort for this level — you can still change each role.",
+    "Giao từng vai trò cho CLI nào, dùng model và effort gì?":
+        "Which CLI, model and effort for each role?",
+    "agent không chạy lệnh shell / mạng":
+        "agents don't run shell commands / network",
+    "Toàn quyền — chạy lệnh, mạng (lint, build, git push…)":
+        "Full access — run commands, network (lint, build, git push…)",
+    "chỉ dùng cho repo bạn tin tưởng; agent tuỳ chỉnh đổi riêng ở /custom":
+        "only for repos you trust; custom agents are set separately in /custom",
+    "Agent được làm gì?":
+        "What may the agents do?",
+    "Thay đổi của agent áp vào code thế nào?":
+        "How are the agents' changes applied to the code?",
+    "chạy sau mỗi task có sửa code; lỗi thì giao agent sửa":
+        "runs after each task that changes code; failures go back to an agent to fix",
+    "Không chạy lệnh kiểm tra":
+        "Don't run a check command",
+    "bật sau bằng /verify <lệnh>":
+        "enable later with /verify <command>",
+    "Lệnh kiểm tra tự chạy sau mỗi task (test, lint, build)?":
+        "Check command to run after each task (test, lint, build)?",
+    "  Agent tuỳ chỉnh giữ nguyên: {v}\n":
+        "  Custom agents kept as is: {v}\n",
+    "Quyền":
+        "Permissions",
+    "Áp thay đổi":
+        "Apply changes",
+    "\n⚠ Chưa có trưởng nhóm — quay lại bước Vai trò.":
+        "\n⚠ No lead yet — go back to the Roles step.",
+    "Chọn ít nhất một CLI":
+        "Pick at least one CLI",
+    "Esc lần nữa để thoát thiết lập (giữ cấu hình hiện tại)":
+        "Press Esc again to leave setup (keeps the current config)",
+    "Chưa có trưởng nhóm — chọn CLI cho vai trò ★ Trưởng nhóm":
+        "No lead yet — pick a CLI for the ★ Lead role",
+    "✓ đã cài '{binary}'":
+        "✓ '{binary}' installed",
+    "✗ chưa cài '{binary}'":
+        "✗ '{binary}' not installed",
+    "   ⚠ toàn quyền: agent chạy được mọi lệnh trên máy, chỉ dùng với repo tin tưởng":
+        "   ⚠ full access: the agent can run any command on your machine; only use with trusted repos",
+    "Tên chỉ gồm chữ, số, - và _ (không dùng 'lead')":
+        "Names may contain only letters, digits, - and _ (not 'lead')",
+    "Đã có agent '{name}' — chọn tên khác":
+        "Agent '{name}' already exists — pick another name",
+    "Cần nhập lệnh chạy agent":
+        "Enter the command that runs the agent",
+    "Dự phòng không có trong đội: {v}":
+        "Fallback agents not on the team: {v}",
+    "Tên chỉ gồm chữ, số, - và _":
+        "Names may contain only letters, digits, - and _",
+    "Đã có workflow '{name}' — chọn tên khác":
+        "Workflow '{name}' already exists — pick another name",
+    "Workflow cần ít nhất 1 bước":
+        "A workflow needs at least 1 step",
+    "✗ chưa cài":
+        "✗ not installed",
+    "{v} bước: {v2}":
+        "{v} steps: {v2}",
+    "Đã dán ảnh {v}":
+        "Pasted image {v}",
+    "đang đọc danh sách file…":
+        "reading the file list…",
+    "không có file nào khớp":
+        "no matching files",
+    "  — chưa có hoạt động":
+        "  — no activity yet",
+    "█ đang chạy":
+        "█ running",
+    "█ xong":
+        "█ done",
+    "█ lỗi":
+        "█ failed",
+    "▒ trưởng nhóm lập kế hoạch/review":
+        "▒ lead planning/reviewing",
+    "○ rảnh":
+        "○ idle",
+    "⏸ tạm dừng":
+        "⏸ paused",
+    "⏸ nghỉ: {v}":
+        "⏸ resting: {v}",
+    " · còn {others} mục tiêu khác đang hỏi đáp (hiện sau khi xong mục tiêu này)":
+        " · {others} more goal(s) in Q&A (shown after this one)",
+    "{v} {lead} đang nghĩ câu hỏi tiếp theo…":
+        "{v} {lead} is thinking of the next question…",
+    "↑↓ xem từng task · Enter: sửa nội dung · Tab: chuyển nút · Esc: về ô nhập":
+        "↑↓ browse tasks · Enter: edit content · Tab: move between buttons · Esc: back to the input",
+    " · vòng {round}":
+        " · round {round}",
+    " · còn {v} kế hoạch khác sau":
+        " · {v} more plan(s) after this",
+    "  ⟵ chạy sau #{v}":
+        "  ⟵ runs after #{v}",
+    "Không thấy lệnh 'code' — trong VS Code: Shell Command: Install 'code' command":
+        "'code' command not found — in VS Code: Shell Command: Install 'code' command",
+    "Gõ tên nhánh mới trước":
+        "Type the new branch name first",
+    "Chưa có nhánh nào":
+        "No branches yet",
+    "Không xoá nhánh remote từ đây (dùng /git push origin --delete <nhánh>)":
+        "Remote branches can't be deleted here (use /git push origin --delete <branch>)",
+    "{name} là nhánh hiện tại":
+        "{name} is the current branch",
+    "Không có thay đổi nào để cất":
+        "No changes to stash",
+    "Không có task nào đã kết thúc để dọn":
+        "No finished tasks to clear",
+    "🗑 Đã dọn {n_tasks} task":
+        "🗑 Cleared {n_tasks} task(s)",
+    "Gõ lệnh sau dấu !, vd !yarn dev (gõ ! để xem gợi ý)":
+        "Type a command after !, e.g. !yarn dev (type ! for suggestions)",
+    "Chưa chạy lệnh nào.\n\n":
+        "No commands run yet.\n\n",
+    "Gõ ":
+        "Type ",
+    "!lệnh":
+        "!command",
+    " ở ô nhập, vd ":
+        " in the input, e.g. ",
+    ".\nGõ ":
+        ".\nType ",
+    " để xem gợi ý script của dự án (package.json, Makefile, lệnh gần đây).\n\n":
+        " to see the project's scripts (package.json, Makefile, recent commands).\n\n",
+    "Lệnh chạy trong thư mục dự án, nhiều lệnh song song được; thoát app (Ctrl+Q) sẽ dừng mọi lệnh đang chạy.":
+        "Commands run in the project folder, several can run in parallel; quitting the app (Ctrl+Q) stops all running commands.",
+    "   ⚠ đang {state} dở":
+        "   ⚠ {state} in progress",
+    "Commit message cho {n_staged} file đã stage — Enter để commit{skip}":
+        "Commit message for {n_staged} staged file(s) — Enter to commit{skip}",
+    "Commit message (chưa stage gì: commit mọi thay đổi) — Enter để commit{skip}":
+        "Commit message (nothing staged: commits all changes) — Enter to commit{skip}",
+    "Đang có {v} task chạy — đợi xong (hoặc Ctrl+K huỷ) rồi hẵng đổi nhánh/pull/stash":
+        "{v} task(s) are running — wait for them (or cancel with Ctrl+K) before switching branches/pulling/stashing",
+    "Chỉ bỏ được thay đổi chưa stage — bỏ stage file trước (Space)":
+        "Only unstaged changes can be discarded — unstage the file first (Space)",
+    "↺ Bỏ thay đổi":
+        "↺ Discard changes",
+    "{v} {path}?\nKhông thể hoàn tác.":
+        "{v} {path}?\nThis cannot be undone.",
+    "Chọn 1 file trong danh sách trước":
+        "Select a file in the list first",
+    "Xung đột · {path}":
+        "Conflict · {path}",
+    "Không có diff để xem":
+        "No diff to show",
+    "Commit {short} không đổi file nào (vd commit merge)":
+        "Commit {short} changed no files (e.g. a merge commit)",
+    "Tạo commit mới đảo ngược {short} · {subject}?":
+        "Create a new commit reverting {short} · {subject}?",
+    "Gõ commit message trước (hoặc bấm ✨ để trưởng nhóm viết)":
+        "Type a commit message first (or press ✨ to let the lead write it)",
+    "✨ Đã điền commit message — sửa nếu cần rồi Enter để commit":
+        "✨ Commit message filled in — edit if needed, then Enter to commit",
+    "Chưa có mục tiêu. Gõ yêu cầu ở ô dưới cùng.":
+        "No goals yet. Type a request in the box at the bottom.",
+    "Chưa có task nào.\n\n":
+        "No tasks yet.\n\n",
+    "chạy theo workflow '{default_workflow}' (/goal: trưởng nhóm)":
+        "runs workflow '{default_workflow}' (/goal: the lead)",
+    "trưởng nhóm lập kế hoạch & chia việc":
+        "the lead plans & splits the work",
+    "📜 Log hệ thống":
+        "📜 System log",
+    "  ·  chọn 1 task trong bảng để xem log riêng · Ctrl+T: tab Đội":
+        "  ·  select a task in the board to see its log · Ctrl+T: Team tab",
+    "  (được {v} giao)":
+        "  (assigned by {v})",
+    "  · đã sửa lỗi test {attempts} lần":
+        "  · fixed failing tests {attempts} time(s)",
+    "\n👀 Chờ duyệt — Ctrl+D xem diff, Ctrl+Y merge, /reject <task> [góp ý]":
+        "\n👀 Awaiting review — Ctrl+D view diff, Ctrl+Y merge, /reject <task> [feedback]",
+    "❓ Trưởng nhóm hỏi — trả lời ở ô nhập (hoặc gõ số phương án)":
+        "❓ The lead has a question — answer in the input (or type an option number)",
+    "Kế hoạch không còn task nào":
+        "The plan has no tasks left",
+    "Không có task nháp nào cần duyệt":
+        "No draft tasks to approve",
+    "▶ Đã duyệt {n} task":
+        "▶ Approved {n} task(s)",
+    "Chọn 1 task trong bảng trước":
+        "Select a task in the board first",
+    "↪ Tiếp tục mục tiêu #{i} ":
+        "↪ Continue goal #{i} ",
+    " — trưởng nhóm lập task bổ sung dựa trên {n} task đã làm":
+        " — the lead adds tasks based on the {n} task(s) already done",
+    "↪ Hỏi tiếp {agent} ":
+        "↪ Follow up with {agent} ",
+    " — kèm {turns} lượt trước của thread":
+        " — with the thread's {turns} earlier turn(s)",
+    "Hôm nay":
+        "Today",
+    "mặc định trong config / CLI":
+        "default from config / CLI",
+    "ℹ Bỏ qua thiết lập. Mở lại bất cứ lúc nào bằng /setup (hoặc `ateam setup`).":
+        "ℹ Setup skipped. Reopen it any time with /setup (or `ateam setup`).",
+    "'{effort}' không có trong danh sách của {agent}: {v} — vẫn dùng, nhưng CLI có thể báo lỗi":
+        "'{effort}' is not in {agent}'s list: {v} — used anyway, but the CLI may reject it",
+    "▸ prompt gửi agent (ẩn)":
+        "▸ prompt sent to the agent (hidden)",
+    "✗ Lỗi: ":
+        "✗ Error: ",
+    "Trợ giúp ateam":
+        "ateam help",
+    "↑↓ / PgUp PgDn cuộn · Esc hoặc F1 đóng":
+        "↑↓ / PgUp PgDn scroll · Esc or F1 to close",
+    "Thiết lập đội AI":
+        "AI team setup",
+    "⚠ Không hỏi được danh sách model: {e}":
+        "⚠ Could not get the model list: {e}",
+    "  ✓ đã cài ({p})":
+        "  ✓ installed ({p})",
+    "  ✗ chưa cài — {v}":
+        "  ✗ not installed — {v}",
+    "(không dùng)":
+        "(not used)",
+    "Cùng một CLI làm nhiều vai trò với model/effort khác nhau → ateam tự tạo thêm agent (vd claude-review).":
+        "One CLI in several roles with different models/effort → ateam creates extra agents (e.g. claude-review).",
+    "đang dùng":
+        "in use",
+    "hoặc gõ lệnh khác, vd: npm run lint && npm test":
+        "or type another command, e.g. npm run lint && npm test",
+    "  (agent thêm)":
+        "  (extra agent)",
+    "chỉ sửa file":
+        "edit files only",
+    "Nhà cung cấp":
+        "Provider",
+    "CLI chạy agent này":
+        "The CLI that runs this agent",
+    "Tên":
+        "Name",
+    "chữ, số, - và _":
+        "letters, digits, - and _",
+    "(mặc định) = để CLI tự chọn":
+        "(default) = let the CLI choose",
+    "mức suy luận":
+        "reasoning level",
+    "toàn quyền khi agent cần chạy lệnh":
+        "full access when the agent needs to run commands",
+    "tuỳ chọn":
+        "optional",
+    "Nhập lệnh để xem trước.":
+        "Enter a command to preview.",
+    "★ trưởng nhóm ({lead})":
+        "★ lead ({lead})",
+    "{extra} (không có trong đội)":
+        "{extra} (not on the team)",
+    "tiêu đề":
+        "title",
+    "việc cần làm, có thể dùng {goal}":
+        "what to do; may use {goal}",
+    "trước":
+        "previous",
+    "Bước {i}: cần tiêu đề hoặc prompt":
+        "Step {i}: needs a title or a prompt",
+    "Agent & workflow tuỳ chỉnh":
+        "Custom agents & workflows",
+    "Chưa có. Bấm '+ Thêm agent' để thêm CLI bất kỳ (Gemini, Aider, script riêng…).":
+        "None yet. Press '+ Add agent' to add any CLI (Gemini, Aider, your own script…).",
+    "Chưa có. Bấm '+ Thêm workflow' (có mẫu: tính năng mới, sửa lỗi, review).":
+        "None yet. Press '+ Add workflow' (templates: new feature, bug fix, review).",
+    "Không dán được ảnh: {why}. Dán chữ bằng Cmd+V.":
+        "Could not paste an image: {why}. Paste text with Cmd+V.",
+    "Tối":
+        "Dark",
+    "🎨 Theme màu":
+        "🎨 Color theme",
+    "↑↓ xem trước · Tab sang cột màu nhấn · Enter lưu · Esc huỷ (trả theme cũ)":
+        "↑↓ preview · Tab to accent colors · Enter save · Esc cancel (restore previous theme)",
+    "✓ Đủ rồi — chốt & lập kế hoạch":
+        "✓ Enough — finalize & plan",
+    "⏭ Để trưởng nhóm tự quyết":
+        "⏭ Let the lead decide",
+    "↻ Hỏi tiếp":
+        "↻ Ask again",
+    "✗ Bỏ mục tiêu":
+        "✗ Drop goal",
+    "❓ Câu {v}: ":
+        "❓ Question {v}: ",
+    "▶ Duyệt & chạy  F2":
+        "▶ Approve & run  F2",
+    "✎ Sửa task":
+        "✎ Edit task",
+    "⇄ Đổi agent":
+        "⇄ Change agent",
+    "✗ Bỏ kế hoạch":
+        "✗ Drop plan",
+    "(kế hoạch không có task nào)":
+        "(the plan has no tasks)",
+    "✕ Đóng":
+        "✕ Close",
+    "hai cột":
+        "split",
+    "một cột":
+        "unified",
+    "  nhánh task của ateam":
+        "  ateam task branch",
+    "⎇ Nhánh — đang ở {v}":
+        "⎇ Branches — on {v}",
+    "Chỉ đổi tên được nhánh local":
+        "Only local branches can be renamed",
+    "📦 Stash — cất tạm thay đổi chưa commit":
+        "📦 Stash — set aside uncommitted changes",
+    "Chưa có stash nào.":
+        "No stashes yet.",
+    "📋 Bảng việc":
+        "📋 Board",
+    "👥 Đội":
+        "👥 Team",
+    ", {n_goals} mục tiêu":
+        ", {n_goals} goal(s)",
+    "lỗi (mã {rc})":
+        "failed (code {rc})",
+    "đã dừng":
+        "stopped",
+    "  ↑{ahead} chưa push":
+        "  ↑{ahead} not pushed",
+    "  ↓{behind} chưa pull":
+        "  ↓{behind} not pulled",
+    "  ✓ đồng bộ":
+        "  ✓ in sync",
+    "  chưa có trên remote (Push để tạo)":
+        "  not on the remote yet (Push to create it)",
+    "✓ Không có thay đổi nào chưa commit.":
+        "✓ No uncommitted changes.",
+    "📜 Lịch sử ({v} commit gần nhất)":
+        "📜 History ({v} most recent commits)",
+    "📜 Chưa có commit nào":
+        "📜 No commits yet",
+    " (kèm phần mô tả trưởng nhóm viết)":
+        " (with the description the lead wrote)",
+    "⇣ Đang fetch…":
+        "⇣ Fetching…",
+    "Dùng: /commit [--no-verify] <message>":
+        "Usage: /commit [--no-verify] <message>",
+    "  ⏸ TẠM DỪNG (/resume)":
+        "  ⏸ PAUSED (/resume)",
+    "🏁 Mục tiêu #{id} {v} — F6 hoặc bấm ↪ Tiếp tục để giao thêm việc":
+        "🏁 Goal #{id} {v} — F6 or press ↪ Continue to add more work",
+    " · vòng {round}]":
+        " · round {round}]",
+    "\n   ↪ lần tiếp {v}: {v2}":
+        "\n   ↪ follow-up {v}: {v2}",
+    " ↪ Tiếp tục ":
+        " ↪ Continue ",
+    "\n   ↳ xem khung Duyệt kế hoạch phía dưới · F2 duyệt & chạy":
+        "\n   ↳ see the Review plan box below · F2 to approve & run",
+    "\n   ↳ trả lời câu hỏi ở khung Hỏi đáp phía dưới":
+        "\n   ↳ answer the question in the Q&A box below",
+    "Gõ một mục tiêu":
+        "Type a goal",
+    "/grill <mục tiêu>":
+        "/grill <goal>",
+    "trưởng nhóm hỏi kỹ cho rõ rồi mới lập kế hoạch":
+        "the lead asks questions until it's clear, then plans",
+    "/task <agent> <nội dung>":
+        "/task <agent> <content>",
+    "giao tay cho 1 agent":
+        "assign one agent by hand",
+    "/flow <tên> <mục tiêu>":
+        "/flow <name> <goal>",
+    "chạy theo workflow dựng sẵn":
+        "run a predefined workflow",
+    "xem mọi lệnh & phím tắt":
+        "see all commands & shortcuts",
+    "mục tiêu #{id}":
+        "goal #{id}",
+    "hỏi tiếp {agent} trong thread này":
+        "follow up with {agent} in this thread",
+    "\n↪ F6: tiếp tục {what}":
+        "\n↪ F6: continue {what}",
+    "   hôm nay {v} lượt · {v2}":
+        "   today {v} runs · {v2}",
+    "\n✗ chưa cài lệnh '{binary}'":
+        "\n✗ command '{binary}' is not installed",
+    "Lệnh này đã dừng":
+        "This command has already stopped",
+    "(task chưa chạy — chưa có log)":
+        "(task hasn't run — no log yet)",
+    " của kế hoạch #{gid}":
+        " of plan #{gid}",
+    "⚠ Mục tiêu #{i} chưa kết thúc — đợi xong rồi tiếp tục":
+        "⚠ Goal #{i} hasn't finished — wait for it, then continue",
+    "⚠ Task #{i} chưa xong (hoặc đang chờ duyệt) — đợi xong rồi tiếp tục":
+        "⚠ Task #{i} hasn't finished (or is awaiting review) — wait for it, then continue",
+    "Chưa có mục tiêu nào đã xong để tiếp tục — chọn 1 task trong bảng":
+        "No finished goal to continue yet — select a task in the board",
+    "Lỗi: {e}":
+        "Error: {e}",
+    "⚙ Đã cập nhật agent/workflow tuỳ chỉnh. Agent: {v}":
+        "⚙ Custom agents/workflows updated. Agents: {v}",
+    " (đã xoá: {v})":
+        " (removed: {v})",
+    "Enter: chọn · Esc: đóng · tên khác: /model <agent> <tên>":
+        "Enter: pick · Esc: close · other name: /model <agent> <name>",
+    "Agent & workflow tuỳ chỉnh…":
+        "Custom agents & workflows…",
+    "← Quay lại":
+        "← Back",
+    "  ⏳ đang hỏi danh sách model từ các CLI…":
+        "  ⏳ asking the CLIs for their model lists…",
+    " — cần thư mục là git repo có commit":
+        " — needs a git repo with commits",
+    "  (chưa cài)":
+        "  (not installed)",
+    "Thêm agent":
+        "Add agent",
+    "Chọn nhà cung cấp, model, effort và quyền — cờ CLI ateam tự điền. Ctrl+S lưu, Esc huỷ. CLI khác (Gemini, Aider, lệnh riêng): Nâng cao…":
+        "Pick the provider, model, effort and permissions — ateam fills in the CLI flags. Ctrl+S saves, Esc cancels. Other CLIs (Gemini, Aider, your own command): Advanced…",
+    "Nâng cao…":
+        "Advanced…",
+    "Huỷ":
+        "Cancel",
+    "Lưu (Ctrl+S)":
+        "Save (Ctrl+S)",
+    "Thêm agent tuỳ chỉnh":
+        "Add custom agent",
+    "Bất kỳ CLI nào có chế độ headless (nhận prompt, in kết quả rồi thoát). Chọn mẫu để điền sẵn, Ctrl+S lưu, Esc huỷ.":
+        "Any CLI with a headless mode (takes a prompt, prints the result, exits). Pick a template to pre-fill, Ctrl+S saves, Esc cancels.",
+    "Mẫu":
+        "Template",
+    "điền sẵn lệnh, cờ model/effort, cú pháp file":
+        "pre-fills the command, model/effort flags, file syntax",
+    "Tuỳ chọn":
+        "Options",
+    "pty cần cho CLI chỉ in khi có terminal (vd agy)":
+        "pty is needed for CLIs that only print with a terminal (e.g. agy)",
+    "\n⚠ lệnh không có {prompt}: prompt sẽ được thêm vào cuối":
+        "\n⚠ the command has no {prompt}: the prompt will be appended at the end",
+    "Thêm workflow":
+        "Add workflow",
+    "Chuỗi bước dựng sẵn, chạy bằng /flow <tên> <mục tiêu> — không cần trưởng nhóm lập kế hoạch. {goal} trong tiêu đề/prompt = mục tiêu bạn gõ. 'Sau bước': trống = sau bước liền trước, 0 = chạy ngay, 1,2 = sau bước 1 và 2.":
+        "A predefined chain of steps, run with /flow <name> <goal> — no planning by the lead. {goal} in a title/prompt = the goal you type. 'After step': empty = after the previous step, 0 = run immediately, 1,2 = after steps 1 and 2.",
+    "thay toàn bộ các bước":
+        "replaces all the steps",
+    "Mô tả":
+        "Description",
+    "hiện trong /flow":
+        "shown in /flow",
+    "review có thể giao thêm việc":
+        "the review may add more work",
+    "+ Thêm bước":
+        "+ Add step",
+    "Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc theo vai trò, bật/tắt ở /setup). Workflow chạy bằng /flow <tên> <mục tiêu>. Lưu ở {CUSTOM_FILE}":
+        "New agents join the team like built-in ones (the lead assigns work by role; enable/disable in /setup). Workflows run with /flow <name> <goal>. Saved in {CUSTOM_FILE}",
+    "Agent tuỳ chỉnh":
+        "Custom agents",
+    "+ Thêm agent":
+        "+ Add agent",
+    "+ Thêm workflow":
+        "+ Add workflow",
+    "Sửa":
+        "Edit",
+    "Xoá":
+        "Delete",
+    "'{name}' nằm trong file cấu hình — lưu sẽ tạo bản sao với tên mới.":
+        "'{name}' is in the config file — saving creates a copy with a new name.",
+    "Chắc chưa?":
+        "Are you sure?",
+    "Đã xoá '{name}'":
+        "Deleted '{name}'",
+    "✓ Lưu theme":
+        "✓ Save theme",
+    "\n   Gõ câu trả lời ở ô dưới rồi Enter · gõ số (1, 2…) hoặc bấm vào phương án để chọn":
+        "\n   Type your answer below, then Enter · type a number (1, 2…) or click an option to pick it",
+    "Huỷ (n)":
+        "Cancel (n)",
+    "Enter: chuyển sang nhánh đang chọn (nhánh remote → tạo nhánh local theo dõi nó) · Esc: đóng":
+        "Enter: switch to the selected branch (remote branch → creates a local branch tracking it) · Esc: close",
+    "⎇ Chuyển sang":
+        "⎇ Switch to",
+    "⤵ Merge vào nhánh hiện tại":
+        "⤵ Merge into the current branch",
+    "✗ Xoá":
+        "✗ Delete",
+    "✗ Xoá hẳn":
+        "✗ Force delete",
+    "Tên nhánh mới, vd feature/dang-nhap (Enter để tạo từ nhánh hiện tại)":
+        "New branch name, e.g. feature/login (Enter to create from the current branch)",
+    "＋ Tạo & chuyển sang":
+        "＋ Create & switch",
+    "✎ Đổi tên nhánh đang chọn":
+        "✎ Rename the selected branch",
+    "Gõ tên mới cho {name} vào ô bên dưới rồi bấm lại":
+        "Type a new name for {name} in the box below, then press again",
+    "⤴ Lấy lại (pop)":
+        "⤴ Restore (pop)",
+    "Áp dụng, giữ stash":
+        "Apply, keep stash",
+    "Ghi chú cho lần cất (không bắt buộc) — Enter để cất":
+        "Note for this stash (optional) — Enter to stash",
+    "📦 Cất mọi thay đổi (kể cả file mới)":
+        "📦 Stash all changes (including new files)",
+    "chưa có việc nào":
+        "no work yet",
+    "✗ Lệnh lỗi (mã {rc}): {cmd}":
+        "✗ Command failed (code {rc}): {cmd}",
+    "⬇ Đang pull…":
+        "⬇ Pulling…",
+    "\n   📝 đã chốt yêu cầu sau {v} câu hỏi":
+        "\n   📝 requirements agreed after {v} question(s)",
+    "\n⏸ hết hạn mức — nghỉ đến {v}":
+        "\n⏸ out of quota — resting until {v}",
+    "Đã bỏ kế hoạch #{goal_id} ({n} task nháp)":
+        "Dropped plan #{goal_id} ({n} draft task(s))",
+    "🗑 Đã xoá log cũ — chỉ hiện dòng mới":
+        "🗑 Old log cleared — only new lines are shown",
+    "lượt":
+        "runs",
+    "thời gian":
+        "time",
+    "hết HM":
+        "no quota",
+    " (mới: {v})":
+        " (new: {v})",
+    "Dùng: /task <agent>[:model][@effort] <nội dung>  — agent: {v}":
+        "Usage: /task <agent>[:model][@effort] <content>  — agents: {v}",
+    "Sửa agent ":
+        "Edit agent ",
+    "trưởng nhóm chia việc dựa vào đây":
+        "the lead assigns work based on this",
+    "{label}: thiếu dấu nháy đóng":
+        "{label}: missing closing quote",
+    "Sửa workflow ":
+        "Edit workflow ",
+    "Trưởng nhóm review khi xong":
+        "The lead reviews when done",
+    "Bước {i}: 'Sau bước' phải là số bước đứng trước (1…{v})":
+        "Step {i}: 'After step' must be earlier step numbers (1…{v})",
+    "'{name}' đang là trưởng nhóm — đổi trưởng nhóm ở /setup trước.":
+        "'{name}' is the lead — change the lead in /setup first.",
+    "'{name}' nằm trong file cấu hình khác ({v}) — sửa file đó để xoá.":
+        "'{name}' is in another config file ({v}) — edit that file to delete it.",
+    "Sáng":
+        "Light",
+    "★ khuyên dùng: ":
+        "★ recommended: ",
+    "── {v} (mã {rc}) sau {v2} ──":
+        "── {v} (code {rc}) after {v2} ──",
+    "✗ Xoá stash":
+        "✗ Drop stash",
+    "Xoá {ref}? Thay đổi trong đó sẽ mất.":
+        "Drop {ref}? The changes in it will be lost.",
+    "⬆ Đang push…":
+        "⬆ Pushing…",
+    "  💻 {v} lệnh đang chạy":
+        "  💻 {v} command(s) running",
+    "  · task mới chuyển cho {fb}":
+        "  · new tasks go to {fb}",
+    "  · task của nó chờ hồi hạn mức":
+        "  · its tasks wait for the quota",
+    "\n○ rảnh":
+        "\n○ idle",
+    "(Tôi không chắc — bạn tự quyết":
+        "(I'm not sure — you decide",
+    "Đang chạy — Dừng trước rồi mới xoá":
+        "Running — stop it before removing",
+    "Dùng: /{cmd} <agent> <giá trị|->  — agent: {v}":
+        "Usage: /{cmd} <agent> <value|->  — agents: {v}",
+    "(chọn để điền sẵn)":
+        "(pick to pre-fill)",
+    "Chạy trong terminal giả (pty)":
+        "Run in a pseudo-terminal (pty)",
+    "Chạy lệnh kiểm tra sau task":
+        "Run the check command after tasks",
+    "Toàn quyền":
+        "Full access",
+    "{label}: phải là số nguyên dương":
+        "{label}: must be a positive integer",
+    "vd: tinh-nang, sua-loi":
+        "e.g. new-feature, bug-fix",
+    "  ★ khuyên dùng":
+        "  ★ recommended",
+    "＋ Tạo git repo (git init)":
+        "＋ Create a git repo (git init)",
+    "  · {v} dòng":
+        "  · {v} lines",
+    "  · gần nhất #{id} ":
+        "  · last #{id} ",
+    ", theo khuyến nghị: {v})":
+        ", per your recommendation: {v})",
+    "Dùng: /models [agent] [làm mới] — agent: {v}":
+        "Usage: /models [agent] [refresh] — agents: {v}",
+    "🗑 Dọn task đã xong":
+        "🗑 Clear finished tasks",
+    "🗑 Xoá log":
+        "🗑 Clear log",
+    "■ Dừng":
+        "■ Stop",
+    "↻ Chạy lại":
+        "↻ Restart",
+    "✗ Huỷ merge":
+        "✗ Abort merge",
+    "⎇ Nhánh":
+        "⎇ Branches",
+    "Tạo repo để theo dõi thay đổi, commit, và dùng chế độ worktree (mỗi task một nhánh riêng).\n":
+        "Create a repo to track changes, commit, and use worktree mode (one branch per task).\n",
+    "  · im lặng {v}":
+        "  · silent {v}",
+    "Đang hỏi {agent} danh sách model…":
+        "Asking {agent} for its model list…",
+    "Dùng: /set <task> model|effort <giá trị|->":
+        "Usage: /set <task> model|effort <value|->",
+    "+ Tất cả":
+        "+ All",
+    "Commit message — Enter để commit":
+        "Commit message — Enter to commit",
+    "✨ Trưởng nhóm viết":
+        "✨ Lead writes it",
+    "Sửa commit trước":
+        "Amend last commit",
+    "Bỏ qua hook (--no-verify)":
+        "Skip hooks (--no-verify)",
+    "Δ Xem commit":
+        "Δ View commit",
+    "⎌ Bỏ commit cuối":
+        "⎌ Undo last commit",
+    "Thư mục này chưa là git repo.\n\n":
+        "This folder is not a git repo yet.\n\n",
+    "✓ xong":
+        "✓ done",
+    "✗ Xoá hẳn nhánh":
+        "✗ Force delete branch",
+    "Xoá nhánh {name} kể cả commit chưa merge?\nCác commit đó sẽ mất.":
+        "Delete branch {name} including unmerged commits?\nThose commits will be lost.",
+    "Xoá hẳn":
+        "Force delete",
+    "Tiêu đề":
+        "Title",
+    "Sau bước":
+        "After step",
+    "■ đã dừng":
+        "■ stopped",
+    "✗ lỗi":
+        "✗ failed",
+    "⚙ Tắt kiểm tra sau mỗi task cho dự án này.":
+        "⚙ Check after each task turned off for this project.",
+    "⚙ Kiểm tra sau mỗi task: `{rest}` (sửa tối đa {max_fix_attempts} lần)":
+        "⚙ Check after each task: `{rest}` (up to {max_fix_attempts} fix attempts)",
+    "Lệnh kiểm tra: {v} · sửa tối đa {max_fix_attempts} lần":
+        "Check command: {v} · up to {max_fix_attempts} fix attempts",
+    " · người sửa: {fix_agent}":
+        " · fixer: {fix_agent}",
+    "Dùng: /cooldown <agent> <phút|off>":
+        "Usage: /cooldown <agent> <minutes|off>",
+    "Đã duyệt {n} task":
+        "Approved {n} task(s)",
+    "Không có task nháp":
+        "No draft tasks",
+    "Đã bỏ kế hoạch #{gid} ({v} task nháp)":
+        "Dropped plan #{gid} ({v} draft task(s))",
+    "Không có kế hoạch nháp nào để bỏ":
+        "No draft plan to drop",
+    "Bỏ commit cuối cùng, giữ nguyên thay đổi của nó (ở trạng thái đã stage) để sửa rồi commit lại?":
+        "Undo the last commit, keeping its changes (staged) so you can fix them and commit again?",
+    "Bỏ commit":
+        "Undo commit",
+    "⏸ Tạm dừng: không bắt đầu task mới (task đang chạy vẫn tiếp tục).":
+        "⏸ Paused: no new tasks will start (running tasks continue).",
+    "▶ Tiếp tục.":
+        "▶ Resumed.",
+    " ★ trưởng nhóm":
+        " ★ lead",
+    " · tuỳ chỉnh (/custom)":
+        " · custom (/custom)",
+    "\n   vai trò: {role}":
+        "\n   role: {role}",
+    "\n   lệnh: {v}":
+        "\n   command: {v}",
+    "Theme: {v}":
+        "Theme: {v}",
+    "Không có theme {name} — có: {v}":
+        "No theme named {name} — available: {v}",
+    "Không có màu nhấn {name} — có: {v}":
+        "No accent color named {name} — available: {v}",
+    "Ngôn ngữ: {v} · đổi bằng /lang en hoặc /lang vi":
+        "Language: {v} · change with /lang en or /lang vi",
+    "Đang dùng {v} rồi":
+        "Already using {v}",
+    "Đã lưu {v} — áp dụng khi mở lại app (đang có agent chạy, không tự mở lại)":
+        "Saved {v} — applies when you reopen the app (agents are running, so it won't reopen now)",
+    "↪ Trưởng nhóm đang lập kế hoạch tiếp cho mục tiêu #{i}":
+        "↪ The lead is planning the follow-up for goal #{i}",
+    "↪ Task #{i}: hỏi tiếp {agent}":
+        "↪ Task #{i}: following up with {agent}",
+    "Không có lệnh nào đang chạy để dừng":
+        "No running command to stop",
+    "■ Đã dừng: {cmd}":
+        "■ Stopped: {cmd}",
+    "Không có workflow '{name}'":
+        "No workflow '{name}'",
+    " · gõ / để xem danh sách, F1 trợ giúp":
+        " · type / for the list, F1 for help",
+    " — có phải /{near}?":
+        " — did you mean /{near}?",
+    "→ Cập nhật ateam {version} → {latest}":
+        "→ Updating ateam {version} → {latest}",
+    "Đã cập nhật lên {latest}. Thoát (Ctrl+Q) rồi mở lại ateam để dùng bản mới.":
+        "Updated to {latest}. Quit (Ctrl+Q) and reopen ateam to use the new version.",
+    "Không kiểm tra được phiên bản mới (mất mạng?). Thử lại sau.":
+        "Could not check for a new version (offline?). Try again later.",
+    "Có bản {latest} (đang chạy {version}), nhưng ateam được cài từ mã nguồn ở {src}: cập nhật bằng `git -C {src} pull`, rồi mở lại app.":
+        "Version {latest} is available (running {version}), but ateam was installed from source at {src}: update with `git -C {src} pull`, then reopen the app.",
+    "Cập nhật thất bại (mã thoát {code}) — xem log ở trên, hoặc chạy tay: curl -fsSL {GET_SH} | bash":
+        "Update failed (exit code {code}) — see the log above, or run by hand: curl -fsSL {GET_SH} | bash",
+}
