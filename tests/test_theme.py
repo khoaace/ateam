@@ -32,13 +32,14 @@ def _app(env, project, monkeypatch):
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     git_init(project)
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)  # đường dẫn ~/.config/ateam tính lúc import: trỏ về XDG của test
     from ateam import tui
     from ateam.config import ensure_global_config, load_config
     from ateam.db import DB
-    # tui giữ tham chiếu tới load_state/save_state của module config lúc import: trỏ về XDG của test
     cfg_mod = tui.load_state.__globals__
-    monkeypatch.setitem(cfg_mod, "GLOBAL_DIR", type(cfg_mod["GLOBAL_DIR"])(env["XDG_CONFIG_HOME"]) / "ateam")
-    monkeypatch.setitem(cfg_mod, "STATE_FILE", cfg_mod["GLOBAL_DIR"] / "state.json")
     ensure_global_config()
     return tui, tui.TeamApp(project, load_config(project), DB(project / ".ateam/team.db")), cfg_mod["STATE_FILE"]
 

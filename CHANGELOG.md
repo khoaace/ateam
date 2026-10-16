@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.0 — 16/10/2026
+
+- **Tab 📝 Code — xem & sửa source ngay trong app, phím vim**: `/code @file[:dòng]` (hoặc `/edit @file`, phím
+  `e` ở tab Git và màn hình diff). Tô màu cú pháp (pygments, không cần cài thêm), số dòng, nhiều file, lọc file
+  ở cột trái. Phím vim cốt lõi: normal/insert/visual, `hjkl w b e 0 ^ $ gg G Ctrl+D/U`, số đếm, `x dd D dw cw cc yy
+  p P J r u Ctrl+R`, `v V`, `/ ? n N *`, `:w :q :wq :q! :e! :<dòng> :bn :bp`. `/vim off` để sửa kiểu thường
+  (Ctrl+S lưu).
+- An toàn: agent sửa file đang mở → tự nạp lại nếu bạn chưa sửa, không thì báo (`:e!` / `:w!`); lưu khi file
+  trên đĩa đã đổi thì hỏi trước khi ghi đè; ghi qua file tạm; giữ CRLF; file nhị phân không mở; thoát app khi
+  còn file chưa lưu thì hỏi lại.
+- Hiệu năng: chỉ vẽ dòng đang hiện, tô màu chạy nền sau khi ngừng gõ, file lớn tắt tô màu / chỉ đọc; vá hai chỗ
+  của Textual tính lại toàn file mỗi khung hình / mỗi phím (file 60 000 dòng mở < 1 giây, gõ không giật).
+
 ## 0.9.0 — 16/10/2026
 
 - **Đa ngôn ngữ — tiếng Việt / English** cho toàn bộ app: TUI, trợ giúp, thông báo, log hệ thống, wizard, tab

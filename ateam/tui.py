@@ -6,12 +6,14 @@ import asyncio
 import difflib
 import inspect
 import json
+import os
 import re
 import shlex
 import shutil
 import time
 import unicodedata
 from collections import deque
+from functools import partial
 from pathlib import Path
 
 from rich.style import Style
@@ -20,13 +22,15 @@ from textual import events, on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.geometry import Size
+from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input, OptionList,
-                             RichLog, Select, SelectionList, Static, TabbedContent, TabPane)
+                             RichLog, Select, SelectionList, Static, TabbedContent, TabPane, TextArea)
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import clipboard, diffview, gitops, mentions, shell, theme, update
+from . import clipboard, diffview, editor, gitops, mentions, shell, theme, update
 from .config import (CATALOG, CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, NAME_RE, PROVIDERS, ROLES, TIERS,
                      WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan, builtin_agent, default_cli,
                      full_access_supported, plan_team, provider_of, provider_template, save_onboard,
@@ -171,7 +175,7 @@ Khác:
   /clear                            dọn task & mục tiêu đã kết thúc khỏi bảng (nút 🗑 trên bảng)
   /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
-  /team  /board  /term  /git        chuyển tab Đội / Bảng việc / Terminal / Git (Ctrl+T xoay vòng)
+  /team  /board  /term  /git  /code chuyển tab Đội / Bảng việc / Terminal / Git / Code (Ctrl+T xoay vòng)
 
 Lệnh terminal (tab 💻 Terminal):
   !<lệnh>                           chạy lệnh trong thư mục dự án, vd !yarn dev, !make test
@@ -195,6 +199,18 @@ Git (tab 🌿 Git — Ctrl+T xoay tới, hoặc /git):
   /stash [message]   /stash pop     cất tạm / lấy lại thay đổi chưa commit (/stash list: danh sách)
                                     đổi nhánh, pull, stash bị chặn khi agent đang chạy task
 
+Xem & sửa code (tab 📝 Code — Ctrl+T xoay tới, hoặc /code):
+  /code [@file[:dòng]]              mở file trong editor (trống: mở tab, gõ để lọc file bên trái);
+                                    /edit @file cũng được
+                                    phím e ở tab Git (file đang chọn) / màn hình diff (đúng đoạn đang xem)
+  phím vim                          i a I A o O sửa · Esc về normal · h j k l w b e 0 ^ $ gg G Ctrl+D/U
+                                    x dd D dw cw cc yy p P J r u Ctrl+R · v V chọn · / ? n N * tìm
+                                    :w lưu · :q đóng · :wq · :q! bỏ thay đổi · :e! nạp lại · :<số> tới dòng
+                                    :bn :bp đổi file · :files ẩn/hiện danh sách · số đếm: 5j, 3dd, 2dw
+  /vim off   /vim on                tắt phím vim (sửa như editor thường, Ctrl+S lưu) / bật lại
+                                    file bị agent sửa trong lúc mở: tự nạp lại nếu bạn chưa sửa, không thì
+                                    báo để :e! hoặc :w! (ghi đè); file > 2 MB tắt tô màu, > 5 MB chỉ đọc
+
 Trợ giúp & thoát:
   /help                             trợ giúp này (F1)
   F2 = Ctrl+G, F5 = Ctrl+R, F6 = Ctrl+O   dùng F2/F5/F6 khi terminal chặn phím Ctrl (vd terminal trong VS Code/
@@ -210,7 +226,8 @@ WELCOME = tr("""\
   • Gõ / để xem các lệnh · @ để nhắc file · Ctrl+V dán ảnh
   • !yarn dev → chạy lệnh terminal (gõ ! để xem gợi ý) · tab 💻 Terminal
   • /git → tab 🌿 Git: stage, commit (trưởng nhóm viết message), nhánh, pull/push, stash, lịch sử
-  • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: đổi tab (Bảng việc / Đội / Terminal / Git)""")
+  • /code @file → tab 📝 Code: xem & sửa code với phím vim (:w lưu, /vim off để sửa kiểu thường)
+  • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: đổi tab (Bảng việc / Đội / Terminal / Git / Code)""")
 
 # lệnh cho bảng gợi ý khi gõ "/" (tên, tham số, mô tả ngắn) — giữ khớp với TeamApp.run_command
 COMMANDS = [
@@ -225,6 +242,8 @@ COMMANDS = [
     ("term", "", tr("mở tab Terminal (lệnh đang chạy)")),
     ("theme", tr("[tên] [màu nhấn]"), tr("chọn theme màu (xem trước trực tiếp)")),
     ("lang", "<en|vi>", tr("đổi ngôn ngữ giao diện (app tự mở lại)")),
+    ("code", tr("[@file[:dòng]]"), tr("mở tab 📝 Code: xem & sửa file với phím vim")),
+    ("vim", tr("<on|off|file>"), tr("bật/tắt phím vim trong tab 📝 Code")),
     ("git", tr("[lệnh git]"), tr("mở tab Git; kèm lệnh thì chạy git <lệnh> ở tab Terminal")),
     ("commit", "[--no-verify] [message]", tr("commit (chưa stage gì thì commit tất cả); trống: "
                                              "trưởng nhóm viết message")),
@@ -2779,6 +2798,7 @@ class DiffScreen(BaseModal):
         Binding("left_square_bracket", "hunk(-1)", tr("Đoạn trước"), show=False),
         Binding("s", "toggle_split", tr("Đổi kiểu"), show=False),
         Binding("o", "open_code", "VS Code", show=False),
+        Binding("e", "edit_file", tr("Sửa file"), show=False),
         Binding("pagedown,space", "page(1)", show=False),
         Binding("pageup", "page(-1)", show=False),
     ]
@@ -2898,6 +2918,23 @@ class DiffScreen(BaseModal):
         if nxt:
             scroll.scroll_to(y=nxt[0], animate=False)
 
+    def action_edit_file(self) -> None:
+        """Mở file đang xem trong tab 📝 Code, tại dòng của đoạn đổi đang ở đầu màn hình."""
+        fd = self.current
+        if fd is None or fd.status == "D":
+            self.app.notify(tr("File đã bị xoá — không có gì để sửa"), severity="warning")
+            return
+        y = self.query_one("#diff-scroll", VerticalScroll).scroll_y
+        idx = max([i for i, st in enumerate(self._starts) if st <= y + 0.5] or [0])
+        line = None
+        if fd.hunks:
+            hunk = fd.hunks[min(idx, len(fd.hunks) - 1)]
+            # dòng thêm/sửa đầu tiên của đoạn (không có thì dòng ngữ cảnh đầu)
+            line = next((ln.new_no for ln in hunk.lines if ln.kind == "+" and ln.new_no), None) or \
+                next((ln.new_no for ln in hunk.lines if ln.new_no), None)
+        self.dismiss(None)
+        self.app.open_code(fd.path, line)
+
     async def action_open_code(self) -> None:
         if not self.has_code:
             self.app.notify(tr("Không thấy lệnh 'code' — trong VS Code: Shell Command: Install "
@@ -2966,6 +3003,7 @@ class GitFileList(OptionList):
         Binding("x", "app.git_discard", tr("Bỏ thay đổi"), show=False),
         Binding("d", "app.git_diff", tr("Xem diff"), show=False),
         Binding("c", "app.git_focus_msg", "Commit", show=False),
+        Binding("e", "app.git_edit", tr("Sửa file"), show=False),
     ]
 
 
@@ -3172,6 +3210,269 @@ class GitStashScreen(BaseModal):
 
 
 # ============================================================================ app
+def parse_code_target(arg: str) -> tuple[str, int | None]:
+    """"@src/a.py:12" -> ("src/a.py", 12); bỏ @ và ngoặc kép của gợi ý @file."""
+    t = arg.strip()
+    if t.startswith("@"):
+        t = t[1:]
+    line = None
+    m = re.match(r"^(.*?):(\d+)(?::\d+)?$", t)
+    if m and m.group(1):
+        t, line = m.group(1), int(m.group(2))
+    if len(t) >= 2 and t[0] == t[-1] and t[0] in "\"'":
+        t = t[1:-1]
+    return t, line
+
+
+from textual.document._wrapped_document import WrappedDocument as _WrappedDocument  # noqa: E402
+
+
+class _NoWrapDocument(_WrappedDocument):
+    """WrappedDocument cho editor không xuống dòng mềm: mỗi dòng đúng 1 hàng nên height = số dòng (O(1))."""
+
+    @property
+    def height(self) -> int:
+        return len(self._wrap_offsets)
+
+
+class CodeEditor(TextArea):
+    """Editor của tab 📝 Code: TextArea (chỉ vẽ dòng đang hiện) + phím vim (`editor.VimState`) + tô màu
+    pygments chạy nền: mỗi lần sửa chỉ hẹn tô lại (debounce) trong thread, gõ liên tục không lexer lại
+    từng phím; file lớn tắt tô màu."""
+
+    DEFAULT_CSS = """
+    CodeEditor { border: none; padding: 0; height: 1fr; }
+    CodeEditor:focus { border: none; }
+    """
+    BINDINGS = [Binding("ctrl+s", "save", tr("Lưu"), show=False, priority=True)]
+    HL_DELAY = 0.2
+    HL_MARGIN = 200  # tô thêm bấy nhiêu dòng dưới màn hình
+
+    def __init__(self, **kw):
+        super().__init__("", soft_wrap=False, show_line_numbers=True, tab_behavior="indent",
+                         theme="vscode_dark", **kw)
+        self.vim = editor.VimState()
+        self.vim_on = True
+        self.buffer: editor.SourceFile | None = None
+        self.lexer = None
+        self.highlight_on = False
+        self.hl_runs = 0  # số lượt tô màu đã chạy (test kiểm tra debounce)
+        self._hl_timer = None
+        self._hl_upto = 0
+        self._gen = 0
+        self._saved_gen = 0
+        self._want_col = 0
+        self.message = ""
+
+    # ---- trạng thái
+    @property
+    def dirty(self) -> bool:
+        return self.buffer is not None and self._gen != self._saved_gen
+
+    def mark_saved(self) -> None:
+        self._saved_gen = self._gen
+
+    def load(self, sf: "editor.SourceFile", cursor: tuple = (0, 0), dirty_text: str | None = None) -> None:
+        """Nạp file (hoặc nội dung buffer chưa lưu) vào editor."""
+        self.buffer = sf
+        self.lexer = editor.lexer_for(sf.path)
+        text = sf.text if dirty_text is None else dirty_text
+        self.highlight_on = self.lexer is not None and editor.can_highlight(text, sf.size)
+        self._highlights.clear()
+        self._hl_upto = 0
+        self.read_only = sf.read_only
+        self.load_text(text)
+        self.mark_saved()
+        if dirty_text is not None:
+            self._saved_gen = -1
+        self.vim = editor.VimState(shiftwidth=self.vim.shiftwidth)
+        self.message = ""
+        self.move_cursor(self.clamp_visitable(cursor), center=True)
+        self._want_col = self.cursor_location[1]
+        if self.highlight_on:
+            self._schedule_hl(0)
+
+    def _set_document(self, text: str, language: str | None) -> None:
+        super()._set_document(text, language)
+        # WrappedDocument.height của Textual cộng dồn trên mọi dòng mỗi lần vẽ 1 dòng (O(n) / dòng): file
+        # 60 000 dòng mất hàng giây mỗi khung hình. Không xuống dòng mềm thì chiều cao = số dòng.
+        self.wrapped_document.__class__ = _NoWrapDocument
+        self._max_width = None
+
+    def _refresh_size(self) -> None:
+        # Textual đo lại độ rộng mọi dòng sau mỗi lần sửa (O(n)): giữ độ rộng lớn nhất, chỉ đo các dòng vừa
+        # sửa (độ rộng chỉ dùng cho thanh cuộn ngang — lớn hơn thật một chút sau khi xoá dòng dài không sao)
+        if self.soft_wrap or not hasattr(self, "_max_width"):
+            super()._refresh_size()
+            return
+        from rich.cells import cell_len
+        lines = self.document.lines
+        tab = self.indent_width
+        if self._max_width is None:
+            self._max_width = max((cell_len(ln.expandtabs(tab)) for ln in lines), default=0)
+        else:
+            r0, r1 = getattr(self, "_edit_rows", None) or (self.cursor_location[0],) * 2
+            for ln in lines[max(0, r0):min(len(lines), r1 + 1, r0 + 5000)]:
+                w = cell_len(ln.expandtabs(tab))
+                if w > self._max_width:
+                    self._max_width = w
+        self.virtual_size = Size(self._max_width + self.gutter_width + 1, len(lines))
+        self._refresh_scrollbars()
+
+    def edit(self, edit):
+        top = edit.top[0] if hasattr(edit, "top") else self.cursor_location[0]
+        self._edit_rows = (top, top + getattr(edit, "text", "").count("\n"))
+        result = super().edit(edit)
+        self._edit_rows = None
+        return result
+
+    def undo(self) -> None:
+        self._max_width = None
+        super().undo()
+
+    def redo(self) -> None:
+        self._max_width = None
+        super().redo()
+
+    # ---- tô màu chạy nền
+    def _build_highlight_map(self) -> None:
+        # Textual gọi sau mỗi lần sửa / undo / nạp: chỉ đánh dấu và hẹn tô lại, không lexer ngay
+        self._line_cache.clear()
+        if not hasattr(self, "_gen"):
+            return
+        self._gen += 1
+        if self.highlight_on:
+            self._schedule_hl()
+
+    def _schedule_hl(self, delay: float | None = None) -> None:
+        if self._hl_timer is not None:
+            self._hl_timer.stop()
+        # set_timer(0) làm Timer của Textual chia cho 0
+        self._hl_timer = self.set_timer(max(0.01, self.HL_DELAY if delay is None else delay), self._start_hl)
+
+    def _start_hl(self) -> None:
+        self._hl_timer = None
+        if not self.highlight_on or self.lexer is None:
+            return
+        upto = int(self.scroll_y) + self.size.height + self.HL_MARGIN
+        self.run_worker(partial(self._hl_job, self.text, self.lexer, upto, self._gen), thread=True,
+                        exclusive=True, group="code-hl")
+
+    def _hl_job(self, text: str, lexer, upto: int, gen: int) -> None:
+        try:
+            hl = editor.highlight_lines(text, lexer, upto)
+        except Exception:
+            return
+        self.app.call_from_thread(self._hl_done, hl, upto, gen)
+
+    def _hl_done(self, hl: dict, upto: int, gen: int) -> None:
+        self.hl_runs += 1
+        if gen != self._gen:  # đã sửa tiếp trong lúc tô: lượt mới đã được hẹn
+            return
+        self._highlights.clear()
+        self._highlights.update(hl)
+        self._hl_upto = upto
+        self._line_cache.clear()
+        self.refresh()
+
+    def watch_scroll_y(self, old: float, new: float) -> None:
+        super().watch_scroll_y(old, new)
+        if self.highlight_on and new + self.size.height > self._hl_upto - 20 and self._hl_timer is None:
+            self._schedule_hl(0.05)
+
+    # ---- phím
+    async def _on_key(self, event: events.Key) -> None:
+        if not self.vim_on or self.buffer is None:
+            await super()._on_key(event)
+            return
+        if self.vim.mode == "insert" and event.key not in ("escape", "ctrl+c", "ctrl+left_square_bracket"):
+            if self.read_only:
+                event.stop()
+                event.prevent_default()
+                return
+            await super()._on_key(event)
+            return
+        event.stop()
+        event.prevent_default()
+        ops = self.vim.feed(event.key, event.character, self.document.lines, self.cursor_location,
+                            max(1, self.size.height))
+        self.apply(ops)
+
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        # ở normal/visual mọi phím (mũi tên, Backspace, Ctrl+D/U/K…) đi qua VimState, không qua binding sửa
+        # chữ của TextArea (Ctrl+U xoá đầu dòng, Ctrl+D xoá ký tự…)
+        if self.vim_on and self.buffer is not None and self.vim.mode != "insert" and action != "save":
+            return False
+        return True
+
+    def check_consume_key(self, key: str, character: str | None = None) -> bool:
+        # chỉ nhận ký tự in được (h j k : / …) — Ctrl+T, F1, Ctrl+Q của app vẫn phải chạy
+        if self.vim_on and self.buffer is not None and self.vim.mode != "insert":
+            return character is not None and character.isprintable()
+        return super().check_consume_key(key, character)
+
+    def apply(self, ops: list) -> None:
+        from textual.widgets.text_area import Selection
+        lines = self.document.lines
+        for op in ops:
+            kind = op[0]
+            if kind == "edit":
+                if self.read_only:
+                    self.message = tr("Chỉ đọc: {v}", v=self.buffer.note if self.buffer else "")
+                    continue
+                self.replace(op[3], op[1], op[2], maintain_selection_offset=False)
+                lines = self.document.lines
+            elif kind in ("move", "move_v"):
+                r, c = op[1]
+                r = max(0, min(r, len(lines) - 1))
+                if c is None:
+                    c = editor.first_nonblank(lines[r])
+                if kind == "move_v":
+                    c = self._want_col
+                else:
+                    self._want_col = c
+                if self.vim.mode not in ("insert",):
+                    c = min(c, max(0, len(lines[r]) - 1))
+                self.move_cursor((r, min(c, len(lines[r]))))
+            elif kind == "select":
+                self.selection = Selection(op[1], op[2])
+            elif kind == "undo":
+                for _ in range(op[1]):
+                    self.undo()
+                lines = self.document.lines
+                self._clamp_normal()
+            elif kind == "redo":
+                for _ in range(op[1]):
+                    self.redo()
+                lines = self.document.lines
+            elif kind == "mode":
+                self.set_class(op[1] == "insert", "-insert")
+                self.message = ""
+            elif kind == "msg":
+                self.message = op[1]
+            elif kind == "ex":
+                self.app.code_ex(op[1])
+        self.post_message(self.StatusChanged(self))
+
+    def _clamp_normal(self) -> None:
+        r, c = self.cursor_location
+        n = len(self.document[r])
+        if c > max(0, n - 1):
+            self.move_cursor((r, max(0, n - 1)))
+
+    def action_save(self) -> None:
+        self.app.code_ex("w")
+
+    class StatusChanged(Message):
+        def __init__(self, ed: "CodeEditor"):
+            super().__init__()
+            self.editor = ed
+
+
+class CodeFileList(OptionList):
+    """Danh sách file ở tab Code (buffer đang mở ở trên, kết quả lọc ở dưới)."""
+
+
 class TeamApp(App):
     TITLE = "AI Team"
     ENABLE_COMMAND_PALETTE = False
@@ -3246,6 +3547,15 @@ class TeamApp(App):
     #git-log { height: 1fr; border: none; }
     #git-norepo { height: 1fr; padding: 1 2; }
     #tasks-empty { height: 1fr; padding: 1 2; color: $text-muted; }
+    #code { height: 1fr; }
+    #code-side { width: 34; min-width: 22; border-right: solid $primary-darken-2; }
+    #code.narrow #code-side { width: 24; }
+    #code.hide-side #code-side { display: none; }
+    #code-filter { margin: 0; }
+    #code-files { height: 1fr; border: none; }
+    #code-main { width: 1fr; }
+    #code-head { height: 1; padding: 0 1; background: $boost; overflow: hidden hidden; }
+    #code-status { height: 1; padding: 0 1; background: $panel; overflow: hidden hidden; }
     /* cao cố định: chiều cao đổi theo từng task thì mỗi lần lướt bảng cả màn hình phải tính lại bố cục */
     #detail { height: 6; padding: 0 1; background: $boost; overflow: hidden hidden; }
     #log-tools { height: 1; align: right top; }
@@ -3330,6 +3640,11 @@ class TeamApp(App):
         self._frame = 0
         self._booted = False
         self.restart_requested = False  # /lang: cli.cmd_tui mở lại app sau khi thoát
+        self.code_bufs: dict[str, dict] = {}  # tab 📝 Code: đường dẫn tuyệt đối -> buffer
+        self.code_order: list[str] = []
+        self.code_cur: str | None = None
+        self._code_check_at = 0.0
+        self._quit_ok = False
         self._goal_status: dict[int, str] = {}  # để báo khi mục tiêu vừa kết thúc
         self._log_cut: dict[int, int] = {}  # nút Xoá log: vị trí (byte) trong file log bắt đầu hiện
         self._snap: dict | None = None  # DB đọc 1 lần cho mỗi lượt refresh_view
@@ -3416,6 +3731,15 @@ class TeamApp(App):
                             tr("Tạo repo để theo dõi thay đổi, commit, và dùng chế độ worktree "
                                "(mỗi task một nhánh riêng).\n")))
                         yield Btn(tr("＋ Tạo git repo (git init)"), id="git-init", variant="success")
+            with TabPane("📝 Code", id="tab-code"):
+                with Horizontal(id="code"):
+                    with Vertical(id="code-side"):
+                        yield TextInput(id="code-filter", placeholder=tr("Tìm file… (Enter mở)"))
+                        yield CodeFileList(id="code-files")
+                    with Vertical(id="code-main"):
+                        yield Static(id="code-head")
+                        yield CodeEditor(id="code-editor")
+                        yield Static(id="code-status")
         yield GrillBar(id="grill")
         yield PlanBar(id="plan")
         yield Static(id="continue-hint")
@@ -3429,6 +3753,9 @@ class TeamApp(App):
         self.sub_title = str(self.root)
         st = load_state()
         self.apply_theme(st.get("theme") or theme.DEFAULT_THEME, st.get("accent") or "")
+        ed = self.query_one("#code-editor", CodeEditor)
+        ed.vim_on = st.get("vim", True) is not False
+        ed.read_only = True  # chưa mở file nào
         table = self.query_one("#tasks", DataTable)
         table.add_column("#", key="id", width=4)
         table.add_column("Agent", key="agent", width=13)
@@ -3459,6 +3786,7 @@ class TeamApp(App):
         board.set_class(w < NARROW_WIDTH, "narrow")
         board.set_class(NARROW_WIDTH <= w < 140, "mid")
         self.query_one("#git-main").set_class(w < NARROW_WIDTH, "narrow")
+        self.query_one("#code").set_class(w < 110, "narrow")
         self.query_one("#git-top").set_class(w < 140, "narrow")
 
     def _preload_panes(self) -> None:
@@ -3635,6 +3963,345 @@ class TeamApp(App):
         log = self.query_one("#log", RichLog)
         for line in text.splitlines():
             log.write(line)
+
+    # ------------------------------------------------------------------ code (tab 📝 Code)
+    CODE_LIMIT = 10  # số buffer giữ cùng lúc
+    # phím tắt của app trùng phím vim (Ctrl+D/U/R…): nhường cho editor khi đang gõ trong đó
+    CODE_YIELD = {"diff", "cancel_task", "retry", "approve", "continue", "merge", "syslog"}
+
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        if action in self.CODE_YIELD:
+            f = self.focused
+            if isinstance(f, CodeEditor) and f.buffer is not None:
+                return False
+        return True
+
+    def code_editor(self) -> CodeEditor:
+        return self.query_one("#code-editor", CodeEditor)
+
+    def code_rel(self, key: str) -> str:
+        try:
+            return str(Path(key).relative_to(self.root))
+        except ValueError:
+            return key
+
+    def code_unsaved(self) -> list[str]:
+        self._stash_code()
+        return [self.code_rel(k) for k in self.code_order if self.code_bufs[k].get("dirty")]
+
+    def code_tab_shown(self) -> None:
+        ed = self.code_editor()
+        if ed.buffer is not None:
+            ed.focus()
+        else:
+            self.query_one("#code-filter", Input).focus()
+        idx = self.query_one("#cmd", CommandInput).index
+        if idx.stale():
+            async def load() -> None:
+                await idx.refresh()
+                self.refresh_code_files()
+            self.run_worker(load(), exclusive=True, group="code-index")
+        self.refresh_code_files()
+        self._refresh_code_head()
+
+    def refresh_code_files(self) -> None:
+        """Danh sách bên trái: buffer đang mở, rồi file khớp ô lọc (dùng chỉ mục @file có sẵn)."""
+        ol = self.query_one("#code-files", CodeFileList)
+        q = self.query_one("#code-filter", Input).value.strip()
+        ed = self.code_editor()
+        opts: list = []
+        seen = set()
+        if self.code_order:
+            opts.append(Option(Text(tr("Đang mở"), "bold dim"), disabled=True))
+            for key in self.code_order:
+                rel = self.code_rel(key)
+                if q and mentions.score(rel, q) is None:
+                    continue
+                dirty = ed.dirty if key == self.code_cur else self.code_bufs[key].get("dirty")
+                t = Text(no_wrap=True, overflow="ellipsis")
+                t.append("● " if dirty else "  ", PAL.get("warn", "yellow"))
+                t.append(rel, "bold" if key == self.code_cur else "")
+                opts.append(Option(t, id="f:" + rel))
+                seen.add(rel)
+        entries = [e for e in self.query_one("#cmd", CommandInput).index.entries if not e.endswith("/")]
+        found = mentions.search(entries, q, limit=300) if q else sorted(entries, key=str.lower)[:300]
+        found = [f for f in found if f not in seen]
+        if found:
+            opts.append(Option(Text(tr("File"), "bold dim"), disabled=True))
+            opts += [Option(Text(f, no_wrap=True, overflow="ellipsis"), id="f:" + f) for f in found]
+        ids = [o.id for o in opts]
+        if ids == getattr(ol, "_ids", None) and q == getattr(ol, "_q", None):
+            return
+        ol._ids, ol._q = ids, q
+        ol.clear_options()
+        ol.add_options(opts)
+        first = next((i for i, o in enumerate(opts) if o.id and o.id[2:] not in seen), None)
+        if q and first is not None:
+            ol.highlighted = first
+
+    def open_code(self, target: str = "", line: int | None = None) -> None:
+        self.query_one("#tabs", TabbedContent).active = "tab-code"
+        if not target:
+            self.code_tab_shown()
+            return
+        self.run_worker(self._open_code(target, line), exclusive=True, group="code-open")
+
+    def _stash_code(self) -> None:
+        """Ghi trạng thái buffer đang hiện (con trỏ, nội dung chưa lưu) trước khi đổi buffer."""
+        ed = self.code_editor()
+        if self.code_cur and self.code_cur in self.code_bufs and ed.buffer is not None:
+            b = self.code_bufs[self.code_cur]
+            b["cursor"] = ed.cursor_location
+            b["dirty"] = ed.dirty
+            b["text"] = ed.text if ed.dirty else None
+
+    async def _open_code(self, target: str, line: int | None = None) -> None:
+        path = Path(target).expanduser()
+        if not path.is_absolute():
+            path = self.root / path
+        path = Path(os.path.normpath(str(path)))
+        key = str(path)
+        ed = self.code_editor()
+        if path.is_dir():
+            self.query_one("#code-filter", Input).value = self.code_rel(key).rstrip("/") + "/"
+            self.query_one("#code-filter", Input).focus()
+            return
+        self._stash_code()
+        b = self.code_bufs.get(key)
+        if b is not None and b.get("dirty"):
+            sf, text = b["sf"], b["text"]
+        else:
+            sf = await asyncio.to_thread(editor.read_source, path)
+            if sf.error:
+                self.notify(f"{self.code_rel(key)}: {sf.error}", severity="warning")
+                return
+            text = None
+        cursor = (line - 1, 0) if line else (b or {}).get("cursor", (0, 0))
+        if key not in self.code_bufs:
+            self.code_bufs[key] = {"sf": sf}
+            self.code_order.append(key)
+            self._trim_code_bufs(key)
+        self.code_bufs[key].update(sf=sf, dirty=text is not None, text=text)
+        self.code_cur = key
+        ed.load(sf, cursor=cursor, dirty_text=text)
+        if line:
+            ed.move_cursor((max(0, line - 1), editor.first_nonblank(ed.document[max(0, min(line - 1,
+                            ed.document.line_count - 1))])), center=True)
+        if not sf.mtime and not sf.text:
+            ed.message = tr("File mới — :w để tạo")
+        ed.focus()
+        self.refresh_code_files()
+        self._refresh_code_head()
+
+    def _trim_code_bufs(self, keep: str) -> None:
+        while len(self.code_order) > self.CODE_LIMIT:
+            old = next((k for k in self.code_order if k != keep and not self.code_bufs[k].get("dirty")), None)
+            if old is None:
+                break
+            self.code_order.remove(old)
+            self.code_bufs.pop(old, None)
+
+    def code_close(self, force: bool = False) -> None:
+        ed = self.code_editor()
+        if not self.code_cur:
+            return
+        if ed.dirty and not force:
+            ed.message = tr("Chưa lưu — :w để lưu, :q! để bỏ thay đổi")
+            self._refresh_code_head()
+            return
+        key = self.code_cur
+        self.code_order.remove(key)
+        self.code_bufs.pop(key, None)
+        self.code_cur = None
+        if self.code_order:
+            self.open_code(self.code_rel(self.code_order[-1]))
+            return
+        ed.buffer = None
+        ed.highlight_on = False
+        ed.load_text("")
+        ed.read_only = True
+        ed.vim = editor.VimState()
+        ed.set_class(False, "-insert")
+        self.refresh_code_files()
+        self._refresh_code_head()
+        self.query_one("#code-filter", Input).focus()
+
+    def code_cycle(self, delta: int) -> None:
+        if len(self.code_order) < 2 or self.code_cur not in self.code_order:
+            return
+        i = (self.code_order.index(self.code_cur) + delta) % len(self.code_order)
+        self.open_code(self.code_rel(self.code_order[i]))
+
+    def code_ex(self, cmd: str) -> None:
+        """Lệnh `:` của editor (w, q, wq, e!, bn…)."""
+        ed = self.code_editor()
+        name, _, arg = cmd.strip().partition(" ")
+        arg = arg.strip()
+        if ed.buffer is None and name not in ("e", "edit", "files", "Ex", "Lex"):
+            ed.message = tr("Chưa mở file nào")
+        elif name in ("w", "w!", "write", "update"):
+            self.run_worker(self.code_save(force=name.endswith("!")), group="code-save")
+        elif name in ("wq", "x", "wq!", "x!", "xit"):
+            self.run_worker(self.code_save(force=name.endswith("!"), close=True), group="code-save")
+        elif name in ("q", "quit", "bd", "bdelete", "close"):
+            self.code_close()
+        elif name in ("q!", "quit!", "bd!"):
+            self.code_close(force=True)
+        elif name in ("e!", "edit!"):
+            self.run_worker(self.code_reload(), group="code-open")
+        elif name in ("e", "edit") and arg:
+            target, line = parse_code_target(arg)
+            self.open_code(target, line)
+        elif name in ("bn", "bnext"):
+            self.code_cycle(1)
+        elif name in ("bp", "bprevious", "bprev", "bN"):
+            self.code_cycle(-1)
+        elif name in ("files", "Ex", "Lex", "e", "edit"):
+            box = self.query_one("#code")
+            box.set_class(not box.has_class("hide-side"), "hide-side")
+            if not box.has_class("hide-side"):
+                self.query_one("#code-filter", Input).focus()
+        elif name == "set" and arg in ("nu", "number", "nonu", "nonumber"):
+            ed.show_line_numbers = arg in ("nu", "number")
+        elif name in ("noh", "nohlsearch"):
+            pass
+        else:
+            ed.message = tr("Lệnh không hỗ trợ: :{cmd}", cmd=cmd)
+        self._refresh_code_head()
+
+    async def code_save(self, force: bool = False, close: bool = False) -> None:
+        ed = self.code_editor()
+        sf = ed.buffer
+        if sf is None:
+            return
+        if sf.read_only and not force:
+            ed.message = tr("Chỉ đọc ({v}) — :w! để vẫn ghi", v=sf.note)
+            self._refresh_code_head()
+            return
+        gen, text = ed._gen, ed.text
+        err = await asyncio.to_thread(editor.save_source, sf, text, force)
+        if err == "conflict":
+            def done(ok) -> None:
+                if ok:
+                    self.run_worker(self.code_save(force=True, close=close), group="code-save")
+            self.push_screen(ConfirmScreen(
+                tr("File đã đổi trên đĩa"),
+                tr("{path} vừa bị sửa bên ngoài (có thể do agent) sau khi bạn mở.\nGhi đè bằng nội dung của "
+                   "bạn? (Huỷ rồi :e! để nạp bản trên đĩa)", path=self.code_rel(str(sf.path))),
+                yes=tr("Ghi đè")), done)
+            return
+        if err:
+            ed.message = err
+            self._refresh_code_head()
+            return
+        sf.text = text
+        if ed.buffer is sf:
+            ed._saved_gen = gen
+        if str(sf.path) in self.code_bufs:
+            self.code_bufs[str(sf.path)].update(dirty=False, text=None)
+        ed.message = tr("Đã lưu {path} · {n} dòng", path=self.code_rel(str(sf.path)), n=text.count("\n") + 1)
+        self.refresh_code_files()
+        self._refresh_code_head()
+        if close and ed.buffer is sf and not ed.dirty:
+            self.code_close()
+
+    async def code_reload(self, keep_message: bool = False) -> None:
+        ed = self.code_editor()
+        sf = ed.buffer
+        if sf is None:
+            return
+        cursor = ed.cursor_location
+        new = await asyncio.to_thread(editor.read_source, sf.path)
+        if new.error:
+            ed.message = new.error
+            return
+        self.code_bufs.setdefault(str(sf.path), {}).update(sf=new, dirty=False, text=None)
+        ed.load(new, cursor=cursor)
+        if not keep_message:
+            ed.message = tr("Đã nạp lại từ đĩa")
+        self.refresh_code_files()
+        self._refresh_code_head()
+
+    def _check_code_disk(self) -> None:
+        """File đang mở bị sửa bên ngoài (agent): buffer sạch tự nạp lại, buffer đang sửa thì báo."""
+        now = time.time()
+        if now - self._code_check_at < 2:
+            return
+        self._code_check_at = now
+        ed = self.code_editor()
+        sf = ed.buffer
+        if sf is None or not sf.mtime:
+            return
+        m = editor.disk_mtime(sf.path)
+        if not m or m == sf.mtime:
+            return
+        if not ed.dirty:
+            self.run_worker(self.code_reload(keep_message=True), group="code-open")
+            ed.message = tr("File vừa đổi trên đĩa — đã nạp lại")
+        elif getattr(sf, "_warned", 0) != m:
+            sf._warned = m
+            ed.message = tr("File đổi trên đĩa — :e! nạp lại (bỏ thay đổi của bạn) hoặc :w! ghi đè")
+            self._refresh_code_head()
+
+    def _refresh_code_head(self) -> None:
+        ed = self.code_editor()
+        head = Text()
+        status = Text()
+        sf = ed.buffer
+        if sf is None:
+            head.append(tr("📝 Chưa mở file"), "bold")
+            status.append(tr("Chọn file bên trái (gõ để lọc, Enter mở) · /code @đường/dẫn[:dòng] · "
+                             "phím e ở tab Git / màn hình diff"), "dim")
+        else:
+            head.append("📄 " + self.code_rel(str(sf.path)), "bold")
+            if ed.dirty:
+                head.append(" ●", PAL.get("warn", "yellow"))
+            r, c = ed.cursor_location
+            head.append(tr("  ·  {lang}  ·  dòng {r}/{n}, cột {c}", lang=editor.language_name(sf.path), r=r + 1,
+                           n=ed.document.line_count, c=c + 1), "dim")
+            if sf.newline != "\n":
+                head.append("  ·  CRLF", "dim")
+            if sf.read_only:
+                head.append("  ·  " + tr("chỉ đọc") + (f" ({sf.note})" if sf.note else ""), PAL.get("warn", "yellow"))
+            if not ed.highlight_on and ed.lexer is not None:
+                head.append("  ·  " + tr("tắt tô màu (file lớn)"), "dim")
+            if ed.vim_on:
+                mode = ed.vim.status
+                style = {"insert": f"bold {PAL.get('ok', 'green')}", "visual": f"bold {PAL.get('warn', 'yellow')}",
+                         "vline": f"bold {PAL.get('warn', 'yellow')}"}.get(ed.vim.mode, "bold")
+                status.append(mode or "NORMAL", style)
+                if ed.message and ed.vim.mode not in ("command", "search"):
+                    status.append("   " + ed.message)
+                elif not mode and not ed.message:
+                    status.append(tr("   i sửa · :w lưu · :q đóng · / tìm · u hoàn tác · /vim off tắt phím vim"),
+                                  "dim")
+            else:
+                status.append(ed.message or tr("Ctrl+S lưu · /vim on bật phím vim"), "dim")
+        set_static(self.query_one("#code-head", Static), head)
+        set_static(self.query_one("#code-status", Static), status)
+
+    def on_code_editor_status_changed(self, event: CodeEditor.StatusChanged) -> None:
+        self._refresh_code_head()
+
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        if event.text_area.id == "code-editor":
+            was = getattr(self, "_code_was_dirty", False)
+            now = self.code_editor().dirty
+            self._refresh_code_head()
+            if now != was:
+                self._code_was_dirty = now
+                self.refresh_code_files()
+
+    def on_text_area_selection_changed(self, event: TextArea.SelectionChanged) -> None:
+        if event.text_area.id == "code-editor":
+            self._refresh_code_head()
+
+    def action_git_edit(self) -> None:
+        sel = self.git_selected()
+        if not sel:
+            self.notify(tr("Chọn 1 file trong danh sách trước"))
+            return
+        self.open_code(sel[1])
 
     # ------------------------------------------------------------------ git (tab 🌿 Git)
     def open_git_tab(self) -> None:
@@ -4080,6 +4747,8 @@ class TeamApp(App):
             fns += [self._refresh_panes, self._refresh_timeline]
         elif tab == "tab-term":
             fns += [self._refresh_jobs]
+        elif tab == "tab-code":
+            fns += [self._check_code_disk]
         elif tab == "tab-git" and time.time() - self._git_at > 3 and not self._git_loading:
             # thay đổi do agent/editor bên ngoài: đọc lại git status định kỳ khi đang xem tab
             self.run_worker(self.refresh_git(), exclusive=False)
@@ -4122,6 +4791,8 @@ class TeamApp(App):
         cur = self.current_theme
         apply_palette(theme.palette(cur))
         diffview.set_light(not cur.dark)
+        for ed in self.query(CodeEditor):
+            ed.theme = "vscode_dark" if cur.dark else "github_light"
         self._git_ids, self._git_log_ids = [], []  # vẽ lại danh sách git với màu mới
         if save:
             st = load_state()
@@ -4159,6 +4830,8 @@ class TeamApp(App):
             self.refresh_view()
             if event.pane.id == "tab-git":
                 self.run_worker(self.refresh_git(), exclusive=False)
+            elif event.pane.id == "tab-code":
+                self.code_tab_shown()
 
     def _refresh_agents(self) -> None:
         chunks: list[Text] = []
@@ -4491,6 +5164,11 @@ class TeamApp(App):
             self.query_one("#plan", PlanBar).show_detail(self)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id == "code-files":
+            event.stop()
+            if event.option.id:
+                self.open_code(event.option.id[2:])
+            return
         if event.option_list.id == "git-files":
             event.stop()
             self.run_worker(self.action_git_diff(), exclusive=False)
@@ -4593,7 +5271,7 @@ class TeamApp(App):
 
     def action_toggle_tab(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
-        order = ["tab-board", "tab-team", "tab-term", "tab-git"]
+        order = ["tab-board", "tab-team", "tab-term", "tab-git", "tab-code"]
         tabs.active = order[(order.index(tabs.active) + 1) % len(order)] if tabs.active in order else order[0]
         self.refresh_view()
 
@@ -4642,6 +5320,19 @@ class TeamApp(App):
         self.show_task(SYSTEM)
 
     async def action_quit(self) -> None:
+        unsaved = self.code_unsaved()
+        if unsaved and not self._quit_ok:
+            def done(ok) -> None:
+                if ok:
+                    self._quit_ok = True
+                    self.call_later(self.action_quit)
+                else:
+                    self.restart_requested = False
+            self.push_screen(ConfirmScreen(tr("Còn file chưa lưu"),
+                                           tr("Tab 📝 Code còn {n} file chưa lưu: {v}\nThoát và bỏ các thay đổi này?",
+                                              n=len(unsaved), v=", ".join(unsaved)),
+                                           yes=tr("Thoát, bỏ thay đổi")), done)
+            return
         self.shell.stop_all()  # không để lại dev server mồ côi sau khi thoát
         for run in list(self.orch.runs.values()):
             if run is not None:
@@ -4652,6 +5343,10 @@ class TeamApp(App):
 
     # ------------------------------------------------------------------ ô lệnh
     def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "code-filter":
+            event.stop()
+            self.refresh_code_files()
+            return
         if isinstance(event.input, CommandInput):
             event.input.update_mention()
             self._update_continue_hint(event.value)
@@ -4800,6 +5495,16 @@ class TeamApp(App):
         self._render_git()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "code-filter":
+            event.stop()
+            ol = self.query_one("#code-files", CodeFileList)
+            idx = ol.highlighted if ol.highlighted is not None else 0
+            for i in range(idx, ol.option_count):
+                oid = ol.get_option_at_index(i).id
+                if oid:
+                    self.open_code(oid[2:])
+                    break
+            return
         if event.input.id == "git-msg":
             event.stop()
             self.git_button("git-commit")
@@ -5093,6 +5798,9 @@ class TeamApp(App):
         elif cmd == "assign":
             tid, agent = shlex.split(rest)[:2]
             self.notify(o.assign(num(tid), agent))
+        elif cmd == "edit" and not re.match(r"^#?\d+(\s|$)", rest.strip()):
+            target, line = parse_code_target(rest)  # /edit @file: mở file trong tab 📝 Code
+            self.open_code(target, line)
         elif cmd == "edit":
             tid, _, prompt = rest.partition(" ")
             self.notify(o.edit(num(tid), prompt.strip()))
@@ -5224,6 +5932,29 @@ class TeamApp(App):
         elif cmd == "term":
             self.query_one("#tabs", TabbedContent).active = "tab-term"
             self.refresh_view()
+        elif cmd in ("code", "open", "vi"):
+            target, line = parse_code_target(rest)
+            self.open_code(target, line)
+        elif cmd == "vim":
+            arg = rest.strip().lower()
+            if arg in ("on", "off", "bật", "bat", "tắt", "tat"):
+                on = arg in ("on", "bật", "bat")
+                st = load_state()
+                st["vim"] = on
+                save_state(st)
+                ed = self.query_one("#code-editor", CodeEditor)
+                ed.vim_on = on
+                ed.vim = editor.VimState()
+                ed.set_class(False, "-insert")
+                self._refresh_code_head()
+                self.notify(tr("Phím vim trong tab 📝 Code: bật") if on else
+                            tr("Phím vim trong tab 📝 Code: tắt (Ctrl+S lưu)"))
+            elif arg:
+                target, line = parse_code_target(rest)
+                self.open_code(target, line)
+            else:
+                self.notify(tr("Phím vim: {v} · /vim on|off · /vim <file> mở file",
+                               v=tr("bật") if self.query_one("#code-editor", CodeEditor).vim_on else tr("tắt")))
         elif cmd in ("git", "commit", "push", "pull", "fetch", "branch", "checkout", "stash"):
             self.git_command(cmd, rest)
         elif cmd in ("flow", "flows"):

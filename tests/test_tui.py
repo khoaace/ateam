@@ -456,8 +456,7 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             assert await wait_for(pilot, lambda: isinstance(app.screen, WorkflowEditScreen))
             wf = app.screen
             wf.query_one("#wf-template", Select).value = "review-code"
-            await pilot.pause(0.3)
-            assert wf.query_one("#wf-name", Input).value == "review-code"
+            assert await wait_for(pilot, lambda: wf.query_one("#wf-name", Input).value == "review-code")
             assert len(wf.query(".step-row")) == 2
             await pilot.click("#wf-add")
             await pilot.pause(0.3)
