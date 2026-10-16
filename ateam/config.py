@@ -28,6 +28,10 @@ CONFIG_VERSION = 8
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
 # hậu tố effort trong tên model (vd agy: gemini-4-argon-medium) — model đã cố định effort
 EFFORT_SUFFIXES = ("minimal", "low", "medium", "high", "xhigh", "max")
+# CLI từ chối cờ effort với model đang chọn (agy: "--effort is not supported for model …",
+# "--model … conflicts with --effort=high") -> chạy lại không có effort
+EFFORT_REJECTED_RE = re.compile(
+    r"effort\S* (?:is )?not supported|conflicts with --effort|unsupported (?:reasoning )?effort", re.I)
 
 DEFAULT_CONFIG = """\
 # ============================================================
@@ -319,6 +323,7 @@ class AgentConfig:
     model_args: list[str] = field(default_factory=list)
     effort_args: list[str] = field(default_factory=list)
     efforts: list[str] = field(default_factory=list)
+    no_effort: set = field(default_factory=set)  # model CLI đã từ chối cờ effort (ghi nhớ khi đang chạy)
     models: list[str] = field(default_factory=list)
     models_command: list[str] = field(default_factory=list)
     usage_command: list[str] = field(default_factory=list)  # lệnh in hạn mức/usage của CLI (/usage)
@@ -349,6 +354,8 @@ class AgentConfig:
     def split_effort(self, model: str, effort: str) -> tuple[str, str]:
         """Model có sẵn effort trong tên (agy: gemini-4-argon-medium) mà vẫn thêm --effort thì CLI báo
         "conflicts with --effort": đổi sang biến thể đúng effort nếu có trong danh sách model, bỏ cờ effort."""
+        if effort and model in self.no_effort:
+            return model, ""
         stem, _, tail = model.rpartition("-")
         if not (effort and stem and tail in EFFORT_SUFFIXES):
             return model, effort

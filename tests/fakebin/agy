@@ -7,6 +7,13 @@ if [ "${1:-}" = "models" ]; then
   exit 0
 fi
 source "$(dirname "$0")/_common.sh"
+# như agy thật: model "thinking" không nhận --effort; model có effort trong tên thì xung đột
+fm=""; fe=""; prev=""
+for a in "$@"; do [ "$prev" = "--model" ] && fm="$a"; [ "$prev" = "--effort" ] && fe="$a"; prev="$a"; done
+if [ -n "$fe" ] && [[ "$fm" == *-thinking ]]; then
+  echo "error: invalid model selection (--model \"$fm\" --effort \"$fe\"): --effort is not supported for model \"$fm\""
+  exit 1
+fi
 P="$fake_prompt"
 if [[ "$P" == *"NEEDS_SHELL"* && " $* " != *" --dangerously-skip-permissions "* ]]; then
   # như agy thật khi bị từ chối quyền chạy lệnh ở chế độ headless: in lỗi rồi thoát 0

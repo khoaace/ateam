@@ -14,7 +14,7 @@ from typing import Callable
 from . import limits
 from . import mentions
 from . import prompts as P
-from .config import AgentConfig, Config
+from .config import EFFORT_REJECTED_RE, AgentConfig, Config
 from .db import (ACTIVE, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
                  FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Goal, Task)
 from .runner import Run
@@ -99,6 +99,19 @@ class Orchestrator:
                                         image_args=a.image_args)
         return mentions.insert_args(a.argv(prompt, model=model, effort=effort, plan=plan),
                                     prompt, extra)
+
+    def effort_rejected(self, a: AgentConfig, model: str | None, effort: str | None, run: Run,
+                        rc: int) -> bool:
+        """CLI từ chối cờ effort với model này (thoát lỗi ngay) -> ghi nhớ để lần sau không gửi; True = chạy lại."""
+        m = (model if model else a.model) or ""
+        if rc == 0 or run.cancelled or not a.effort_args or not a.split_effort(m, (effort or a.effort) or "")[1]:
+            return False
+        if not EFFORT_REJECTED_RE.search(run.output[-4000:]):
+            return False
+        a.no_effort.add(m)
+        self.log(tr("⚠ {agent} không nhận effort với model {model} — chạy lại không kèm effort",
+                    agent=a.name, model=m or tr("mặc định")))
+        return True
 
     def env_for(self, task: Task | None = None) -> dict[str, str]:
         env = dict(os.environ)
@@ -217,11 +230,16 @@ class Orchestrator:
                 self.emit("log", task_id=SYSTEM, agent=lead.name, raw=line,
                           line=f"  [{lead.name}] {line}")
 
-            run = Run(self.argv_for(lead, prompt, self.root, plan=True), str(self.root),
-                      self.env_for(), use_pty=lead.pty, timeout=lead.timeout, on_line=on_line)
+            def make() -> Run:
+                return Run(self.argv_for(lead, prompt, self.root, plan=True), str(self.root),
+                           self.env_for(), use_pty=lead.pty, timeout=lead.timeout, on_line=on_line)
+            run = make()
             rc = 1
             try:
                 rc = await run.start()
+                if self.effort_rejected(lead, None, None, run, rc):
+                    run = make()
+                    rc = await run.start()
             finally:
                 span[1] = time.time()
                 kind = self._classify(run, rc)
@@ -1036,9 +1054,12 @@ class Orchestrator:
             self._touch(act, line)
             self.emit("log", task_id=t.id, agent=a.name, line=line)
 
-        run = Run(self.argv_for(a, prompt, workdir, model=model, effort=effort), str(workdir),
-                  self.env_for(t), use_pty=a.pty, timeout=a.timeout, on_line=on_line)
-        self.runs[t.id] = run
+        def make() -> Run:
+            r = Run(self.argv_for(a, prompt, workdir, model=model, effort=effort), str(workdir),
+                    self.env_for(t), use_pty=a.pty, timeout=a.timeout, on_line=on_line)
+            self.runs[t.id] = r
+            return r
+        run = make()
         rc = 130
         try:
             if t.id in self._cancel_req:
@@ -1046,6 +1067,10 @@ class Orchestrator:
                 run.cancelled = True
             else:
                 rc = await run.start()
+                if self.effort_rejected(a, model, effort, run, rc):
+                    on_line(tr("↻ chạy lại không kèm effort: {label}", label=a.label(model, effort)))
+                    run = make()
+                    rc = await run.start()
         finally:
             res = self._classify(run, rc)
             self.db.finish_run(rid, rc, res, len(run.output))

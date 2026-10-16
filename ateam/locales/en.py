@@ -2486,4 +2486,8 @@ EN: dict[str, str] = {
         'Pick a provider',
     'Giao diện & màu nhấn':
         'Appearance & accent',
+    '⚠ {agent} không nhận effort với model {model} — chạy lại không kèm effort':
+        '⚠ {agent} does not accept an effort for model {model} — retrying without effort',
+    '↻ chạy lại không kèm effort: {label}':
+        '↻ retrying without effort: {label}',
 }

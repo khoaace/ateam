@@ -36,6 +36,18 @@ def test_model_effort_flags_reach_cli(env, project, tmp_path):
     assert '-m gpt-5.5 -c model_reasoning_effort="xhigh"' in args, args
 
 
+def test_effort_rejected_by_model_retries_without_effort(env, project, tmp_path):
+    """agy: "--effort is not supported for model claude-opus-4-6-thinking" -> chạy lại không có --effort."""
+    ateam(env, project, "set", "antigravity", "--model", "claude-opus-4-6-thinking", "--effort", "high")
+    ateam(env, project, "add", "--to", "antigravity", "--effort", "xhigh", "tạo a")
+    ateam(env, project, "run", "-q")
+    assert tasks(project)[-1].status == "done"
+    calls = [ln for ln in (tmp_path / "args.log").read_text().splitlines() if ln.startswith("agy ")]
+    assert "--effort xhigh" in calls[-2] and "--effort" not in calls[-1], calls
+    log = (project / ".ateam" / "logs" / f"t{tasks(project)[-1].id}.log").read_text()
+    assert "chạy lại không kèm effort" in log
+
+
 def test_missing_cli_and_empty_output_and_timeout(env, project):
     write_project_config(project, """
 [agents.ghost]

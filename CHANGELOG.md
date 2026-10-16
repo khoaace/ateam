@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.2 — 16/10/2026
+
+- Agent báo không nhận effort với model đang chọn (vd Antigravity + `claude-opus-4-6-thinking`: "--effort is not
+  supported for model …") thì tự chạy lại ngay không kèm effort và ghi nhớ model đó, không còn lỗi task.
+
 ## 0.11.1 — 16/10/2026
 
 - Sửa lỗi Antigravity `--model gemini-4-argon-medium conflicts with --effort=high`: model đã có effort trong tên
