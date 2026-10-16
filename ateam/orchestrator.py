@@ -665,6 +665,29 @@ class Orchestrator:
             self.compacting = False
             self.emit("changed")
 
+    async def commit_message(self) -> tuple[bool, str]:
+        """Trưởng nhóm viết commit message cho thay đổi đã stage (chưa stage gì thì cho mọi thay đổi).
+        Trả về (thành công, message hoặc lời nhắn lỗi)."""
+        from .gitops import GitRepo
+        repo = GitRepo(self.root)
+        diff = await repo.staged_diff()
+        if not diff:
+            stat = await repo.diff_text("HEAD", "--stat")
+            body = await repo.diff_text("HEAD")
+            _, others = await repo.run("ls-files", "--others", "--exclude-standard")
+            diff = (stat + "\n" + body[:60_000]).strip()
+            if others.strip():
+                diff += "\n\nNew untracked files:\n" + others.strip()
+        if not diff.strip():
+            return False, "Không có thay đổi nào để viết commit message"
+        recent = "\n".join("- " + c.subject for c in await repo.log(8))
+        out = await self._call_lead(P.commit_message_prompt(diff=diff, recent=recent, cwd=str(self.root)),
+                                    "Viết commit message")
+        msg = P.extract_commit_message(out or "")
+        if not msg:
+            return False, "Trưởng nhóm không trả về commit message (xem .ateam/logs/lead.log)"
+        return True, msg
+
     def force_review(self, gid: int) -> str:
         g = self.db.goal(gid)
         if not g:

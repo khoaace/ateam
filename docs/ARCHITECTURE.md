@@ -202,6 +202,34 @@ Sự kiện `on_event("line"|"exit"|"changed", job, line)` → `TeamApp.on_shell
 Gợi ý `!` (`CommandInput` chế độ `shell`) lấy từ `shell.project_scripts`; lệnh gần đây ở `recent_commands`
 trong `.ateam/state.json` của dự án. Enter chạy lệnh đã gõ, chỉ chạy gợi ý khi ô trống hoặc đã ↑↓ chọn.
 
+## Quản lý git (tab 🌿 Git)
+
+`gitops.GitRepo` (một instance trong `TeamApp`, không phụ thuộc Textual): mọi lệnh chạy qua
+`asyncio.create_subprocess_exec("git", "-c", "core.quotePath=false", …)` với `GIT_TERMINAL_PROMPT=0` (không bao giờ
+hỏi mật khẩu trong TUI — sẽ treo), `GIT_EDITOR=true`, `LANGUAGE=C` (thông báo tiếng Anh ổn định để dò `CONFLICT`,
+`rejected`…), timeout 30 giây (fetch/pull/push 120 giây). Thao tác thay đổi repo giữ `GitRepo.lock`; commit/merge/
+stash/revert có cờ `-c user.*` dự phòng như `Orchestrator.git_ident`. Mỗi hàm trả `(ok, lời nhắn tiếng Việt)`.
+
+- Trạng thái: `git status --porcelain=v2 --branch --show-stash -z --untracked-files=all` → `parse_status` →
+  `RepoStatus` (nhánh, upstream, ahead/behind, file theo nhóm đã stage / chưa stage / chưa theo dõi / xung đột,
+  số stash) + `_op_state()` đọc `MERGE_HEAD`/`rebase-*`/`CHERRY_PICK_HEAD`/`REVERT_HEAD` (`git rev-parse --git-path`).
+- Pull: `--ff-only`, hai bên đã rẽ nhánh thì `--no-rebase` (merge; không viết lại lịch sử). Push lần đầu tự
+  `-u <origin|remote đầu tiên> <nhánh>`; `/push -f` = `--force-with-lease`. Checkout `origin/x` tạo nhánh local
+  theo dõi. "Bỏ commit cuối" = `reset --soft HEAD~1`, chặn khi commit đã có trên upstream (dùng Revert).
+- Diff: `changes_diffset(staged)` / `commit_diffset(commit)` dựng `DiffSet` cho `DiffScreen` (tid 0). Quy ước
+  `base`/`head` của `diff_versions`: `""` = index (`git show :path`), `None` = file trong thư mục,
+  commit đầu tiên so với cây rỗng `EMPTY_TREE`.
+- Commit message: `Orchestrator.commit_message()` gửi `prompts.commit_message_prompt` (diff đã stage, không có
+  thì mọi thay đổi; 8 commit gần nhất để bắt chước ngôn ngữ/kiểu) qua `_call_lead` (có dự phòng hạn mức), bóc
+  bằng `extract_commit_message` (sau `SUMMARY:` cuối). Ô nhập một dòng giữ tiêu đề; phần thân lưu ở
+  `TeamApp._git_body` và được nối vào khi commit.
+- TUI: `refresh_git()` đọc status + 80 commit, vẽ khi mở tab, sau mỗi thao tác (`git_do`), và mỗi 3 giây khi tab
+  đang mở (agent/editor ngoài sửa file). Danh sách file chỉ dựng lại khi danh sách id đổi, con trỏ đi theo file khi
+  nó chuyển nhóm. Thao tác đổi HEAD (checkout, tạo nhánh, pull, merge, stash, revert, bỏ commit) bị từ chối khi
+  `orch.runs` khác rỗng — agent đang sửa thư mục hoặc sắp merge nhánh task vào nhánh hiện tại. Thao tác không
+  hoàn tác được (bỏ thay đổi, xoá hẳn nhánh, xoá stash, revert, bỏ commit) hỏi lại bằng `ConfirmScreen`.
+  `/git <lệnh>` chạy `git <lệnh>` qua `ShellManager` (tab Terminal) cho các việc còn lại (rebase, tag…).
+
 ## Xem diff
 
 `Orchestrator.diff_files(tid)` chạy `git -c core.quotePath=false diff -M --no-color` (worktree: `base..head`
@@ -228,7 +256,7 @@ cho timeline. TUI chỉ đọc hai cấu trúc này, không sửa.
 ### Hiệu năng vẽ (TUI)
 
 - `refresh_view` (mỗi 0,5 giây và sau `changed`) đọc DB **một lần** (`self._snap`: tasks, goals) cho mọi
-  `_refresh_*`; chỉ vẽ tab đang mở (bảng việc / Đội / Terminal), chuyển tab thì vẽ ngay
+  `_refresh_*`; chỉ vẽ tab đang mở (bảng việc / Đội / Terminal; tab Git tự đọc lại git mỗi 3 giây), chuyển tab thì vẽ ngay
   (`on_tabbed_content_tab_activated`). `set_static()` chỉ gọi `Static.update` khi nội dung đổi.
 - Lướt bảng: `RowHighlighted` đổi `view_task` + ô chi tiết ngay, còn nạp log hẹn 120 ms (chỉ dòng dừng lại).
   `show_task` đọc ~192 KB cuối file (`read_log_tail`) và hiện `LOG_SHOW_LINES` dòng cuối; `#detail` cao cố định

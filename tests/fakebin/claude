@@ -9,7 +9,14 @@ if [ "$P" = "/usage" ]; then  # như claude -p /usage thật: không gọi model
   exit 0
 fi
 if fake_limited claude; then echo "Claude AI usage limit reached|$(( $(date +%s) + 3600 ))"; exit 1; fi
-if [[ "$P" == *"NEW FOLLOW-UP REQUEST"* ]]; then
+if [[ "$P" == *"git COMMIT MESSAGE"* ]]; then
+  # Viết commit message (tab Git): trả lời sau SUMMARY:
+  echo "Đang đọc diff..."
+  echo "SUMMARY:"
+  echo "Thêm file mới cho bản demo"
+  echo ""
+  echo "Ghi chú: viết bởi claude giả lập."
+elif [[ "$P" == *"NEW FOLLOW-UP REQUEST"* ]]; then
   # Tiếp tục mục tiêu đã xong: 1 task bổ sung
   echo '[{"id":1,"agent":"codex","title":"Tạo d.txt","prompt":"tạo file d.txt","depends_on":[]}]'
 elif [[ "$P" == *"Reply with ONLY a JSON array"* ]]; then

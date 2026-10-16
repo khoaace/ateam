@@ -1,5 +1,16 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Tab 🌿 Git — quản lý git ngay trong app** (`/git`, Ctrl+T): nhánh, upstream, ↑ chưa push / ↓ chưa pull;
+  file thay đổi theo nhóm (xung đột / đã stage / chưa stage) — Space stage/bỏ stage, `a` stage tất cả, `u` bỏ
+  stage, Enter xem diff, `x` bỏ thay đổi (hỏi lại); commit, sửa commit trước (amend); **✨ trưởng nhóm viết commit
+  message** từ diff theo kiểu các commit trước; lịch sử commit (xem diff, revert, bỏ commit cuối chưa push);
+  nhánh (chuyển, tạo, đổi tên, merge, xoá, nhánh remote → nhánh local); fetch / pull / push (lần đầu tự tạo nhánh
+  trên remote); stash (cất, lấy lại, áp dụng, xoá); huỷ merge dở. Lệnh tắt `/commit`, `/push`, `/pull`, `/fetch`,
+  `/branch`, `/checkout`, `/stash`; `/git <lệnh>` chạy git bất kỳ ở tab Terminal. Không bao giờ hỏi mật khẩu
+  trong app; đổi nhánh/pull/stash bị chặn khi agent đang chạy task.
+
 ## 0.6.1 — 16/10/2026
 
 - **Sửa: Grok Build không sửa được file** (đã thử với grok thật): ở chế độ `-p`, `--permission-mode acceptEdits` của
