@@ -217,7 +217,8 @@ def test_code_tab_edit_and_save(env, project, monkeypatch):
             ed = app.query_one("#code-editor", tui.CodeEditor)
             assert await wait(lambda: ed.buffer is not None and ed.buffer.path.name == "hello.py")
             assert app.query_one("#tabs").active == "tab-code"
-            assert ed.has_focus and ed.cursor_location[0] == 1
+            assert await wait(lambda: ed.has_focus)  # focus đặt sau khi nạp file: CI chậm có thể chưa kịp
+            assert ed.cursor_location[0] == 1
             # Ctrl+D trong editor là phím vim (nửa trang), không mở màn hình diff của app
             before = ed.text
             await pilot.press("ctrl+d")
