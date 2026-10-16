@@ -63,7 +63,11 @@ def main() -> None:
     (DIST / "index.html").write_text(html, encoding="utf-8")
     (DIST / "version.txt").write_text(v + "\n", encoding="utf-8")
     for extra in (ROOT / "site").iterdir():
-        if extra.name != "index.html" and extra.is_file():
+        if extra.name == "index.html":
+            continue
+        if extra.is_dir():  # vd site/shots/: ảnh chụp app (scripts/site_shots.py)
+            shutil.copytree(extra, DIST / extra.name)
+        elif extra.is_file():
             shutil.copy2(extra, DIST / extra.name)
     print(f"dist/ sẵn sàng: ateam {v}, {zip_name} ({size})")
 
