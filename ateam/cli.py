@@ -139,7 +139,7 @@ def cmd_doctor(args) -> int:
     if shutil.which("git") is None:
         print(tr("\n⚠ Chưa có git — chế độ worktree sẽ không dùng được."))
     if cfg.workflows:
-        print(f"\nWorkflow: {', '.join(cfg.workflows)}  (xem: ateam flows)")
+        print(tr("\nWorkflow: {v}  (xem: ateam flows)", v=', '.join(cfg.workflows)))
     print(tr("\nChọn agent, model, effort: ateam setup (hoặc /setup trong app)."))
     print(tr("Thêm agent / workflow riêng: /custom trong app (hoặc nút ở màn hình thiết lập)."))
     print(tr("\nMọi thứ sẵn sàng.") if ok else tr("\n"

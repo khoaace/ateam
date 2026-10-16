@@ -18,12 +18,24 @@ from .i18n import tr
 
 MAX_ROWS = 4000  # mỗi file; dài hơn thì cắt, mở bằng VS Code (phím o) để xem đủ
 
-# màu nền giống VS Code (Dark+); Textual tự hạ xuống 256 màu nếu terminal không có truecolor
+# màu nền giống VS Code (Dark+); Textual tự hạ xuống 256 màu nếu terminal không có truecolor.
+# Theme sáng (set_light) dùng màu kiểu GitHub light.
 ADD_BG, DEL_BG = "on #1e3a29", "on #4b1818"
 ADD_WORD, DEL_WORD = "on #2f6f45", "on #8b2c2c"
 EMPTY_BG = "on #262626"
 HUNK_STYLE = "#6a9fb5 on #1b2633"
 NUM_STYLE = "#6e7681"
+SYNTAX_THEME = "monokai"
+_DARK = dict(ADD_BG=ADD_BG, DEL_BG=DEL_BG, ADD_WORD=ADD_WORD, DEL_WORD=DEL_WORD, EMPTY_BG=EMPTY_BG,
+             HUNK_STYLE=HUNK_STYLE, NUM_STYLE=NUM_STYLE, SYNTAX_THEME=SYNTAX_THEME)
+_LIGHT = dict(ADD_BG="on #dafbe1", DEL_BG="on #ffebe9", ADD_WORD="on #aceebb", DEL_WORD="on #ffcecb",
+              EMPTY_BG="on #f6f8fa", HUNK_STYLE="#0550ae on #ddf4ff", NUM_STYLE="#8c959f",
+              SYNTAX_THEME="friendly")
+
+
+def set_light(light: bool) -> None:
+    """Đổi bảng màu diff theo theme sáng/tối của app."""
+    globals().update(_LIGHT if light else _DARK)
 STATUS_STYLE = {"M": "yellow", "A": "green", "D": "red", "R": "magenta"}
 
 TOKEN_RE = re.compile(r"\w+|\s+|[^\w\s]")
@@ -169,7 +181,7 @@ def highlight_lines(lines: list[str], lexer: str) -> list[Text]:
     if lexer == "text":
         parts = [Text(ln) for ln in code.split("\n")]
     else:
-        hl = Syntax(code, lexer, theme="monokai", background_color="default").highlight(code)
+        hl = Syntax(code, lexer, theme=SYNTAX_THEME, background_color="default").highlight(code)
         hl.style = ""
         # bỏ màu nền của theme khỏi từng token, để nền dòng thêm/xoá phủ kín cả chữ
         hl.spans[:] = [Span(sp.start, sp.end, _fg_only(sp.style)) for sp in hl.spans]

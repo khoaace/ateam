@@ -18,7 +18,7 @@ PH = re.compile(r"\{(\w+)[^{}]*\}")
 # chữ tiếng Việt cố ý không dịch: nội dung gửi agent / ghi vào file cấu hình, từ khoá lệnh người dùng gõ
 SKIP_FILES = {"prompts.py", "i18n.py", "en.py"}
 SKIP_NAMES = {"DEFAULT_CONFIG", "EXTRA_AGENT_TEMPLATES", "WORKFLOW_TEMPLATES", "CATALOG", "ROLES", "CSS",
-              "DEFAULT_CSS", "FORM_CSS"}
+              "DEFAULT_CSS", "FORM_CSS", "ACCENT_ALIASES"}
 
 
 def _sources():

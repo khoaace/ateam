@@ -588,7 +588,8 @@ class Orchestrator:
         tid = self.db.add_task(agent, title, prompt, status=QUEUED, source="user",
                                model=model, effort=effort)
         extra = self.cfg.agents[agent].label(model, effort) if (model or effort) else ""
-        self.log(f"➕ Task #{tid} giao cho {agent}{(' [' + extra + ']') if extra else ''}: {title}")
+        self.log(tr("➕ Task #{tid} giao cho {agent}{extra}: {title}", tid=tid, agent=agent,
+                    extra=(' [' + extra + ']') if extra else '', title=title))
         self.emit("changed")
         return tid
 
@@ -612,7 +613,7 @@ class Orchestrator:
             return tr("Task #{tid} đang chạy — thay đổi sẽ áp dụng nếu /retry", tid=tid)
         self.db.update_task(tid, **{key: (None if value in (None, "", "-") else value)})
         self.emit("changed")
-        return f"Task #{tid}: {key} = {value if value not in (None, '', '-') else 'theo agent'}"
+        return f"Task #{tid}: {key} = {value if value not in (None, '', '-') else tr('theo agent')}"
 
     def set_agent_option(self, agent: str, key: str, value: str | None) -> str:
         from .config import save_agent_setting
@@ -1151,7 +1152,7 @@ class Orchestrator:
                 if attempts >= v.max_fix_attempts:
                     status = FAILED
                     error = (tr("Kiểm tra `{command}` vẫn fail (mã {trc})", command=v.command, trc=trc)
-                             + (tr(" sau {attempts} lần sửa", attempts=attempts) if attempts else "") + " — xem log [test]")
+                             + (tr(" sau {attempts} lần sửa", attempts=attempts) if attempts else "") + tr(" — xem log [test]"))
                     break
                 attempts += 1
                 self.db.update_task(tid, attempts=attempts)
@@ -1237,7 +1238,8 @@ class Orchestrator:
             nid = self.db.add_task(to, title or body[:60], body, goal_id=t.goal_id,
                                    parent_id=t.id, depth=t.depth + 1,
                                    status=QUEUED, source=f"delegate:{t.agent}")
-            self.log(f"🤝 {t.agent} giao task #{nid} cho {to}: {title or body[:60]}")
+            self.log(tr("🤝 {agent} giao task #{nid} cho {to}: {title}", agent=t.agent, nid=nid, to=to,
+                        title=title or body[:60]))
 
     # ------------------------------------------------------------------ review
     async def _review(self, gid: int) -> None:

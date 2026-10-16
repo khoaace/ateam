@@ -40,6 +40,8 @@ EN: dict[str, str] = {
         "\n✗ Lead '{lead}' is not in [agents].",
     "\n⚠ Chưa có git — chế độ worktree sẽ không dùng được.":
         "\n⚠ git is not installed — worktree mode won't work.",
+    "\nWorkflow: {v}  (xem: ateam flows)":
+        "\nWorkflows: {v}  (see: ateam flows)",
     "\nMọi thứ sẵn sàng.":
         "\nAll set.",
     "\nCài các CLI còn thiếu hoặc đặt enabled = false cho agent đó trong config.":
@@ -484,6 +486,8 @@ EN: dict[str, str] = {
         "✗ Dropped plan #{gid} ({n} draft tasks).",
     "🗑 Đã dọn {v} task, {v2} mục tiêu đã kết thúc khỏi bảng việc.":
         "🗑 Cleared {v} task(s) and {v2} finished goal(s) from the board.",
+    "➕ Task #{tid} giao cho {agent}{extra}: {title}":
+        "➕ Task #{tid} assigned to {agent}{extra}: {title}",
     "Không có agent '{agent}'":
         "No agent '{agent}'",
     "Task #{tid} đang chạy — /cancel trước rồi giao lại":
@@ -596,6 +600,8 @@ EN: dict[str, str] = {
         "▶ Cooldown cleared for {agent}.",
     "⚠ #{id} muốn giao việc nhưng đã chạm giới hạn {max_delegation_depth} tầng.":
         "⚠ #{id} wants to delegate but hit the {max_delegation_depth}-level limit.",
+    "🤝 {agent} giao task #{nid} cho {to}: {title}":
+        "🤝 {agent} delegated task #{nid} to {to}: {title}",
     "🔍 {lead} đang review mục tiêu #{gid} (vòng {round})…":
         "🔍 {lead} is reviewing goal #{gid} (round {round})…",
     "git worktree add thất bại: {v}":
@@ -640,6 +646,8 @@ EN: dict[str, str] = {
         "✗ Q&A #{gid}: {v}",
     "⚠ Agent '{agent}' không có trong đội — giao cho {lead}.":
         "⚠ Agent '{agent}' is not on the team — assigning to {lead}.",
+    "theo agent":
+        "per agent",
     "mã thoát {code}":
         "exit code {code}",
     "không thấy model nào":
@@ -720,6 +728,8 @@ EN: dict[str, str] = {
         "Command '{binary}' is not installed (check with `ateam doctor`)",
     "Lỗi bộ lập lịch: {e!r}":
         "Scheduler error: {e!r}",
+    " — xem log [test]":
+        " — see the [test] log",
     "{fixer} hết hạn mức khi đang sửa lỗi test — /retry sau":
         "{fixer} ran out of quota while fixing the tests — /retry later",
     "↪ #{tid} xếp hàng lại":
@@ -760,44 +770,30 @@ EN: dict[str, str] = {
         "\n[exited with code {rc}]\n",
     "✗ Không chạy được: {e}":
         "✗ Could not run: {e}",
+    "Màu của theme":
+        "Theme color",
+    "Xanh dương":
+        "Blue",
+    "Tím":
+        "Purple",
+    "Xanh lá":
+        "Green",
+    "Cam":
+        "Orange",
+    "Hồng":
+        "Pink",
+    "Vàng":
+        "Yellow",
+    "Xanh ngọc":
+        "Cyan",
+    "Đỏ":
+        "Red",
     "Gõ một câu bình thường  → giao MỤC TIÊU cho trưởng nhóm lập kế hoạch & chia việc\n                          (hoặc chạy theo workflow mặc định nếu đã chọn trong /setup).\n\nGiao việc:\n  /task <agent> <nội dung>          giao tay (vd: /task codex viết test cho utils.py)\n                                    agent nhận đúng nguyên văn bạn gõ (gõ /task rồi chọn agent)\n  /task <agent>@<effort> <nội dung> giao kèm effort riêng (vd: /task codex@xhigh tìm lỗi deadlock)\n  /task <agent>:<model>@<effort> …  giao kèm cả model riêng\n  /go [mục tiêu]                    duyệt kế hoạch nháp và chạy (F2 hoặc Ctrl+G, hoặc nút trong khung\n                                    \"Duyệt kế hoạch\" hiện phía trên ô nhập khi có kế hoạch chờ)\n  /drop [mục tiêu]                  bỏ kế hoạch nháp (huỷ mọi task nháp của nó)\n  /assign <task> <agent>            đổi người làm 1 task\n  /edit <task> <nội dung>           sửa nội dung task (khi chưa chạy)\n  /set <task> effort|model <giá trị>\n                                    đổi effort/model riêng cho 1 task ('-' = theo agent)\n  /retry <task>   /cancel <task>    chạy lại (F5 hoặc Ctrl+R) / huỷ (Ctrl+K) task\n  /review <mục tiêu>                bắt trưởng nhóm review ngay\n  /continue <m12|t40> <yêu cầu>     tiếp tục mục tiêu (m) hoặc thread /task (t) đã xong: trưởng nhóm\n                                    lập task bổ sung dựa trên việc đã làm / agent nhận kèm các lượt trước.\n                                    F6 (Ctrl+O) với task đang chọn, hoặc bấm \"↪ Tiếp tục\" ở khung mục tiêu\n  /note <nội dung>                  ghi chú chung cho cả đội\n\nLệnh, file, ảnh trong ô nhập:\n  gõ / ở đầu ô nhập                 hiện danh sách lệnh kèm mô tả, gõ tiếp để lọc\n  gõ @ trong ô nhập                 hiện danh sách file/thư mục của dự án, gõ tiếp để lọc\n                                    ↑↓ chọn · Tab/Enter chèn · Esc đóng (chọn thư mục để đi vào trong)\n                                    khi chạy, @đường-dẫn được đổi sang cú pháp của từng agent (xem /agents)\n  Ctrl+V trong ô nhập               dán ảnh từ clipboard (lưu vào .ateam/images, chèn @ảnh);\n                                    kéo-thả file ảnh vào terminal cũng thành @ảnh. Mỗi agent nhận ảnh\n                                    theo cách CLI đó hỗ trợ (codex: --image, opencode: -f)\n\nKiểm tra & duyệt code:\n  /verify <lệnh>                    lệnh kiểm tra sau mỗi task cho dự án này (vd: /verify npm test)\n  /verify off   /verify             tắt / xem lệnh đang dùng\n  /diff <task>                      xem thay đổi của task (Ctrl+D với task đang chọn)\n  /merge <task>                     duyệt và merge task đang chờ (Ctrl+Y)\n  /reject <task> [góp ý]            từ chối; có góp ý thì giao làm lại kèm góp ý đó\n\nHạn mức:\n  /usage                            thống kê lượt chạy, thời gian, token ước tính theo agent, rồi hỏi\n                                    hạn mức thật từ từng CLI (claude/agy: /usage, opencode stats, codex)\n  /update                           kiểm tra và cập nhật ateam lên bản mới nhất (mở lại app sau đó)\n  /cooldown <agent> <phút>          cho agent tạm nghỉ (vd khi bạn biết nó sắp hết hạn mức)\n  /cooldown <agent> off             cho agent làm việc lại ngay\n\nModel & effort của từng agent (được lưu lại cho lần sau):\n  /model <agent> <tên model>        vd: /model claude opus   ·   /model grok grok-4.7-build-fast\n  /effort <agent> <mức>             vd: /effort codex xhigh  ·   /effort claude high\n  /model <agent>   /effort <agent>  mở bảng chọn từ danh sách agent hỗ trợ (hoặc bấm vào ô agent ở tab Đội)\n  /model <agent> -                  quay về mặc định trong config (tương tự /effort <agent> -)\n  /models [agent]                   xem model & effort mỗi agent hỗ trợ\n  /models <agent> làm mới           hỏi CLI danh sách model thật (opencode models, agy models)\n  /agents                           xem model, effort, mức effort hợp lệ của từng agent\n  /setup                            mở lại màn hình thiết lập: bật/tắt agent, trưởng nhóm, model, effort\n  /theme [tên] [màu nhấn]           chọn theme màu (xem trước trực tiếp), vd /theme nord tím\n  /lang en|vi                       đổi ngôn ngữ giao diện (app tự mở lại)\n\nAgent & workflow tuỳ chỉnh:\n  /custom                           thêm/sửa/xoá agent riêng (CLI bất kỳ) và workflow (chuỗi bước dựng sẵn)\n  /flow <tên> <mục tiêu>            chạy mục tiêu theo workflow — các bước thành task ngay, không cần lập kế hoạch\n  /flow                             xem các workflow đang có\n  /goal <mục tiêu>                  trưởng nhóm lập kế hoạch, kể cả khi đã đặt workflow mặc định\n  /grill <mục tiêu>                 \"grill me\": trưởng nhóm hỏi bạn từng câu (phạm vi, luồng, dữ liệu, ca\n                                    biên, tiêu chí xong…) kèm phương án gợi ý, tới khi đủ rõ thì chốt đặc tả\n                                    rồi lập kế hoạch. Trả lời ở ô nhập; gõ số / bấm để chọn phương án\n  /grill xong   /grill bỏ           chốt luôn với những gì đã trả lời / bỏ mục tiêu đang hỏi đáp\n\nKhác:\n  /pause  /resume                   tạm dừng / tiếp tục nhận task mới\n  /clear                            dọn task & mục tiêu đã kết thúc khỏi bảng (nút 🗑 trên bảng)\n  /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn\n  /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)\n  /team  /board  /term  /git        chuyển tab Đội / Bảng việc / Terminal / Git (Ctrl+T xoay vòng)\n\nLệnh terminal (tab 💻 Terminal):\n  !<lệnh>                           chạy lệnh trong thư mục dự án, vd !yarn dev, !make test\n  !                                 gợi ý script package.json, target Makefile, lệnh gần đây (Enter chạy)\n  /sh <lệnh>                        như !<lệnh>\n  /stop [số]                        dừng lệnh đang chọn (nút ■ Dừng / ↻ Chạy lại / ✗ Xoá trong tab)\n\nGit (tab 🌿 Git — Ctrl+T xoay tới, hoặc /git):\n  /git                              mở tab Git: file thay đổi, commit, nhánh, lịch sử, stash, pull/push\n                                    trong danh sách file: Space stage/bỏ stage · a stage tất cả · u bỏ stage\n                                    tất cả · x bỏ thay đổi · Enter/d xem diff · c tới ô commit message\n                                    trong lịch sử: Enter/d xem commit · r revert\n  /git <lệnh>                       chạy git <lệnh> bất kỳ ở tab Terminal, vd /git tag v1.0,\n                                    /git cherry-pick abc123, /git remote add origin <url>\n  /commit <message>                 commit file đã stage (chưa stage gì thì commit mọi thay đổi)\n  /commit --no-verify <message>     commit bỏ qua git hook (pre-commit, commit-msg); /commit -n cũng được.\n                                    Trong tab Git: ô \"Bỏ qua hook (--no-verify)\" dưới nút Commit\n  /commit                           trưởng nhóm đọc diff và viết commit message (nút ✨ trong tab Git)\n  /push [-f]   /pull   /fetch       đồng bộ với remote (-f = --force-with-lease)\n  /branch [tên]   /checkout <nhánh> tạo & chuyển nhánh / chuyển nhánh (trống: mở danh sách nhánh)\n  /stash [message]   /stash pop     cất tạm / lấy lại thay đổi chưa commit (/stash list: danh sách)\n                                    đổi nhánh, pull, stash bị chặn khi agent đang chạy task\n\nTrợ giúp & thoát:\n  /help                             trợ giúp này (F1)\n  F2 = Ctrl+G, F5 = Ctrl+R, F6 = Ctrl+O   dùng F2/F5/F6 khi terminal chặn phím Ctrl (vd terminal trong VS Code/\n                                    Cursor trên Mac: Ctrl+G là Go to Line, Ctrl+R là Run Recent).\n                                    MacBook: giữ fn khi bấm F2/F5\n  /quit                             thoát (Ctrl+Q) — agent đang chạy sẽ bị dừng":
         "Type a plain sentence    → give the lead a GOAL to plan & split into tasks\n                          (or run it with the default workflow, if you picked one in /setup).\n\nAssigning work:\n  /task <agent> <content>           assign by hand (e.g. /task codex write tests for utils.py)\n                                    the agent gets exactly what you typed (type /task, then pick an agent)\n  /task <agent>@<effort> <content>  assign with its own effort (e.g. /task codex@xhigh find the deadlock)\n  /task <agent>:<model>@<effort> …  assign with its own model too\n  /go [goal]                        approve the draft plan and run it (F2 or Ctrl+G, or the button in\n                                    the \"Review plan\" box above the input when a plan is waiting)\n  /drop [goal]                      drop the draft plan (cancels all its draft tasks)\n  /assign <task> <agent>            change who does a task\n  /edit <task> <content>            edit a task's content (before it runs)\n  /set <task> effort|model <value>\n                                    set a task's own effort/model ('-' = follow the agent)\n  /retry <task>   /cancel <task>    re-run (F5 or Ctrl+R) / cancel (Ctrl+K) a task\n  /review <goal>                    make the lead review now\n  /continue <m12|t40> <request>     continue a finished goal (m) or /task thread (t): the lead adds\n                                    tasks based on the work done / the agent gets the earlier turns.\n                                    F6 (Ctrl+O) on the selected task, or press \"↪ Continue\" in the goals box\n  /note <content>                   shared note for the whole team\n\nCommands, files, images in the input:\n  type / at the start               show the command list with descriptions, keep typing to filter\n  type @ in the input               show the project's files/folders, keep typing to filter\n                                    ↑↓ select · Tab/Enter insert · Esc close (pick a folder to go inside)\n                                    when run, @path becomes each agent's own syntax (see /agents)\n  Ctrl+V in the input               paste an image from the clipboard (saved to .ateam/images, inserts @image);\n                                    dragging an image file into the terminal also becomes @image. Each agent\n                                    gets images the way its CLI supports (codex: --image, opencode: -f)\n\nChecking & reviewing code:\n  /verify <command>                 check command run after each task in this project (e.g. /verify npm test)\n  /verify off   /verify             disable / show the current command\n  /diff <task>                      show a task's changes (Ctrl+D on the selected task)\n  /merge <task>                     approve and merge a waiting task (Ctrl+Y)\n  /reject <task> [feedback]         reject; with feedback, the task is redone with it\n\nUsage limits:\n  /usage                            runs, time and estimated tokens per agent, then asks each CLI\n                                    for its real limits (claude/agy: /usage, opencode stats, codex)\n  /update                           check for and install the latest ateam (reopen the app afterwards)\n  /cooldown <agent> <minutes>       let an agent rest (e.g. when you know it's about to hit its limit)\n  /cooldown <agent> off             let the agent work again right away\n\nModel & effort per agent (remembered for next time):\n  /model <agent> <model name>       e.g. /model claude opus   ·   /model grok grok-4.7-build-fast\n  /effort <agent> <level>           e.g. /effort codex xhigh  ·   /effort claude high\n  /model <agent>   /effort <agent>  open a picker with what the agent supports (or click the agent box in Team)\n  /model <agent> -                  back to the config default (same for /effort <agent> -)\n  /models [agent]                   show the models & effort levels each agent supports\n  /models <agent> refresh           ask the CLI for its real model list (opencode models, agy models)\n  /agents                           show each agent's model, effort and valid effort levels\n  /setup                            reopen the setup screen: enable/disable agents, lead, model, effort\n  /theme [name] [accent]            pick a color theme (live preview), e.g. /theme nord purple\n  /lang en|vi                       change the interface language (the app reopens)\n\nCustom agents & workflows:\n  /custom                           add/edit/delete your own agents (any CLI) and workflows (step chains)\n  /flow <name> <goal>               run a goal with a workflow — steps become tasks right away, no planning\n  /flow                             list the available workflows\n  /goal <goal>                      the lead makes a plan, even when a default workflow is set\n  /grill <goal>                     \"grill me\": the lead asks you one question at a time (scope, flows, data,\n                                    edge cases, definition of done…) with suggested options, then writes a\n                                    spec and plans. Answer in the input; type a number / click to pick an option\n  /grill done   /grill drop         finalize with what you've answered so far / drop the goal in Q&A\n\nOther:\n  /pause  /resume                   pause / resume picking up new tasks\n  /clear                            clear finished tasks & goals from the board (🗑 button on the board)\n  /compact [focus]                  the lead summarizes notes, goals & log so later prompts are shorter\n  /log <task>   /log sys            show a task's log / the system log (Ctrl+L)\n  /team  /board  /term  /git        switch to Team / Board / Terminal / Git (Ctrl+T cycles)\n\nTerminal commands (💻 Terminal tab):\n  !<command>                        run a command in the project folder, e.g. !yarn dev, !make test\n  !                                 suggest package.json scripts, Makefile targets, recent commands (Enter runs)\n  /sh <command>                     same as !<command>\n  /stop [number]                    stop the selected command (■ Stop / ↻ Restart / ✗ Remove buttons in the tab)\n\nGit (🌿 Git tab — Ctrl+T to reach it, or /git):\n  /git                              open the Git tab: changed files, commit, branches, history, stash, pull/push\n                                    in the file list: Space stage/unstage · a stage all · u unstage all\n                                    · x discard changes · Enter/d view diff · c jump to the commit message\n                                    in the history: Enter/d view commit · r revert\n  /git <command>                    run any git <command> in the Terminal tab, e.g. /git tag v1.0,\n                                    /git cherry-pick abc123, /git remote add origin <url>\n  /commit <message>                 commit staged files (if nothing is staged, commit all changes)\n  /commit --no-verify <message>     commit skipping git hooks (pre-commit, commit-msg); /commit -n works too.\n                                    In the Git tab: the \"Skip hooks (--no-verify)\" box under Commit\n  /commit                           the lead reads the diff and writes the commit message (✨ in the Git tab)\n  /push [-f]   /pull   /fetch       sync with the remote (-f = --force-with-lease)\n  /branch [name]   /checkout <br>   create & switch branch / switch branch (empty: open the branch list)\n  /stash [message]   /stash pop     stash / restore uncommitted changes (/stash list: the list)\n                                    switching branches, pull and stash are blocked while agents run tasks\n\nHelp & quit:\n  /help                             this help (F1)\n  F2 = Ctrl+G, F5 = Ctrl+R, F6 = Ctrl+O   use F2/F5/F6 when the terminal grabs Ctrl keys (e.g. the VS Code/\n                                    Cursor terminal on Mac: Ctrl+G is Go to Line, Ctrl+R is Run Recent).\n                                    MacBook: hold fn when pressing F2/F5\n  /quit                             quit (Ctrl+Q) — running agents will be stopped",
     "👋 Chào mừng tới ateam — bắt đầu nhanh:\n  • Gõ một mục tiêu (vd: Thêm trang đăng nhập) → trưởng nhóm lập kế hoạch, Enter (hoặc F2) để duyệt & chạy\n  • /grill Thêm trang đăng nhập → trưởng nhóm hỏi kỹ từng câu cho rõ yêu cầu rồi mới lập kế hoạch\n  • /task codex viết test cho utils.py → giao tay cho 1 agent\n  • Gõ / để xem các lệnh · @ để nhắc file · Ctrl+V dán ảnh\n  • !yarn dev → chạy lệnh terminal (gõ ! để xem gợi ý) · tab 💻 Terminal\n  • /git → tab 🌿 Git: stage, commit (trưởng nhóm viết message), nhánh, pull/push, stash, lịch sử\n  • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: đổi tab (Bảng việc / Đội / Terminal / Git)":
         "👋 Welcome to ateam — quick start:\n  • Type a goal (e.g. Add a login page) → the lead plans it; press Enter (or F2) to approve & run\n  • /grill Add a login page → the lead asks you questions one by one to pin down the requirements, then plans\n  • /task codex write tests for utils.py → assign one agent by hand\n  • Type / to see commands · @ to mention files · Ctrl+V to paste images\n  • !yarn dev → run a terminal command (type ! for suggestions) · 💻 Terminal tab\n  • /git → 🌿 Git tab: stage, commit (the lead writes the message), branches, pull/push, stash, history\n  • F1 or /help: all commands & shortcuts · Ctrl+T: switch tabs (Board / Team / Terminal / Git)",
     "📋 Kế hoạch":
         "📋 Plan",
-    "nháp":
-        "draft",
-    "chờ":
-        "queued",
-    "đang chạy":
-        "running",
-    "lỗi":
-        "failed",
-    "đã huỷ":
-        "cancelled",
-    "bị chặn":
-        "blocked",
-    "xung đột":
-        "conflict",
-    "chờ duyệt":
-        "in review",
-    "đang lập kế hoạch":
-        "planning",
-    "chờ duyệt (F2)":
-        "awaiting review (F2)",
-    "đang hỏi bạn":
-        "asking you",
-    "đã bỏ":
-        "dropped",
-    "đang làm":
-        "in progress",
-    "đang review":
-        "reviewing",
-    "hoàn thành":
-        "done",
-    "chưa xong":
-        "incomplete",
     "<agent> <nội dung>":
         "<agent> <content>",
     "giao tay cho 1 agent, gửi nguyên văn":
@@ -1106,6 +1102,10 @@ EN: dict[str, str] = {
         "Saved {v} '{name}'",
     "   {v} → bây giờ ({v2})":
         "   {v} → now ({v2})",
+    "Xem trước: ":
+        "Preview: ",
+    "Theme: ":
+        "Theme: ",
     "   · đã trả lời {n_answered} câu":
         "   · answered {n_answered} question(s)",
     "📋 Kế hoạch chờ duyệt ":
@@ -1134,6 +1134,10 @@ EN: dict[str, str] = {
         "Unstage all",
     "Bỏ thay đổi":
         "Discard changes",
+    "Xem diff":
+        "View diff",
+    "Xem commit":
+        "View commit",
     "Trợ giúp":
         "Help",
     "Thoát":
@@ -1194,6 +1198,40 @@ EN: dict[str, str] = {
         "No workflows yet. Create one with /custom → '+ Add workflow' (templates included).",
     "Chạy: /flow <tên> <mục tiêu>   ·   sửa: /custom":
         "Run: /flow <name> <goal>   ·   edit: /custom",
+    "nháp":
+        "draft",
+    "chờ":
+        "queued",
+    "đang chạy":
+        "running",
+    "xong":
+        "done",
+    "lỗi":
+        "failed",
+    "đã huỷ":
+        "cancelled",
+    "bị chặn":
+        "blocked",
+    "xung đột":
+        "conflict",
+    "chờ duyệt":
+        "in review",
+    "đang lập kế hoạch":
+        "planning",
+    "chờ duyệt (F2)":
+        "awaiting review (F2)",
+    "đang hỏi bạn":
+        "asking you",
+    "đã bỏ":
+        "dropped",
+    "đang làm":
+        "in progress",
+    "đang review":
+        "reviewing",
+    "hoàn thành":
+        "done",
+    "chưa xong":
+        "incomplete",
     " · hay ý bạn là ":
         " · did you mean ",
     "  ➕ Việc giao thêm":
@@ -1204,6 +1242,8 @@ EN: dict[str, str] = {
         "✔ Summary:",
     "📝 Ghi chú: ":
         "📝 Note: ",
+    "↪ Giao cho {to}":
+        "↪ Delegated to {to}",
     "Còn thay đổi chưa lưu — Esc lần nữa để bỏ, Ctrl+S để lưu":
         "Unsaved changes — press Esc again to discard, Ctrl+S to save",
     "Thiết lập đội AI · Bước {v}/{v2} — {title}":
@@ -1288,10 +1328,18 @@ EN: dict[str, str] = {
         "  — no activity yet",
     "█ đang chạy":
         "█ running",
+    "█ xong":
+        "█ done",
     "█ lỗi":
         "█ failed",
     "▒ trưởng nhóm lập kế hoạch/review":
         "▒ lead planning/reviewing",
+    "○ rảnh":
+        "○ idle",
+    "⏸ tạm dừng":
+        "⏸ paused",
+    "⏸ nghỉ: {v}":
+        "⏸ resting: {v}",
     " · còn {others} mục tiêu khác đang hỏi đáp (hiện sau khi xong mục tiêu này)":
         " · {others} more goal(s) in Q&A (shown after this one)",
     "{v} {lead} đang nghĩ câu hỏi tiếp theo…":
@@ -1474,6 +1522,12 @@ EN: dict[str, str] = {
         "None yet. Press '+ Add workflow' (templates: new feature, bug fix, review).",
     "Không dán được ảnh: {why}. Dán chữ bằng Cmd+V.":
         "Could not paste an image: {why}. Paste text with Cmd+V.",
+    "Tối":
+        "Dark",
+    "🎨 Theme màu":
+        "🎨 Color theme",
+    "↑↓ xem trước · Tab sang cột màu nhấn · Enter lưu · Esc huỷ (trả theme cũ)":
+        "↑↓ preview · Tab to accent colors · Enter save · Esc cancel (restore previous theme)",
     "✓ Đủ rồi — chốt & lập kế hoạch":
         "✓ Enough — finalize & plan",
     "⏭ Để trưởng nhóm tự quyết":
@@ -1562,6 +1616,8 @@ EN: dict[str, str] = {
         "the lead asks questions until it's clear, then plans",
     "/task <agent> <nội dung>":
         "/task <agent> <content>",
+    "giao tay cho 1 agent":
+        "assign one agent by hand",
     "/flow <tên> <mục tiêu>":
         "/flow <name> <goal>",
     "chạy theo workflow dựng sẵn":
@@ -1664,6 +1720,8 @@ EN: dict[str, str] = {
         "Are you sure?",
     "Đã xoá '{name}'":
         "Deleted '{name}'",
+    "✓ Lưu theme":
+        "✓ Save theme",
     "\n   Gõ câu trả lời ở ô dưới rồi Enter · gõ số (1, 2…) hoặc bấm vào phương án để chọn":
         "\n   Type your answer below, then Enter · type a number (1, 2…) or click an option to pick it",
     "Huỷ (n)":
@@ -1734,6 +1792,8 @@ EN: dict[str, str] = {
         "'{name}' is the lead — change the lead in /setup first.",
     "'{name}' nằm trong file cấu hình khác ({v}) — sửa file đó để xoá.":
         "'{name}' is in another config file ({v}) — edit that file to delete it.",
+    "Sáng":
+        "Light",
     "★ khuyên dùng: ":
         "★ recommended: ",
     "── {v} (mã {rc}) sau {v2} ──":
@@ -1768,6 +1828,8 @@ EN: dict[str, str] = {
         "Full access",
     "{label}: phải là số nguyên dương":
         "{label}: must be a positive integer",
+    "vd: tinh-nang, sua-loi":
+        "e.g. new-feature, bug-fix",
     "  ★ khuyên dùng":
         "  ★ recommended",
     "＋ Tạo git repo (git init)":
@@ -1810,6 +1872,8 @@ EN: dict[str, str] = {
         "Amend last commit",
     "Bỏ qua hook (--no-verify)":
         "Skip hooks (--no-verify)",
+    "Δ Xem commit":
+        "Δ View commit",
     "⎌ Bỏ commit cuối":
         "⎌ Undo last commit",
     "Thư mục này chưa là git repo.\n\n":
@@ -1864,6 +1928,12 @@ EN: dict[str, str] = {
         "\n   role: {role}",
     "\n   lệnh: {v}":
         "\n   command: {v}",
+    "Theme: {v}":
+        "Theme: {v}",
+    "Không có theme {name} — có: {v}":
+        "No theme named {name} — available: {v}",
+    "Không có màu nhấn {name} — có: {v}":
+        "No accent color named {name} — available: {v}",
     "Ngôn ngữ: {v} · đổi bằng /lang en hoặc /lang vi":
         "Language: {v} · change with /lang en or /lang vi",
     "Đang dùng {v} rồi":

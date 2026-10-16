@@ -26,48 +26,70 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import clipboard, diffview, gitops, mentions, shell, update
+from . import clipboard, diffview, gitops, mentions, shell, theme, update
 from .config import (CATALOG, CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, NAME_RE, PROVIDERS, ROLES, TIERS,
                      WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan, builtin_agent, default_cli,
                      full_access_supported, plan_team, provider_of, provider_template, save_onboard,
                      tier_preset,
                      Workflow, WorkflowStep, agent_from_dict, agent_templates, describe_models,
                      clear_agent_state, load_config, load_custom, load_state, mark_setup_done, needs_setup,
-                     save_custom_item,
+                     save_custom_item, save_state,
                      save_project_setting, workflow_to_dict)
 from .db import ACTIVE, DB, GOAL_ENDED
 from .orchestrator import SYSTEM, Orchestrator
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, tr
 
-# màu "đang chạy/đang xử lý": xanh dương (256 màu, Terminal.app không có truecolor); magenta trước đây
-# bị Terminal.app vẽ gần như đỏ, dễ nhầm với lỗi
+# Màu trạng thái lấy từ theme đang dùng (apply_palette, gọi khi khởi động và khi đổi theme). Mặc định
+# "đang chạy" là xanh dương: magenta trước đây bị Terminal.app (256 màu) vẽ gần như đỏ, dễ nhầm với lỗi.
+# 16 màu ANSI chuẩn (green, yellow…) Textual tự đổi theo nền sáng/tối.
 RUNNING = "dodger_blue1"
-STATUS = {
-    "draft": (tr("nháp"), "yellow"),
-    "queued": (tr("chờ"), "cyan"),
-    "running": (tr("đang chạy"), f"bold {RUNNING}"),
-    "done": ("xong", "green"),
-    "failed": (tr("lỗi"), "bold red"),
-    "cancelled": (tr("đã huỷ"), "dim"),
-    "blocked": (tr("bị chặn"), "red"),
-    "conflict": (tr("xung đột"), "bold yellow"),
-    "review": (tr("chờ duyệt"), "bold yellow"),
-}
+STATUS: dict[str, tuple[str, str]] = {}
+BAR_STYLE: dict[str, str] = {}
+GOAL_STATUS: dict[str, tuple[str, str]] = {}
 STATUS_ICON = {"draft": "✎", "queued": "◌", "done": "✓", "failed": "✗", "cancelled": "–",
                "blocked": "⊘", "conflict": "≠", "review": "◆"}  # running: dùng SPIN
-BAR_STYLE = {"running": RUNNING, "done": "green", "failed": "red", "cancelled": "grey50",
-             "blocked": "red", "conflict": "yellow", "review": "yellow"}
-GOAL_STATUS = {
-    "planning": (tr("đang lập kế hoạch"), RUNNING),
-    "awaiting": (tr("chờ duyệt (F2)"), "yellow"),
-    "grilling": (tr("đang hỏi bạn"), "yellow"),
-    "cancelled": (tr("đã bỏ"), "dim"),
-    "running": (tr("đang làm"), "cyan"),
-    "reviewing": (tr("đang review"), RUNNING),
-    "done": (tr("hoàn thành"), "green"),
-    "incomplete": (tr("chưa xong"), "yellow"),
-    "failed": (tr("lỗi"), "red"),
-}
+
+
+PAL: dict[str, str] = {}  # màu ngữ nghĩa của theme hiện tại (theme.palette)
+
+
+def apply_palette(pal: dict[str, str]) -> None:
+    """Dựng lại bảng màu trạng thái theo theme (pal: running/ok/warn/err/info, xem theme.palette)."""
+    global RUNNING
+    RUNNING = pal["running"]
+    PAL.clear()
+    PAL.update(pal)
+    ok, warn, err, info = pal["ok"], pal["warn"], pal["err"], pal["info"]
+    STATUS.clear()
+    STATUS.update({
+        "draft": (tr("nháp"), warn),
+        "queued": (tr("chờ"), info),
+        "running": (tr("đang chạy"), f"bold {RUNNING}"),
+        "done": (tr("xong"), ok),
+        "failed": (tr("lỗi"), f"bold {err}"),
+        "cancelled": (tr("đã huỷ"), "dim"),
+        "blocked": (tr("bị chặn"), err),
+        "conflict": (tr("xung đột"), f"bold {warn}"),
+        "review": (tr("chờ duyệt"), f"bold {warn}"),
+    })
+    BAR_STYLE.clear()
+    BAR_STYLE.update({"running": RUNNING, "done": ok, "failed": err, "cancelled": "grey50",
+                      "blocked": err, "conflict": warn, "review": warn})
+    GOAL_STATUS.clear()
+    GOAL_STATUS.update({
+        "planning": (tr("đang lập kế hoạch"), RUNNING),
+        "awaiting": (tr("chờ duyệt (F2)"), warn),
+        "grilling": (tr("đang hỏi bạn"), warn),
+        "cancelled": (tr("đã bỏ"), "dim"),
+        "running": (tr("đang làm"), info),
+        "reviewing": (tr("đang review"), RUNNING),
+        "done": (tr("hoàn thành"), ok),
+        "incomplete": (tr("chưa xong"), warn),
+        "failed": (tr("lỗi"), err),
+    })
+
+
+apply_palette(theme.palette(None))
 SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 NARROW_WIDTH = 110  # terminal hẹp hơn: bảng việc và log xếp dọc thay vì hai cột
 # ô nhập đang ở "/continue <ref> …" (ref = m12 / t40), nhóm 1 = ref
@@ -620,7 +642,7 @@ class LogStyler:
             if "<<<END>>>" not in d.group(2):
                 self.block = "delegate"
             t = Text()
-            t.append(f"↪ Giao cho {attrs.get('to', '?')}", "bold magenta")
+            t.append(tr("↪ Giao cho {to}", to=attrs.get('to', '?')), "bold magenta")
             if attrs.get("title"):
                 t.append(": " + attrs["title"], "magenta")
             return t
@@ -826,7 +848,7 @@ class BaseModal(ModalScreen):
     BINDINGS = [Binding("escape", "request_close", tr("Đóng"))]
     DEFAULT_CSS = """
     BaseModal .m-titlebar { height: 1; }
-    BaseModal .m-title { width: 1fr; text-style: bold; }
+    BaseModal .m-title { width: 1fr; text-style: bold; color: $primary; }
     """
     _initial = None
     _esc_at = 0.0
@@ -866,7 +888,7 @@ class ChoiceScreen(BaseModal):
 
     DEFAULT_CSS = """
     ChoiceScreen { align: center middle; }
-    #choice-box { width: 60; height: auto; max-height: 80%; border: round $panel-lighten-2;
+    #choice-box { width: 60; height: auto; max-height: 80%; border: round $primary 70%;
                   background: $surface; padding: 0 1; }
     #choice-list { height: auto; max-height: 30; }
     """
@@ -904,7 +926,7 @@ class HelpScreen(BaseModal):
     BINDINGS = [Binding("f1", "close", tr("Đóng"), priority=True)]
     DEFAULT_CSS = """
     HelpScreen { align: center middle; }
-    #help-box { width: 124; max-width: 100%; height: 90%; border: round $panel-lighten-2;
+    #help-box { width: 124; max-width: 100%; height: 90%; border: round $primary 70%;
                 background: $surface; padding: 0 1; }
     #help-body { height: 1fr; }
     #help-foot { height: 1; color: $text-muted; }
@@ -934,7 +956,7 @@ class OnboardScreen(BaseModal):
     BINDINGS = [Binding("ctrl+s", "save", tr("Lưu"), priority=True)]
     DEFAULT_CSS = """
     OnboardScreen { align: center middle; }
-    #ob-box { width: 116; max-width: 98%; height: auto; max-height: 95%; border: round $panel-lighten-2;
+    #ob-box { width: 116; max-width: 98%; height: auto; max-height: 95%; border: round $primary 70%;
               background: $surface; padding: 0 1; }
     #ob-steps { height: auto; color: $text-muted; margin-bottom: 1; }
     #ob-body { height: auto; max-height: 34; }
@@ -1337,7 +1359,7 @@ class OnboardScreen(BaseModal):
 
 # --------------------------------------------------------------------------- agent & workflow tuỳ chỉnh
 FORM_CSS = """
-    #{box} { width: 120; max-width: 100%; height: auto; max-height: 95%; border: round $panel-lighten-2;
+    #{box} { width: 120; max-width: 100%; height: auto; max-height: 95%; border: round $primary 70%;
              background: $surface; padding: 0 1; }
     #{box} .f-scroll { height: auto; max-height: 34; }
     #{box} .f-row { height: 3; }
@@ -1760,7 +1782,7 @@ class WorkflowEditScreen(BaseModal):
                                               for k, v in WORKFLOW_TEMPLATES.items()],
                                              prompt=tr("(chọn để điền sẵn)"), id="wf-template",
                                              classes="f-input"), tr("thay toàn bộ các bước"))
-                yield form_row(tr("Tên"), TextInput(self.old_name or "", placeholder="vd: tinh-nang, sua-loi",
+                yield form_row(tr("Tên"), TextInput(self.old_name or "", placeholder=tr("vd: tinh-nang, sua-loi"),
                                             id="wf-name", classes="f-input"), tr("chữ, số, - và _"))
                 yield form_row(tr("Mô tả"), TextInput(id="wf-desc", classes="f-input"), tr("hiện trong /flow"))
                 yield form_row("Review", Checkbox(tr("Trưởng nhóm review khi xong"), id="wf-review"),
@@ -2380,10 +2402,162 @@ class Timeline(Static):
                 out.append(ch, st)
         out.append("\n")
         out.append(" " * label_w)
-        for label, st in ((tr("█ đang chạy"), RUNNING), ("█ xong", "green"), (tr("█ lỗi"), "red"),
+        for label, st in ((tr("█ đang chạy"), RUNNING), (tr("█ xong"), "green"), (tr("█ lỗi"), "red"),
                           (tr("▒ trưởng nhóm lập kế hoạch/review"), "yellow")):
             out.append(label + "   ", st)
         return out
+
+
+class ThemeScreen(BaseModal):
+    """Chọn theme màu (/theme): danh sách theme bên trái, màu nhấn bên phải, xem trước trực tiếp khi di
+    chuyển. Enter/Lưu ghi vào state.json; Esc trả lại theme cũ."""
+
+    DEFAULT_CSS = """
+    ThemeScreen { align: center middle; }
+    #th-box { width: 96; max-width: 100%; height: auto; max-height: 90%; padding: 0 1;
+              border: round $primary 70%; background: $surface; }
+    #th-cols { height: auto; }
+    #th-list { width: 1fr; height: auto; max-height: 24; border: none; }
+    #th-accent { width: 30; height: auto; max-height: 24; border: none; margin-left: 2; }
+    #th-sample { height: auto; margin-top: 1; padding: 0 1; background: $boost; }
+    #th-hint { height: auto; color: $text-muted; margin-top: 1; }
+    #th-buttons { height: auto; margin-top: 1; align: right middle; }
+    #th-buttons Button { margin-left: 2; }
+    """
+
+    def __init__(self, base: str, accent: str):
+        super().__init__()
+        self.orig = (base, accent)
+        self.base, self.accent = base, accent
+        self.names = theme.theme_names()
+        self.accents = [""] + list(theme.ACCENTS)
+
+    def compose(self) -> ComposeResult:
+        opts: list = []
+        dark_done = False
+        opts.append(Option(Text(tr("Tối"), "bold dim"), disabled=True))
+        for n in self.names:
+            if not theme.is_dark(n) and not dark_done:
+                opts.append(Option(Text(tr("Sáng"), "bold dim"), disabled=True))
+                dark_done = True
+            opts.append(Option(n, id=f"t:{n}"))
+        acc = []
+        for k in self.accents:
+            t = Text()
+            t.append("■ ", theme.ACCENTS.get(k, "dim"))
+            t.append(theme.accent_label(k))
+            acc.append(Option(t, id=f"a:{k}"))
+        with Vertical(id="th-box", classes="m-box"):
+            yield self.title_bar(tr("🎨 Theme màu"))
+            with Horizontal(id="th-cols"):
+                yield OptionList(*opts, id="th-list")
+                yield OptionList(*acc, id="th-accent")
+            yield Static(id="th-sample")
+            yield Static(tr("↑↓ xem trước · Tab sang cột màu nhấn · Enter lưu · Esc huỷ (trả theme cũ)"),
+                         id="th-hint")
+            with Horizontal(id="th-buttons", classes="m-buttons"):
+                yield Btn(tr("Huỷ"), id="th-cancel")
+                yield Btn(tr("✓ Lưu theme"), id="th-save", variant="success")
+
+    def on_mount(self) -> None:
+        tl = self.query_one("#th-list", OptionList)
+        ids = [tl.get_option_at_index(i).id for i in range(tl.option_count)]
+        if f"t:{self.base}" in ids:
+            tl.highlighted = ids.index(f"t:{self.base}")
+        al = self.query_one("#th-accent", OptionList)
+        al.highlighted = self.accents.index(self.accent) if self.accent in self.accents else 0
+        tl.focus()
+        self.draw_sample()
+
+    def draw_sample(self) -> None:
+        t = Text()
+        t.append(tr("Xem trước: "), "bold")
+        for key in ("running", "done", "failed", "review", "queued"):
+            label, style = STATUS[key]
+            t.append(f" {STATUS_ICON.get(key, '●')} {label} ", style)
+        t.append("\n")
+        t.append(tr("Theme: "), "dim")
+        t.append(theme.theme_id(self.base, self.accent), "bold")
+        set_static(self.query_one("#th-sample", Static), t)
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        event.stop()
+        oid = event.option.id or ""
+        if oid.startswith("t:"):
+            self.base = oid[2:]
+        elif oid.startswith("a:"):
+            self.accent = oid[2:]
+        else:
+            return
+        self.app.apply_theme(self.base, self.accent)
+        self.draw_sample()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        self.save()
+
+    def save(self) -> None:
+        self.app.apply_theme(self.base, self.accent, save=True)
+        self.dismiss(theme.theme_id(self.base, self.accent))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "th-save":
+            event.stop()
+            self.save()
+        elif event.button.id == "th-cancel":
+            event.stop()
+            self.close()
+
+    def close(self) -> None:
+        self.app.apply_theme(*self.orig)
+        self.dismiss(None)
+
+
+class StatusBar(Static):
+    """Thanh trạng thái phía trên Footer: nhánh git, số task theo trạng thái, agent đang nghỉ, theme,
+    ngôn ngữ. Bấm vào theme / ngôn ngữ để đổi."""
+
+    def build(self, app: "TeamApp") -> Text:
+        t = Text()
+        sep = ("  │  ", "dim")
+        st = app.git_status
+        if st is not None and st.is_repo:
+            t.append("⎇ ", "bold")
+            t.append(st.branch or (st.oid[:8] if st.oid else "—"), "bold")
+            if st.ahead:
+                t.append(f" ↑{st.ahead}", STATUS["review"][1])
+            if st.behind:
+                t.append(f" ↓{st.behind}", STATUS["queued"][1])
+            if st.files:
+                t.append(f" ±{len(st.files)}", "dim")
+            t.append(*sep)
+        tasks = app.snap_tasks()
+        counts = {}
+        for x in tasks:
+            counts[x.status] = counts.get(x.status, 0) + 1
+        shown = False
+        for key in ("running", "queued", "review", "failed"):
+            n = counts.get(key, 0)
+            if n:
+                icon = SPIN[app._frame] if key == "running" else STATUS_ICON.get(key, "·")
+                label, style = STATUS[key]
+                t.append(f"{icon} {n} {label}", style)
+                t.append("  ")
+                shown = True
+        if not shown:
+            t.append(tr("○ rảnh"), "dim")
+            t.append("  ")
+        if app.orch.paused:
+            t.append(tr("⏸ tạm dừng"), STATUS["review"][1])
+            t.append("  ")
+        resting = [a for a in app.cfg.active_agents() if app.orch.in_cooldown(a)]
+        if resting:
+            t.append(tr("⏸ nghỉ: {v}", v=", ".join(resting)), STATUS["conflict"][1])
+        t.append(*sep)
+        t.append(f"🎨 {app.theme}", Style(meta={"@click": "app.open_theme"}))
+        t.append("  ")
+        t.append(f"🌐 {get_lang().upper()}", Style(bold=True, meta={"@click": "app.toggle_lang"}))
+        return t
 
 
 def hang(text: str, width: int, indent: int, first: int = 0) -> str:
@@ -2790,7 +2964,7 @@ class GitFileList(OptionList):
         Binding("a", "app.git_stage_all", tr("Stage tất cả"), show=False),
         Binding("u", "app.git_unstage_all", tr("Bỏ stage tất cả"), show=False),
         Binding("x", "app.git_discard", tr("Bỏ thay đổi"), show=False),
-        Binding("d", "app.git_diff", "Xem diff", show=False),
+        Binding("d", "app.git_diff", tr("Xem diff"), show=False),
         Binding("c", "app.git_focus_msg", "Commit", show=False),
     ]
 
@@ -2800,7 +2974,7 @@ class GitLogList(OptionList):
 
     BINDINGS = [
         Binding("r", "app.git_revert", "Revert", show=False),
-        Binding("d", "app.git_show_commit", "Xem commit", show=False),
+        Binding("d", "app.git_show_commit", tr("Xem commit"), show=False),
     ]
 
 
@@ -2809,7 +2983,7 @@ class GitBranchScreen(BaseModal):
 
     DEFAULT_CSS = """
     GitBranchScreen { align: center middle; }
-    #gb-box { width: 100; max-width: 100%; height: auto; max-height: 90%; border: round $panel-lighten-2;
+    #gb-box { width: 100; max-width: 100%; height: auto; max-height: 90%; border: round $primary 70%;
               background: $surface; padding: 0 1; }
     #gb-list { height: auto; max-height: 20; }
     #gb-hint { height: auto; color: $text-muted; }
@@ -2921,7 +3095,7 @@ class GitStashScreen(BaseModal):
 
     DEFAULT_CSS = """
     GitStashScreen { align: center middle; }
-    #gs-box { width: 90; max-width: 100%; height: auto; max-height: 85%; border: round $panel-lighten-2;
+    #gs-box { width: 90; max-width: 100%; height: auto; max-height: 85%; border: round $primary 70%;
               background: $surface; padding: 0 1; }
     #gs-list { height: auto; max-height: 20; }
     #gs-empty { height: auto; color: $text-muted; margin: 1 0; }
@@ -3081,10 +3255,15 @@ class TeamApp(App):
     .agentpane { border: round $panel-lighten-2; height: 1fr; }
     .agentpane.busy { border: heavy $accent; }
     .agentpane.missing { border: round $error 50%; }
+    .agentpane.cooling { border: round $warning; }
+    .agentpane.failed { border: round $error; }
     .pane-head { height: auto; padding: 0 1; background: $boost; }
     .pane-log { height: 1fr; padding: 0 1; overflow-x: hidden; }
     #timeline { height: auto; max-height: 14; padding: 0 1; border-top: solid $primary-darken-2; }
-    #cmd { dock: bottom; margin: 0 0 1 0; }
+    #cmd { dock: bottom; margin: 0 0 2 0; }
+    /* Footer, thanh trạng thái, ô nhập cùng dock dưới: chồng nhau nên đẩy bằng margin */
+    #statusbar { dock: bottom; height: 1; margin: 0 0 1 0; padding: 0 1; background: $boost;
+                 overflow: hidden hidden; }
     #plan { height: auto; max-height: 75%; display: none; border: round $panel-lighten-2;
             border-title-color: $warning; border-title-style: bold; padding: 0 1; background: $boost; }
     #plan:focus-within { border-title-color: $success; }
@@ -3104,7 +3283,7 @@ class TeamApp(App):
     #grill-buttons Button { margin-right: 2; }
     #continue-hint { height: auto; display: none; padding: 0 1; background: $boost; }
     #mention { dock: bottom; layer: overlay; display: none; height: auto; max-height: 14;
-               width: 90; max-width: 100%; margin: 0 0 4 1; border: round $panel-lighten-2;
+               width: 90; max-width: 100%; margin: 0 0 5 1; border: round $panel-lighten-2;
                border-title-color: $accent; border-subtitle-color: $text-muted;
                background: $panel; }
     """
@@ -3120,7 +3299,7 @@ class TeamApp(App):
         Binding("f5,ctrl+r", "retry", tr("Chạy lại"), priority=True),
         Binding("ctrl+k", "cancel_task", tr("Huỷ task"), priority=True),
         Binding("f6,ctrl+o", "continue", tr("Tiếp tục"), priority=True),
-        Binding("ctrl+d", "diff", "Xem diff", priority=True),
+        Binding("ctrl+d", "diff", tr("Xem diff"), priority=True),
         Binding("ctrl+y", "merge", "Merge", priority=True),
         Binding("ctrl+l", "syslog", tr("Log hệ thống"), priority=True),
     ]
@@ -3228,7 +3407,7 @@ class TeamApp(App):
                             yield Static(id="git-log-title")
                             yield GitLogList(id="git-log")
                             with Horizontal(classes="git-row"):
-                                yield Btn("Δ Xem commit", id="git-show")
+                                yield Btn(tr("Δ Xem commit"), id="git-show")
                                 yield Btn("↶ Revert", id="git-revert")
                                 yield Btn(tr("⎌ Bỏ commit cuối"), id="git-undo", variant="warning")
                     with Vertical(id="git-norepo"):
@@ -3243,10 +3422,13 @@ class TeamApp(App):
         yield MentionList(id="mention")
         yield CommandInput(self.root, id="cmd",
                            placeholder=tr("Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file"))
+        yield StatusBar(id="statusbar")
         yield Footer()
 
     async def on_mount(self) -> None:
         self.sub_title = str(self.root)
+        st = load_state()
+        self.apply_theme(st.get("theme") or theme.DEFAULT_THEME, st.get("accent") or "")
         table = self.query_one("#tasks", DataTable)
         table.add_column("#", key="id", width=4)
         table.add_column("Agent", key="agent", width=13)
@@ -3330,7 +3512,7 @@ class TeamApp(App):
             else:
                 act = data["end"]
                 st = act.get("status")
-                label, style = STATUS.get(st, ("xong", "green")) if st else ("xong", "green")
+                label, style = STATUS.get(st, STATUS["done"]) if st else STATUS["done"]
                 p.body.write(Text(f"── ■ {label} sau {fmt_dur(time.time() - act['started'])} ──", style))
         elif kind == "changed":
             self.schedule_refresh()
@@ -3436,7 +3618,7 @@ class TeamApp(App):
         job = self.shell.jobs[self.view_job]
         head = Text()
         head.append(f"$ {job.cmd}", "bold")
-        label = {"running": (tr("đang chạy"), RUNNING), "done": ("xong", "green"),
+        label = {"running": (tr("đang chạy"), RUNNING), "done": (tr("xong"), "green"),
                  "failed": (tr("lỗi (mã {rc})", rc=job.rc), "bold red"), "stopped": (tr("đã dừng"), "dim")}[job.status]
         head.append(f"   {label[0]}", label[1])
         head.append(f" · {fmt_dur((job.finished or time.time()) - job.started)}", "dim")
@@ -3886,8 +4068,11 @@ class TeamApp(App):
         self._refresh_pending = False
         self._frame = (self._frame + 1) % len(SPIN)
         # một lần đọc DB cho cả lượt vẽ; tab đang ẩn thì không vẽ (vẽ ngay khi chuyển sang — on_tabbed…)
+        tabs = self.screen_stack[0].query("#tabs") if self.screen_stack else None
+        if not tabs:  # app đang đóng (đổi theme lúc thoát vẫn gọi lại refresh)
+            return
         self._snap = {"tasks": self.db.tasks(), "goals": self.db.goals()}
-        tab = self.query_one("#tabs", TabbedContent).active
+        tab = tabs.first(TabbedContent).active
         fns = [self._refresh_goals, self._refresh_plan, self._refresh_grill]
         if tab == "tab-board":
             fns += [self._refresh_agents, self._refresh_table, self._refresh_detail]
@@ -3898,6 +4083,10 @@ class TeamApp(App):
         elif tab == "tab-git" and time.time() - self._git_at > 3 and not self._git_loading:
             # thay đổi do agent/editor bên ngoài: đọc lại git status định kỳ khi đang xem tab
             self.run_worker(self.refresh_git(), exclusive=False)
+        elif time.time() - self._git_at > 10 and not self._git_loading:
+            # thanh trạng thái hiện nhánh git: ngoài tab Git đọc lại thưa hơn
+            self.run_worker(self.refresh_git(), exclusive=False)
+        fns.append(self._refresh_statusbar)
         try:
             for fn in fns:
                 try:
@@ -3906,6 +4095,52 @@ class TeamApp(App):
                     self.log.error(f"refresh {fn.__name__}: {e!r}")
         finally:
             self._snap = None
+
+    def _refresh_statusbar(self) -> None:
+        bar = self.query_one("#statusbar", StatusBar)
+        set_static(bar, bar.build(self))
+
+    # ------------------------------------------------------------------ theme / ngôn ngữ
+    def theme_choice(self) -> tuple:
+        """(theme gốc, màu nhấn) đang dùng."""
+        base, _, accent = (self.theme or theme.DEFAULT_THEME).partition("+")
+        return base, accent
+
+    def apply_theme(self, base: str, accent: str = "", save: bool = False) -> bool:
+        """Đổi theme (+ màu nhấn): CSS theo theme Textual, chữ Rich theo bảng màu ngữ nghĩa, diff theo nền
+        sáng/tối. save=True ghi vào state.json. False nếu tên theme không có."""
+        if base not in self.available_themes:
+            return False
+        accent = accent if accent in theme.ACCENTS else ""
+        name = theme.theme_id(base, accent)
+        if name not in self.available_themes:
+            t = theme.make_theme(base, accent)
+            if t is None:
+                return False
+            self.register_theme(t)
+        self.theme = name
+        cur = self.current_theme
+        apply_palette(theme.palette(cur))
+        diffview.set_light(not cur.dark)
+        self._git_ids, self._git_log_ids = [], []  # vẽ lại danh sách git với màu mới
+        if save:
+            st = load_state()
+            st["theme"], st["accent"] = base, accent
+            save_state(st)
+        if self._booted:
+            self.refresh_view()
+            if self.git_status is not None:
+                try:
+                    self._render_git()
+                except Exception as e:
+                    self.log.error(f"render git: {e!r}")
+        return True
+
+    def action_open_theme(self) -> None:
+        self.push_screen(ThemeScreen(*self.theme_choice()))
+
+    def action_toggle_lang(self) -> None:
+        self.run_command("/lang " + ("vi" if get_lang() == "en" else "en"))
 
     def schedule_refresh(self, delay: float = 0.15) -> None:
         """Gộp nhiều sự kiện "changed" liền nhau thành một lần vẽ."""
@@ -4019,7 +4254,7 @@ class TeamApp(App):
                      if self.cfg.default_workflow else tr("trưởng nhóm lập kế hoạch & chia việc"))
             for keys, what in ((tr("Gõ một mục tiêu"), first),
                                (tr("/grill <mục tiêu>"), tr("trưởng nhóm hỏi kỹ cho rõ rồi mới lập kế hoạch")),
-                               (tr("/task <agent> <nội dung>"), "giao tay cho 1 agent"),
+                               (tr("/task <agent> <nội dung>"), tr("giao tay cho 1 agent")),
                                (tr("/flow <tên> <mục tiêu>"), tr("chạy theo workflow dựng sẵn")),
                                ("F1", tr("xem mọi lệnh & phím tắt"))):
                 t.append(f"  {keys:27}", "bold cyan")
@@ -4036,13 +4271,13 @@ class TeamApp(App):
             row = (str(task.id), agent, label, dur, f"{prefix}{task.title}{deps}", style)
             key = str(task.id)
             if task.id not in self._rows:
-                table.add_row(Text(row[0]), Text(row[1]), Text(row[2], style), Text(row[3], "dim"),
+                table.add_row(Text(row[0]), Text(row[1]), Text(row[2], style), Text(row[3], "dim", justify="right"),
                               Text(row[4]), key=key)
                 self._rows[task.id] = row
             elif self._rows[task.id] != row:
                 table.update_cell(key, "agent", Text(row[1]))
                 table.update_cell(key, "status", Text(row[2], style))
-                table.update_cell(key, "time", Text(row[3], "dim"))
+                table.update_cell(key, "time", Text(row[3], "dim", justify="right"))
                 table.update_cell(key, "title", Text(row[4]))
                 self._rows[task.id] = row
 
@@ -4099,10 +4334,10 @@ class TeamApp(App):
             if name == self.cfg.lead:
                 t.append("★ ", "yellow")
             t.append(name, "bold")
-            t.append(f"  {a.label()}", "cyan")
-            t.append(f"   ✓{n_done}", "green")
-            t.append(f" ✗{n_fail}", "red" if n_fail else "dim")
-            t.append(f" ⏳{n_wait}", "cyan" if n_wait else "dim")
+            t.append(f"  {a.label()}", PAL["info"])
+            t.append(f"   ✓{n_done}", PAL["ok"])
+            t.append(f" ✗{n_fail}", PAL["err"] if n_fail else "dim")
+            t.append(f" ⏳{n_wait}", PAL["info"] if n_wait else "dim")
             u = usage.get(name)
             if u:
                 t.append(tr("   hôm nay {v} lượt · {v2}", v=u['runs'], v2=fmt_dur(u['secs'])), "dim")  # token: /usage
@@ -4138,8 +4373,12 @@ class TeamApp(App):
                     t.append(tr("  · gần nhất #{id} ", id=last.id), "dim")
                     t.append(label, style)
             set_static(pane.head, t)
+            last_done = next((x for x in reversed(mine) if x.finished), None)
             pane.set_class(bool(acts), "busy")
             pane.set_class(not a.installed(), "missing")
+            pane.set_class(not acts and self.orch.in_cooldown(name), "cooling")
+            pane.set_class(not acts and last_done is not None
+                           and last_done.status in ("failed", "blocked", "conflict"), "failed")
 
     def _refresh_grill(self) -> None:
         bar = self.query_one("#grill", GrillBar)
@@ -4904,6 +5143,29 @@ class TeamApp(App):
             return
         elif cmd == "goal":
             self.start_goal(rest.strip())
+        elif cmd in ("theme", "giaodien", "mau"):
+            args = rest.split()
+            if not args:
+                self.action_open_theme()
+                return
+            name = args[0].lower()
+            if name not in self.available_themes or "+" in name:
+                self.notify(tr("Không có theme {name} — có: {v}", name=name, v=", ".join(theme.theme_names())),
+                            severity="warning", timeout=8)
+                return
+            accent = ""
+            if len(args) > 1:
+                acc = theme.normalize_accent(" ".join(args[1:]))
+                if acc is None:
+                    acc = theme.normalize_accent("-".join(args[1:]))
+                if acc is None:
+                    self.notify(tr("Không có màu nhấn {name} — có: {v}", name=" ".join(args[1:]),
+                                   v=", ".join(theme.ACCENTS)), severity="warning", timeout=8)
+                    return
+                accent = acc
+            self.apply_theme(name, accent, save=True)
+            self.notify(tr("Theme: {v}", v=theme.theme_id(name, accent)))
+            return
         elif cmd in ("lang", "language", "ngonngu"):
             code = normalize(rest)
             if not code:

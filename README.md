@@ -145,6 +145,19 @@ Finder vào terminal cũng ra `@ảnh`. Khi chạy, ảnh đi như `@file` ở t
 `--image=<ảnh>` để thấy ảnh thật (đổi bằng `image_args`). macOS dùng `osascript` có sẵn (hoặc
 `pngpaste` nếu đã cài); Linux cần `wl-paste` hoặc `xclip`. Cmd+V vẫn dán chữ như thường.
 
+## Theme màu và ngôn ngữ
+
+- **`/theme`** mở màn hình chọn theme: 21 theme dựng sẵn (tối và sáng — nord, dracula, gruvbox, tokyo-night,
+  catppuccin, solarized, rose-pine…) và màu nhấn tuỳ chọn (xanh dương, tím, xanh lá, cam, hồng, vàng, xanh ngọc,
+  đỏ). Di chuyển là xem trước ngay; Enter lưu, Esc trả lại theme cũ. Lệnh nhanh: `/theme nord tím`,
+  `/theme catppuccin-latte cam`. Màu trạng thái, viền popup, khung agent và diff đổi theo theme.
+- **`/lang en`** / **`/lang vi`**: đổi ngôn ngữ giao diện (app tự mở lại). Ngoài app: `ateam lang en` (lưu),
+  `ateam --lang en <lệnh>` hoặc `ATEAM_LANG=en` (một lần). Lần đầu dùng, ngôn ngữ theo `LANG` của máy.
+- Thanh trạng thái phía trên phím tắt: nhánh git ↑↓, số task đang chạy / chờ / chờ duyệt / lỗi, agent đang
+  nghỉ vì hết hạn mức, theme và ngôn ngữ (bấm vào để đổi).
+
+Lựa chọn lưu ở `~/.config/ateam/state.json`, dùng chung mọi dự án.
+
 ## Xem tiến trình từng agent — tab "Đội" (Ctrl+T)
 
 Mỗi agent một ô: model · effort đang dùng (và danh sách model/effort agent đó hỗ trợ), số task ✓ xong / ✗ lỗi / ⏳ chờ, task đang chạy kèm
