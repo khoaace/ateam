@@ -8,7 +8,8 @@ Công cụ terminal (Python + Textual) điều phối nhiều AI coding agent CL
 Antigravity (`agy`), Grok Build (`grok`), OpenCode, hoặc bất kỳ CLI nào có chế độ headless — làm việc như
 một đội trên cùng một repo của người dùng:
 
-- **Trưởng nhóm** (mặc định `claude`) lập kế hoạch thành task JSON, review kết quả, giao thêm việc.
+- **Trưởng nhóm** (mặc định `claude`) lập kế hoạch thành task JSON, review kết quả, giao thêm việc;
+  `/grill` cho trưởng nhóm hỏi người dùng từng câu để chốt đặc tả trước khi lập kế hoạch.
 - **Bảng việc** SQLite (`.ateam/team.db`) là nguồn sự thật duy nhất; TUI, CLI và agent cùng đọc/ghi.
 - **Bộ lập lịch** chạy task theo phụ thuộc và giới hạn song song; agent giao việc chéo bằng
   khối `<<<DELEGATE …>>>` trong output.
@@ -63,7 +64,8 @@ Chạy thử với agent giả lập thay vì CLI thật:
 5. **Chữ cho người dùng tiếng Việt; prompt gửi agent tiếng Anh** (agent tuân thủ tốt hơn), nhưng
    prompt luôn dặn agent viết theo ngôn ngữ của mục tiêu.
 6. **Giữ nguyên giao thức output** mà `prompts.py` bóc: `SUMMARY:`, `<<<DELEGATE to="…" title="…">>> … <<<END>>>`,
-   `<<<NOTE>>> … <<<END>>>`, kế hoạch là mảng JSON, review là object JSON. Đổi giao thức = đổi
+   `<<<NOTE>>> … <<<END>>>`, kế hoạch là mảng JSON, review là object JSON, câu hỏi `/grill` là object JSON
+   (`question`/`options`/`recommended` hoặc `done`/`spec`). Đổi giao thức = đổi
    cả prompt, parser, agent giả lập và test.
 7. **Đổi mặc định trong `DEFAULT_CONFIG`** → tăng `CONFIG_VERSION` (file của người dùng sẽ được sao lưu
    và thay mới) và cập nhật `docs/CONFIG.md`. Thêm khoá mới mà không đổi mặc định cũ thì chỉ cần có

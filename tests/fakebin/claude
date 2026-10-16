@@ -9,7 +9,16 @@ if [ "$P" = "/usage" ]; then  # như claude -p /usage thật: không gọi model
   exit 0
 fi
 if fake_limited claude; then echo "Claude AI usage limit reached|$(( $(date +%s) + 3600 ))"; exit 1; fi
-if [[ "$P" == *"git COMMIT MESSAGE"* ]]; then
+if [[ "$P" == *"you INTERVIEW the user"* ]]; then
+  # /grill: hỏi 2 câu (đếm dòng "A<số>:" đã trả lời), rồi chốt đặc tả; người dùng dừng thì chốt ngay
+  n=$(printf '%s\n' "$P" | grep -cE '^A[0-9]+:' || true)
+  if [[ "$P" == *"wants to STOP the interview"* ]] || [ "$n" -ge 2 ]; then
+    echo '{"done": true, "spec": "- Đăng nhập bằng email\n- Đã trả lời '"$n"' câu"}'
+  else
+    q=$((n + 1))
+    echo '{"question": "Câu hỏi số '"$q"'?", "why": "để rõ phạm vi", "options": ["Phương án A", "Phương án B"], "recommended": "Phương án A"}'
+  fi
+elif [[ "$P" == *"git COMMIT MESSAGE"* ]]; then
   # Viết commit message (tab Git): trả lời sau SUMMARY:
   echo "Đang đọc diff..."
   echo "SUMMARY:"
