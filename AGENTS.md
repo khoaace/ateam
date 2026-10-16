@@ -32,6 +32,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/prompts.py` | Prompt gửi trưởng nhóm/thành viên (tiếng Anh) + bóc JSON, DELEGATE, NOTE, SUMMARY |
 | `ateam/shell.py` | Lệnh terminal của người dùng (`!lệnh`, tab 💻 Terminal): `ShellManager` chạy qua `Run` (pty, huỷ process group), gợi ý script package.json/Makefile, bắt port |
 | `ateam/gitops.py` | Tab 🌿 Git + `/git`, `/commit`, `/push`…: `GitRepo` (status porcelain v2, stage/unstage/bỏ thay đổi, commit/amend, nhánh, merge, fetch/pull/push, stash, revert, bỏ commit cuối) — async, không hỏi mật khẩu; màn hình ở `tui.py` (`GitFileList`, `GitLogList`, `GitBranchScreen`, `GitStashScreen`, `ConfirmScreen`) |
+| `ateam/editor.py` | Tab 📝 Code: đọc/ghi file an toàn, tô màu pygments theo byte, `VimState` (phím vim → thao tác); widget `CodeEditor` ở `tui.py` |
 | `ateam/diffview.py` | Màn hình diff kiểu VS Code: bóc `git diff`, ghép dòng hai cột, tô cú pháp (pygments qua rich) và chữ đổi trong dòng; `DiffScreen` ở `tui.py` dùng |
 | `ateam/mentions.py` | `@file`: gợi ý file/thư mục cho TUI, đổi `@đường/dẫn` sang cú pháp từng CLI (`SYNTAX`) |
 | `ateam/clipboard.py` | Ctrl+V dán ảnh: đọc clipboard (osascript/pngpaste/wl-paste/xclip), lưu `.ateam/images/`, nhận ảnh kéo-thả |
@@ -45,7 +46,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 
 ```bash
 pip install -e ".[dev]"          # cài từ mã nguồn + pytest
-python -m pytest -q              # ~3 phút, 91 test, dùng agent giả lập — PHẢI xanh trước khi commit
+python -m pytest -q              # ~3 phút, 100 test, dùng agent giả lập — PHẢI xanh trước khi commit
 python -m ateam doctor           # xem lệnh thật sẽ chạy cho từng agent
 python -m ateam -C /tmp/demo     # mở TUI trên một thư mục nháp
 python scripts/build_site.py     # dựng trang docs vào dist/

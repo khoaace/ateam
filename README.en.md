@@ -20,6 +20,13 @@ curl -fsSL https://raw.githubusercontent.com/khoaace/ateam/main/scripts/get.sh |
 ateam            # open the TUI in the current directory
 ```
 
+## Code tab (vim keys)
+
+`/code @src/app.py:42` (or `/edit @file`, or key `e` in the Git tab / diff screen) opens the file in the 📝 Code
+tab: syntax highlighting, line numbers, several open files, and core vim keys (`i a o`, `Esc`, `hjkl w b e gg G`,
+counts, `dd yy p cw u Ctrl+R`, `v V`, `/ n N`, `:w :q :wq :q! :e!`). `/vim off` switches to normal editing
+(Ctrl+S saves). Files an agent changes while open are reloaded (or you are warned if you have edits).
+
 ## Language and theme
 
 - `/lang en` or `/lang vi` in the app (it restarts itself); `ateam lang en` to save it from the shell;

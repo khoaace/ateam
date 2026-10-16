@@ -257,6 +257,24 @@ Lệnh tắt: `/commit <message>`, `/commit --no-verify <message>` (hoặc `-n`)
 đăng nhập thì cấu hình SSH key hoặc credential helper trước. Đổi nhánh, pull, stash bị chặn khi agent đang chạy
 task (chúng đang sửa thư mục hoặc sắp merge vào nhánh hiện tại).
 
+## Xem & sửa code (tab 📝 Code)
+
+`/code @src/app.py:42` (hoặc `/edit @file`, Ctrl+T tới tab 📝 Code, phím `e` ở tab Git / màn hình diff) mở file
+trong editor có tô màu cú pháp, số dòng, phím **vim**:
+
+- `i a I A o O` vào chế độ sửa, `Esc` về normal; di chuyển `h j k l w b e 0 ^ $ gg G Ctrl+D/U`, có số đếm
+  (`5j`, `3dd`, `2dw`);
+- sửa: `x dd D dw cw cc yy p P J r`, hoàn tác `u` / `Ctrl+R`, chọn `v` / `V` rồi `d y c > <`;
+- tìm `/ ? n N *`; `:w` lưu, `:q` đóng, `:wq`, `:q!` bỏ thay đổi, `:e!` nạp lại, `:42` tới dòng, `:bn` `:bp`
+  đổi file, `:files` ẩn/hiện danh sách file.
+
+Không quen vim: `/vim off` (sửa như editor thường, Ctrl+S lưu). Cột trái liệt kê file đang mở và file của dự án
+(gõ để lọc). Agent sửa file bạn đang mở: chưa sửa gì thì tự nạp lại, đang sửa thì được báo — `:e!` lấy bản
+trên đĩa, `:w!` ghi đè. Thoát app khi còn file chưa lưu sẽ được hỏi lại.
+
+Editor chỉ vẽ các dòng đang hiện; tô màu chạy nền sau khi bạn ngừng gõ ~0,2 giây, nên file lớn vẫn mượt. File
+trên 2 MB / 20 000 dòng không tô màu, trên 5 MB mở chỉ đọc, file nhị phân không mở.
+
 ## Xem diff và duyệt merge (chế độ worktree)
 
 Đặt `merge = "review"`: task xong (và qua kiểm tra) dừng ở trạng thái **chờ duyệt**.

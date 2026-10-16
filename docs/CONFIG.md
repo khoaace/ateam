@@ -14,7 +14,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 5. `~/.config/ateam/state.json` → `agents.<tên>.model|effort|enabled|role|full_access` (đặt bằng `/model`, `/effort`,
    `ateam set`, wizard `/setup`), `lead` (vai trò Trưởng nhóm ở `/setup`), `default_workflow` (workflow chạy khi gõ
    mục tiêu trong TUI — wizard đặt `tinh-nang` khi chọn kiểu "theo quy trình cố định"; workflow đã bị xoá thì bỏ
-   qua), `lang` (`vi`/`en`, `/lang`, `ateam lang`), `theme` / `accent` (theme Textual và màu nhấn, `/theme`), `approve_plan` / `auto_review` (kiểu làm việc ở `/setup`; chỉ ghi khi khác `true`), `onboarded` (đã qua
+   qua), `lang` (`vi`/`en`, `/lang`, `ateam lang`), `theme` / `accent` (theme Textual và màu nhấn, `/theme`), `vim` (`false` = tắt phím vim ở tab 📝 Code, `/vim off`), `approve_plan` / `auto_review` (kiểu làm việc ở `/setup`; chỉ ghi khi khác `true`), `onboarded` (đã qua
    wizard lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`), và
    `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify` hoặc bước *Lệnh kiểm tra*), `isolation` /
    `merge` (bước *An toàn & duyệt code*, riêng từng dự án).

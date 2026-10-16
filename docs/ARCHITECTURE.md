@@ -243,6 +243,25 @@ stash/revert có cờ `-c user.*` dự phòng như `Orchestrator.git_ident`. M�
   hoàn tác được (bỏ thay đổi, xoá hẳn nhánh, xoá stash, revert, bỏ commit) hỏi lại bằng `ConfirmScreen`.
   `/git <lệnh>` chạy `git <lệnh>` qua `ShellManager` (tab Terminal) cho các việc còn lại (rebase, tag…).
 
+## Tab 📝 Code (`editor.py` + `CodeEditor`)
+
+- `editor.py` không phụ thuộc Textual: `read_source`/`save_source` (gọi qua `asyncio.to_thread`; từ chối file
+  nhị phân, giữ CRLF/BOM, ghi qua file tạm + `os.replace`, trả `"conflict"` khi mtime trên đĩa khác lúc mở),
+  `highlight_lines` (pygments → `{dòng: [(byte_đầu, byte_cuối, tên style)]}` — **offset byte UTF-8** vì
+  `TextArea._render_line` đọc theo byte), `VimState.feed(phím, ký tự, dòng, con trỏ, cao)` trả danh sách thao
+  tác (`move`/`move_v`/`edit`/`select`/`undo`/`redo`/`mode`/`ex`/`msg`) — test bằng `apply_ops`, không cần app.
+- `CodeEditor(TextArea)` ở `tui.py`: ở normal/visual `_on_key` đưa phím vào `VimState` rồi `apply`;
+  `check_action` chặn binding sửa chữ của TextArea (Ctrl+U/K/W…) và `check_consume_key` chỉ nhận ký tự in được
+  (để Ctrl+T, F1, Ctrl+Q của app vẫn chạy); `TeamApp.check_action` nhường Ctrl+D/R/K/G/O/Y/L cho editor khi
+  nó đang focus. Lệnh `:` gọi `TeamApp.code_ex`.
+- Hiệu năng: `_build_highlight_map` (Textual gọi sau mỗi lần sửa) chỉ hẹn tô lại sau 0,2 s trong thread
+  worker (`exclusive`, bỏ kết quả cũ theo `_gen`), chỉ tới hết màn hình + 200 dòng, cuộn xuống thì tô tiếp.
+  Vá hai chỗ O(n) mỗi khung hình/mỗi phím của Textual: `WrappedDocument.height` (`_NoWrapDocument`) và
+  `_refresh_size` (giữ độ rộng lớn nhất, chỉ đo dòng vừa sửa). `refresh_view` ở tab Code chỉ kiểm tra mtime
+  file đang mở mỗi 2 s.
+- Buffer: `TeamApp.code_bufs` (tối đa 10, bỏ buffer cũ nhất đã lưu), giữ con trỏ và nội dung chưa lưu khi đổi
+  file (lịch sử undo mất khi đổi buffer).
+
 ## Xem diff
 
 `Orchestrator.diff_files(tid)` chạy `git -c core.quotePath=false diff -M --no-color` (worktree: `base..head`

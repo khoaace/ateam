@@ -329,6 +329,7 @@ ateam doctor</pre><button class="copy" data-copy="manual">Sao chép</button></di
         <div style="--fc: var(--grok)"><dt>Hết hạn mức thì đổi người</dt><dd>Agent báo rate limit được cho nghỉ đến giờ hồi; task tự chuyển sang agent dự phòng, kể cả vai trưởng nhóm.</dd></div>
         <div><dt>Model và effort cho từng agent, từng task</dt><dd><code>/model claude opus</code>, <code>/effort codex xhigh</code>, hoặc <code>/task codex@xhigh …</code> cho riêng một việc khó.</dd></div>
         <div><dt>Trưởng nhóm hỏi kỹ trước khi làm</dt><dd><code>/grill &lt;mục tiêu&gt;</code>: trưởng nhóm hỏi bạn từng câu — phạm vi, luồng, ca biên, tiêu chí xong — kèm phương án gợi ý, rồi chốt bản đặc tả và mới lập kế hoạch.</dd></div>
+        <div><dt>Xem & sửa code kiểu vim</dt><dd>Tab 📝 Code (<code>/code @file:dòng</code>): tô màu cú pháp, phím vim (<code>dd</code>, <code>cw</code>, <code>/tìm</code>, <code>:w</code>…), nhiều file, tự nạp lại khi agent sửa file — vẫn mượt với file hàng chục nghìn dòng. <code>/vim off</code> nếu muốn sửa kiểu thường.</dd></div>
         <div><dt>Quản lý git ngay trong app</dt><dd>Tab 🌿 Git (<code>/git</code>): stage từng file, xem diff, commit — trưởng nhóm viết commit message từ diff —, đổi/tạo/merge nhánh, pull/push, stash, lịch sử và revert.</dd></div>
         <div><dt>Theme màu và tiếng Anh</dt><dd><code>/theme</code> chọn 1 trong 21 theme tối/sáng cộng màu nhấn, xem trước trực tiếp; <code>/lang en</code> chuyển toàn bộ giao diện và lệnh <code>ateam</code> sang tiếng Anh.</dd></div>
         <div><dt>Agent và workflow của riêng bạn</dt><dd>Bất kỳ CLI nào chạy headless đều vào đội được: Gemini CLI, Cursor CLI, Aider… thêm trong màn hình <code>/custom</code> (có mẫu và xem trước lệnh). Workflow dựng sẵn như thiết kế → code → test chạy bằng <code>/flow &lt;tên&gt; &lt;mục tiêu&gt;</code>.</dd></div>
@@ -347,6 +348,7 @@ ateam doctor</pre><button class="copy" data-copy="manual">Sao chép</button></di
             <tbody>
               <tr><td><em>câu bình thường</em></td><td>Giao mục tiêu cho trưởng nhóm</td></tr>
               <tr><td><code>/grill Thêm đăng nhập</code></td><td>Trưởng nhóm hỏi kỹ từng câu cho rõ yêu cầu rồi mới lập kế hoạch</td></tr>
+              <tr><td><code>/code @src/app.py:42</code></td><td>Mở file trong tab 📝 Code (phím vim, <code>:w</code> lưu)</td></tr>
               <tr><td><code>/theme nord tím</code></td><td>Đổi theme màu (không tham số: mở màn hình chọn, xem trước)</td></tr>
               <tr><td><code>/lang en</code></td><td>Giao diện tiếng Anh (<code>/lang vi</code> để quay lại)</td></tr>
               <tr><td><code>/task codex@xhigh …</code></td><td>Giao tay một task, kèm effort riêng</td></tr>
