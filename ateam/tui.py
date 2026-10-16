@@ -2375,6 +2375,16 @@ class Timeline(Static):
         return out
 
 
+def hang(text: str, width: int, indent: int, first: int = 0) -> str:
+    """Xuống hàng theo `width` cột, các dòng sau thụt `indent` khoảng trắng (thẳng với chữ dòng đầu,
+    dòng đầu đã bắt đầu ở cột `first`)."""
+    import textwrap
+    lines = textwrap.wrap(text, width=max(20, width - indent), break_long_words=False,
+                          initial_indent=" " * max(0, first - indent)) or [""]
+    lines[0] = lines[0][max(0, first - indent):]
+    return ("\n" + " " * indent).join(lines)
+
+
 class GrillBar(Vertical):
     """Khung hỏi đáp (/grill): câu hỏi hiện tại của trưởng nhóm, các phương án gợi ý (bấm hoặc gõ số),
     nút chốt / để trưởng nhóm tự quyết / hỏi lại / bỏ. Câu trả lời gõ ở ô nhập chính."""
@@ -2408,7 +2418,7 @@ class GrillBar(Vertical):
         data = g.grill or {}
         qa = data.get("qa") or []
         err = "" if busy else str(data.get("error") or "")
-        sig = (g.id, len(qa), q is None, err, busy, app._frame if busy else 0)
+        sig = (g.id, len(qa), q is None, err, busy, app._frame if busy else 0, self.size.width)
         is_new = q is not None and (self.question is None or self.goal_id != g.id
                                     or self.question.get("q") != q.get("q"))
         self.goal_id, self.question = g.id, q
@@ -2431,20 +2441,31 @@ class GrillBar(Vertical):
         elif err:
             body.append(f"⚠ {err}", "bold red")
         elif q:
-            body.append(f"❓ Câu {len(qa)}: ", "bold yellow")
-            body.append(q.get("q", ""), "bold")
+            # chữ thường trên nền mặc định: nền màu + chữ đen (bản trước) gần như không đọc được trên
+            # Terminal.app 256 màu và loang cả khối khi dòng dài xuống hàng. Dòng dài thụt lề thẳng chữ.
+            width = max(40, (self.size.width or 120) - 4)
+            label = f"❓ Câu {len(qa)}: "
+            body.append(label, "bold yellow")
+            body.append(hang(q.get("q", ""), width, len(label) + 1, first=len(label) + 1), "bold")
             if q.get("why"):
-                body.append(f"\n   {q['why']}", "dim")
-            for i, opt in enumerate(q.get("options") or [], 1):
                 body.append("\n   ")
-                body.append(f" {i}. {opt} ", Style(color="black", bgcolor="cyan" if opt != q.get("rec")
-                                                   else "green", bold=True,
-                                                   meta={"@click": f"app.grill_pick({i})"}))
-                if opt == q.get("rec"):
-                    body.append(" ★ khuyên dùng", "green")
-            if q.get("rec") and q["rec"] not in (q.get("options") or []):
-                body.append(f"\n   ★ khuyên dùng: {q['rec']}", "green")
-            body.append("\n   Gõ câu trả lời ở ô dưới rồi Enter · gõ số (1, 2…) hoặc bấm để chọn phương án", "dim")
+                body.append(hang(q["why"], width, 3, first=3), "italic dim")
+            rec = q.get("rec")
+            if q.get("options"):
+                body.append("\n")  # dòng trống tách câu hỏi với các phương án
+            for i, opt in enumerate(q.get("options") or [], 1):
+                click = {"@click": f"app.grill_pick({i})"}
+                body.append("\n   ")
+                body.append(f"{i}. ", Style(color="green" if opt == rec else "cyan", bold=True))
+                body.append(hang(opt, width, 6, first=6), Style(meta=click, bold=opt == rec))
+                if opt == rec:
+                    body.append("  ★ khuyên dùng", "bold green")
+            if rec and rec not in (q.get("options") or []):
+                body.append("\n   ")
+                body.append("★ khuyên dùng: ", "bold green")
+                body.append(hang(rec, width, 18, first=18))
+            body.append("\n   Gõ câu trả lời ở ô dưới rồi Enter · gõ số (1, 2…) hoặc bấm vào phương án để chọn",
+                        "dim")
         self.query_one("#grill-q", Static).update(body)
         self.query_one("#grill-done", Button).disabled = busy
         self.query_one("#grill-skip", Button).display = q is not None
@@ -3061,7 +3082,10 @@ class TeamApp(App):
     #plan-hint { color: $text-muted; }
     #grill { height: auto; max-height: 60%; display: none; border: round $warning;
              border-title-color: $warning; border-title-style: bold; padding: 0 1; background: $boost; }
-    #grill-q { height: auto; margin-top: 1; }
+    /* phương án bấm được (meta @click): không tô kiểu link (gạch chân + đổi màu mọi dòng, cả khoảng thụt
+       lề), chỉ gạch chân khi rê chuột */
+    #grill-q { height: auto; margin-top: 1; link-style: none; link-color: $text; link-background: transparent;
+               link-style-hover: underline; link-color-hover: $text; link-background-hover: $boost; }
     #grill-buttons { height: auto; margin-top: 1; }
     #grill-buttons Button { margin-right: 2; }
     #continue-hint { height: auto; display: none; padding: 0 1; background: $boost; }
