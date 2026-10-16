@@ -2,6 +2,10 @@
 
 ## Chưa phát hành
 
+- **Sửa: task của OpenCode lỗi "Unrecognized flag: --variant in command opencode run"** khi đặt effort. Bản
+  OpenCode mới bỏ `--variant`; variant giờ ghi liền model (`--model xai/grok-4.7#medium`). Agent cũ và agent tuỳ
+  chỉnh (vd `opencode-research`) tự được đổi khi đọc cấu hình. Cấu hình lên bản 8.
+
 - **Tab 🌿 Git — quản lý git ngay trong app** (`/git`, Ctrl+T): nhánh, upstream, ↑ chưa push / ↓ chưa pull;
   file thay đổi theo nhóm (xung đột / đã stage / chưa stage) — Space stage/bỏ stage, `a` stage tất cả, `u` bỏ
   stage, Enter xem diff, `x` bỏ thay đổi (hỏi lại); commit, sửa commit trước (amend); **✨ trưởng nhóm viết commit

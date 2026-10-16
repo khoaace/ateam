@@ -147,7 +147,7 @@ Trong app (được lưu lại cho lần sau, ở `~/.config/ateam/state.json`):
 /model codex gpt-5.5           /effort codex xhigh
 /model antigravity <tên>       /effort antigravity high      (xem tên: agy models)
 /model grok grok-4.7-build-fast   /effort grok high
-/model opencode xai/grok-4.7   /effort opencode high         (OpenCode gọi là --variant)
+/model opencode xai/grok-4.7   /effort opencode high         (OpenCode gọi là variant: chạy --model xai/grok-4.7#high)
 /model codex -                 quay về mặc định
 /model claude   /effort codex  mở bảng chọn từ danh sách agent đó hỗ trợ
 /models                        xem model + effort mỗi agent hỗ trợ (● = đang dùng)

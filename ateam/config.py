@@ -23,7 +23,7 @@ STATE_FILE = GLOBAL_DIR / "state.json"
 CUSTOM_FILE = GLOBAL_DIR / "custom.toml"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 LEAD_ALIAS = "lead"  # agent của bước workflow = trưởng nhóm hiện tại
-CONFIG_VERSION = 7
+CONFIG_VERSION = 8
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
 
 DEFAULT_CONFIG = """\
@@ -34,7 +34,7 @@ DEFAULT_CONFIG = """\
 #  Model / effort đổi trong app (/model, /effort) được lưu ở ~/.config/ateam/state.json
 #  và ưu tiên hơn giá trị trong file này. Gõ /model <agent> - để quay về giá trị ở đây.
 # ============================================================
-config_version = 7
+config_version = 8
 
 lead = "claude"              # agent làm trưởng nhóm (lập kế hoạch + review)
 max_parallel = 3             # tổng số task chạy song song tối đa
@@ -72,7 +72,8 @@ lead_fallback = ["codex"]    # ai lập kế hoạch/review thay khi trưởng n
 #   model         model mặc định ("" = để CLI tự chọn)
 #   effort        mức suy luận mặc định ("" = để CLI tự chọn)
 #   model_args    cờ thêm vào khi có model  ({model} được thay)
-#   effort_args   cờ thêm vào khi có effort ({effort} được thay)
+#   effort_args   cờ thêm vào khi có effort ({effort} được thay). Có cả {model} thì đây là dạng gộp
+#                 model+effort (vd opencode --model x/y#high): thay cho model_args; không có model thì bỏ effort
 #   efforts       các mức effort hợp lệ (dùng để kiểm tra và gợi ý)
 #   models        model gợi ý trong /model và tab Đội (vắng = danh mục có sẵn của ateam)
 #   models_command  lệnh liệt kê model thật của CLI (vd ["opencode", "models"]);
@@ -146,7 +147,8 @@ command = ["opencode", "run", "{prompt}"]
 model = "xai/grok-build-0.1"
 effort = ""                  # OpenCode gọi là "variant"; tuỳ model có hỗ trợ hay không
 model_args = ["--model", "{model}"]
-effort_args = ["--variant", "{effort}"]
+# OpenCode bỏ --variant: variant ghi liền model dạng provider/model#variant (cần đặt model)
+effort_args = ["--model", "{model}#{effort}"]
 efforts = ["low", "medium", "high"]
 fallback = ["codex"]
 role = "Code nhanh, việc nhỏ, viết test, script, tài liệu."
@@ -348,10 +350,14 @@ class AgentConfig:
         base = apply_access(self.plan_command if plan and self.plan_command else self.command,
                             self.full_access)
         extra: list[str] = []
-        if model and self.model_args and not any("{model}" in c for c in base):
-            extra += [a.replace("{model}", model) for a in self.model_args]
-        if effort and self.effort_args and not any("{effort}" in c for c in base):
-            extra += [a.replace("{effort}", effort) for a in self.effort_args]
+        combined = any("{model}" in a for a in self.effort_args)  # vd opencode: --model {model}#{effort}
+        if combined and effort and model and not any("{model}" in c or "{effort}" in c for c in base):
+            extra += [a.replace("{model}", model).replace("{effort}", effort) for a in self.effort_args]
+        else:
+            if model and self.model_args and not any("{model}" in c for c in base):
+                extra += [a.replace("{model}", model) for a in self.model_args]
+            if effort and self.effort_args and not combined and not any("{effort}" in c for c in base):
+                extra += [a.replace("{effort}", effort) for a in self.effort_args]
         idx = next((i for i, c in enumerate(base) if "{prompt}" in c), None)
         if idx is None:
             base.append("{prompt}")
@@ -1016,6 +1022,17 @@ LEGACY_FLAGS: dict[str, dict[str, list[str]]] = {
     "codex": {"--full-auto": ["--sandbox", "workspace-write"]},
 }
 
+# effort_args đã bị bỏ -> dạng mới, theo tên lệnh. OpenCode bỏ `run --variant` ("Unrecognized flag:
+# --variant"): variant giờ ghi liền model, `--model provider/model#variant`.
+LEGACY_EFFORT_ARGS: dict[str, tuple[list[str], list[str]]] = {
+    "opencode": (["--variant", "{effort}"], ["--model", "{model}#{effort}"]),
+}
+
+
+def fix_legacy_effort_args(command: list[str], effort_args: list[str]) -> list[str]:
+    old_new = LEGACY_EFFORT_ARGS.get(Path(command[0]).name if command else "")
+    return list(old_new[1]) if old_new and effort_args == old_new[0] else effort_args
+
 
 def fix_legacy_flags(command: list[str]) -> list[str]:
     """Thay cờ đã bị bỏ bằng cờ thay thế; bỏ hẳn nếu lệnh đã có cờ thay thế."""
@@ -1078,7 +1095,7 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
         model=st.get("model", a.get("model", "")) or "",
         effort=st.get("effort", a.get("effort", "")) or "",
         model_args=_strs(a.get("model_args")),
-        effort_args=_strs(a.get("effort_args")),
+        effort_args=fix_legacy_effort_args(command, _strs(a.get("effort_args"))),
         efforts=_strs(a["efforts"]) if "efforts" in a else list(cat.get("efforts", [])),
         models=models,
         models_command=_strs(a.get("models_command")) or (
