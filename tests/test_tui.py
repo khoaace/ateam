@@ -992,7 +992,12 @@ def test_tui_diff_screen_shared_mode_and_vscode(env, project, monkeypatch, tmp_p
             assert isinstance(scr, DiffScreen)
             assert {(f.status, f.path) for f in scr.ds.files} == {("M", "base.txt"), ("A", "mới.py")}
             assert not scr.is_split()  # màn hình hẹp (< 120 cột): một cột
-            body = str(scr.query_one("#diff-body").render())
+            # DiffScreen vẽ diff ở lượt vẽ kế tiếp (call_after_refresh): máy chậm (CI macOS) cần chờ
+            for _ in range(30):
+                body = str(scr.query_one("#diff-body").render())
+                if body:
+                    break
+                await pilot.pause(0.1)
             assert "base đã sửa" in body
             await pilot.press("o")
             for _ in range(30):
