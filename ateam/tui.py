@@ -1730,13 +1730,15 @@ class WorkflowEditScreen(BaseModal):
             ok, form = await self.app.orch.suggest_workflow(self.query_one("#wf-ai-desc", Input).value)
         finally:
             btn.disabled = False
+        if not self.is_attached:  # đã đóng popup trong lúc chờ
+            return
         if not ok:
             self.notify(str(form), severity="warning", timeout=8)
             return
-        await self.fill(form)
         name = self.query_one("#wf-name", Input)
         if not name.value.strip():
             name.value = form["name"]
+        await self.fill(form)
         self.notify(tr("✨ Đã điền {n} bước — xem lại rồi Ctrl+S để lưu", n=len(form["steps"])))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:

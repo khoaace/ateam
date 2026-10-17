@@ -57,6 +57,7 @@ elif [[ "$P" == *"git COMMIT MESSAGE"* ]]; then
   echo "Ghi chú: viết bởi claude giả lập."
 elif [[ "$P" == *"reusable ateam WORKFLOW"* ]]; then
   # Gợi ý workflow tuỳ chỉnh: agent lạ (ghost) và effort lạ để test chuẩn hoá
+  sleep 0.5  # chậm như model thật: test không được đọc form trước khi gợi ý về
   echo '{"name": "Tính năng UI", "description": "Thiết kế → code → kiểm tra giao diện", "review": false, "steps": [
     {"agent": "lead", "title": "Thiết kế {goal}", "prompt": "Viết thiết kế ngắn cho {goal}", "after": []},
     {"agent": "codex", "title": "Viết code", "prompt": "Làm {goal} theo thiết kế", "effort": "rất cao"},

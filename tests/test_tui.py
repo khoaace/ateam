@@ -460,9 +460,10 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             # ✨ Gợi ý: trưởng nhóm (claude giả lập) thiết kế các bước theo mô tả → điền form
             wf.query_one("#wf-ai-desc", Input).value = "thiết kế, code rồi kiểm tra giao diện"
             await pilot.click("#wf-ai")
-            assert await wait_for(pilot, lambda: len(wf.query(".step-row")) == 3, n=60)
+            assert await wait_for(pilot, lambda: wf.query_one("#wf-desc", Input).value.startswith("Thiết kế")
+                                  and len(wf.query(".step-row")) == 3, n=80)
+            await wait_for(pilot, lambda: not wf.query_one("#wf-ai", Button).disabled)
             assert wf.query_one("#wf-name", Input).value == "tinh-nang-ui"
-            assert wf.query_one("#wf-desc", Input).value.startswith("Thiết kế")
             wf.query_one("#wf-name", Input).value = ""
             wf.query_one("#wf-template", Select).value = "review-code"
             assert await wait_for(pilot, lambda: wf.query_one("#wf-name", Input).value == "review-code")
