@@ -461,6 +461,8 @@ class Config:
     cooldown_minutes: int = 30
     lead_fallback: list[str] = field(default_factory=list)
     default_workflow: str = ""  # gõ mục tiêu trong TUI là chạy theo workflow này ("" = trưởng nhóm)
+    commit_agent: str = ""  # agent viết commit message ở tab Git ("" = trưởng nhóm)
+    prices: dict = field(default_factory=dict)  # [prices."<model>"] input/output… USD / 1 triệu token
     agents: dict[str, AgentConfig] = field(default_factory=dict)
     workflows: dict[str, Workflow] = field(default_factory=dict)
     custom_agents: set[str] = field(default_factory=set)  # tên agent lấy từ custom.toml
@@ -567,6 +569,28 @@ def save_agent_setting(agent: str, key: str, value: str | None) -> None:
         entry[key] = value
     if not entry:
         agents.pop(agent, None)
+    save_state(state)
+
+
+def save_default_workflow(name: str | None) -> None:
+    """Workflow chạy khi gõ mục tiêu: tên, "" = bỏ (trưởng nhóm lập kế hoạch), None = giữ nguyên."""
+    if name is None:
+        return
+    state = load_state()
+    if name:
+        state["default_workflow"] = name
+    else:
+        state.pop("default_workflow", None)
+    save_state(state)
+
+
+def save_commit_agent(name: str) -> None:
+    """Lưu agent viết commit message (tab Git); "" = trưởng nhóm."""
+    state = load_state()
+    if name:
+        state["commit_agent"] = name
+    else:
+        state.pop("commit_agent", None)
     save_state(state)
 
 
@@ -981,7 +1005,8 @@ def role_text(roles: list[str]) -> str:
 
 
 def save_onboard(root: Path, plan: TeamPlan, *, full_access: bool, approve_plan: bool, auto_review: bool,
-                 flow: bool, isolation: str, merge: str, verify_command: str) -> None:
+                 flow: bool, isolation: str, merge: str, verify_command: str,
+                 flow_name: str = WIZARD_FLOW) -> None:
     """Lưu kết quả wizard: agent có sẵn vào state.json, agent thêm vào custom.toml (wizard = true; lần
     chạy wizard sau xoá đi tạo lại), thiết lập chung vào state.json, thiết lập dự án vào .ateam/state.json."""
     data = load_custom()
@@ -1010,12 +1035,14 @@ def save_onboard(root: Path, plan: TeamPlan, *, full_access: bool, approve_plan:
             choices[name] = {"enabled": False}
     workflow = ""
     if flow:
-        if WIZARD_FLOW not in base.workflows:
-            tpl = WORKFLOW_TEMPLATES[WIZARD_FLOW]
+        # đã cấu hình ở popup "Luồng mặc định" (workflow có sẵn) thì giữ; chưa có thì tạo từ mẫu
+        if flow_name not in base.workflows:
+            flow_name = flow_name if flow_name in WORKFLOW_TEMPLATES else WIZARD_FLOW
+            tpl = WORKFLOW_TEMPLATES[flow_name]
             code = next((n for n, a in plan.agents.items() if "code" in a["roles"]), plan.lead)
             steps = [dict(st, agent=code if st["agent"] == "*" else st["agent"]) for st in tpl["steps"]]
-            save_custom_item("workflows", WIZARD_FLOW, {**tpl, "steps": steps})
-        workflow = WIZARD_FLOW
+            save_custom_item("workflows", flow_name, {**tpl, "steps": steps})
+        workflow = flow_name
     save_setup(root, plan.lead, choices, workflow)
     state = load_state()
     for key, value, default in (("approve_plan", approve_plan, True), ("auto_review", auto_review, True)):
@@ -1193,6 +1220,7 @@ def load_config(root: Path, with_state: bool = True) -> Config:
     lim = data.get("limits") or {}
     lead = full_state.get("lead")
     dwf = str(full_state.get("default_workflow") or "")
+    cag = str(full_state.get("commit_agent") or "")
     return Config(
         lead=lead if lead in agents else data.get("lead", "claude"),
         max_parallel=max(1, int(data.get("max_parallel", 3))),
@@ -1208,6 +1236,8 @@ def load_config(root: Path, with_state: bool = True) -> Config:
         cooldown_minutes=max(1, int(lim.get("cooldown_minutes", 30))),
         lead_fallback=_strs(lim.get("lead_fallback")),
         default_workflow=dwf if dwf in workflows else "",  # workflow đã bị xoá thì coi như không đặt
+        commit_agent=cag if cag in agents else "",
+        prices={str(k): v for k, v in (data.get("prices") or {}).items() if isinstance(v, dict)},
         agents=agents,
         workflows=workflows,
         custom_agents={n for n in (custom.get("agents") or {}) if n in agents},

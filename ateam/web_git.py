@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from aiohttp import web
 
 from . import diffview, gitops
+from .config import save_commit_agent
 from .i18n import tr
 
 if TYPE_CHECKING:
@@ -190,6 +191,13 @@ class GitWeb:
         if act in self.BUSY and runs:
             return tr("Đang có {v} task chạy — đợi xong (hoặc Ctrl+K huỷ) rồi hẵng đổi nhánh/pull/stash",
                       v=len(runs)), "warn"
+        if act == "commit_agent":  # chọn agent viết commit message (dùng chung TUI, lưu state.json)
+            name = str(d.get("name") or "")
+            if name and name not in self.app.cfg.active_agents():
+                return tr("Không có agent '{name}'", name=name), "warn"
+            self.app.cfg.commit_agent = name
+            save_commit_agent(name)
+            return "", ""
         if act == "ai_message":
             ok, msg = await self.app.orch.commit_message()
             return (tr("✨ Đã điền commit message — sửa nếu cần rồi commit"), "ok", {"git_msg": msg}) if ok \

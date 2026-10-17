@@ -216,7 +216,7 @@ def test_web_js_uses_only_translated_strings():
     VI = re.compile(r"[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]", re.I)
     keys = set(ui_strings())
     files = sorted(f.name for f in STATIC.iterdir() if f.suffix in (".js", ".html"))  # vendor/ (CodeMirror) bỏ qua
-    assert {"app.js", "git.js", "code.js", "diff.js", "setup.js", "index.html"} <= set(files)
+    assert {"app.js", "git.js", "code.js", "diff.js", "setup.js", "dash.js", "index.html"} <= set(files)
     for f in files:
         text = Path(STATIC / f).read_text(encoding="utf-8")
         code = re.sub(r"/\*.*?\*/|(?<![:\"'])//[^\n]*|<!--.*?-->", "", text, flags=re.S)  # bỏ chú thích
@@ -310,6 +310,19 @@ def test_web_git_ops_and_diff(env, project, monkeypatch):
             assert (await wa.handle({"op": "git", "action": "stash_pop"}))[1] == "ok"
             assert (await wa.handle({"op": "git", "action": "discard", "path": "base.txt"}))[1] == "ok"
             assert "sửa tạm" not in (project / "base.txt").read_text()
+            # chọn agent viết commit message (mặc định trưởng nhóm) — lưu state.json, dùng chung TUI
+            from ateam.config import load_state
+            (project / "base.txt").write_text("base\nlần nữa\n")
+            assert (await wa.handle({"op": "git", "action": "commit_agent", "name": "khong-co"}))[1] == "warn"
+            assert (await wa.handle({"op": "git", "action": "commit_agent", "name": "codex"}))[1] == ""
+            assert wa.snapshot()["commit_agent"] == "codex" and load_state()["commit_agent"] == "codex"
+            r = await wa.handle({"op": "git", "action": "ai_message"})
+            assert r[2]["git_msg"] == "Codex viết message này"
+            await wa.handle({"op": "git", "action": "commit_agent", "name": ""})
+            assert "commit_agent" not in load_state()
+            r = await wa.handle({"op": "git", "action": "ai_message"})
+            assert r[2]["git_msg"].startswith("Thêm file mới cho bản demo")
+            assert (await wa.handle({"op": "git", "action": "discard", "path": "base.txt"}))[1] == "ok"
             # đổi nhánh khi agent đang chạy: từ chối như TUI
             wa.orch.runs[999] = None
             r = await wa.handle({"op": "git", "action": "checkout", "name": "master"})
@@ -420,6 +433,47 @@ def test_web_setup_and_custom(env, project, monkeypatch):
             assert r[1] == "error"
             assert (await wa.handle({"op": "custom_delete", "kind": "agents", "name": "claude-nhanh"}))[1] == "ok"
             assert "claude-nhanh" not in wa.cfg.agents
+            # mục 🧩 Tuỳ chỉnh + popup "Luồng mặc định" (như DefaultFlowScreen)
+            assert (await wa.command("/custom"))[2]["open"] == {"view": "custom"}
+            assert (await wa.command("/flow-setup"))[2]["open"] == {"modal": "flow"}
+            df = await (await client.get("/api/default_flow")).json()
+            assert df["form"]["name"] == "tinh-nang" and not df["form"]["exists"]
+            assert {"value": "lead", "label": "★ Trưởng nhóm (codex)"} in df["agents"]
+            assert "high" in df["choices"]["claude"]["efforts"]
+            steps = [dict(st) for st in df["form"]["steps"]]
+            steps[1].update(agent="claude", effort="high")
+            bad = [dict(st) for st in steps]
+            bad[2].update(agent="claude", effort="sieu-cao")
+            assert (await wa.handle({"op": "default_flow_save", "name": "tinh-nang", "steps": bad,
+                                     "review": True, "make_default": True}))[1] == "error"
+            r = await wa.handle({"op": "default_flow_save", "name": "tinh-nang", "steps": steps, "review": True,
+                                 "make_default": True})
+            assert r[1] == "ok" and r[2]["flow_saved"] == "tinh-nang"
+            assert wa.cfg.default_workflow == "tinh-nang"
+            assert [st.agent for st in wa.cfg.workflows["tinh-nang"].steps][1] == "claude"
+            assert wa.cfg.workflows["tinh-nang"].steps[1].effort == "high"
+            cu = await (await client.get("/api/custom")).json()
+            assert cu["default_workflow"] == "tinh-nang"
+            df = await (await client.get("/api/default_flow?name=nhanh")).json()
+            assert df["form"]["name"] == "nhanh" and df["form"]["exists"] and not df["form"]["is_default"]
+            assert "error" in await (await client.get("/api/default_flow?name=khong-co")).json()
+            # wizard /setup dùng luồng đã chọn ở popup
+            r = await wa.handle({"op": "setup_save", "providers": ["claude", "codex"], "style": "flow", "tier": "eco",
+                                 "assign": assign, "access": "safe", "apply": "shared", "verify": "",
+                                 "flow_name": "nhanh"})
+            assert r[1] == "ok" and wa.cfg.default_workflow == "nhanh"
+            # dashboard: cùng số liệu với tab 📊 Thống kê
+            assert (await wa.command("/dash"))[2]["open"] == {"view": "dash"}
+            wa.db.update_goal(wa.db.add_goal("Thử dashboard"), status="done")  # không để bộ lập lịch chạy nó
+            rid = wa.db.add_run(None, "claude", "lead", 400, goal_id=1)
+            wa.db.finish_run(rid, 0, "ok", 400)
+            wa.db.set_run_usage(rid, model="claude-sonnet-4-6", in_tok=10, out_tok=20, cache_read=0, cache_write=0,
+                                cost=0.5, src="cli")
+            dash = await (await client.get("/api/dashboard")).json()
+            assert dash["today"]["tokens"] == 30 and dash["today"]["cost"] == 0.5 and len(dash["per_day"]) == 14
+            assert dash["by_model"]["claude-sonnet-4-6"]["real"] == 1
+            goals = await (await client.get("/api/goals")).json()
+            assert goals[0]["text"] == "Thử dashboard" and goals[0]["tokens"] == 30
             # tuỳ chọn dùng chung với TUI
             assert (await wa.handle({"op": "prefs", "vim": False}))[1] == "ok"
             assert (await wa.handle({"op": "prefs", "accent": "tím"}))[1] == "ok"

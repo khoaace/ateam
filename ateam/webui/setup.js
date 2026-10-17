@@ -11,7 +11,7 @@ window.Setup = (() => {
     const data = await (await fetch("/api/setup")).json();
     const i = data.init;
     W = { data, first, step: 0, providers: i.providers.slice(), style: i.style, tier: i.tier, assign: i.assign,
-      access: i.access, apply: i.apply, verify: i.verify, assignKey: JSON.stringify([i.providers, i.first ? null : i.tier]),
+      access: i.access, apply: i.apply, verify: i.verify, flowName: i.flow_name || "", assignKey: JSON.stringify([i.providers, i.first ? null : i.tier]),
       discovering: true, saved: false };
     W.modal = openModal(`${modalHead(`<span id="ob-title"></span>`)}<div class="ob-steps" id="ob-steps"></div>
       <div class="modal-pad ob-body" id="ob-body"></div>
@@ -47,7 +47,8 @@ window.Setup = (() => {
         <input type="checkbox" name="cli" value="${p.key}" ${W.providers.includes(p.key) && p.installed ? "checked" : ""} ${p.installed ? "" : "disabled"}>
         <span class="check"></span><span><b>${esc(p.label)}</b><small>${p.installed ? "✓ " + esc(t("ob_installed", { p: p.key })) : "✗ " + esc(t("ob_not_installed", { v: p.hint }))}</small></span></label>`).join("");
     } else if (s.key === "style") {
-      body.innerHTML = `<div class="ob-q">${esc(t("ob_q_style"))}</div>` + d.styles.map((x) => optCard("style", x.key, x.label, x.hint, W.style === x.key)).join("");
+      body.innerHTML = `<div class="ob-q">${esc(t("ob_q_style"))}</div>` + d.styles.map((x) => optCard("style", x.key, x.label, x.hint, W.style === x.key)).join("")
+        + `<div class="row-actions"><button class="btn sm" data-ob="flow">⚙ ${esc(t("ob_flow"))}</button><span class="muted small">${esc(t("ob_flow_hint", { name: W.flowName || "tinh-nang" }))}</span></div>`;
     } else if (s.key === "tier") {
       body.innerHTML = `<div class="ob-q">${esc(t("ob_q_tier"))}</div>` + d.tiers.map((x) => optCard("tier", x.key, x.label, x.hint, W.tier === x.key)).join("")
         + `<div class="muted small">${esc(t("ob_tier_hint"))}</div>`;
@@ -124,7 +125,7 @@ window.Setup = (() => {
   }
   async function save() {
     collect();
-    const r = await request("setup_save", { providers: W.providers, style: W.style, tier: W.tier, assign: W.assign, access: W.access, apply: W.apply, verify: W.verify });
+    const r = await request("setup_save", { providers: W.providers, style: W.style, tier: W.tier, assign: W.assign, access: W.access, apply: W.apply, verify: W.verify, flow_name: W.flowName });
     if (r.setup_saved) { W.saved = true; closeModal(W.modal); }
   }
   async function onClick(e) {
@@ -143,6 +144,10 @@ window.Setup = (() => {
       step(W.step + 1);
     }
     if (a === "custom") custom(() => { if (W) { open(W.first); } });
+    if (a === "flow") {  // đã cấu hình luồng → chọn luôn kiểu "theo quy trình cố định"
+      collect();
+      flowModal({ inSetup: true, name: W.flowName, onSaved: (name) => { if (!W) return; W.flowName = name; W.style = "flow"; step(W.step); } });
+    }
   }
   async function onChange(e) {
     const sel = e.target.closest("[data-rf=cli]");
@@ -152,32 +157,33 @@ window.Setup = (() => {
     row.outerHTML = roleRow(W.data.roles.find((r) => r.key === role));
   }
 
-  /* ================================================================ /custom */
-  async function custom(onDone) {
-    const d = await (await fetch("/api/custom")).json();
+  /* ================================================================ /custom — mục 🧩 Tuỳ chỉnh + popup */
+  function customHtml(d) {
     const agentRows = d.agents.map((a) => `<div class="c-row"><b>${esc(a.name)}</b>
         <span class="muted mono small c-info">${a.installed ? "✓" : "✗ " + esc(t("not_installed"))} · ${esc(a.argv)}</span>
         <button class="btn sm" data-cu="edit-agent" data-name="${esc(a.name)}">${esc(t("edit"))}</button>
         <button class="btn sm danger" data-cu="del-agent" data-name="${esc(a.name)}">${esc(t("remove"))}</button></div>`).join("")
       || `<div class="muted small pad">${esc(t("cu_no_agents"))}</div>`;
     const flowRows = d.workflows.map((w) => `<div class="c-row"><b>${esc(w.name)}</b>
-        <span class="muted small c-info">${esc(t("cu_steps", { n: w.steps, v: w.summary }))}${w.description ? " · " + esc(w.description) : ""}</span>
+        <span class="muted small c-info">${w.name === d.default_workflow ? `<span class="chip">★ ${esc(t("cu_default"))}</span> ` : ""}${esc(t("cu_steps", { n: w.steps, v: w.summary }))}${w.description ? " · " + esc(w.description) : ""}</span>
         <button class="btn sm" data-cu="edit-flow" data-name="${esc(w.name)}">${esc(t("edit"))}</button>
         <button class="btn sm danger" data-cu="del-flow" data-name="${esc(w.name)}">${esc(t("remove"))}</button></div>`).join("")
       || `<div class="muted small pad">${esc(t("cu_no_flows"))}</div>`;
-    const m = openModal(`${modalHead(esc(t("cu_title")))}<div class="modal-pad">
-      <div class="muted small">${esc(t("cu_hint"))}</div>
+    return `<div class="muted small">${esc(t("cu_hint"))}</div>
       <div class="sec-title" style="margin-top:14px">${esc(t("cu_agents"))}</div>${agentRows}
       <button class="btn sm" data-cu="add-agent">+ ${esc(t("cu_add_agent"))}</button>
       <div class="sec-title" style="margin-top:18px">Workflow</div>${flowRows}
-      <button class="btn sm" data-cu="add-flow">+ ${esc(t("cu_add_flow"))}</button></div>`, { box: "lg", onClose: () => { if (onDone) setTimeout(onDone, 0); } });
-    const reopen = () => { onDone = null; closeModal(m); custom(); };
-    m.addEventListener("click", async (e) => {
+      <div class="row-actions"><button class="btn sm" data-cu="add-flow">+ ${esc(t("cu_add_flow"))}</button>
+        <button class="btn sm" data-cu="default-flow">⚙ ${esc(t("df_title"))}</button></div>`;
+  }
+  function customClick(d, reopen) {
+    return async (e) => {
       const b = e.target.closest("[data-cu]");
       if (!b) return;
       const name = b.dataset.name;
       if (b.dataset.cu === "add-agent") agentForm(d, null, reopen);
       if (b.dataset.cu === "add-flow") flowForm(d, null, reopen);
+      if (b.dataset.cu === "default-flow") flowModal({ onSaved: reopen });
       if (b.dataset.cu === "edit-agent") agentForm(d, d.agents.find((a) => a.name === name), reopen);
       if (b.dataset.cu === "edit-flow") flowForm(d, d.workflows.find((w) => w.name === name), reopen);
       if (b.dataset.cu === "del-agent" || b.dataset.cu === "del-flow") {
@@ -187,6 +193,69 @@ window.Setup = (() => {
           if (r.custom_saved) reopen();
         }
       }
+    };
+  }
+  async function custom(onDone) {  // popup (mở từ /setup)
+    const d = await (await fetch("/api/custom")).json();
+    const m = openModal(`${modalHead(esc(t("cu_title")))}<div class="modal-pad">${customHtml(d)}</div>`,
+      { box: "lg", onClose: () => { if (onDone) setTimeout(onDone, 0); } });
+    const reopen = () => { onDone = null; closeModal(m); custom(); if (S.view === "custom") showCustom(); };
+    m.addEventListener("click", customClick(d, reopen));
+  }
+  async function showCustom() {  // mục 🧩 Tuỳ chỉnh ở sidebar
+    const el = $("#custom");
+    if (!el) return;
+    const d = await (await fetch("/api/custom")).json();
+    el.innerHTML = `<div class="panel custom-page">${customHtml(d)}</div>`;
+    el.onclick = customClick(d, showCustom);  // gán (không addEventListener) để vẽ lại không gắn trùng
+  }
+
+  /* ---------------------------------------------------------------- popup "Luồng mặc định" (DefaultFlowScreen) */
+  async function flowModal(opts = {}) {
+    let d = await (await fetch("/api/default_flow?name=" + encodeURIComponent(opts.name || ""))).json();
+    if (d.error) { toast(d.error, "warn"); return; }
+    const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(label)}</option>`;
+    const choiceOpts = (agent, model, effort) => {
+      const c = d.choices[agent] || { models: [], efforts: [] };
+      const models = model && !c.models.includes(model) ? [model].concat(c.models) : c.models;
+      return [opt("", t("df_agent_default"), model) + models.map((x) => opt(x, x, model)).join(""),
+        opt("", t("default_value"), effort) + c.efforts.map((x) => opt(x, x, effort)).join("")];
+    };
+    const row = (st, i) => {
+      const agent = d.agents.some((a) => a.value === st.agent) ? st.agent : "lead";
+      const [mo, eo] = choiceOpts(agent, st.model, st.effort);
+      return `<div class="df-row" data-i="${i}"><b class="df-step">${i + 1}. ${esc(st.title)}</b>
+        <select class="agent-select" data-df="agent">${d.agents.map((a) => opt(a.value, a.label, agent)).join("")}</select>
+        <select class="agent-select" data-df="model">${mo}</select>
+        <select class="agent-select" data-df="effort">${eo}</select></div>`;
+    };
+    const body = () => `<label>Workflow<select class="field one" id="df-name">${d.names.map((n) => opt(n.name, n.label, d.form.name)).join("")}</select></label>
+      <div class="df-head"><span>${esc(t("df_step"))}</span><span>Agent</span><span>Model</span><span>Effort</span></div>
+      <div id="df-steps">${d.form.steps.map(row).join("")}</div>
+      <label class="chk"><input type="checkbox" id="df-review" ${d.form.review ? "checked" : ""}> ${esc(t("df_review"))}</label>
+      ${opts.inSetup ? "" : `<label class="chk"><input type="checkbox" id="df-default" checked> ${esc(t("df_default"))}</label>`}`;
+    const m = openModal(`${modalHead("⚙ " + esc(t("df_title")))}<div class="modal-pad form">
+      <div class="muted small">${esc(t("df_hint"))}</div><div id="df-body">${body()}</div>
+      <div class="row-actions end"><button class="btn ghost" data-dfa="cancel">${esc(t("cancel_edit"))}</button><button class="btn primary" data-dfa="save">${esc(t("save"))}</button></div></div>`, { box: "lg" });
+    m.addEventListener("change", async (e) => {
+      if (e.target.id === "df-name") {
+        d = await (await fetch("/api/default_flow?name=" + encodeURIComponent(e.target.value))).json();
+        if (d.error) { toast(d.error, "warn"); return; }
+        $("#df-body", m).innerHTML = body();
+      } else if (e.target.dataset.df === "agent") {  // đổi agent: nạp lại model/effort của bước
+        const r = e.target.closest(".df-row"), [mo, eo] = choiceOpts(e.target.value, "", "");
+        $("[data-df=model]", r).innerHTML = mo;
+        $("[data-df=effort]", r).innerHTML = eo;
+      }
+    });
+    m.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-dfa]");
+      if (!b) return;
+      if (b.dataset.dfa === "cancel") { closeModal(m); return; }
+      const steps = $$(".df-row", m).map((r) => ({ agent: $("[data-df=agent]", r).value, model: $("[data-df=model]", r).value, effort: $("[data-df=effort]", r).value }));
+      const def = $("#df-default", m);
+      const r = await request("default_flow_save", { name: d.form.name, steps, review: $("#df-review", m).checked, make_default: def ? def.checked : null });
+      if (r.flow_saved) { closeModal(m); if (opts.onSaved) opts.onSaved(r.flow_saved); }
     });
   }
 
@@ -342,5 +411,5 @@ window.Setup = (() => {
     });
   }
 
-  return { open, discovered, custom };
+  return { open, discovered, custom, showCustom, flowModal };
 })();

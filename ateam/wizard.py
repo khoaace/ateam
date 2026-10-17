@@ -12,9 +12,9 @@ import shutil
 from pathlib import Path
 
 from . import shell
-from .config import (CATALOG, LEAD_ALIAS, NAME_RE, PROVIDERS, ROLES, WORKFLOW_TEMPLATES, Config, Workflow,
-                     WorkflowStep, builtin_agent, default_cli, needs_setup, provider_of, provider_template,
-                     tier_preset, workflow_to_dict)
+from .config import (CATALOG, LEAD_ALIAS, NAME_RE, PROVIDERS, ROLES, WIZARD_FLOW, WORKFLOW_TEMPLATES, Config,
+                     Workflow, WorkflowStep, builtin_agent, default_cli, needs_setup, provider_of,
+                     provider_template, save_custom_item, save_default_workflow, tier_preset, workflow_to_dict)
 from .i18n import tr
 
 # ---------------------------------------------------------------------------- wizard /setup
@@ -102,13 +102,14 @@ def initial(cfg: Config, root: Path) -> dict:
         "apply": ("shared" if cfg.isolation != "worktree" else
                   "worktree-review" if cfg.merge == "review" else "worktree-auto"),
         "verify": cfg.verify.command, "git": (root / ".git").exists(), "first": needs_setup(),
+        "flow_name": cfg.default_workflow,
     }
 
 
-def settings_of(style: str, access: str, apply: str, verify: str) -> dict:
-    """Lựa chọn của wizard → tham số `config.save_onboard`."""
+def settings_of(style: str, access: str, apply: str, verify: str, flow_name: str = "") -> dict:
+    """Lựa chọn của wizard → tham số `config.save_onboard`. flow_name: workflow chọn ở popup Luồng mặc định."""
     return {"full_access": access == "full", "approve_plan": style != "auto",
-            "auto_review": style != "manual", "flow": style == "flow",
+            "auto_review": style != "manual", "flow": style == "flow", "flow_name": flow_name or WIZARD_FLOW,
             "isolation": "worktree" if apply.startswith("worktree") else "shared",
             "merge": "review" if apply == "worktree-review" else "auto",
             "verify_command": verify.strip()}
@@ -324,3 +325,81 @@ def workflow_body(cfg: Config, name: str, old: str | None, description: str, rev
     if not out:
         raise ValueError(tr("Workflow cần ít nhất 1 bước"))
     return workflow_to_dict(Workflow(name=name, description=description.strip(), steps=out, review=review))
+
+
+# ---------------------------------------------------------------------------- popup "Luồng mặc định"
+def flow_names(cfg: Config) -> list[tuple[str, str]]:
+    """(tên, nhãn) cho ô chọn workflow: workflow đã có, rồi mẫu chưa tạo (lưu sẽ tạo từ mẫu)."""
+    out = [(n, n + (tr("  ★ mặc định") if n == cfg.default_workflow else "")) for n in cfg.workflows]
+    out += [(k, tr("{k}  (mẫu, chưa tạo)", k=k)) for k in WORKFLOW_TEMPLATES if k not in cfg.workflows]
+    return out
+
+
+def flow_agent(cfg: Config, agent: str) -> str:
+    """Agent thật chạy bước (bước 'lead' = trưởng nhóm hiện tại)."""
+    return cfg.lead if agent in ("", LEAD_ALIAS) else agent
+
+
+def flow_agents(cfg: Config) -> list[tuple[str, str]]:
+    """(nhãn, giá trị) cho ô chọn agent của một bước."""
+    return [(tr("★ Trưởng nhóm ({lead})", lead=cfg.lead), LEAD_ALIAS)] + [(n, n) for n in cfg.active_agents()]
+
+
+def flow_step_choices(cfg: Config, agent: str) -> tuple[list[str], list[str]]:
+    """(model, effort) gợi ý cho agent của một bước."""
+    a = cfg.agents.get(flow_agent(cfg, agent))
+    return (a.model_choices(), list(a.efforts)) if a else ([], [])
+
+
+def flow_form(cfg: Config, name: str = "") -> dict:
+    """Dữ liệu popup: workflow mặc định hiện tại (hoặc `name`; chưa có thì lấy từ mẫu)."""
+    name = name or cfg.default_workflow or WIZARD_FLOW
+    w = cfg.workflows.get(name)
+    if w:
+        raw = workflow_to_dict(w)
+    elif name in WORKFLOW_TEMPLATES:
+        raw = workflow_template(cfg, name)
+    else:
+        raise ValueError(tr("Không có workflow '{name}'", name=name))
+    steps = [{"agent": st.get("agent") or LEAD_ALIAS, "title": st.get("title") or tr("Bước {i}", i=i),
+              "model": st.get("model", ""), "effort": st.get("effort", "")}
+             for i, st in enumerate(raw.get("steps") or [], 1)]
+    return {"name": name, "description": raw.get("description", ""), "review": raw.get("review") is not False,
+            "steps": steps, "is_default": name == cfg.default_workflow, "exists": w is not None}
+
+
+def save_flow(cfg: Config, name: str, steps: list[dict], review: bool, make_default: bool | None) -> str:
+    """Lưu agent/model/effort từng bước (giữ tiêu đề, prompt, thứ tự) vào custom.toml; make_default: True đặt
+    làm workflow chạy khi gõ mục tiêu, False bỏ nếu đang là mặc định, None giữ nguyên (wizard /setup tự đặt
+    khi lưu). Trả lời nhắn; lỗi → ValueError."""
+    w = cfg.workflows.get(name)
+    if w:
+        raw = workflow_to_dict(w)
+    elif name in WORKFLOW_TEMPLATES:
+        raw = workflow_template(cfg, name)
+    else:
+        raise ValueError(tr("Không có workflow '{name}'", name=name))
+    old = [dict(st) for st in raw.get("steps") or []]
+    if len(steps) != len(old):
+        raise ValueError(tr("Workflow '{name}' vừa đổi số bước — mở lại popup", name=name))
+    for i, (st, ch) in enumerate(zip(old, steps), 1):
+        agent = str(ch.get("agent") or LEAD_ALIAS)
+        if agent != LEAD_ALIAS and agent not in cfg.agents:
+            raise ValueError(tr("Bước {i}: không có agent '{name}'", i=i, name=agent))
+        a = cfg.agents.get(flow_agent(cfg, agent))
+        effort = str(ch.get("effort") or "").strip().lower()
+        if effort and a and a.efforts and effort not in a.efforts:
+            raise ValueError(tr("Bước {i}: effort '{effort}' không hợp lệ cho {agent} ({v})", i=i, effort=effort,
+                                agent=a.name, v=", ".join(a.efforts)))
+        st["agent"] = agent
+        for key, val in (("model", str(ch.get("model") or "").strip()), ("effort", effort)):
+            if val:
+                st[key] = val
+            else:
+                st.pop(key, None)
+    raw["steps"], raw["review"] = old, bool(review)
+    save_custom_item("workflows", name, raw)
+    if make_default is not None:
+        save_default_workflow(name if make_default else ("" if cfg.default_workflow == name else None))
+    return tr("Đã lưu luồng '{name}': {v}", name=name,
+              v=" → ".join(flow_agent(cfg, st["agent"]) for st in old))

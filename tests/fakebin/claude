@@ -9,6 +9,24 @@ if [ "$P" = "/usage" ]; then  # như claude -p /usage thật: không gọi model
   exit 0
 fi
 if fake_limited claude; then echo "Claude AI usage limit reached|$(( $(date +%s) + 3600 ))"; exit 1; fi
+# Như Claude Code thật: ghi file phiên ~/.claude/projects/<thư mục>/<phiên>.jsonl có usage (dashboard đọc)
+if [ -n "${CLAUDE_CONFIG_DIR:-}" ] && command -v python3 >/dev/null; then
+  python3 - "$P" "$PWD" <<'PY'
+import json, os, re, sys, time, uuid
+p, cwd = sys.argv[1], sys.argv[2]
+d = os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "projects", re.sub(r"[^A-Za-z0-9]", "-", cwd))
+os.makedirs(d, exist_ok=True)
+ts = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+mid = "msg_" + uuid.uuid4().hex
+usage = {"input_tokens": 1000, "output_tokens": 200, "cache_read_input_tokens": 5000,
+         "cache_creation_input_tokens": 300}
+with open(os.path.join(d, uuid.uuid4().hex + ".jsonl"), "w") as f:
+    f.write(json.dumps({"type": "user", "timestamp": ts, "message": {"role": "user", "content": p}}) + "\n")
+    for _ in range(2):  # một tin nhắn, hai khối nội dung: cùng message.id → chỉ tính một lần
+        f.write(json.dumps({"type": "assistant", "timestamp": ts,
+                            "message": {"id": mid, "model": "claude-sonnet-4-6", "usage": usage}}) + "\n")
+PY
+fi
 if [[ "$P" == *"you INTERVIEW the user"* ]]; then
   # /grill: hỏi 2 câu (đếm dòng "A<số>:" đã trả lời), rồi chốt đặc tả; người dùng dừng thì chốt ngay
   n=$(printf '%s\n' "$P" | grep -cE '^A[0-9]+:' || true)

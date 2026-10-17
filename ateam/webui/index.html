@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{TITLE}}</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238b5cf6'/%3E%3Cstop offset='1' stop-color='%2306b6d4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M9 22l7-13 7 13M12 17h8' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/app.css?v={{V}}">
 <script>
   // theme trước khi vẽ: không nháy trắng
   try { var th = localStorage.getItem("ateam-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
@@ -41,6 +41,14 @@
       <button class="nav-item" data-view="code">
         <svg viewBox="0 0 24 24"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg>
         <span data-t="code"></span>
+      </button>
+      <button class="nav-item" data-view="dash">
+        <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        <span data-t="dash"></span>
+      </button>
+      <button class="nav-item" data-view="custom">
+        <svg viewBox="0 0 24 24"><path d="M10 4h4v3a2 2 0 104 0V4h2v6h-3a2 2 0 100 4h3v6h-6v-3a2 2 0 10-4 0v3H4v-6h3a2 2 0 100-4H4V4z"/></svg>
+        <span data-t="custom"></span>
       </button>
     </nav>
     <div class="side-foot">
@@ -87,6 +95,12 @@
       <section class="view view-code hidden" id="view-code">
         <div class="code" id="code"></div>
       </section>
+      <section class="view hidden" id="view-dash">
+        <div class="dash" id="dash"></div>
+      </section>
+      <section class="view hidden" id="view-custom">
+        <div class="custom" id="custom"></div>
+      </section>
     </div>
 
     <footer class="composer">
@@ -106,10 +120,11 @@
   <aside class="drawer" id="drawer"></aside>
 </div>
 <div class="toasts" id="toasts"></div>
-<script src="/static/diff.js"></script>
-<script src="/static/git.js"></script>
-<script src="/static/code.js"></script>
-<script src="/static/setup.js"></script>
-<script src="/static/app.js"></script>
+<script src="/static/diff.js?v={{V}}"></script>
+<script src="/static/git.js?v={{V}}"></script>
+<script src="/static/code.js?v={{V}}"></script>
+<script src="/static/setup.js?v={{V}}"></script>
+<script src="/static/dash.js?v={{V}}"></script>
+<script src="/static/app.js?v={{V}}"></script>
 </body>
 </html>

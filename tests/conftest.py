@@ -28,7 +28,9 @@ def env(tmp_path) -> dict:
     e["ATEAM_FAKE_ARGS_LOG"] = str(tmp_path / "args.log")
     e["ATEAM_FAKE_SLOW"] = "0"
     e["ATEAM_LANG"] = "vi"
+    e["ATEAM_DESKTOP_NOTIFY"] = "0"  # không hiện thông báo macOS thật khi task giả lập lỗi
     e["CODEX_HOME"] = str(tmp_path / "codex")  # không đọc phiên codex thật của máy (/usage)
+    e["CLAUDE_CONFIG_DIR"] = str(tmp_path / "claude")  # phiên Claude giả lập (dashboard), không đọc của máy
     e["PYTHONPATH"] = str(ROOT)
     for k in ("ATEAM_DB", "ATEAM_ROOT", "ATEAM_TASK_ID", "ATEAM_AGENT"):
         e.pop(k, None)

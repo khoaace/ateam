@@ -15,6 +15,7 @@ if [ "${1:-}" = "debug" ] && [ "${2:-}" = "models" ]; then  # như codex thật:
 fi
 P="$fake_prompt"
 if fake_limited codex; then echo "ERROR: You've hit your usage limit. Try again in 7 minutes."; exit 1; fi
+if [[ "$P" == *"git COMMIT MESSAGE"* ]]; then printf 'SUMMARY:\nCodex viết message này\n'; exit 0; fi
 if [[ "$P" == *"TEAM LEAD"* && "$P" == *"Reply with ONLY a JSON array"* ]]; then
   echo '[{"id":1,"agent":"grok","title":"Kế hoạch do codex lập","prompt":"tạo file b.txt","depends_on":[]}]'; exit 0
 fi

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.0 — 17/10/2026
+
+- **Thông báo** khi có việc cần bạn: kế hoạch chờ duyệt, task chờ duyệt diff, task lỗi hoặc xung đột merge.
+  Terminal: toast + chuông + thông báo macOS (Notification Center; Linux `notify-send`). Web: toast + thông báo của
+  trình duyệt khi tab đang ẩn, tiêu đề tab hiện số việc chờ "(2) ateam". `/notify on|app|off|test`.
+- **Tab 🧩 Tuỳ chỉnh** (terminal) / mục **Tuỳ chỉnh** ở sidebar (web): agent & workflow tuỳ chỉnh không còn chỉ là
+  popup; `/custom` mở tab này.
+- **Popup "Luồng mặc định"** (`/flow-setup`, nút ở tab Tuỳ chỉnh và ở bước *Kiểu làm việc* của `/setup`): chọn
+  agent · model · effort cho từng bước của workflow chạy khi gõ mục tiêu, bật/tắt review cuối.
+- **Dashboard** — tab 📊 Thống kê (terminal), mục Thống kê (web), `/dash`: token, cost, lượt, thời gian hôm nay /
+  7 / 30 ngày, biểu đồ token 14 ngày, theo agent và theo model, lịch sử mục tiêu (task, agent, token, cost, kết quả;
+  Enter / nút để `/continue`). Token của Claude Code và Codex đọc từ file phiên CLI tự ghi; agent khác ước tính.
+  Cost theo bảng giá công khai, ghi đè bằng `[prices."<model>"]`. `/usage` dùng số thật này.
+- Tab Git: commit xong thì xoá ô message (web trước đây giữ lại); chọn agent viết commit message (mặc định trưởng
+  nhóm), lưu `commit_agent` dùng chung terminal và web.
+- Web: JS/CSS có `?v=` theo phiên bản — nâng cấp xong không bị trình duyệt dùng file cũ trong cache.
+
 ## 0.11.2 — 16/10/2026
 
 - Agent báo không nhận effort với model đang chọn (vd Antigravity + `claude-opus-4-6-thinking`: "--effort is not

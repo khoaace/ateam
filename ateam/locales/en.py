@@ -616,8 +616,6 @@ EN: dict[str, str] = {
         "No changes to write a commit message for",
     "Viết commit message":
         "Write commit message",
-    "Trưởng nhóm không trả về commit message (xem .ateam/logs/lead.log)":
-        "The lead returned no commit message (see .ateam/logs/lead.log)",
     "▶ {agent} đã hồi hạn mức.":
         "▶ {agent}'s quota is back.",
     "▶ Bỏ tạm nghỉ cho {agent}.":
@@ -1952,8 +1950,8 @@ EN: dict[str, str] = {
         "+ All",
     "Commit message — Enter để commit":
         "Commit message — Enter to commit",
-    "✨ Trưởng nhóm viết":
-        "✨ Lead writes it",
+    "✨ AI viết":
+        "✨ AI write",
     "Sửa commit trước":
         "Amend last commit",
     "Bỏ qua hook (--no-verify)":
@@ -2282,8 +2280,12 @@ EN: dict[str, str] = {
         'New message for the previous commit (empty = keep it)',
     'Sửa commit trước (amend)':
         'Amend previous commit',
-    'Trưởng nhóm viết':
-        'Lead writes it',
+    'AI viết':
+        'AI write',
+    'Agent viết commit message':
+        'Agent that writes the commit message',
+    'Trưởng nhóm ({lead})':
+        'Team lead ({lead})',
     'Bỏ mọi thay đổi chưa stage của {path}?':
         'Discard all unstaged changes to {path}?',
     'XOÁ file mới {path}? (chưa từng commit — không lấy lại được)':
@@ -2490,4 +2492,128 @@ EN: dict[str, str] = {
         '⚠ {agent} does not accept an effort for model {model} — retrying without effort',
     '↻ chạy lại không kèm effort: {label}':
         '↻ retrying without effort: {label}',
+    '{agent} không trả về commit message (xem .ateam/logs/lead.log)':
+        '{agent} did not return a commit message (see .ateam/logs/lead.log)',
+    "Không có agent '{name}'":
+        "No agent '{name}'",
+    'Thông báo thử — có kế hoạch/diff chờ duyệt hoặc task lỗi sẽ báo thế này.':
+        'Test notification — plans/diffs awaiting approval and failed tasks will show up like this.',
+    'Thông báo: {v} · /notify on|app|off|test':
+        'Notifications: {v} · /notify on|app|off|test',
+    'bật (trong app + thông báo hệ thống)':
+        'on (in app + system notifications)',
+    'chỉ trong app':
+        'in app only',
+    '🔔 Đã gửi thông báo thử':
+        '🔔 Test notification sent',
+    '📝 Kế hoạch chờ duyệt':
+        '📝 Plan awaiting approval',
+    'Mục tiêu #{gid}: {text}':
+        'Goal #{gid}: {text}',
+    '✗ Task lỗi':
+        '✗ Task failed',
+    '⚠ Task bị xung đột khi merge':
+        '⚠ Task has a merge conflict',
+    '👀 Task chờ duyệt diff':
+        '👀 Task diff awaiting review',
+    'thông báo khi có kế hoạch/diff chờ duyệt hoặc task lỗi':
+        'notify when a plan/diff awaits approval or a task fails',
+    'trong app + thông báo trình duyệt':
+        'in app + browser notifications',
+    'tắt thông báo':
+        'turn notifications off',
+    'gửi thử một thông báo':
+        'send a test notification',
+    'luồng mặc định: agent · model · effort từng bước':
+        'default flow: agent · model · effort per step',
+    '⚙ Cấu hình luồng cố định…':
+        '⚙ Configure the fixed flow…',
+    "  agent · model · effort cho từng bước của workflow '{name}'":
+        "  agent · model · effort for each step of workflow '{name}'",
+    "agent · model · effort cho từng bước của workflow '{name}'":
+        "agent · model · effort for each step of workflow '{name}'",
+    '⚙ Luồng mặc định':
+        '⚙ Default flow',
+    'Luồng mặc định':
+        'Default flow',
+    '(mặc định của agent)':
+        '(agent default)',
+    '★ mặc định · ':
+        '★ default · ',
+    '🧩 Tuỳ chỉnh':
+        '🧩 Custom',
+    'Tuỳ chỉnh':
+        'Custom',
+    'Gõ mục tiêu (không kèm /goal) là chạy workflow này: mỗi bước một task, bước sau chờ bước trước. Chọn agent, model, effort cho từng bước — sửa tiêu đề/prompt hay thêm bước ở tab 🧩 Tuỳ chỉnh.':
+        'Typing a goal (without /goal) runs this workflow: one task per step, each step waits for the previous one. Pick the agent, model and effort for each step — edit titles/prompts or add steps in the 🧩 Custom tab.',
+    'Gõ mục tiêu (không kèm /goal) là chạy workflow này: mỗi bước một task, bước sau chờ bước trước. Chọn agent, model, effort cho từng bước — sửa tiêu đề/prompt hay thêm bước ở mục Tuỳ chỉnh.':
+        'Typing a goal (without /goal) runs this workflow: one task per step, each step waits for the previous one. Pick the agent, model and effort for each step — edit titles/prompts or add steps under Custom.',
+    'Bước':
+        'Step',
+    'Chạy khi gõ mục tiêu (luồng mặc định)':
+        'Run when I type a goal (default flow)',
+    'Cấu hình luồng cố định…':
+        'Configure the fixed flow…',
+    "Đã lưu luồng '{name}': {v}":
+        "Saved flow '{name}': {v}",
+    '{k}  (mẫu, chưa tạo)':
+        '{k}  (template, not created yet)',
+    "Workflow '{name}' vừa đổi số bước — mở lại popup":
+        "Workflow '{name}' just changed its number of steps — reopen the popup",
+    '★ Trưởng nhóm ({lead})':
+        '★ Team lead ({lead})',
+    "Bước {i}: không có agent '{name}'":
+        "Step {i}: no agent '{name}'",
+    "Bước {i}: effort '{effort}' không hợp lệ cho {agent} ({v})":
+        "Step {i}: effort '{effort}' is not valid for {agent} ({v})",
+    '  ★ mặc định':
+        '  ★ default',
+    'token: Claude Code & Codex đọc từ log phiên của CLI; agent khác ước tính ~4 ký tự/token (dấu ~). cost: ước tính theo bảng giá công khai — sửa bằng [prices."<model>"] trong config.toml.':
+        'token: Claude Code & Codex are read from the CLI\'s session logs; other agents are estimated at ~4 characters/token (marked ~). cost: estimated from public price lists — override with [prices."<model>"] in config.toml.',
+    'Xem thêm: /dash (biểu đồ theo ngày, theo model, lịch sử mục tiêu)':
+        'More: /dash (daily chart, per model, goal history)',
+    'thống kê: token, cost, lịch sử mục tiêu':
+        'stats: tokens, cost, goal history',
+    ' Token 14 ngày (cao nhất {v}/ngày)\n ':
+        ' Tokens, last 14 days (peak {v}/day)\n ',
+    'Mục tiêu #{gid}':
+        'Goal #{gid}',
+    '{n} lượt chạy · {v} · {tok} token ({real}/{n} số thật) · {cost}':
+        '{n} runs · {v} · {tok} tokens ({real}/{n} measured) · {cost}',
+    '30 ngày':
+        '30 days',
+    '   {n} lượt · {v}':
+        '   {n} runs · {v}',
+    'Lượt':
+        'Runs',
+    'Số thật':
+        'Measured',
+    'Kết quả: ':
+        'Result: ',
+    'Kết quả:':
+        'Result:',
+    '📊 Thống kê':
+        '📊 Stats',
+    '  · {f} lỗi · {r} hết hạn mức':
+        '  · {f} failed · {r} rate-limited',
+    '{f} lỗi · {r} hết hạn mức':
+        '{f} failed · {r} rate-limited',
+    'Chưa có mục tiêu nào. Gõ mục tiêu ở ô dưới để bắt đầu.':
+        'No goals yet. Type a goal in the box below to start.',
+    'Theo agent · model (30 ngày)':
+        'By agent · model (30 days)',
+    'Lịch sử mục tiêu  ·  Enter: tiếp tục mục tiêu (/continue)':
+        'Goal history  ·  Enter: continue the goal (/continue)',
+    '{n} lượt':
+        '{n} runs',
+    'Token theo ngày (14 ngày)':
+        'Tokens per day (14 days)',
+    'Theo agent (30 ngày)':
+        'By agent (30 days)',
+    'Theo model (30 ngày)':
+        'By model (30 days)',
+    'Lịch sử mục tiêu':
+        'Goal history',
+    'Tiếp tục mục tiêu':
+        'Continue goal',
 }

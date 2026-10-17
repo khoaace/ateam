@@ -20,7 +20,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import __version__, mentions, reports, shell, theme, update, wizard
+from . import __version__, mentions, notify, reports, shell, theme, update, wizard
 from .config import Config, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import DB, GOAL_ENDED, Goal, Task
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, tr
@@ -39,6 +39,20 @@ def ui_strings() -> dict[str, str]:
     return {
         "board": tr("Bảng việc"), "team": tr("Đội"), "terminal": tr("Terminal"), "git": tr("Git"),
         "code": tr("Code"), "syslog": tr("Log hệ thống"),
+        "custom": tr("Tuỳ chỉnh"), "dash": tr("Thống kê"), "dash_today": tr("Hôm nay"), "dash_week": tr("7 ngày"),
+        "dash_month": tr("30 ngày"), "dash_runs": tr("{n} lượt"), "dash_failed": tr("{f} lỗi · {r} hết hạn mức"),
+        "dash_chart": tr("Token theo ngày (14 ngày)"), "dash_by_agent": tr("Theo agent (30 ngày)"),
+        "dash_by_model": tr("Theo model (30 ngày)"), "dash_history": tr("Lịch sử mục tiêu"),
+        "dash_no_goals": tr("Chưa có mục tiêu nào. Gõ mục tiêu ở ô dưới để bắt đầu."),
+        "dash_col_runs": tr("Lượt"), "dash_col_time": tr("Thời gian"), "dash_col_failed": tr("Lỗi"),
+        "dash_col_real": tr("Số thật"), "dash_result": tr("Kết quả:"), "dash_continue": tr("Tiếp tục mục tiêu"),
+        "dash_goal_stats": tr("{n} lượt chạy · {v} · {tok} token ({real}/{n} số thật) · {cost}"), "cu_default": tr("mặc định"), "ob_flow": tr("Cấu hình luồng cố định…"),
+        "ob_flow_hint": tr("agent · model · effort cho từng bước của workflow '{name}'"),
+        "df_title": tr("Luồng mặc định"), "df_step": tr("Bước"), "df_agent_default": tr("(mặc định của agent)"),
+        "df_review": tr("Trưởng nhóm review khi xong"), "df_default": tr("Chạy khi gõ mục tiêu (luồng mặc định)"),
+        "df_hint": tr("Gõ mục tiêu (không kèm /goal) là chạy workflow này: mỗi bước một task, bước sau chờ bước "
+                      "trước. Chọn agent, model, effort cho từng bước — sửa tiêu đề/prompt hay thêm bước ở mục "
+                      "Tuỳ chỉnh."),
         "connected": tr("Đã kết nối"), "disconnected": tr("Mất kết nối — đang thử lại…"),
         "pause": tr("Tạm dừng"), "resume": tr("Tiếp tục nhận task"), "paused": tr("Đang tạm dừng"),
         "clear": tr("Dọn việc đã xong"), "theme": tr("Giao diện & màu nhấn"),
@@ -98,7 +112,10 @@ def ui_strings() -> dict[str, str]:
         "git_msg_staged": tr("Commit message cho {n} file đã stage"),
         "git_msg_amend": tr("Message mới cho commit trước (trống = giữ nguyên)"),
         "git_amend": tr("Sửa commit trước (amend)"), "git_noverify": tr("Bỏ qua hook (--no-verify)"),
-        "git_ai": tr("Trưởng nhóm viết"), "git_ai_wait": tr("✨ {lead} đang viết commit message…"),
+        "notify_on": tr("trong app + thông báo trình duyệt"), "notify_app": tr("chỉ trong app"),
+        "notify_off": tr("tắt thông báo"), "notify_test": tr("gửi thử một thông báo"),
+        "git_ai": tr("AI viết"), "git_ai_agent": tr("Agent viết commit message"),
+        "git_ai_lead": tr("Trưởng nhóm ({lead})"), "git_ai_wait": tr("✨ {lead} đang viết commit message…"),
         "git_need_msg": tr("Gõ commit message trước (hoặc bấm ✨ để trưởng nhóm viết)"),
         "git_fetching": tr("⇣ Đang fetch…"), "git_pulling": tr("⬇ Đang pull…"), "git_pushing": tr("⬆ Đang push…"),
         "git_discard_title": tr("↺ Bỏ thay đổi"), "git_discard_yes": tr("Bỏ thay đổi"),
@@ -274,6 +291,7 @@ class WebApp:
         self.clients: set[web.WebSocketResponse] = set()
         self.discovering = False  # đang hỏi danh sách model từ các CLI (wizard hiện "⏳")
         self._last_state = ""
+        self.notices = notify.Watcher()  # báo trình duyệt khi task lỗi / chờ duyệt (như TUI)
         self._bg: set[asyncio.Task] = set()
 
     # ------------------------------------------------------------------ dựng app
@@ -288,6 +306,8 @@ class WebApp:
             web.get("/api/scripts", self.api_scripts),
             web.get("/api/files", self.api_files),
             web.get("/api/continue", self.api_continue),
+            web.get("/api/dashboard", self.api_dashboard),
+            web.get("/api/goals", self.api_goals),
             web.static("/static", STATIC),
         ] + self.git.routes() + self.code.routes() + self.setup.routes())
         app.on_startup.append(self._startup)
@@ -367,6 +387,16 @@ class WebApp:
             if not ws.closed:
                 self._spawn(self._send(ws, data))
 
+    def push_notices(self, notes: list, force: bool = False) -> None:
+        """Gửi thông báo cho trình duyệt (toast; `desktop` = được hiện thông báo của trình duyệt)."""
+        m = notify.mode() if notes else "off"
+        if force and notes and m == "off":
+            m = "app"
+        if m == "off":
+            return
+        for n in notes[:4]:
+            self.broadcast(dict(n.to_json(), desktop=m == "all", force=force))
+
     def broadcast_prefs(self) -> None:
         st = load_state()
         self.broadcast({"t": "prefs", "vim": st.get("vim", True) is not False, "accent": st.get("accent") or "",
@@ -383,6 +413,10 @@ class WebApp:
         """Ảnh chụp bảng việc mỗi 0,5 giây — chỉ gửi khi khác lần trước (task/agent khác cũng ghi vào DB)."""
         while True:
             await asyncio.sleep(0.5)
+            try:
+                self.push_notices(self.notices.diff(self.db.tasks(), self.db.goals()))
+            except Exception:
+                pass
             if not self.clients:
                 continue
             try:
@@ -425,7 +459,7 @@ class WebApp:
                  "rc": j.rc, "ports": j.ports} for j in self.shell.jobs.values()]
         return {"t": "state", "goals": goals, "tasks": [task_json(t) for t in tasks], "agents": agents,
                 "grill": grill, "jobs": jobs, "paused": o.paused, "worktree": o.use_worktree,
-                "lead": cfg.lead, "workflow": cfg.default_workflow, "compacting": o.compacting,
+                "lead": cfg.lead, "commit_agent": cfg.commit_agent, "workflow": cfg.default_workflow, "compacting": o.compacting,
                 "continue": reports.continue_candidates(self.db), "busy": len(o.runs)}
 
     def hello(self) -> dict:
@@ -444,14 +478,17 @@ class WebApp:
                               for n, w in self.cfg.workflows.items()],
                 "accents": [{"key": k, "label": theme.accent_label(k), "color": c} for k, c in theme.ACCENTS.items()],
                 "langs": [{"key": k, "label": LANG_NAMES[k]} for k in LANGS],
-                "prefs": {"vim": st.get("vim", True) is not False, "accent": st.get("accent") or "",
+                "prefs": {"notify": notify.mode(), "vim": st.get("vim", True) is not False, "accent": st.get("accent") or "",
                           "accent_color": theme.ACCENTS.get(st.get("accent") or "", "")},
                 "needs_setup": needs_setup()}
 
     # ------------------------------------------------------------------ HTTP
     async def page(self, _request: web.Request) -> web.StreamResponse:
         html = (STATIC / "index.html").read_text(encoding="utf-8")
-        html = html.replace("{{LANG}}", get_lang()).replace("{{TITLE}}", f"ateam · {self.root.name}")
+        # ?v=: bản mới (hoặc file trang vừa sửa) không bị trình duyệt dùng lại JS/CSS cũ trong cache
+        ver = f"{__version__}-{int(max(f.stat().st_mtime for f in STATIC.iterdir() if f.is_file()))}"
+        html = html.replace("{{LANG}}", get_lang()).replace("{{TITLE}}", f"ateam · {self.root.name}") \
+            .replace("{{V}}", ver)
         return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store"})
 
     async def api_log(self, request: web.Request) -> web.Response:
@@ -481,6 +518,12 @@ class WebApp:
             await self.index.refresh()
         return web.json_response(mentions.search(self.index.entries, request.query.get("q", ""),
                                                  int(request.query.get("n", 12))))
+
+    async def api_dashboard(self, _r: web.Request) -> web.Response:
+        return web.json_response(reports.dashboard(self.db))  # cùng số liệu với tab 📊 Thống kê của TUI
+
+    async def api_goals(self, r: web.Request) -> web.Response:
+        return web.json_response(reports.goal_history(self.db, int(r.query.get("limit", "50") or 50)))
 
     async def api_continue(self, request: web.Request) -> web.Response:
         ok, text = reports.continue_hint(self.db, self.orch, request.query.get("ref", ""))
@@ -588,6 +631,8 @@ class WebApp:
             return await self.setup.save_custom(d)
         if op == "custom_delete":
             return await self.setup.delete_custom(d)
+        if op == "default_flow_save":
+            return await self.setup.save_default_flow(d)
         if op == "custom_preview":
             return self.setup.preview_agent(d)
         if op == "prefs":
@@ -761,7 +806,11 @@ class WebApp:
         if cmd == "setup":
             return "", "", {"open": {"modal": "setup"}}
         if cmd == "custom":
-            return "", "", {"open": {"modal": "custom"}}
+            return "", "", {"open": {"view": "custom"}}  # mục 🧩 Tuỳ chỉnh ở sidebar (popup vẫn mở từ /setup)
+        if cmd == "dash":
+            return "", "", {"open": {"view": "dash"}}
+        if cmd == "flow-setup":
+            return "", "", {"open": {"modal": "flow"}}
         if cmd == "theme":
             arg = rest.lower()
             if not arg:
@@ -790,6 +839,11 @@ class WebApp:
         if cmd in ("code", "open", "vi"):
             path, line = parse_code_target(rest)
             return "", "", {"open": {"code": {"path": path, "line": line}}}
+        if cmd == "notify":
+            msg, test = notify.command(rest)  # tham số lạ: ValueError → cách dùng
+            if test:
+                self.push_notices([notify.test_notice()], force=True)
+            return msg, "info", {"notify": notify.mode()}
         if cmd == "vim":
             arg = rest.lower()
             if arg in ("on", "off", "bật", "bat", "tắt", "tat"):

@@ -53,7 +53,16 @@ CREATE TABLE IF NOT EXISTS runs (
     rc INTEGER,
     status TEXT,
     prompt_chars INTEGER,
-    output_chars INTEGER
+    output_chars INTEGER,
+    goal_id INTEGER,
+    model TEXT,
+    cwd TEXT,
+    in_tok INTEGER,
+    out_tok INTEGER,
+    cache_read INTEGER,
+    cache_write INTEGER,
+    cost REAL,
+    tok_src TEXT
 );
 CREATE TABLE IF NOT EXISTS notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,6 +71,14 @@ CREATE TABLE IF NOT EXISTS notes (
     created REAL
 );
 """
+
+# cột thêm sau vào bảng runs (DB cũ được ALTER TABLE khi mở)
+RUN_USAGE_COLS = (("goal_id", "INTEGER"), ("model", "TEXT"), ("cwd", "TEXT"), ("in_tok", "INTEGER"),
+                  ("out_tok", "INTEGER"), ("cache_read", "INTEGER"), ("cache_write", "INTEGER"),
+                  ("cost", "REAL"), ("tok_src", "TEXT"))
+# token của một lượt: số thật đọc từ log phiên của CLI, chưa có thì ước tính ~4 ký tự/token
+TOKENS_SQL = ("COALESCE(in_tok + out_tok + COALESCE(cache_read, 0) + COALESCE(cache_write, 0),"
+              " (COALESCE(prompt_chars, 0) + COALESCE(output_chars, 0)) / 4)")
 
 # tác giả của ghi chú tóm tắt do /compact tạo
 COMPACT_AUTHOR = "compact"
@@ -162,6 +179,10 @@ class DB:
                          ("head", "TEXT"), ("attempts", "INTEGER")):
             if col not in cols:  # nâng cấp DB cũ
                 self.conn.execute(f"ALTER TABLE tasks ADD COLUMN {col} {typ}")
+        rcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(runs)")}
+        for col, typ in RUN_USAGE_COLS:
+            if col not in rcols:  # nâng cấp DB cũ: token/cost đọc từ log phiên của CLI (usage_logs.py)
+                self.conn.execute(f"ALTER TABLE runs ADD COLUMN {col} {typ}")
         gcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(goals)")}
         for col in ("workflow", "followups", "grill"):
             if col not in gcols:  # nâng cấp DB cũ
@@ -260,11 +281,29 @@ class DB:
         return float(r[0] or 0)
 
     # ---------- runs (thống kê lượt chạy) ----------
-    def add_run(self, task_id: int | None, agent: str, kind: str, prompt_chars: int) -> int:
+    def add_run(self, task_id: int | None, agent: str, kind: str, prompt_chars: int, *,
+                goal_id: int | None = None, cwd: str | None = None, model: str | None = None) -> int:
         cur = self.conn.execute(
-            "INSERT INTO runs(task_id, agent, kind, started, prompt_chars) VALUES (?,?,?,?,?)",
-            (task_id, agent, kind, time.time(), prompt_chars))
+            "INSERT INTO runs(task_id, agent, kind, started, prompt_chars, goal_id, cwd, model)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (task_id, agent, kind, time.time(), prompt_chars, goal_id, cwd, model or None))
         return int(cur.lastrowid)
+
+    def run(self, rid: int) -> dict | None:
+        r = self.conn.execute("SELECT * FROM runs WHERE id=?", (rid,)).fetchone()
+        return dict(r) if r else None
+
+    def set_run_usage(self, rid: int, *, model: str | None, in_tok: int, out_tok: int, cache_read: int,
+                      cache_write: int, cost: float | None, src: str) -> None:
+        self.conn.execute("UPDATE runs SET model=COALESCE(?, model), in_tok=?, out_tok=?, cache_read=?,"
+                          " cache_write=?, cost=?, tok_src=? WHERE id=?",
+                          (model or None, in_tok, out_tok, cache_read, cache_write, cost, src, rid))
+
+    def runs_since(self, since: float) -> list[dict]:
+        """Lượt chạy agent (không gồm lệnh kiểm tra) từ thời điểm since, kèm goal_id suy từ task."""
+        return [dict(r) for r in self.conn.execute(
+            "SELECT r.*, COALESCE(r.goal_id, t.goal_id) gid, " + TOKENS_SQL + " tokens FROM runs r LEFT JOIN tasks t ON t.id = r.task_id"
+            " WHERE r.started >= ? AND r.kind != 'test' ORDER BY r.started", (since,))]
 
     def finish_run(self, rid: int, rc: int, status: str, output_chars: int) -> None:
         self.conn.execute("UPDATE runs SET finished=?, rc=?, status=?, output_chars=? WHERE id=?",

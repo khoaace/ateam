@@ -56,6 +56,7 @@ class SetupWeb:
         return [web.get("/api/setup", self.api_setup), web.get("/api/setup/assign", self.api_assign),
                 web.get("/api/setup/plan", self.api_plan), web.get("/api/custom", self.api_custom),
                 web.get("/api/custom/quick", self.api_quick), web.get("/api/custom/template", self.api_template),
+                web.get("/api/default_flow", self.api_default_flow),
                 web.get("/api/prefs", self.api_prefs)]
 
     @property
@@ -106,7 +107,8 @@ class SetupWeb:
         if not plan.lead:
             return tr("Chưa có trưởng nhóm — chọn CLI cho vai trò ★ Trưởng nhóm"), "error"
         settings = wizard.settings_of(str(d.get("style") or "approve"), str(d.get("access") or "safe"),
-                                      str(d.get("apply") or "shared"), str(d.get("verify") or ""))
+                                      str(d.get("apply") or "shared"), str(d.get("verify") or ""),
+                                      str(d.get("flow_name") or ""))
         save_onboard(self.app.root, plan, **settings)
         await self.app.reload_config(setup=True)
         c = self.cfg
@@ -144,6 +146,7 @@ class SetupWeb:
                           "step_rows": [dict(st, after=wizard.after_text(st.get("after"))) for st in body.get("steps", [])]})
         return web.json_response({
             "agents": agents, "workflows": flows, "lead": cfg.lead, "agent_names": list(cfg.agents),
+            "default_workflow": cfg.default_workflow,
             "auto_review": cfg.auto_review,
             "providers": [{"key": p, "label": PROVIDERS[p][0], "installed": p in wizard.installed_providers()}
                           for p in PROVIDERS],
@@ -230,6 +233,29 @@ class SetupWeb:
         await self.app.reload_config()
         return tr("Đã lưu {v} '{name}'", v="agent" if kind == "agents" else "workflow", name=name), "ok", \
             {"custom_saved": True}
+
+    # ------------------------------------------------------------------ popup "Luồng mặc định"
+    async def api_default_flow(self, r: web.Request) -> web.Response:
+        """Như DefaultFlowScreen: workflow, bước (agent/model/effort) + model/effort gợi ý của mọi agent."""
+        try:
+            form = wizard.flow_form(self.cfg, r.query.get("name", ""))
+        except ValueError as e:
+            return web.json_response({"error": str(e)})
+        agents = wizard.flow_agents(self.cfg)
+        choices = {v: dict(zip(("models", "efforts"), wizard.flow_step_choices(self.cfg, v))) for _l, v in agents}
+        return web.json_response({"form": form, "names": [{"name": n, "label": lb} for n, lb in
+                                                          wizard.flow_names(self.cfg)],
+                                  "agents": [{"label": lb, "value": v} for lb, v in agents], "choices": choices})
+
+    async def save_default_flow(self, d: dict) -> tuple:
+        make_default = d.get("make_default")
+        try:
+            msg = wizard.save_flow(self.cfg, str(d.get("name") or ""), list(d.get("steps") or []),
+                                   bool(d.get("review")), None if make_default is None else bool(make_default))
+        except ValueError as e:
+            return str(e), "error"
+        await self.app.reload_config()
+        return msg, "ok", {"flow_saved": str(d.get("name") or "")}
 
     async def delete_custom(self, d: dict) -> tuple:
         kind, name = d.get("kind"), str(d.get("name") or "")

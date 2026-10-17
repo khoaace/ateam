@@ -43,6 +43,15 @@ window.GitView = (() => {
       </span></div>`;
   }
 
+  function commitAgent() {
+    const s = S.state || {};
+    return s.commit_agent && (s.agents || []).some((a) => a.name === s.commit_agent) ? s.commit_agent : "";
+  }
+  function aiAgents() {  // trưởng nhóm (mặc định) + các agent đang bật — như ô chọn ở TUI
+    const s = S.state || {}, cur = commitAgent();
+    return `<option value="">${esc(t("git_ai_lead", { lead: s.lead || "" }))}</option>`
+      + (s.agents || []).filter((a) => a.name !== s.lead).map((a) => `<option value="${esc(a.name)}"${a.name === cur ? " selected" : ""}>${esc(a.name)}</option>`).join("");
+  }
   function render() {
     const st = G.st, el = box();
     if (!st || !el) return;
@@ -91,6 +100,7 @@ window.GitView = (() => {
               <label class="chk"><input type="checkbox" id="git-amend" ${G.amend ? "checked" : ""}> ${esc(t("git_amend"))}</label>
               <label class="chk"><input type="checkbox" id="git-noverify" ${G.noVerify ? "checked" : ""}> ${esc(t("git_noverify"))}</label>
               <span style="flex:1"></span>
+              <select class="agent-select" id="git-ai-agent" title="${esc(t("git_ai_agent"))}">${aiAgents()}</select>
               <button class="btn sm" data-gact="ai" ${G.busy ? "disabled" : ""}>✨ ${esc(t("git_ai"))}</button>
               <button class="btn sm primary" data-gact="commit_now">✓ Commit <kbd>⌘↵</kbd></button>
             </div>
@@ -123,12 +133,13 @@ window.GitView = (() => {
     const box = $("#git-msg"), msg = box.value.trim();
     if (!msg && !G.amend) { toast(t("git_need_msg"), "warn"); box.focus(); return; }
     const r = await act("commit", { message: msg, amend: G.amend, no_verify: G.noVerify });
-    if (r.committed) { box.value = ""; G.amend = false; render(); }
+    // act() đã vẽ lại tab (ô nhập là phần tử mới, còn giữ message cũ) → xoá trên phần tử hiện tại
+    if (r.committed) { $("#git-msg").value = ""; G.amend = false; render(); }
   }
   async function aiMessage() {
     if (G.busy) return;
     G.busy = true; render();
-    toast(t("git_ai_wait", { lead: (S.state && S.state.lead) || "lead" }), "info");
+    toast(t("git_ai_wait", { lead: commitAgent() || (S.state && S.state.lead) || "lead" }), "info");
     const r = await request("git", { action: "ai_message" });
     G.busy = false; render();
     if (r.git_msg) { $("#git-msg").value = r.git_msg; $("#git-msg").focus(); }
@@ -169,6 +180,10 @@ window.GitView = (() => {
   }
   async function onChange(e) {
     if (e.target.id === "git-noverify") { G.noVerify = e.target.checked; render(); }
+    if (e.target.id === "git-ai-agent") {
+      if (S.state) S.state.commit_agent = e.target.value;
+      await request("git", { action: "commit_agent", name: e.target.value });
+    }
     if (e.target.id === "git-amend") {
       G.amend = e.target.checked;
       const msg = $("#git-msg");

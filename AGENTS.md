@@ -15,7 +15,7 @@ một đội trên cùng một repo của người dùng:
   khối `<<<DELEGATE …>>>` trong output.
 - Tự chạy lệnh kiểm tra sau task (fail thì giao sửa), worktree + duyệt diff trước khi merge,
   phát hiện hết hạn mức và chuyển sang agent dự phòng.
-- Tab 🌿 Git quản lý git của dự án (stage, commit — trưởng nhóm viết message, nhánh, pull/push, stash, lịch sử).
+- Tab 🌿 Git quản lý git của dự án (stage, commit — AI viết message (trưởng nhóm hoặc agent chọn), nhánh, pull/push, stash, lịch sử).
 
 Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị cho người dùng viết bằng tiếng Việt.**
 
@@ -24,9 +24,9 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | Đường dẫn | Nội dung |
 | --- | --- |
 | `ateam/cli.py` | Lệnh `ateam` (argparse): `tui` (mặc định, khoá 1 phiên/dự án), `web` (giao diện web; `--tui`: TUI qua textual-serve), `setup`, `goal`, `continue`, `add`, `run`, `diff`, `merge`, `reject`, `verify`, `usage`, `cooldown`, `set`, `doctor`, … |
-| `ateam/tui.py` | Giao diện Textual: tab Bảng việc, tab Đội (AgentPane + Timeline), wizard thiết lập (`OnboardScreen`), popup chung (`BaseModal`, nút `Btn`), log co giãn (`ReflowLog`), agent/workflow tuỳ chỉnh (`CustomScreen`, `AgentEditScreen`, `WorkflowEditScreen`), lệnh `/…`, phím tắt |
-| `ateam/web.py`, `web_git.py`, `web_code.py`, `web_setup.py`, `ateam/webui/` | `ateam web`: server aiohttp (một `Orchestrator` cho mọi tab, WebSocket đẩy ảnh chụp trạng thái, lệnh `/…` như TUI, `ui_strings()` cho chữ hiển thị) + trang HTML/CSS/JS thuần: `app.js` (Kanban, kế hoạch, /grill, Đội, Terminal, gợi ý lệnh), `git.js`, `code.js` (CodeMirror + vim ở `webui/vendor/`, build bằng `scripts/editor/`), `diff.js`, `setup.js` (/setup, /custom) |
-| `ateam/wizard.py`, `ateam/reports.py` | Logic dùng chung TUI ↔ web: wizard /setup và form /custom (`wizard`); /usage, /agents, /flow, /models, gợi ý /continue (`reports`) |
+| `ateam/tui.py` | Giao diện Textual: tab Bảng việc, tab Đội (AgentPane + Timeline), wizard thiết lập (`OnboardScreen`), popup chung (`BaseModal`, nút `Btn`), log co giãn (`ReflowLog`), agent/workflow tuỳ chỉnh (`CustomPanel` dùng ở tab 🧩 Tuỳ chỉnh và popup `CustomScreen`, `AgentEditScreen`, `WorkflowEditScreen`, `DefaultFlowScreen`), tab 📊 Thống kê (`_refresh_dash`), thông báo (`show_notices`), lệnh `/…`, phím tắt |
+| `ateam/web.py`, `web_git.py`, `web_code.py`, `web_setup.py`, `ateam/webui/` | `ateam web`: server aiohttp (một `Orchestrator` cho mọi tab, WebSocket đẩy ảnh chụp trạng thái, lệnh `/…` như TUI, `ui_strings()` cho chữ hiển thị) + trang HTML/CSS/JS thuần: `app.js` (Kanban, kế hoạch, /grill, Đội, Terminal, gợi ý lệnh, thông báo), `git.js`, `dash.js` (Thống kê), `code.js` (CodeMirror + vim ở `webui/vendor/`, build bằng `scripts/editor/`), `diff.js`, `setup.js` (/setup, mục Tuỳ chỉnh, popup Luồng mặc định) |
+| `ateam/wizard.py`, `ateam/reports.py` | Logic dùng chung TUI ↔ web: wizard /setup, form /custom, popup Luồng mặc định (`wizard`); /usage, dashboard + lịch sử mục tiêu, /agents, /flow, /models, gợi ý /continue (`reports`) |
 | `ateam/orchestrator.py` | Lõi: lập kế hoạch, `tick()` lập lịch, `_run_task`, verify, worktree/merge, hạn mức, review |
 | `ateam/runner.py` | `Run`: chạy 1 tiến trình (pipe hoặc pty), stream từng dòng, timeout, huỷ theo process group |
 | `ateam/config.py` | `DEFAULT_CONFIG` (TOML), dataclass `Config`/`AgentConfig`/`VerifyConfig`/`Workflow`, `AgentConfig.argv()`, state.json, custom.toml (agent/workflow tuỳ chỉnh, mẫu) |
@@ -39,6 +39,8 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/mentions.py` | `@file`: gợi ý file/thư mục cho TUI, đổi `@đường/dẫn` sang cú pháp từng CLI (`SYNTAX`) |
 | `ateam/clipboard.py` | Ctrl+V dán ảnh: đọc clipboard (osascript/pngpaste/wl-paste/xclip), lưu `.ateam/images/`, nhận ảnh kéo-thả |
 | `ateam/limits.py` | Nhận diện thông báo hết hạn mức, đoán giờ hồi, lưu cooldown |
+| `ateam/usage_logs.py` | Token & cost thật của một lượt: đọc file phiên Claude Code / Codex, bảng giá (`[prices]`) — dashboard, `/usage` |
+| `ateam/notify.py` | Thông báo kế hoạch/diff chờ duyệt, task lỗi: `Watcher` so trạng thái, `desktop()` (osascript/notify-send), `/notify` |
 | `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `grok` (Grok Build), `opencode`, `mycli` (agent tuỳ chỉnh), `code` (VS Code, cho phím `o` ở màn hình diff) |
 | `site/`, `scripts/build_site.py`, `wrangler.jsonc` | Trang docs + gói zip, deploy Cloudflare Workers; `scripts/site_shots.py` chụp ảnh app cho `site/shots/` |
 | `scripts/get.sh`, `install.sh` | Cài một lệnh từ GitHub; cài vào `~/.ateam/venv` + `~/.local/bin/ateam` |

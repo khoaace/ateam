@@ -58,6 +58,7 @@ function connect() {
     else if (m.t === "log") onLog(m);
     else if (m.t === "job") onJobLine(m);
     else if (m.t === "toast") onToast(m);
+    else if (m.t === "notice") onNotice(m);
     else if (m.t === "prefs") applyPrefs(m);
     else if (m.t === "discovered" && window.Setup) Setup.discovered();
   };
@@ -113,6 +114,7 @@ function onToast(m) {
   if (m.ref != null && S.pending[m.ref]) { S.pending[m.ref](m); delete S.pending[m.ref]; }
   if (m.text) toast(m.text, m.level || "info");
   if (m.reload) setTimeout(() => location.reload(), 600);
+  if (m.notify) { S.prefs = Object.assign({}, S.prefs, { notify: m.notify }); askNotifyPermission(); }
   const o = m.open || {};
   if (o.job != null) { setView("term"); openJob(o.job); }
   if (o.diff != null) DiffView.task(o.diff);
@@ -123,6 +125,7 @@ function onToast(m) {
   if (o.modal === "theme") themeModal();
   if (o.modal === "setup" && window.Setup) Setup.open(false);
   if (o.modal === "custom" && window.Setup) Setup.custom();
+  if (o.modal === "flow" && window.Setup) Setup.flowModal({ onSaved: () => { if (S.view === "custom") Setup.showCustom(); } });
   if ((o.modal === "branches" || o.modal === "stash") && window.GitView) GitView[o.modal]();
   if (o.text) textModal(o.text.title, o.text.body);
   if (o.picker) pickerModal(o.picker);
@@ -220,7 +223,7 @@ function render() {
 }
 function renderTop() {
   const st = S.state, c = counts();
-  const titles = { board: t("board"), team: t("team"), term: t("terminal"), git: t("git"), code: t("code") };
+  const titles = { board: t("board"), team: t("team"), term: t("terminal"), git: t("git"), code: t("code"), custom: t("custom"), dash: t("dash") };
   $("#view-title").textContent = titles[S.view];
   const chips = [];
   if (c.running) chips.push(`<span class="chip s-running" style="color:var(--running)"><span class="dot"></span>${c.running} ${esc(t("running"))}</span>`);
@@ -237,6 +240,8 @@ function renderTop() {
   setCount("#count-team", busyAgents, busyAgents > 0);
   const liveJobs = st.jobs.filter((j) => j.status === "running").length;
   setCount("#count-term", liveJobs || "", liveJobs > 0);
+  const pend = pendingCount(), base = "ateam · " + (S.meta.project || "");
+  document.title = pend ? `(${pend}) ${base}` : base;
 }
 function setCount(sel, n, live) {
   const el = $(sel);
@@ -689,6 +694,31 @@ function themeModal() {
 }
 
 /* ------------------------------------------------------------------ thông báo */
+/* Thông báo (notify.py): toast luôn; thông báo của trình duyệt khi tab đang ẩn (hoặc /notify test).
+   Xin quyền ở lần bấm đầu tiên trên trang — trình duyệt chỉ cho hỏi sau một thao tác của người dùng. */
+function onNotice(m) {
+  toast(m.title + " — " + m.body, m.level === "warn" ? "warn" : "info");
+  if (!m.desktop || !("Notification" in window) || Notification.permission !== "granted") return;
+  if (!document.hidden && !m.force) return;
+  try {
+    const n = new Notification(m.title, { body: m.body, tag: "ateam-" + m.kind + "-" + (m.task || m.goal || "")});
+    n.onclick = () => {
+      window.focus(); n.close();
+      if (m.task != null) openTask(m.task);
+      else if (m.goal != null) setView("board");
+    };
+  } catch (e) { /* trình duyệt chặn (vd chạy trong iframe) */ }
+}
+function askNotifyPermission() {
+  if (!("Notification" in window) || Notification.permission !== "default") return;
+  if (S.prefs && S.prefs.notify && S.prefs.notify !== "all") return;
+  try { Notification.requestPermission(); } catch (e) { /* trình duyệt cũ */ }
+}
+document.addEventListener("pointerdown", askNotifyPermission, { once: true });
+function pendingCount() {  // việc chờ người dùng: kế hoạch chờ duyệt + task chờ duyệt diff/xung đột
+  if (!S.state) return 0;
+  return S.state.goals.filter((g) => g.status === "awaiting").length + S.state.tasks.filter((x) => x.status === "review" || x.status === "conflict").length;
+}
 function toast(text, level = "info") {
   const el = document.createElement("div");
   el.className = "toast " + level;
@@ -826,6 +856,8 @@ async function argSuggestions(cmd, args, tok) {
       if (pos) return null;
       if (tok.startsWith("@")) return { kind: "file", head: t("files"), items: await fileItems(tok.slice(1)) };
       return { head: "", items: words(["on", "off"], tok) };
+    case "notify":
+      return pos ? null : { head: "", items: words(["on", "app", "off", "test"], tok, { on: t("notify_on"), app: t("notify_app"), off: t("notify_off"), test: t("notify_test") }) };
     case "lang":
       return pos ? null : { head: "", items: (S.meta.langs || []).filter((l) => l.key.startsWith(tok)).map((l) => ({ label: l.key, desc: l.label, value: l.key })) };
     case "theme":
@@ -992,7 +1024,7 @@ input.addEventListener("keydown", (e) => {
 input.addEventListener("blur", () => setTimeout(hideSuggest, 150));
 
 /* ------------------------------------------------------------------ hành động (bấm) */
-const VIEWS = ["board", "team", "term", "git", "code"];
+const VIEWS = ["board", "team", "term", "git", "code", "dash", "custom"];
 function setView(v) {
   if (!VIEWS.includes(v)) return;
   const prev = S.view;
@@ -1005,6 +1037,8 @@ function setView(v) {
   if (v === "git" && window.GitView) GitView.show();
   if (prev === "git" && v !== "git" && window.GitView) GitView.hide();
   if (v === "code" && window.CodeView) CodeView.show();
+  if (v === "custom" && window.Setup) Setup.showCustom();
+  if (v === "dash" && window.DashView) DashView.show();
 }
 const ACTIONS = {
   "send": () => submit(),

@@ -256,6 +256,17 @@ def test_tui_git_tab(env, project, monkeypatch):
             assert "claude giả lập" in body and box.value == ""
             assert [f.path for f in app.git_status.files] == ["mới.txt"]
 
+            # chọn agent viết commit message: lưu state.json, lần sau codex viết
+            from ateam.config import load_state
+            app.query_one("#git-ai-agent").value = "codex"
+            assert await wait(lambda: app.cfg.commit_agent == "codex")
+            assert load_state()["commit_agent"] == "codex"
+            app.git_button("git-ai")
+            assert await wait(lambda: box.value == "Codex viết message này", 80)
+            app.query_one("#git-ai-agent").value = ""
+            assert await wait(lambda: "commit_agent" not in load_state())
+            box.value = ""
+
             # nhánh: tạo bằng lệnh, chuyển lại bằng popup
             app.run_command("/branch feature/demo")
             assert await wait(lambda: app.git_status.branch == "feature/demo")

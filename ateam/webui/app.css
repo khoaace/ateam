@@ -256,6 +256,7 @@ select.agent-select {
   background-repeat: no-repeat; background-position: right 8px center; background-size: 14px;
 }
 select.agent-select:focus { border-color: var(--accent); }
+#git-ai-agent { max-width: 200px; }
 .deps { font-size: 12px; color: var(--muted); white-space: nowrap; }
 
 /* ---------------------------------------------------------------- mục tiêu */
@@ -641,6 +642,32 @@ kbd { font: 600 10.5px var(--mono); padding: 1px 5px; border-radius: 5px; backgr
 .wf-head { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
 .wf-step { margin-bottom: 6px; }
 .wf-no { font-weight: 700; color: var(--muted); }
+.dash { display: flex; flex-direction: column; gap: 14px; padding-bottom: 20px; }
+.dash .panel { padding: 14px 16px; }
+.dcards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.dlabel { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+.dbig { font-size: 26px; font-weight: 800; margin: 4px 0; }
+.dbig small { font-size: 13px; font-weight: 600; color: var(--muted); }
+.drow { display: flex; align-items: baseline; gap: 10px; margin-top: 6px; }
+.dcost { font-size: 18px; color: var(--done); }
+.dchart { width: 100%; height: auto; max-height: 170px; display: block; }
+.dbar { fill: var(--accent); opacity: .85; } .dbar:hover { opacity: 1; }
+.dtick { font-size: 10px; fill: var(--muted); }
+.dtables { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.dtable { overflow-x: auto; }
+.dgoal { border-top: 1px solid var(--border); }
+.dgoal-head { display: grid; grid-template-columns: 40px 1fr auto auto auto auto 60px 60px; gap: 10px; align-items: center; padding: 9px 4px; cursor: pointer; }
+.dgoal-head:hover { background: var(--surface-2); }
+.dgoal-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dgoal-body { padding: 4px 8px 12px 44px; display: flex; flex-direction: column; gap: 8px; }
+.dgoal-body .pre { white-space: pre-wrap; font-size: 13px; }
+.custom-page { max-width: 1100px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; }
+.custom-page > .btn { align-self: flex-start; }
+.df-head, .df-row { display: grid; grid-template-columns: 1.2fr 1.2fr 1.4fr 110px; gap: 8px; align-items: center; }
+.df-head { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; margin-top: 6px; }
+.df-row { margin-bottom: 6px; }
+.df-row select.agent-select { max-width: none; width: 100%; }
+.df-step { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------------------------------------------------------------- thông báo */
 .toasts { position: fixed; top: 16px; right: 16px; z-index: 50; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
@@ -683,6 +710,12 @@ kbd { font: 600 10.5px var(--mono); padding: 1px 5px; border-radius: 5px; backgr
   .role-row .rdesc, .role-row .rlabel { grid-column: 1 / -1; }
   .wf-head { display: none; }
   .wf-step { grid-template-columns: 1fr 1fr; }
+  .dcards, .dtables { grid-template-columns: 1fr; }
+  .dgoal-head { grid-template-columns: 40px 1fr auto; }
+  .dgoal-head > span.small, .dgoal-head > b.small { display: none; }
+  .df-head { display: none; }
+  .df-row { grid-template-columns: 1fr 1fr; }
+  .df-row .df-step { grid-column: 1 / -1; }
   .swatches { grid-template-columns: repeat(2, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

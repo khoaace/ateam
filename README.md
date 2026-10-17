@@ -150,7 +150,7 @@ Finder vào terminal cũng ra `@ảnh`. Khi chạy, ảnh đi như `@file` ở t
 Giao diện web hiện đại, **đủ chức năng như terminal**: bảng Kanban (Nháp · Chờ chạy · Đang chạy · Chờ duyệt · Xong ·
 Lỗi), thẻ mục tiêu có tiến độ, duyệt kế hoạch bằng nút (đổi agent, sửa nội dung task), `/grill` bấm chọn phương án,
 ngăn chi tiết task (log trực tiếp, diff, merge/từ chối, chạy lại, hỏi tiếp), tab **Đội**, **Terminal**, **Git**
-(stage, commit — trưởng nhóm viết message, amend, nhánh, stash, pull/push, lịch sử, revert), **Code** (cây thư mục,
+(stage, commit — AI viết message, amend, nhánh, stash, pull/push, lịch sử, revert), **Code** (cây thư mục,
 editor CodeMirror có phím vim `:w :q :wq :e! :bn`, nhiều file, tự nạp lại khi agent sửa file), diff kiểu VS Code
 (2 cột, chữ đổi trong dòng, tô cú pháp), `/setup`, `/custom`, `/help`, `/usage`, `/models`… Sáng/tối, màu nhấn dùng
 chung với terminal, dùng được trên điện thoại.
@@ -265,8 +265,9 @@ chạy đúng lệnh đã gõ. `/stop [số]` dừng lệnh. Thoát app (Ctrl+Q)
 - **File thay đổi** theo nhóm *Xung đột* / *Đã stage* / *Chưa stage*: **Space** stage/bỏ stage, **a** stage tất
   cả, **u** bỏ stage tất cả, **Enter**/**d** xem diff (màn hình diff hai cột như trên), **x** bỏ thay đổi (hỏi lại;
   file mới thì bị xoá), **c** tới ô commit.
-- **Commit**: gõ message rồi Enter (chưa stage gì thì commit mọi thay đổi). **✨ Trưởng nhóm viết** (hoặc `/commit`
-  không kèm message): trưởng nhóm đọc diff và viết message theo ngôn ngữ/kiểu các commit trước, bạn sửa rồi Enter.
+- **Commit**: gõ message rồi Enter (chưa stage gì thì commit mọi thay đổi). **✨ AI viết** (hoặc `/commit`
+  không kèm message): agent chọn ở ô bên cạnh (mặc định trưởng nhóm; lựa chọn dùng chung terminal và web) đọc diff
+  và viết message theo ngôn ngữ/kiểu các commit trước, bạn sửa rồi Enter. Commit xong ô message được xoá.
   Ô **Sửa commit trước** = `--amend` (tự điền message cũ). Ô **Bỏ qua hook (--no-verify)** commit mà không
   chạy git hook (pre-commit, commit-msg — husky, lint-staged…); ô giữ nguyên tới khi bạn bỏ tick. Commit bị hook
   chặn thì thông báo lỗi nhắc ô này.
@@ -323,6 +324,25 @@ theo nhóm model), OpenCode `opencode stats --days 7` (token, chi phí), Codex �
 phiên gần nhất (`~/.codex/sessions`; codex không có lệnh xem hạn mức mà không gọi model). `ateam usage --local`
 bỏ phần hỏi CLI; `/cooldown codex 60` cho nghỉ tay, `/cooldown codex off` để bỏ.
 
+## Thống kê: token, cost, lịch sử mục tiêu (`/dash`)
+
+Tab **📊 Thống kê** (web: mục *Thống kê*): token (input · output · cache), cost, số lượt, thời gian chạy của hôm
+nay / 7 / 30 ngày; biểu đồ token 14 ngày; bảng theo agent và theo model; **lịch sử mục tiêu** (đề bài, trạng
+thái, task xong/lỗi, agent tham gia, token, cost, kết quả) — Enter (web: nút *Tiếp tục mục tiêu*) để giao thêm
+việc bằng `/continue`.
+
+Token của **Claude Code** và **Codex** là số thật, đọc từ file phiên mà CLI tự ghi (`~/.claude/projects`,
+`~/.codex/sessions`) — ateam không đổi cách chạy CLI. Agent khác (agy, grok, opencode…) ước tính ~4 ký tự/token
+(cột *Số thật* cho biết bao nhiêu lượt có số thật). Cost ước tính theo bảng giá công khai; model chưa có giá hiện
+"—", thêm bằng `[prices."<model>"]` trong `config.toml` (xem `docs/CONFIG.md`).
+
+## Thông báo
+
+Khi có **kế hoạch chờ duyệt**, **task chờ duyệt diff**, hoặc **task lỗi / xung đột merge**, ateam báo: terminal hiện
+toast + chuông + thông báo macOS (Notification Center); web hiện toast và thông báo của trình duyệt khi tab đang ẩn
+(trình duyệt hỏi quyền ở lần bấm đầu tiên trên trang), tiêu đề tab hiện số việc chờ. `/notify app` chỉ báo trong
+app, `/notify off` tắt, `/notify on` bật lại, `/notify test` gửi thử.
+
 ## Các agent giao việc cho nhau thế nào?
 
 Mỗi agent nhận kèm hướng dẫn: nếu một phần việc hợp với thành viên khác hơn, nó in ra
@@ -340,8 +360,13 @@ nội dung yêu cầu...
 
 ## Agent và workflow tuỳ chỉnh
 
-Gõ `/custom` (hoặc bấm *Agent & workflow tuỳ chỉnh…* ở màn hình thiết lập) để mở màn hình quản lý,
-cùng kiểu với màn hình thiết lập. Mọi thứ lưu ở `~/.config/ateam/custom.toml`, file này **không bị
+Gõ `/custom` để mở tab **🧩 Tuỳ chỉnh** (web: mục *Tuỳ chỉnh* ở sidebar; ở màn hình thiết lập vẫn có nút
+*Agent & workflow tuỳ chỉnh…* mở cùng nội dung dạng popup).
+
+**Luồng mặc định** (`/flow-setup`, nút *⚙ Luồng mặc định* ở tab Tuỳ chỉnh, hoặc *⚙ Cấu hình luồng cố định…* ở bước
+*Kiểu làm việc* của `/setup`): chọn workflow chạy khi gõ mục tiêu và agent · model · effort cho từng bước (vd Thiết
+kế = trưởng nhóm, Viết code = codex `high`, Viết test = antigravity), bật/tắt trưởng nhóm review cuối. Sửa tiêu
+đề/prompt hay thêm bước thì dùng *Sửa* workflow ở tab Tuỳ chỉnh. Mọi thứ lưu ở `~/.config/ateam/custom.toml`, file này **không bị
 thay** khi `config.toml` được nâng cấp lên bản mới.
 
 **Thêm agent**: bất kỳ CLI nào có chế độ headless (nhận prompt, in kết quả rồi thoát). Chọn *Mẫu* để điền

@@ -405,7 +405,9 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
         app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
         async with app.run_test(size=(160, 48)) as pilot:
             await pilot.pause(0.3)
-            app.run_command("/custom")
+            app.run_command("/custom")  # mở tab 🧩 Tuỳ chỉnh
+            assert await wait_for(pilot, lambda: app.query_one("#tabs").active == "tab-custom")
+            app.open_custom()  # popup (mở từ /setup) — cùng CustomPanel
             assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
             # form đơn giản: chọn nhà cung cấp, model, effort, quyền — cờ CLI lấy từ mẫu
             await pilot.click("#custom-add-agent")
@@ -513,7 +515,8 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             await pilot.click("#ob-custom")
             assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
             await pilot.pause(0.3)
-            del_mine = next(bid for bid, act in app.screen.ids.items() if act == ("del-agent", "mine"))
+            del_mine = next(bid for bid, act in app.screen.query_one("CustomPanel").ids.items()
+                            if act == ("del-agent", "mine"))
             await pilot.click("#" + del_mine)
             await pilot.pause(0.2)
             assert "mine" in load_custom().get("agents", {})
@@ -558,7 +561,7 @@ def test_tui_command_popup_help_and_empty_state(env, project, monkeypatch):
             await pilot.pause(0.2)
             assert popup.display and popup.border_title == "/ lệnh"
             ids = [popup.get_option_at_index(i).id for i in range(popup.option_count)]
-            assert ids == ["set", "setup", "pause"]  # bắt đầu bằng "se" trước, rồi chứa "se"
+            assert ids == ["set", "setup", "flow-setup", "pause"]  # bắt đầu bằng "se" trước, rồi chứa "se"
             await pilot.press("tab")                # chèn lệnh có tham số, chờ gõ tiếp
             assert box.value == "/set " and not popup.display
             box.value = ""
@@ -1203,7 +1206,8 @@ def test_tui_full_access_from_custom_survives_setup(env, project, monkeypatch):
             await pilot.click("#ob-custom")
             assert await wait_for(pilot, lambda: isinstance(app.screen, CustomScreen))
             await pilot.pause(0.3)
-            edit = next(bid for bid, act in app.screen.ids.items() if act == ("edit-agent", "gehihi"))
+            edit = next(bid for bid, act in app.screen.query_one("CustomPanel").ids.items()
+                        if act == ("edit-agent", "gehihi"))
             await pilot.click("#" + edit)
             assert await wait_for(pilot, lambda: isinstance(app.screen, AgentQuickScreen))
             app.screen.query_one("#q-access", Select).value = "full"
@@ -1418,6 +1422,85 @@ def test_tui_popup_close_narrow_layout_and_log_reflow(env, project, monkeypatch)
             await pilot.press("escape")
             await pilot.pause(0.2)
             assert not isinstance(app.screen, CustomScreen)
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+
+
+def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
+    """Tab 🧩 Tuỳ chỉnh (cùng CustomPanel với /custom) và popup "Luồng mặc định": chọn agent/model/effort
+    từng bước, lưu vào custom.toml, đặt làm luồng chạy khi gõ mục tiêu; mở từ /setup thì wizard dùng luồng đó."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import Checkbox, Select
+
+    from ateam.config import ensure_global_config, load_config, load_custom, load_state
+    from ateam.db import DB
+    from ateam.tui import CustomPanel, DefaultFlowScreen, OnboardScreen, TeamApp
+
+    async def wait_for(pilot, cond, n=40):
+        for _ in range(n):
+            await pilot.pause(0.1)
+            if cond():
+                return True
+        return False
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.3)
+            app.run_command("/custom")
+            assert await wait_for(pilot, lambda: app.query_one("#tabs").active == "tab-custom")
+            panel = app.query_one("#custom-tab", CustomPanel)
+            await pilot.click("#custom-default-flow")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, DefaultFlowScreen))
+            df = app.screen
+            assert df.form["name"] == "tinh-nang" and not df.form["exists"]
+            assert [s["title"] for s in df.form["steps"]] == ["Thiết kế", "Viết code", "Viết test"]
+            k = f"{df.n}-2"
+            df.query_one(f"#df-agent-{k}", Select).value = "antigravity"
+            await pilot.pause(0.3)
+            assert [v for _l, v in df.query_one(f"#df-effort-{k}", Select)._options][1:3] == ["low", "medium"]
+            df.query_one(f"#df-effort-{k}", Select).value = "high"
+            df.query_one(f"#df-model-{df.n}-3", Select).value = df.query_one(f"#df-model-{df.n}-3", Select)._options[1][1]
+            df.query_one("#df-review", Checkbox).value = False
+            await pilot.press("ctrl+s")
+            assert await wait_for(pilot, lambda: not isinstance(app.screen, DefaultFlowScreen))
+            assert await wait_for(pilot, lambda: app.cfg.default_workflow == "tinh-nang")
+            saved = load_custom()["workflows"]["tinh-nang"]
+            assert [s["agent"] for s in saved["steps"]] == ["lead", "antigravity", "codex"]
+            assert saved["steps"][1]["effort"] == "high" and saved["steps"][2].get("model")
+            assert saved["review"] is False and "prompt" in saved["steps"][0]  # giữ prompt của mẫu
+            assert load_state()["default_workflow"] == "tinh-nang"
+            assert await wait_for(pilot, lambda: any("★ mặc định" in str(s.render())
+                                                     for s in panel.query(".c-info")))
+            # gõ mục tiêu → chạy theo luồng mặc định
+            app.run_command("/flow-setup")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, DefaultFlowScreen))
+            assert app.screen.form["exists"] and app.screen.form["steps"][1]["agent"] == "antigravity"
+            await pilot.click("#df-cancel")
+            assert await wait_for(pilot, lambda: not isinstance(app.screen, DefaultFlowScreen))
+
+            # /setup: nút ở bước Kiểu làm việc mở popup (ẩn ô "luồng mặc định"), xong thì chọn kiểu "flow"
+            app.open_setup()
+            assert await wait_for(pilot, lambda: isinstance(app.screen, OnboardScreen))
+            ob = app.screen
+            await ob.go(1)
+            await pilot.pause(0.2)
+            ob.style = "approve"
+            await ob.show_step(ob.step)
+            ob.query_one("#ob-flow").press()
+            assert await wait_for(pilot, lambda: isinstance(app.screen, DefaultFlowScreen))
+            assert not app.screen.query_one("#df-default").display and app.screen.in_setup
+            app.screen.action_save()
+            assert await wait_for(pilot, lambda: app.screen is ob)
+            assert ob.style == "flow" and ob.settings()["flow_name"] == "tinh-nang"
             await pilot.press("ctrl+q")
 
     asyncio.run(main())

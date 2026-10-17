@@ -14,7 +14,7 @@ Nguồn cấu hình, ưu tiên tăng dần:
 5. `~/.config/ateam/state.json` → `agents.<tên>.model|effort|enabled|role|full_access` (đặt bằng `/model`, `/effort`,
    `ateam set`, wizard `/setup`), `lead` (vai trò Trưởng nhóm ở `/setup`), `default_workflow` (workflow chạy khi gõ
    mục tiêu trong TUI — wizard đặt `tinh-nang` khi chọn kiểu "theo quy trình cố định"; workflow đã bị xoá thì bỏ
-   qua), `lang` (`vi`/`en`, `/lang`, `ateam lang`), `theme` / `accent` (theme Textual và màu nhấn, `/theme`), `vim` (`false` = tắt phím vim ở tab 📝 Code, `/vim off`), `approve_plan` / `auto_review` (kiểu làm việc ở `/setup`; chỉ ghi khi khác `true`), `onboarded` (đã qua
+   qua), `lang` (`vi`/`en`, `/lang`, `ateam lang`), `theme` / `accent` (theme Textual và màu nhấn, `/theme`), `vim` (`false` = tắt phím vim ở tab 📝 Code, `/vim off`), `commit_agent` (agent viết commit message ở tab 🌿 Git, chọn cạnh nút ✨; vắng = trưởng nhóm), `notify` (`app` = chỉ toast/chuông trong app, `off` = tắt; vắng = cả thông báo hệ thống/trình duyệt — `/notify`), `approve_plan` / `auto_review` (kiểu làm việc ở `/setup`; chỉ ghi khi khác `true`), `onboarded` (đã qua
    wizard lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`), và
    `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify` hoặc bước *Lệnh kiểm tra*), `isolation` /
    `merge` (bước *An toàn & duyệt code*, riêng từng dự án).
@@ -38,6 +38,19 @@ Nguồn cấu hình, ưu tiên tăng dần:
 | `lead_sets_effort` | `true` | Trưởng nhóm được gắn effort cho task (chỉ nhận mức trong `efforts`) |
 | `isolation` | `"shared"` | `"shared"` (chung thư mục) hoặc `"worktree"` (mỗi task một git worktree; cần chạy ở gốc repo đã có commit, không thì tự về shared) |
 | `merge` | `"auto"` | Chỉ với worktree: `"auto"` tự merge, `"review"` chờ `/merge` |
+
+## `[prices."<model>"]` (tuỳ chọn)
+
+Giá (USD / 1 triệu token) để dashboard tính cost, khớp khi tên model **chứa** chuỗi khoá; ghi đè bảng giá có sẵn
+(`usage_logs.PRICES`, ước tính theo bảng giá công khai). `cache_read` mặc định 0,1 × `input`, `cache_write` 1,25 ×
+`input`. Model không có giá thì cost hiện "—".
+
+```toml
+[prices."gpt-6.1"]
+input = 1.5
+output = 12
+cache_read = 0.15
+```
 
 ## `[verify]`
 

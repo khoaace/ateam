@@ -98,7 +98,17 @@ thì là mục tiêu đó); task không thuộc mục tiêu thì `continue_task`
   trước + 60 dòng cuối `system.log` cho trưởng nhóm (`compact_prompt`), lấy phần sau `SUMMARY:` làm ghi
   chú `compact` mới; ghi chú cũ vẫn nằm trong DB nhưng không còn vào prompt.
 - `runs`: mỗi lượt gọi agent/test một dòng (`kind` = `task` | `fix` | `lead` | `test`, `status` =
-  `ok` | `failed` | `timeout` | `empty` | `ratelimit` | `cancelled`), dùng cho `/usage`.
+  `ok` | `failed` | `timeout` | `empty` | `ratelimit` | `cancelled`), dùng cho `/usage` và dashboard. Cột
+  `goal_id` (lượt lập kế hoạch/review/hỏi đáp của trưởng nhóm), `cwd`, `model`; sau mỗi lượt
+  `Orchestrator._collect_usage` (chạy nền, `run_until_idle` chờ xong) điền `in_tok/out_tok/cache_read/cache_write/
+  cost/tok_src`: `usage_logs.collect` đọc file phiên Claude Code (`~/.claude/projects/<cwd mã hoá>/*.jsonl`, gộp
+  dòng cùng `message.id`) hoặc Codex (`~/.codex/sessions/…`, `token_count` cuối), ghép theo thư mục + khoảng thời
+  gian + đầu prompt → `tok_src = "cli"`; không có thì ước tính ~4 ký tự/token (`"estimate"`). `reports.dashboard` /
+  `goal_history` cộng dồn cho tab 📊 Thống kê, trang web và `/usage`.
+- Thông báo (`notify.Watcher`): TUI mỗi lượt `refresh_view`, web mỗi lượt đẩy ảnh chụp, so trạng thái task/mục
+  tiêu với lần trước; chuyển vào `failed`/`conflict`/`review` hoặc mục tiêu `awaiting` → toast + chuông +
+  `notify.desktop` (osascript / notify-send) ở TUI, `{"t": "notice"}` qua WS ở web (trình duyệt hiện Notification
+  khi tab ẩn). Lần đọc đầu chỉ ghi nhận.
 
 ## Vòng đời một mục tiêu
 

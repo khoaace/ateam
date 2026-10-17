@@ -13,6 +13,7 @@ from typing import Callable
 
 from . import limits
 from . import mentions
+from . import usage_logs
 from . import prompts as P
 from .config import EFFORT_REJECTED_RE, AgentConfig, Config
 from .db import (ACTIVE, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
@@ -59,6 +60,7 @@ class Orchestrator:
         self._git_ident: list[str] | None = None  # None = chưa kiểm tra
         self._merge_lock_obj: asyncio.Lock | None = None  # tạo khi dùng (xem _merge_lock)
         self._bg: set[asyncio.Task] = set()
+        self._usage_jobs: set[asyncio.Task] = set()  # đọc token sau mỗi lượt (run_until_idle chờ xong)
         self._cancel_req: set[int] = set()
         self._wt_base: dict[int, str] = {}
         # hoạt động hiện tại của từng agent (cho tab Đội)
@@ -90,6 +92,35 @@ class Orchestrator:
         self._bg.add(t)
         t.add_done_callback(self._bg.discard)
         return t
+
+    def _usage_job(self, rid: int, a: AgentConfig, prompt: str) -> None:
+        t = self._spawn(self._collect_usage(rid, a, prompt))
+        self._usage_jobs.add(t)
+        t.add_done_callback(self._usage_jobs.discard)
+
+    async def _collect_usage(self, rid: int, a: AgentConfig, prompt: str) -> None:
+        """Token & cost của lượt vừa xong: đọc file phiên của CLI (usage_logs), không có thì ước tính ~4 ký
+        tự/token. Chạy nền trong thread (đọc file), không giữ chậm task."""
+        r = self.db.run(rid)
+        if not r:
+            return
+        await asyncio.sleep(0.3)  # CLI ghi xong file phiên
+        try:
+            u = await asyncio.to_thread(usage_logs.collect, a.binary, r["cwd"] or str(self.root),
+                                        r["started"], r["finished"] or time.time(), prompt)
+        except Exception:
+            u = None
+        src = "cli" if u else "estimate"
+        if not u:
+            u = usage_logs.Usage(in_tok=(r["prompt_chars"] or 0) // 4, out_tok=(r["output_chars"] or 0) // 4,
+                                 model=r["model"] or "")
+        u.model = u.model or r["model"] or ""
+        try:
+            self.db.set_run_usage(rid, model=u.model, in_tok=u.in_tok, out_tok=u.out_tok, cache_read=u.cache_read,
+                                  cache_write=u.cache_write, cost=usage_logs.cost_of(u, self.cfg.prices), src=src)
+        except Exception:  # DB đang đóng (thoát app)
+            return
+        self.emit("changed")
 
     def argv_for(self, a: AgentConfig, prompt: str, workdir: Path, *, model: str | None = None,
                  effort: str | None = None, plan: bool = False) -> list[str]:
@@ -188,9 +219,9 @@ class Orchestrator:
         self.emit("changed")
         return gid
 
-    async def _call_lead(self, prompt: str, label: str) -> str | None:
-        """Gọi trưởng nhóm; nếu hết hạn mức thì lần lượt thử các agent trong lead_fallback."""
-        names = [self.cfg.lead] + [n for n in self.cfg.lead_fallback if n != self.cfg.lead]
+    async def _call_lead(self, prompt: str, label: str, first: str = "", goal_id: int | None = None) -> str | None:
+        """Gọi trưởng nhóm (hoặc `first` nếu có); nếu hết hạn mức thì lần lượt thử các agent trong lead_fallback."""
+        names = list(dict.fromkeys([first or self.cfg.lead, self.cfg.lead] + list(self.cfg.lead_fallback)))
         for name in names:
             lead = self.cfg.agents.get(name)
             if not lead or not lead.enabled:
@@ -203,9 +234,9 @@ class Orchestrator:
             if self.in_cooldown(name):
                 self.log(tr("⏸ {name} đang hết hạn mức đến {v} — thử người khác.", name=name, v=self.cooldown_label(name)))
                 continue
-            if name != self.cfg.lead:
+            if name != names[0]:
                 self.log(tr("↪ {name} làm thay trưởng nhóm cho: {label}", name=name, label=label))
-            out, rc, kind = await self._lead_once(lead, prompt, label)
+            out, rc, kind = await self._lead_once(lead, prompt, label, goal_id)
             if kind == "ratelimit":
                 self._set_cooldown(name, out)
                 continue
@@ -215,11 +246,13 @@ class Orchestrator:
         self.log(tr("✗ Không còn agent nào lập kế hoạch/review được ({label}).", label=label))
         return None
 
-    async def _lead_once(self, lead: AgentConfig, prompt: str, label: str) -> tuple[str, int, str]:
+    async def _lead_once(self, lead: AgentConfig, prompt: str, label: str,
+                         goal_id: int | None = None) -> tuple[str, int, str]:
         span = [time.time(), None, label]
         self.lead_spans.append(span)
         act = self._begin_activity(lead.name, None, label, lead.label())
-        rid = self.db.add_run(None, lead.name, "lead", len(prompt))
+        rid = self.db.add_run(None, lead.name, "lead", len(prompt), goal_id=goal_id, cwd=str(self.root),
+                              model=lead.split_effort(lead.model or "", lead.effort or "")[0])
         with open(self.logs / "lead.log", "a", encoding="utf-8") as f:
             f.write(f"\n===== {label} — {lead.name} — {time.ctime()} =====\n")
 
@@ -244,6 +277,7 @@ class Orchestrator:
                 span[1] = time.time()
                 kind = self._classify(run, rc)
                 self.db.finish_run(rid, rc, kind, len(run.output))
+                self._usage_job(rid, lead, prompt)
                 act["status"] = DONE if kind == "ok" else FAILED
                 self._end_activity(lead.name, act)
         return run.output, rc, kind
@@ -259,7 +293,7 @@ class Orchestrator:
                                                 earlier=(goal.followups or [])[:-1])
             else:
                 prompt = P.plan_prompt(self.cfg, goal.base_text(), str(self.root), self.notes_text())
-            out = await self._call_lead(prompt, tr("Lập kế hoạch mục tiêu #{gid}", gid=gid))
+            out = await self._call_lead(prompt, tr("Lập kế hoạch mục tiêu #{gid}", gid=gid), goal_id=gid)
             plan = P.extract_json(out or "", list)
             if not plan:
                 self.db.update_goal(gid, status="failed", summary=tr("Trưởng nhóm không trả về kế hoạch JSON hợp lệ"))
@@ -318,7 +352,7 @@ class Orchestrator:
             finish = finish or len(answered) >= GRILL_MAX
             prompt = P.grill_prompt(self.cfg, g.text, answered, str(self.root), self.notes_text(),
                                     finish=finish, max_questions=GRILL_MAX)
-            out = await self._call_lead(prompt, tr("Hỏi đáp mục tiêu #{gid}", gid=gid))
+            out = await self._call_lead(prompt, tr("Hỏi đáp mục tiêu #{gid}", gid=gid), goal_id=gid)
             g = self.db.goal(gid)
             if not g or g.status != "grilling":  # người dùng huỷ trong lúc chờ
                 return
@@ -831,9 +865,14 @@ class Orchestrator:
             self.compacting = False
             self.emit("changed")
 
+    def commit_agent(self) -> str:
+        """Agent viết commit message: chọn ở tab Git (cfg.commit_agent), mặc định trưởng nhóm."""
+        a = self.cfg.agents.get(self.cfg.commit_agent)
+        return self.cfg.commit_agent if a and a.enabled else self.cfg.lead
+
     async def commit_message(self) -> tuple[bool, str]:
-        """Trưởng nhóm viết commit message cho thay đổi đã stage (chưa stage gì thì cho mọi thay đổi).
-        Trả về (thành công, message hoặc lời nhắn lỗi)."""
+        """Agent viết commit (commit_agent) viết message cho thay đổi đã stage (chưa stage gì thì cho
+        mọi thay đổi). Trả về (thành công, message hoặc lời nhắn lỗi)."""
         from .gitops import GitRepo
         repo = GitRepo(self.root)
         diff = await repo.staged_diff()
@@ -847,11 +886,12 @@ class Orchestrator:
         if not diff.strip():
             return False, tr("Không có thay đổi nào để viết commit message")
         recent = "\n".join("- " + c.subject for c in await repo.log(8))
+        writer = self.commit_agent()
         out = await self._call_lead(P.commit_message_prompt(diff=diff, recent=recent, cwd=str(self.root)),
-                                    tr("Viết commit message"))
+                                    tr("Viết commit message"), first=writer)
         msg = P.extract_commit_message(out or "")
         if not msg:
-            return False, tr("Trưởng nhóm không trả về commit message (xem .ateam/logs/lead.log)")
+            return False, tr("{agent} không trả về commit message (xem .ateam/logs/lead.log)", agent=writer)
         return True, msg
 
     def force_review(self, gid: int) -> str:
@@ -971,6 +1011,8 @@ class Orchestrator:
                 self.tick()
                 await asyncio.sleep(interval)
                 if self.is_idle():
+                    if self._usage_jobs:  # lệnh `ateam goal`… thoát ngay sau đó: ghi xong token/cost đã
+                        await asyncio.gather(*list(self._usage_jobs), return_exceptions=True)
                     return
 
     # ------------------------------------------------------------------ hạn mức
@@ -1046,7 +1088,8 @@ class Orchestrator:
         label = a.label(model, effort)
         act = self._begin_activity(a.name, t.id, title, label)
         log_file.write(f"\n$ {a.name} · {kind} · {label} · {workdir}\n")
-        rid = self.db.add_run(t.id, a.name, kind, len(prompt))
+        rid = self.db.add_run(t.id, a.name, kind, len(prompt), goal_id=t.goal_id, cwd=str(workdir),
+                              model=a.split_effort((model or a.model) or "", (effort or a.effort) or "")[0])
 
         def on_line(line: str) -> None:
             log_file.write(line + "\n")
@@ -1074,6 +1117,7 @@ class Orchestrator:
         finally:
             res = self._classify(run, rc)
             self.db.finish_run(rid, rc, res, len(run.output))
+            self._usage_job(rid, a, prompt)
             act["status"] = {"ok": DONE, "cancelled": CANCELLED}.get(res, FAILED)
             self._end_activity(a.name, act)
         return run, rc, res
@@ -1275,7 +1319,7 @@ class Orchestrator:
             self.log(tr("🔍 {lead} đang review mục tiêu #{gid} (vòng {round})…", lead=self.cfg.lead, gid=gid, round=g.round))
             out = await self._call_lead(
                 P.review_prompt(self.cfg, g.full_text(), g.round, self._results_text(gid), str(self.root)),
-                tr("Review mục tiêu #{gid} vòng {round}", gid=gid, round=g.round))
+                tr("Review mục tiêu #{gid} vòng {round}", gid=gid, round=g.round), goal_id=gid)
             data = P.extract_json(out or "", dict)
             if not data:
                 self.db.update_goal(gid, status="incomplete",

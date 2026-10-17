@@ -30,14 +30,14 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import clipboard, diffview, editor, gitops, mentions, reports, shell, theme, update, wizard
+from . import clipboard, diffview, editor, gitops, mentions, notify, reports, shell, theme, update, wizard
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
 from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TIERS,
-                     WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan,
+                     WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan,
                      full_access_supported, plan_team, provider_of, provider_template, save_onboard,
                      tier_preset, agent_from_dict, agent_templates,
                      clear_agent_state, load_config, load_custom, load_state, mark_setup_done,
-                     save_custom_item, save_state,
+                     save_commit_agent, save_custom_item, save_state,
                      save_project_setting, workflow_to_dict)
 from .db import ACTIVE, DB, GOAL_ENDED
 from .orchestrator import SYSTEM, Orchestrator
@@ -266,12 +266,15 @@ COMMANDS = [
     ("merge", "<task>", tr("duyệt và merge task đang chờ")),
     ("reject", tr("<task> [góp ý]"), tr("từ chối, có góp ý thì giao làm lại")),
     ("verify", tr("[lệnh|off]"), tr("lệnh kiểm tra sau mỗi task")),
+    ("notify", "[on|app|off|test]", tr("thông báo khi có kế hoạch/diff chờ duyệt hoặc task lỗi")),
     ("model", tr("<agent> [tên|-]"), tr("đổi model của agent")),
     ("effort", tr("<agent> [mức|-]"), tr("đổi effort của agent")),
     ("models", tr("[agent] [làm mới]"), tr("xem model & effort hỗ trợ")),
     ("agents", "", tr("cấu hình, lệnh chạy của từng agent")),
     ("setup", "", tr("màn hình thiết lập đội")),
     ("custom", "", tr("agent & workflow tuỳ chỉnh")),
+    ("dash", "", tr("thống kê: token, cost, lịch sử mục tiêu")),
+    ("flow-setup", "", tr("luồng mặc định: agent · model · effort từng bước")),
     ("usage", "", tr("thống kê lượt chạy + hạn mức còn lại báo bởi từng CLI")),
     ("update", "", tr("cập nhật ateam lên bản mới nhất")),
     ("cooldown", tr("<agent> <phút|off>"), tr("cho agent tạm nghỉ")),
@@ -962,6 +965,7 @@ class OnboardScreen(BaseModal):
     #ob-body { height: auto; max-height: 34; }
     #ob-body .ob-q { text-style: bold; margin-top: 1; }
     #ob-body .ob-hint { color: $text-muted; }
+    #ob-body .ob-flow-row { height: auto; margin-top: 1; }
     #ob-body OptionList, #ob-body SelectionList { height: auto; max-height: 12; border: none;
                                                   padding: 0; background: $surface; }
     #ob-body .ob-row { height: 3; }
@@ -990,6 +994,7 @@ class OnboardScreen(BaseModal):
         # mở lại /setup thì giữ đội hiện tại cho tới khi đổi CLI hoặc mức
         self._assign_key = (tuple(self.providers), None if init["first"] else self.tier)
         self.access, self.apply, self.verify = init["access"], init["apply"], init["verify"]
+        self.flow_name = cfg.default_workflow  # workflow chọn ở popup "Luồng mặc định" ("" = mẫu tinh-nang)
         self.git = (root / ".git").exists()
         self.discovering = True
         self._esc_at = 0.0
@@ -1008,7 +1013,7 @@ class OnboardScreen(BaseModal):
         return plan_team(self.assign)
 
     def settings(self) -> dict:
-        return wizard.settings_of(self.style, self.access, self.apply, self.verify)
+        return wizard.settings_of(self.style, self.access, self.apply, self.verify, self.flow_name)
 
     # ---------------------------------------------------------------- khung
     def compose(self) -> ComposeResult:
@@ -1083,7 +1088,11 @@ class OnboardScreen(BaseModal):
     def _step_style(self) -> list:
         return [Static(tr("Bạn muốn đội làm việc thế nào?"), classes="ob-q"),
                 self._choice("ob-style", self.STYLES, self.style),
-                Static(tr("↑↓ chọn · Enter: chọn và sang bước tiếp"), classes="ob-hint")]
+                Static(tr("↑↓ chọn · Enter: chọn và sang bước tiếp"), classes="ob-hint"),
+                Horizontal(Btn(tr("⚙ Cấu hình luồng cố định…"), id="ob-flow"),
+                           Static(tr("  agent · model · effort cho từng bước của workflow '{name}'",
+                                     name=self.flow_name or WIZARD_FLOW), classes="ob-hint"),
+                           classes="ob-flow-row")]
 
     def _step_tier(self) -> list:
         items = [(k, label, self.TIER_HINTS[k]) for k, label in TIERS]
@@ -1268,6 +1277,17 @@ class OnboardScreen(BaseModal):
         elif bid == "ob-custom":
             event.stop()
             self.app.push_screen(CustomScreen(self.root, self.cfg), self._custom_done)
+        elif bid == "ob-flow":
+            event.stop()
+            self.collect()
+            self.app.push_screen(DefaultFlowScreen(self.cfg, in_setup=True, name=self.flow_name), self._flow_done)
+
+    async def _flow_done(self, name) -> None:
+        if not name:
+            return
+        self.flow_name, self.style = name, "flow"  # đã cấu hình luồng → chọn luôn kiểu "theo quy trình"
+        await self.app.reload_custom()
+        await self.show_step(self.step)
 
     async def _custom_done(self, changed) -> None:
         if changed:
@@ -1735,58 +1755,190 @@ class WorkflowEditScreen(BaseModal):
         self.dismiss(None)
 
 
-class CustomScreen(BaseModal):
-    """Quản lý agent và workflow tuỳ chỉnh (/custom, hoặc nút ở màn hình thiết lập).
-    Mỗi lần lưu ghi ngay vào custom.toml. Trả về True nếu có thay đổi."""
+class DefaultFlowScreen(BaseModal):
+    """Popup "Luồng mặc định": chọn workflow, rồi agent · model · effort cho từng bước (giữ tiêu đề/prompt),
+    bật/tắt review cuối, đặt làm luồng chạy khi gõ mục tiêu. Lưu ngay vào custom.toml.
+    in_setup: mở từ /setup — wizard tự đặt luồng mặc định khi lưu nên ẩn ô đó. Trả về tên workflow hoặc None."""
 
-    DEFAULT_CSS = "CustomScreen { align: center middle; }" + FORM_CSS.replace("{box}", "custom-box") + """
-    .c-row { height: 3; }
-    .c-name { width: 22; padding: 1 0 0 1; text-style: bold; }
-    .c-info { width: 1fr; height: 3; padding: 1 0 0 1; color: $text-muted;
-              text-wrap: nowrap; text-overflow: ellipsis; }
-    .c-row Button { margin: 1 0 0 1; }
-    .c-empty { height: 1; padding: 0 1; color: $text-muted; }
-    #custom-agents, #custom-flows { height: auto; }
-    #custom-box Button.c-add { margin: 0 0 0 1; }
+    BINDINGS = [Binding("ctrl+s", "save", tr("Lưu"), priority=True)]
+    DEFAULT_CSS = "DefaultFlowScreen { align: center middle; }" + FORM_CSS.replace("{box}", "df-box") + """
+    #df-steps { height: auto; }
+    .df-row { height: 3; }
+    .df-title { width: 28; padding: 1 0 0 1; text-style: bold; text-wrap: nowrap; text-overflow: ellipsis; }
+    .df-agent { width: 30; }
+    .df-model { width: 1fr; }
+    .df-effort { width: 18; }
+    #df-head { height: 1; color: $text-muted; text-style: bold; margin-top: 1; }
+    #df-box Checkbox { height: auto; border: none; margin-right: 2; }
+    #df-checks { height: auto; margin-top: 1; }
     """
 
-    def __init__(self, root: Path, cfg: Config):
+    def __init__(self, cfg: Config, in_setup: bool = False, name: str = ""):
         super().__init__()
-        self.root, self.cfg = root, cfg
-        self.changed = False
-        self.ids: dict[str, tuple[str, str]] = {}  # id nút -> (hành động, tên)
-        self.armed: str | None = None  # nút xoá đang chờ bấm lần 2
+        self.cfg, self.in_setup = cfg, in_setup
+        self.form = wizard.flow_form(cfg, name)
+        self.n = 0  # bộ đếm id hàng (vẽ lại khi đổi workflow)
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="custom-box"):
-            yield self.title_bar(tr("Agent & workflow tuỳ chỉnh"))
-            yield Static(Text(tr("Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc "
-                                 "theo vai trò, bật/tắt ở /setup). Workflow chạy bằng /flow <tên> "
-                                 "<mục tiêu>. Lưu ở {CUSTOM_FILE}", CUSTOM_FILE=CUSTOM_FILE), "dim"))
+        with Vertical(id="df-box"):
+            yield self.title_bar(tr("⚙ Luồng mặc định"))
+            yield Static(Text(tr("Gõ mục tiêu (không kèm /goal) là chạy workflow này: mỗi bước một task, bước sau "
+                                 "chờ bước trước. Chọn agent, model, effort cho từng bước — sửa tiêu đề/prompt hay "
+                                 "thêm bước ở tab 🧩 Tuỳ chỉnh."), "dim"))
+            yield form_row("Workflow", Select([(lbl, n) for n, lbl in wizard.flow_names(self.cfg)],
+                                              value=self.form["name"], allow_blank=False, id="df-name",
+                                              classes="f-input"))
+            with Horizontal(id="df-head"):
+                yield Static(tr("Bước"), classes="df-title")
+                yield Static("Agent", classes="df-agent")
+                yield Static("Model", classes="df-model")
+                yield Static("Effort", classes="df-effort")
             with VerticalScroll(classes="f-scroll"):
-                yield Static(tr("Agent tuỳ chỉnh"), classes="f-section")
-                yield Vertical(id="custom-agents")
-                yield Btn(tr("+ Thêm agent"), id="custom-add-agent", classes="c-add")
-                yield Static("Workflow", classes="f-section")
-                yield Vertical(id="custom-flows")
-                yield Btn(tr("+ Thêm workflow"), id="custom-add-flow", classes="c-add")
+                yield Vertical(id="df-steps")
+            with Horizontal(id="df-checks"):
+                yield Checkbox(tr("Trưởng nhóm review khi xong"), self.form["review"], id="df-review")
+                yield Checkbox(tr("Chạy khi gõ mục tiêu (luồng mặc định)"), True, id="df-default")
             with Horizontal(classes="f-buttons"):
-                yield Btn("Xong (Esc)", id="custom-close", variant="primary")
+                yield Btn(tr("Huỷ"), id="df-cancel")
+                yield Btn(tr("Lưu (Ctrl+S)"), id="df-save", variant="primary")
+
+    async def on_mount(self) -> None:
+        self.query_one("#df-default").display = not self.in_setup
+        await self.fill()
+        self.query_one("#df-name", Select).focus()
+
+    def _choices(self, agent: str, model: str, effort: str) -> tuple[list, list]:
+        models, efforts = wizard.flow_step_choices(self.cfg, agent)
+        if model and model not in models:
+            models = [model] + models
+        mopts = [(tr("(mặc định của agent)"), RESET)] + [(m, m) for m in models]
+        eopts = [(tr("(mặc định)"), RESET)] + [(e, e) for e in efforts]
+        return mopts, eopts
+
+    async def fill(self) -> None:
+        rows = []
+        self.n += 1
+        agents = wizard.flow_agents(self.cfg)
+        for i, st in enumerate(self.form["steps"], 1):
+            k = f"{self.n}-{i}"
+            agent = st["agent"] if any(v == st["agent"] for _l, v in agents) else LEAD_ALIAS
+            mopts, eopts = self._choices(agent, st["model"], st["effort"])
+            effort = st["effort"] if any(v == st["effort"] for _l, v in eopts) else RESET
+            rows.append(Horizontal(
+                Static(f"{i}. {st['title']}", classes="df-title"),
+                Select(agents, value=agent, allow_blank=False, id=f"df-agent-{k}", classes="df-agent"),
+                Select(mopts, value=st["model"] or RESET, allow_blank=False, id=f"df-model-{k}", classes="df-model"),
+                Select(eopts, value=effort, allow_blank=False, id=f"df-effort-{k}", classes="df-effort"),
+                classes="df-row"))
+        box = self.query_one("#df-steps", Vertical)
+        await box.remove_children()
+        await box.mount_all(rows)
+        self.query_one("#df-review", Checkbox).value = self.form["review"]
+
+    async def on_select_changed(self, event: Select.Changed) -> None:
+        sid = event.select.id or ""
+        if sid == "df-name":
+            event.stop()
+            if event.value != self.form["name"]:
+                self.form = wizard.flow_form(self.cfg, str(event.value))
+                await self.fill()
+        elif sid.startswith("df-agent-"):  # đổi agent: nạp lại model/effort của bước đó
+            event.stop()
+            k = sid[len("df-agent-"):]
+            mopts, eopts = self._choices(str(event.value), "", "")
+            msel, esel = self.query_one(f"#df-model-{k}", Select), self.query_one(f"#df-effort-{k}", Select)
+            msel.set_options(mopts)
+            esel.set_options(eopts)
+            msel.value, esel.value = RESET, RESET
+
+    def values(self) -> list[dict]:
+        out = []
+        for i in range(1, len(self.form["steps"]) + 1):
+            k = f"{self.n}-{i}"
+
+            def val(wid: str) -> str:
+                v = self.query_one(wid, Select).value
+                return "" if v in (RESET, Select.BLANK, None) else str(v)
+            out.append({"agent": val(f"#df-agent-{k}") or LEAD_ALIAS, "model": val(f"#df-model-{k}"),
+                        "effort": val(f"#df-effort-{k}")})
+        return out
+
+    def action_save(self) -> None:
+        make_default = None if self.in_setup else self.query_one("#df-default", Checkbox).value
+        try:
+            msg = wizard.save_flow(self.cfg, self.form["name"], self.values(),
+                                   self.query_one("#df-review", Checkbox).value, make_default)
+        except ValueError as e:
+            self.notify(str(e), severity="error")
+            return
+        self.notify(msg)
+        self.dismiss(self.form["name"])
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "df-save":
+            event.stop()
+            self.action_save()
+        elif event.button.id == "df-cancel":
+            event.stop()
+            self.dismiss(None)
+
+
+class CustomPanel(Vertical):
+    """Danh sách agent & workflow tuỳ chỉnh + nút Thêm/Sửa/Xoá — dùng trong tab 🧩 Tuỳ chỉnh và popup /custom.
+    Mỗi lần lưu ghi ngay vào custom.toml rồi gửi `CustomPanel.Changed` (bên chứa nạp lại cấu hình)."""
+
+    DEFAULT_CSS = """
+    CustomPanel { height: auto; }
+    CustomPanel .c-intro { height: auto; color: $text-muted; }
+    CustomPanel .f-scroll { height: auto; max-height: 34; }
+    CustomPanel .f-section { height: 1; margin-top: 1; color: $text-muted; text-style: bold; }
+    CustomPanel .c-row { height: 3; }
+    CustomPanel .c-name { width: 22; padding: 1 0 0 1; text-style: bold; }
+    CustomPanel .c-info { width: 1fr; height: 3; padding: 1 0 0 1; color: $text-muted;
+                          text-wrap: nowrap; text-overflow: ellipsis; }
+    CustomPanel .c-row Button { margin: 1 0 0 1; }
+    CustomPanel .c-empty { height: 1; padding: 0 1; color: $text-muted; }
+    CustomPanel #custom-agents, CustomPanel #custom-flows { height: auto; }
+    CustomPanel .c-adds { height: auto; }
+    CustomPanel .c-adds Button { margin: 0 0 0 1; }
+    """
+
+    class Changed(Message):
+        pass
+
+    def __init__(self, root: Path, cfg: Config, **kw):
+        super().__init__(**kw)
+        self.root, self.cfg = root, cfg
+        self.ids: dict[str, tuple[str, str]] = {}  # id nút -> (hành động, tên)
+        self.armed: str | None = None  # nút xoá đang chờ bấm lần 2
+        self._n = 0
+
+    def compose(self) -> ComposeResult:
+        yield Static(Text(tr("Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc "
+                             "theo vai trò, bật/tắt ở /setup). Workflow chạy bằng /flow <tên> "
+                             "<mục tiêu>. Lưu ở {CUSTOM_FILE}", CUSTOM_FILE=CUSTOM_FILE), "dim"), classes="c-intro")
+        with VerticalScroll(classes="f-scroll"):
+            yield Static(tr("Agent tuỳ chỉnh"), classes="f-section")
+            yield Vertical(id="custom-agents")
+            with Horizontal(classes="c-adds"):
+                yield Btn(tr("+ Thêm agent"), id="custom-add-agent")
+            yield Static("Workflow", classes="f-section")
+            yield Vertical(id="custom-flows")
+            with Horizontal(classes="c-adds"):
+                yield Btn(tr("+ Thêm workflow"), id="custom-add-flow")
+                yield Btn(tr("⚙ Luồng mặc định"), id="custom-default-flow")
 
     async def on_mount(self) -> None:
         await self.refill()
-        self.query_one("#custom-add-agent", Button).focus()
 
     async def refill(self) -> None:
         self.cfg = load_config(self.root)
         self.ids.clear()
         self.armed = None
-        n = 0
 
         def btn(label: str, action: str, name: str, variant: str = "default") -> Button:
-            nonlocal n
-            n += 1
-            bid = f"c-btn-{n}"
+            self._n += 1  # id mới mỗi lần vẽ lại (id cũ có thể chưa kịp gỡ)
+            bid = f"c-btn-{self._n}"
             self.ids[bid] = (action, name)
             return Btn(label, id=bid, variant=variant)
 
@@ -1809,6 +1961,8 @@ class CustomScreen(BaseModal):
         rows = []
         for name, w in self.cfg.workflows.items():
             info = tr("{v} bước: {v2}", v=len(w.steps), v2=w.summary()) + (f" · {w.description}" if w.description else "")
+            if name == self.cfg.default_workflow:
+                info = tr("★ mặc định · ") + info
             rows.append(Horizontal(Static(name, classes="c-name"), Static(info, classes="c-info"),
                                    btn(tr("Sửa"), "edit-flow", name), btn(tr("Xoá"), "del-flow", name, "error"),
                                    classes="c-row"))
@@ -1829,22 +1983,31 @@ class CustomScreen(BaseModal):
             clear_agent_state(name)
             if old and old != name:
                 clear_agent_state(old, keys=("enabled", "model", "effort", "role", "full_access"))
-        self.changed = True
         self.notify(tr("Đã lưu {v} '{name}'", v='agent' if kind == 'agents' else 'workflow', name=name))
+        await self.changed()
+
+    async def changed(self) -> None:
+        self.post_message(self.Changed())
         await self.refill()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id or ""
-        if bid == "custom-close":
-            self.action_close()
-            return
         if bid == "custom-add-agent":
+            event.stop()
             self.app.push_screen(AgentQuickScreen(self.cfg), lambda r: self._saved("agents", r))
             return
         if bid == "custom-add-flow":
+            event.stop()
             self.app.push_screen(WorkflowEditScreen(self.cfg), lambda r: self._saved("workflows", r))
             return
-        action, name = self.ids.get(bid, ("", ""))
+        if bid == "custom-default-flow":
+            event.stop()
+            self.app.open_default_flow(self.changed)
+            return
+        if bid not in self.ids:
+            return
+        event.stop()
+        action, name = self.ids[bid]
         custom = load_custom()
         if action == "edit-agent":
             raw = (custom.get("agents") or {}).get(name, {})
@@ -1872,9 +2035,37 @@ class CustomScreen(BaseModal):
                 event.button.label = tr("Chắc chưa?")
                 return
             save_custom_item(kind, name, None)
-            self.changed = True
             self.notify(tr("Đã xoá '{name}'", name=name))
-            await self.refill()
+            await self.changed()
+
+
+class CustomScreen(BaseModal):
+    """Popup /custom (hoặc nút ở màn hình thiết lập): bọc `CustomPanel`. Trả về True nếu có thay đổi."""
+
+    DEFAULT_CSS = "CustomScreen { align: center middle; }" + FORM_CSS.replace("{box}", "custom-box")
+
+    def __init__(self, root: Path, cfg: Config):
+        super().__init__()
+        self.root, self.cfg = root, cfg
+        self.changed = False
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="custom-box"):
+            yield self.title_bar(tr("Agent & workflow tuỳ chỉnh"))
+            yield CustomPanel(self.root, self.cfg)
+            with Horizontal(classes="f-buttons"):
+                yield Btn("Xong (Esc)", id="custom-close", variant="primary")
+
+    def on_mount(self) -> None:
+        self.query_one("#custom-add-agent", Button).focus()
+
+    def on_custom_panel_changed(self, event: CustomPanel.Changed) -> None:
+        event.stop()  # đóng popup mới nạp lại cấu hình (TeamApp.open_custom)
+        self.changed = True
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "custom-close":
+            self.action_close()
 
     def close(self) -> None:
         self.dismiss(self.changed)
@@ -3349,6 +3540,8 @@ class TeamApp(App):
     .git-row { height: auto; }
     .git-row Button { padding: 0; margin-right: 1; }
     #git-msg { margin: 0; }
+    #git-ai-agent { width: 26; height: 1; }
+    #git-ai-agent > SelectCurrent { border: none; height: 1; padding: 0 1; }
     #git-amend, #git-no-verify { height: auto; border: none; padding: 0; background: transparent;
                                  margin-right: 2; }
     #git-hist { width: 1fr; }
@@ -3357,6 +3550,13 @@ class TeamApp(App):
     #git-norepo { height: 1fr; padding: 1 2; }
     #tasks-empty { height: 1fr; padding: 1 2; color: $text-muted; }
     #code { height: 1fr; }
+    #custom-tab { height: 1fr; padding: 0 1; }
+    #dash { height: 1fr; padding: 0 1; }
+    #dash-cards, #dash-chart, #dash-goal, #dash-note { height: auto; margin-top: 1; }
+    #dash .dash-title { height: 1; margin-top: 1; color: $text-muted; text-style: bold; }
+    #dash-agents { height: auto; max-height: 12; }
+    #dash-goals { height: auto; max-height: 16; }
+    #custom-tab .f-scroll { height: 1fr; max-height: 100%; }
     #code-side { width: 34; min-width: 22; border-right: solid $primary-darken-2; }
     #code.narrow #code-side { width: 24; }
     #code.hide-side #code-side { display: none; }
@@ -3457,6 +3657,7 @@ class TeamApp(App):
         self._goal_status: dict[int, str] = {}  # để báo khi mục tiêu vừa kết thúc
         self._log_cut: dict[int, int] = {}  # nút Xoá log: vị trí (byte) trong file log bắt đầu hiện
         self._snap: dict | None = None  # DB đọc 1 lần cho mỗi lượt refresh_view
+        self.notices = notify.Watcher()  # báo khi task lỗi / chờ duyệt (so trạng thái giữa các lượt vẽ)
         self._refresh_pending = False
         self._row_timer = None  # hẹn nạp log của dòng đang chọn (lướt bảng)
 
@@ -3523,7 +3724,9 @@ class TeamApp(App):
                             yield TextInput(id="git-msg", placeholder=tr("Commit message — Enter để commit"))
                             with Horizontal(classes="git-row"):
                                 yield Btn("✓ Commit", id="git-commit", variant="success")
-                                yield Btn(tr("✨ Trưởng nhóm viết"), id="git-ai", variant="primary")
+                                yield Btn(tr("✨ AI viết"), id="git-ai", variant="primary")
+                                yield Select(self.commit_agent_options(), value=self.cfg.commit_agent,
+                                             allow_blank=False, id="git-ai-agent")
                             with Horizontal(classes="git-row"):
                                 yield Checkbox(tr("Sửa commit trước"), id="git-amend")
                                 yield Checkbox(tr("Bỏ qua hook (--no-verify)"), id="git-no-verify")
@@ -3549,6 +3752,19 @@ class TeamApp(App):
                         yield Static(id="code-head")
                         yield CodeEditor(id="code-editor")
                         yield Static(id="code-status")
+            with TabPane(tr("🧩 Tuỳ chỉnh"), id="tab-custom"):
+                yield CustomPanel(self.root, self.cfg, id="custom-tab")
+            with TabPane(tr("📊 Thống kê"), id="tab-dash"):
+                with VerticalScroll(id="dash"):
+                    yield Static(id="dash-cards")
+                    yield Static(id="dash-chart")
+                    yield Static(tr("Theo agent · model (30 ngày)"), classes="dash-title")
+                    yield DataTable(id="dash-agents", cursor_type="row", zebra_stripes=True)
+                    yield Static(tr("Lịch sử mục tiêu  ·  Enter: tiếp tục mục tiêu (/continue)"),
+                                 classes="dash-title")
+                    yield DataTable(id="dash-goals", cursor_type="row", zebra_stripes=True)
+                    yield Static(id="dash-goal")
+                    yield Static(id="dash-note")
         yield GrillBar(id="grill")
         yield PlanBar(id="plan")
         yield Static(id="continue-hint")
@@ -4164,10 +4380,22 @@ class TeamApp(App):
         group(tr("Chưa stage"), st.unstaged + st.untracked, "w", False, "yellow")
         return rows
 
+    def commit_agent_options(self) -> list[tuple[str, str]]:
+        """Ô chọn agent viết commit message: trưởng nhóm (mặc định) + các agent đang bật."""
+        c = self.cfg
+        return [(tr("Trưởng nhóm ({lead})", lead=c.lead), "")] + [
+            (n, n) for n in c.active_agents() if n != c.lead]
+
     def _render_git(self) -> None:
         st = self.git_status
         if st is None:
             return
+        sel = self.query_one("#git-ai-agent", Select)
+        opts = self.commit_agent_options()
+        if opts != getattr(self, "_git_ai_opts", None):  # /setup, /custom đổi đội → cập nhật danh sách
+            self._git_ai_opts = opts
+            sel.set_options(opts)
+            sel.value = self.cfg.commit_agent if any(v == self.cfg.commit_agent for _l, v in opts) else ""
         head = Text()
         ol = self.query_one("#git-files", GitFileList)
         empty = self.query_one("#git-empty", Static)
@@ -4376,7 +4604,7 @@ class TeamApp(App):
         if btn.disabled:
             return
         btn.disabled = True
-        self.notify(tr("✨ {lead} đang viết commit message…", lead=self.cfg.lead))
+        self.notify(tr("✨ {lead} đang viết commit message…", lead=self.orch.commit_agent()))
         try:
             ok, msg = await self.orch.commit_message()
         finally:
@@ -4548,6 +4776,7 @@ class TeamApp(App):
         if not tabs:  # app đang đóng (đổi theme lúc thoát vẫn gọi lại refresh)
             return
         self._snap = {"tasks": self.db.tasks(), "goals": self.db.goals()}
+        self.show_notices(self.notices.diff(self._snap["tasks"], self._snap["goals"]))
         tab = tabs.first(TabbedContent).active
         fns = [self._refresh_goals, self._refresh_plan, self._refresh_grill]
         if tab == "tab-board":
@@ -4558,6 +4787,8 @@ class TeamApp(App):
             fns += [self._refresh_jobs]
         elif tab == "tab-code":
             fns += [self._check_code_disk]
+        elif tab == "tab-dash":
+            fns += [self._refresh_dash]
         elif tab == "tab-git" and time.time() - self._git_at > 3 and not self._git_loading:
             # thay đổi do agent/editor bên ngoài: đọc lại git status định kỳ khi đang xem tab
             self.run_worker(self.refresh_git(), exclusive=False)
@@ -4573,6 +4804,116 @@ class TeamApp(App):
                     self.log.error(f"refresh {fn.__name__}: {e!r}")
         finally:
             self._snap = None
+
+    def show_notices(self, notes: list, force: bool = False) -> None:
+        """Toast + chuông, và thông báo hệ điều hành khi chế độ là 'all' (/notify)."""
+        m = notify.mode() if notes else "off"
+        if force and notes and m == "off":  # /notify test lúc đang tắt: vẫn cho thấy trong app
+            m = "app"
+        if m == "off":
+            return
+        for n in notes[:4]:
+            self.notify(n.body, title=n.title, severity="warning" if n.level == "warn" else "information",
+                        timeout=10)
+        self.bell()
+        if m == "all":
+            for n in notes[:3]:
+                self.run_worker(notify.desktop(n.title, n.body), exclusive=False)
+
+    # ------------------------------------------------------------------ tab 📊 Thống kê
+    def _refresh_dash(self, force: bool = False) -> None:
+        """Số liệu dùng chung với web (reports.dashboard / goal_history); vẽ lại tối đa 2 giây một lần."""
+        if not force and time.time() - getattr(self, "_dash_at", 0) < 2:
+            return
+        self._dash_at = time.time()
+        d = reports.dashboard(self.db)
+        self._dash_hist = reports.goal_history(self.db)
+        t = Text()
+        for label, b in ((tr("Hôm nay"), d["today"]), (tr("7 ngày"), d["week"]), (tr("30 ngày"), d["month"])):
+            t.append(f" {label:<9}", "bold")
+            t.append(f" {reports.fmt_tokens(b['tokens']):>7} token", "bold cyan")
+            t.append(f"  (in {reports.fmt_tokens(b['in_tok'])} · out {reports.fmt_tokens(b['out_tok'])} · "
+                     f"cache {reports.fmt_tokens(b['cache'])})", "dim")
+            t.append(f"   {reports.fmt_cost(b['cost']):>8}", "bold green")
+            t.append(tr("   {n} lượt · {v}", n=b["runs"], v=reports.fmt_dur(b["secs"])))
+            if b["failed"] or b["ratelimits"]:
+                t.append(tr("  · {f} lỗi · {r} hết hạn mức", f=b["failed"], r=b["ratelimits"]), "yellow")
+            t.append("\n")
+        set_static(self.query_one("#dash-cards", Static), t)
+        days = d["per_day"]
+        top = max((x["tokens"] for x in days), default=0)
+        bars = " ▁▂▃▄▅▆▇█"
+        c = Text(tr(" Token 14 ngày (cao nhất {v}/ngày)\n ", v=reports.fmt_tokens(top)), "dim")
+        for x in days:
+            lvl = 0 if not x["tokens"] else max(1, round(x["tokens"] / top * 8)) if top else 0
+            c.append(bars[lvl] * 3 + " ", "cyan")
+        c.append("\n ")
+        for x in days:
+            c.append(x["day"][8:] + "  ", "dim")
+        set_static(self.query_one("#dash-chart", Static), c)
+
+        table = self.query_one("#dash-agents", DataTable)
+        if not table.columns:
+            for col in ("Agent / model", tr("Lượt"), tr("Thời gian"), "Token", "Cost", tr("Lỗi"), tr("Số thật")):
+                table.add_column(col)
+        table.clear()
+        for kind, data in (("agent", d["by_agent"]), ("model", d["by_model"])):
+            for name, b in sorted(data.items(), key=lambda kv: -kv[1]["tokens"]):
+                label = tr("(mặc định của agent)") if name == "—" else name
+                table.add_row(("👤 " if kind == "agent" else "🧠 ") + label, str(b["runs"]), reports.fmt_dur(b["secs"]),
+                              reports.fmt_tokens(b["tokens"]), reports.fmt_cost(b["cost"]), str(b["failed"]),
+                              f"{b['real']}/{b['runs']}")
+        gt = self.query_one("#dash-goals", DataTable)
+        cur = gt.cursor_row
+        if not gt.columns:
+            for col in ("#", tr("Mục tiêu"), tr("Trạng thái"), "Task", "Agent", tr("Bắt đầu"), "Token", "Cost"):
+                gt.add_column(col)
+        gt.clear()
+        for g in self._dash_hist:
+            label, style = GOAL_STATUS.get(g["status"], (g["status"], ""))
+            gt.add_row(str(g["id"]), " ".join(g["text"].split())[:60], Text(label, style),
+                       f"{g['done']}/{g['tasks']}" + (f" ✗{g['failed']}" if g["failed"] else ""),
+                       ", ".join(g["agents"]), time.strftime("%d/%m %H:%M", time.localtime(g["created"] or 0)),
+                       reports.fmt_tokens(g["tokens"]), reports.fmt_cost(g["cost"]), key=f"g{g['id']}")
+        if self._dash_hist:
+            gt.move_cursor(row=min(cur, len(self._dash_hist) - 1))
+        self.query_one("#dash-goals").display = bool(self._dash_hist)
+        set_static(self.query_one("#dash-note", Static), Text(d["note"], "dim"))
+        self._show_dash_goal()
+
+    def dash_goal(self) -> dict | None:
+        hist = getattr(self, "_dash_hist", None) or []
+        row = self.query_one("#dash-goals", DataTable).cursor_row
+        return hist[row] if 0 <= row < len(hist) else None
+
+    def _show_dash_goal(self) -> None:
+        g = self.dash_goal()
+        box = self.query_one("#dash-goal", Static)
+        if not g:
+            set_static(box, Text(tr("Chưa có mục tiêu nào. Gõ mục tiêu ở ô dưới để bắt đầu."), "dim"))
+            return
+        t = Text()
+        t.append(tr("Mục tiêu #{gid}", gid=g["id"]), "bold")
+        t.append(f" · {GOAL_STATUS.get(g['status'], (g['status'],))[0]}"
+                 + (f" · workflow {g['workflow']}" if g["workflow"] else ""), "dim")
+        t.append("\n" + g["text"].strip()[:600] + "\n")
+        if g["summary"]:
+            t.append(tr("Kết quả: "), "bold")
+            t.append(g["summary"].strip()[:800] + "\n")
+        t.append(tr("{n} lượt chạy · {v} · {tok} token ({real}/{n} số thật) · {cost}", n=g["runs"],
+                    v=reports.fmt_dur(g["secs"]), tok=reports.fmt_tokens(g["tokens"]), real=g["real"],
+                    cost=reports.fmt_cost(g["cost"])), "dim")
+        set_static(box, t)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id != "dash-goals":
+            return
+        g = self.dash_goal()
+        if g:  # Enter: điền /continue m<id> như F6
+            box = self.query_one("#cmd", Input)
+            box.value = f"/continue m{g['id']} "
+            box.cursor_position = len(box.value)
+            box.focus()
 
     def _refresh_statusbar(self) -> None:
         bar = self.query_one("#statusbar", StatusBar)
@@ -4639,6 +4980,10 @@ class TeamApp(App):
             self.refresh_view()
             if event.pane.id == "tab-git":
                 self.run_worker(self.refresh_git(), exclusive=False)
+            elif event.pane.id == "tab-dash":
+                self._refresh_dash(force=True)
+            elif event.pane.id == "tab-custom":
+                self.run_worker(self.query_one("#custom-tab", CustomPanel).refill(), exclusive=False)
             elif event.pane.id == "tab-code":
                 self.code_tab_shown()
 
@@ -5040,6 +5385,11 @@ class TeamApp(App):
         self.show_task(self.view_task)
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if event.data_table.id == "dash-goals":
+            self._show_dash_goal()
+            return
+        if event.data_table.id != "tasks":
+            return
         # giữ ↑↓ để lướt bảng: chỉ nạp log của dòng dừng lại (đọc + tô màu log mỗi dòng lướt qua rất chậm)
         if event.row_key and event.row_key.value:
             tid = int(event.row_key.value)
@@ -5080,7 +5430,7 @@ class TeamApp(App):
 
     def action_toggle_tab(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
-        order = ["tab-board", "tab-team", "tab-term", "tab-git", "tab-code"]
+        order = ["tab-board", "tab-team", "tab-term", "tab-git", "tab-code", "tab-custom", "tab-dash"]
         tabs.active = order[(order.index(tabs.active) + 1) % len(order)] if tabs.active in order else order[0]
         self.refresh_view()
 
@@ -5253,6 +5603,15 @@ class TeamApp(App):
                "/help · @ nhắc file", wf=wf)
             if wf else tr("Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file"))
 
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id != "git-ai-agent" or event.value is Select.BLANK:
+            return
+        event.stop()
+        name = str(event.value or "")
+        if name != self.cfg.commit_agent:
+            self.cfg.commit_agent = name
+            save_commit_agent(name)
+
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         if event.checkbox.id == "git-no-verify":
             event.stop()
@@ -5379,6 +5738,19 @@ class TeamApp(App):
             if changed:
                 await self.reload_custom()
         self.push_screen(CustomScreen(self.root, self.cfg), done)
+
+    async def on_custom_panel_changed(self, event: CustomPanel.Changed) -> None:
+        await self.reload_custom()  # sửa ở tab 🧩 Tuỳ chỉnh: có hiệu lực ngay
+
+    def open_default_flow(self, after=None) -> None:
+        """Popup "Luồng mặc định" (/flow-setup, nút ở tab 🧩 Tuỳ chỉnh)."""
+        async def done(name) -> None:
+            if not name:
+                return
+            await self.reload_custom()
+            if after:
+                await after()
+        self.push_screen(DefaultFlowScreen(self.cfg), done)
 
     async def reload_custom(self) -> None:
         """Đọc lại custom.toml: thêm/bớt/sửa agent tuỳ chỉnh và workflow ngay, không cần mở lại app."""
@@ -5561,8 +5933,13 @@ class TeamApp(App):
         elif cmd == "setup":
             self.open_setup()
             return
+        elif cmd == "dash":
+            self.query_one("#tabs", TabbedContent).active = "tab-dash"
+        elif cmd == "flow-setup":
+            self.open_default_flow()
+            return
         elif cmd in ("custom", "agent-moi", "workflow", "workflows"):
-            self.open_custom()
+            self.query_one("#tabs", TabbedContent).active = "tab-custom"  # popup vẫn mở từ /setup
             return
         elif cmd == "goal":
             self.start_goal(rest.strip())
@@ -5650,6 +6027,15 @@ class TeamApp(App):
         elif cmd in ("code", "open", "vi"):
             target, line = parse_code_target(rest)
             self.open_code(target, line)
+        elif cmd == "notify":
+            try:
+                msg, test = notify.command(rest)
+            except ValueError:
+                self.notify(command_usage(cmd), severity="warning")
+                return
+            self.notify(msg)
+            if test:
+                self.show_notices([notify.test_notice()], force=True)
         elif cmd == "vim":
             arg = rest.strip().lower()
             if arg in ("on", "off", "bật", "bat", "tắt", "tat"):
