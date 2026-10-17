@@ -1443,12 +1443,15 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
     from ateam.db import DB
     from ateam.tui import CustomPanel, DefaultFlowScreen, OnboardScreen, TeamApp
 
-    async def wait_for(pilot, cond, n=80):
+    async def wait_for(pilot, cond, n=200):  # CI chậm: chờ tới 20 giây, xong sớm thì thoát sớm
         for _ in range(n):
             await pilot.pause(0.1)
             if cond():
                 return True
         return False
+
+    def flow_ready(app):  # popup đã đẩy lên *và* on_mount đã vẽ xong các hàng (CI chậm: đẩy xong chưa chắc đã vẽ)
+        return isinstance(app.screen, DefaultFlowScreen) and bool(app.screen.query("#df-steps .df-row"))
 
     async def main():
         ensure_global_config()
@@ -1458,8 +1461,8 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
             app.run_command("/custom")
             assert await wait_for(pilot, lambda: app.query_one("#tabs").active == "tab-custom")
             panel = app.query_one("#custom-tab", CustomPanel)
-            await pilot.click("#custom-default-flow")
-            assert await wait_for(pilot, lambda: isinstance(app.screen, DefaultFlowScreen))
+            panel.query_one("#custom-default-flow").press()  # không dùng click: tab vừa mở có thể chưa xếp chỗ xong
+            assert await wait_for(pilot, lambda: flow_ready(app))
             df = app.screen
             assert df.form["name"] == "tinh-nang" and not df.form["exists"]
             assert [s["title"] for s in df.form["steps"]] == ["Thiết kế", "Viết code", "Viết test"]
@@ -1482,7 +1485,7 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
                                                      for s in panel.query(".c-info")))
             # gõ mục tiêu → chạy theo luồng mặc định
             app.run_command("/flow-setup")
-            assert await wait_for(pilot, lambda: isinstance(app.screen, DefaultFlowScreen))
+            assert await wait_for(pilot, lambda: flow_ready(app))
             assert app.screen.form["exists"] and app.screen.form["steps"][1]["agent"] == "antigravity"
             await pilot.click("#df-cancel")
             assert await wait_for(pilot, lambda: not isinstance(app.screen, DefaultFlowScreen))
@@ -1497,9 +1500,9 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
             await ob.show_step(ob.step)
             await pilot.pause(0.2)
             ob.query_one("#ob-flow").press()
-            assert await wait_for(pilot, lambda: isinstance(app.screen, DefaultFlowScreen))
+            assert await wait_for(pilot, lambda: flow_ready(app))
             assert not app.screen.query_one("#df-default").display and app.screen.in_setup
-            app.screen.action_save()
+            await pilot.press("ctrl+s")
             assert await wait_for(pilot, lambda: app.screen is ob)
             assert ob.style == "flow" and ob.settings()["flow_name"] == "tinh-nang"
             await pilot.press("ctrl+q")
