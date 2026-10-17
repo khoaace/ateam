@@ -184,6 +184,9 @@ def ui_strings() -> dict[str, str]:
         "accent_default": tr("Mặc định (tím → ngọc)"), "mode_system": tr("Theo hệ thống"), "mode_light": tr("Sáng"),
         "mode_dark": tr("Tối"),
         "accent_shared": tr("Màu nhấn lưu chung với giao diện terminal; sáng/tối chỉ áp cho trình duyệt này."),
+        "sound": tr("Âm thanh"), "sound_on": tr("Phát âm thanh khi có thông báo"), "sound_volume": tr("Âm lượng"),
+        "sound_test": tr("Nghe thử"),
+        "sound_local": tr("Mỗi loại có âm riêng: kế hoạch / diff chờ duyệt, agent hỏi, task lỗi, mục tiêu xong. Lưu riêng cho trình duyệt này."),
         # --- /setup
         "ob_title": tr("Thiết lập đội AI · Bước {v}/{n} — {title}"), "ob_back": tr("Quay lại"), "ob_next": tr("Tiếp"),
         "ob_save": tr("Lưu & bắt đầu"), "ob_custom": tr("Agent & workflow tuỳ chỉnh…"),

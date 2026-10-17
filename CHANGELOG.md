@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.1 — 17/10/2026
+
+- **Âm thanh trên web**: mỗi loại thông báo một giai điệu ngắn (kế hoạch / diff chờ duyệt, agent hỏi, task lỗi /
+  xung đột, mục tiêu xong) tổng hợp bằng Web Audio — không file, không dependency. Bật/tắt, âm lượng, nghe thử ở
+  popup 🎨 Giao diện, lưu theo từng trình duyệt; nhiều thông báo cùng lúc chỉ phát một âm.
+- Thông báo mới khi **mục tiêu kết thúc** (🏁 hoàn thành / chưa xong) — cả TUI lẫn web.
+
 ## 0.13.0 — 17/10/2026
 
 - **Giữ phiên agent**: `/retry`, từ chối kèm góp ý, vòng sửa khi kiểm tra fail, trả lời câu hỏi của agent và

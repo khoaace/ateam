@@ -486,6 +486,9 @@ kbd { font: 600 10.5px var(--mono); padding: 1px 5px; border-radius: 5px; backgr
 .swatch { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; text-align: left; font-size: 12.5px; }
 .swatch i { width: 18px; height: 18px; border-radius: 6px; flex: none; }
 .swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--ring); }
+.sound-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sound-row input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); }
+.sound-row input[type=range]:disabled { opacity: .4; }
 .sg-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; align-self: center; }
 .continue-hint { margin: 0 4px 8px; padding: 8px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--text); font-size: 13px; }
 .continue-hint.warn { background: color-mix(in srgb, var(--review) 14%, transparent); color: var(--review); }

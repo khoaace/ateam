@@ -726,7 +726,16 @@ function themeModal() {
   const m = openModal(`${modalHead(esc(t("theme")))}<div class="modal-pad">
     <div class="sec-title">${esc(t("appearance"))}</div><div class="segs">${modes}</div>
     <div class="sec-title" style="margin-top:18px">${esc(t("accent"))}</div><div class="swatches">${accents}</div>
-    <div class="muted small" style="margin-top:14px">${esc(t("accent_shared"))}</div></div>`, { box: "sm" });
+    <div class="muted small" style="margin-top:14px">${esc(t("accent_shared"))}</div>
+    <div class="sec-title" style="margin-top:18px">${esc(t("sound"))}</div>
+    <div class="sound-row"><label class="chk"><input type="checkbox" id="snd-on" ${soundVolume() > 0 ? "checked" : ""}> ${esc(t("sound_on"))}</label>
+      <input type="range" id="snd-vol" min="5" max="100" step="5" value="${soundVolume() || 60}" aria-label="${esc(t("sound_volume"))}" ${soundVolume() > 0 ? "" : "disabled"}>
+      <button class="btn sm" id="snd-test">▶ ${esc(t("sound_test"))}</button></div>
+    <div class="muted small" style="margin-top:8px">${esc(t("sound_local"))}</div></div>`, { box: "sm" });
+  const on = $("#snd-on", m), vol = $("#snd-vol", m);
+  on.addEventListener("change", () => { vol.disabled = !on.checked; setSoundVolume(on.checked ? +vol.value : 0); if (on.checked) soundDemo(["review"]); });
+  vol.addEventListener("change", () => { setSoundVolume(+vol.value); soundDemo(["review"]); });
+  $("#snd-test", m).addEventListener("click", () => soundDemo(["plan", "ask", "failed", "done"], on.checked ? +vol.value : 60));
   m.addEventListener("click", async (e) => {
     const mode = e.target.closest("[data-mode]"), acc = e.target.closest("[data-acc]");
     if (mode) { setThemeMode(mode.dataset.mode); $$(".seg", m).forEach((b) => b.classList.toggle("on", b === mode)); }
@@ -739,6 +748,7 @@ function themeModal() {
    Xin quyền ở lần bấm đầu tiên trên trang — trình duyệt chỉ cho hỏi sau một thao tác của người dùng. */
 function onNotice(m) {
   toast(m.title + " — " + m.body, m.level === "warn" ? "warn" : "info");
+  playSound(m.kind);
   if (!m.desktop || !("Notification" in window) || Notification.permission !== "granted") return;
   if (!document.hidden && !m.force) return;
   try {
@@ -756,6 +766,69 @@ function askNotifyPermission() {
   try { Notification.requestPermission(); } catch (e) { /* trình duyệt cũ */ }
 }
 document.addEventListener("pointerdown", askNotifyPermission, { once: true });
+
+/* Âm thanh (Web Audio, không file): mỗi loại thông báo một giai điệu ngắn. Âm lượng lưu theo trình duyệt
+   (localStorage "ateam-sound", 0 = tắt). Trình duyệt chỉ cho phát sau một thao tác của người dùng → mở khoá
+   AudioContext ở mỗi lần bấm/gõ (iOS tạm dừng lại khi tab bị ẩn). */
+const SOUNDS = {  // nốt: [tần số Hz, bắt đầu (giây), dài (giây)]
+  plan: { wave: "sine", notes: [[659, 0, .2], [880, .13, .35]] },
+  review: { wave: "sine", notes: [[1047, 0, .5]] },
+  ask: { wave: "sine", notes: [[784, 0, .16], [988, .11, .16], [1175, .22, .38]] },
+  failed: { wave: "triangle", notes: [[440, 0, .25], [330, .18, .45]] },
+  done: { wave: "sine", notes: [[523, 0, .45], [659, .09, .45], [784, .18, .45], [1047, .27, .7]] },
+};
+SOUNDS.conflict = SOUNDS.goal_end = SOUNDS.failed;
+SOUNDS.test = SOUNDS.review;
+const SOUND_RANK = ["test", "done", "review", "plan", "ask", "goal_end", "conflict", "failed"];  // sau = ưu tiên
+let audioCtx = null, soundAt = 0, soundNext = null, soundTimer = 0;
+function soundVolume() {
+  try { const v = localStorage.getItem("ateam-sound"); return v == null ? 60 : Math.max(0, Math.min(100, +v || 0)); } catch (e) { return 60; }
+}
+function setSoundVolume(v) { try { localStorage.setItem("ateam-sound", String(v)); } catch (e) { /* chặn lưu */ } }
+function unlockAudio() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  try {
+    if (!audioCtx) audioCtx = new AC();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch (e) { /* trình duyệt chặn */ }
+}
+document.addEventListener("pointerdown", unlockAudio);
+document.addEventListener("keydown", unlockAudio);
+function playTune(kind, vol, delay) {
+  const s = SOUNDS[kind], ctx = audioCtx;
+  if (!s || !ctx || ctx.state !== "running" || vol <= 0) return false;
+  const master = ctx.createGain();
+  master.gain.value = .5 * (vol / 100) ** 2;  // tai nghe theo thang log: bình phương cho thanh trượt "đều" hơn
+  master.connect(ctx.destination);
+  const t0 = ctx.currentTime + .02 + (delay || 0);
+  for (const [f, at, dur] of s.notes) {
+    const o = ctx.createOscillator(), g = ctx.createGain(), t = t0 + at;
+    o.type = s.wave;
+    o.frequency.value = f;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(.35, t + .012);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(master);
+    o.start(t);
+    o.stop(t + dur + .05);
+  }
+  return true;
+}
+function playSound(kind) {  // nhiều thông báo cùng lúc → một âm (loại quan trọng nhất), cách nhau ≥1,5 giây
+  if (!SOUNDS[kind] || soundVolume() <= 0) return;
+  if (!soundNext || SOUND_RANK.indexOf(kind) > SOUND_RANK.indexOf(soundNext)) soundNext = kind;
+  clearTimeout(soundTimer);
+  soundTimer = setTimeout(() => {
+    const k = soundNext;
+    soundNext = null;
+    if (Date.now() - soundAt >= 1500 && playTune(k, soundVolume())) soundAt = Date.now();
+  }, 150);
+}
+function soundDemo(kinds, vol) {
+  unlockAudio();
+  kinds.forEach((k, i) => playTune(k, vol == null ? soundVolume() || 60 : vol, i * 1.1));
+}
 function pendingCount() {  // việc chờ người dùng: kế hoạch chờ duyệt + task chờ duyệt diff/xung đột
   if (!S.state) return 0;
   return S.state.goals.filter((g) => g.status === "awaiting").length + S.state.tasks.filter((x) => ["review", "conflict", "asking"].includes(x.status)).length;

@@ -371,10 +371,15 @@ Token của **Claude Code** và **Codex** là số thật, đọc từ file phi�
 
 ## Thông báo
 
-Khi có **kế hoạch chờ duyệt**, **task chờ duyệt diff**, hoặc **task lỗi / xung đột merge**, ateam báo: terminal hiện
+Khi có **kế hoạch chờ duyệt**, **task chờ duyệt diff**, **agent hỏi**, **task lỗi / xung đột merge**, hoặc **mục
+tiêu kết thúc**, ateam báo: terminal hiện
 toast + chuông + thông báo macOS (Notification Center); web hiện toast và thông báo của trình duyệt khi tab đang ẩn
 (trình duyệt hỏi quyền ở lần bấm đầu tiên trên trang), tiêu đề tab hiện số việc chờ. `/notify app` chỉ báo trong
 app, `/notify off` tắt, `/notify on` bật lại, `/notify test` gửi thử.
+
+Web còn phát **âm thanh** riêng cho từng loại (kế hoạch, diff chờ duyệt, agent hỏi, lỗi, mục tiêu xong) — bật/tắt,
+chỉnh âm lượng và nghe thử ở popup 🎨 Giao diện; lưu riêng cho từng trình duyệt (máy tính và điện thoại đặt khác nhau
+được). Trình duyệt chỉ cho phát âm sau lần bấm đầu tiên trên trang.
 
 ## Các agent giao việc cho nhau thế nào?
 

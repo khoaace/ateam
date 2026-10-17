@@ -118,9 +118,10 @@ thì là mục tiêu đó); task không thuộc mục tiêu thì `continue_task`
   gian + đầu prompt → `tok_src = "cli"`; không có thì ước tính ~4 ký tự/token (`"estimate"`). `reports.dashboard` /
   `goal_history` cộng dồn cho tab 📊 Thống kê, trang web và `/usage`.
 - Thông báo (`notify.Watcher`): TUI mỗi lượt `refresh_view`, web mỗi lượt đẩy ảnh chụp, so trạng thái task/mục
-  tiêu với lần trước; chuyển vào `failed`/`conflict`/`review` hoặc mục tiêu `awaiting` → toast + chuông +
-  `notify.desktop` (osascript / notify-send) ở TUI, `{"t": "notice"}` qua WS ở web (trình duyệt hiện Notification
-  khi tab ẩn). Lần đọc đầu chỉ ghi nhận.
+  tiêu với lần trước; chuyển vào `failed`/`conflict`/`review`/`asking`, mục tiêu `awaiting` hoặc kết thúc
+  (`done` / `incomplete`·`failed`) → toast + chuông + `notify.desktop` (osascript / notify-send) ở TUI,
+  `{"t": "notice"}` qua WS ở web (trình duyệt hiện Notification khi tab ẩn, phát âm Web Audio theo `kind` —
+  `SOUNDS` trong `app.js`, âm lượng ở localStorage `ateam-sound`). Lần đọc đầu chỉ ghi nhận.
 
 ## Vòng đời một mục tiêu
 

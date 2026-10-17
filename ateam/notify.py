@@ -1,4 +1,5 @@
-"""Thông báo khi có việc cần người dùng: kế hoạch chờ duyệt, task chờ duyệt diff, task lỗi/xung đột.
+"""Thông báo khi có việc cần người dùng: kế hoạch chờ duyệt, task chờ duyệt diff, task lỗi/xung đột, agent hỏi,
+mục tiêu kết thúc (web phát âm thanh riêng theo `kind`).
 
 `Watcher` so trạng thái task/mục tiêu giữa hai lần đọc DB (TUI mỗi lượt vẽ, web mỗi lượt đẩy ảnh chụp) —
 không chèn vào từng chỗ đổi trạng thái trong orchestrator. `desktop()` hiện thông báo của hệ điều hành.
@@ -21,7 +22,7 @@ MODES = ("all", "app", "off")
 
 @dataclass
 class Notice:
-    kind: str  # failed | conflict | review | plan | ask
+    kind: str  # failed | conflict | review | plan | ask | done | goal_end
     title: str
     body: str
     task_id: int | None = None
@@ -57,6 +58,13 @@ class Watcher:
             if g.status == "awaiting" and old_g.get(g.id) != "awaiting":
                 out.append(Notice("plan", tr("📝 Kế hoạch chờ duyệt"),
                                   tr("Mục tiêu #{gid}: {text}", gid=g.id, text=_short(g.text)), goal_id=g.id))
+            elif g.status == "done" and old_g.get(g.id) not in (None, "done"):
+                out.append(Notice("done", tr("🏁 Mục tiêu hoàn thành"),
+                                  tr("Mục tiêu #{gid}: {text}", gid=g.id, text=_short(g.text)), goal_id=g.id))
+            elif g.status in ("incomplete", "failed") and old_g.get(g.id) not in (None, "incomplete", "failed"):
+                out.append(Notice("goal_end", tr("Mục tiêu kết thúc chưa xong"),
+                                  tr("Mục tiêu #{gid}: {text}", gid=g.id, text=_short(g.text)), goal_id=g.id,
+                                  level="warn"))
         for t in tasks:
             if t.status == old_t.get(t.id):
                 continue

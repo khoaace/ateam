@@ -32,6 +32,11 @@ def test_watcher_reports_only_new_transitions():
     assert w.diff([T(2, "failed"), T(3, "review")], [G(2, "awaiting")]) == []  # không báo lặp
     # task mới xuất hiện đã lỗi (vd giao tay rồi lỗi ngay giữa hai lượt đọc) vẫn được báo
     assert [n.kind for n in w.diff([T(6, "failed")], [])] == ["failed"]
+    # mục tiêu kết thúc: xong → "done", chưa xong → "goal_end" (web phát âm thanh riêng)
+    w.diff([], [G(3, "running"), G(4, "running")])
+    out = w.diff([], [G(3, "done"), G(4, "incomplete")])
+    assert [(n.kind, n.goal_id, n.level) for n in out] == [("done", 3, "info"), ("goal_end", 4, "warn")]
+    assert w.diff([], [G(3, "done"), G(4, "incomplete")]) == []
 
 
 def test_notify_command_and_desktop(env, monkeypatch, tmp_path):

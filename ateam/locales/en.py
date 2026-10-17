@@ -2510,6 +2510,20 @@ EN: dict[str, str] = {
         '📝 Plan awaiting approval',
     'Mục tiêu #{gid}: {text}':
         'Goal #{gid}: {text}',
+    'Âm thanh':
+        'Sound',
+    'Phát âm thanh khi có thông báo':
+        'Play a sound on notifications',
+    'Âm lượng':
+        'Volume',
+    'Nghe thử':
+        'Preview',
+    'Mỗi loại có âm riêng: kế hoạch / diff chờ duyệt, agent hỏi, task lỗi, mục tiêu xong. Lưu riêng cho trình duyệt này.':
+        'Each kind has its own sound: plan / diff awaiting approval, agent question, failed task, goal done. Saved for this browser only.',
+    '🏁 Mục tiêu hoàn thành':
+        '🏁 Goal completed',
+    'Mục tiêu kết thúc chưa xong':
+        'Goal ended unfinished',
     '✗ Task lỗi':
         '✗ Task failed',
     '⚠ Task bị xung đột khi merge':
