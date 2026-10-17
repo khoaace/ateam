@@ -107,6 +107,18 @@ def initial(cfg: Config, root: Path) -> dict:
     }
 
 
+def quick_providers(init: dict) -> list[str]:
+    """CLI chọn được ở popup sửa nhanh vai trò: mọi CLI đã cài; máy chưa cài CLI nào thì bộ CLI của đội."""
+    return [p for p in PROVIDERS if p in init["installed"]] or list(init["providers"])
+
+
+def current_settings(cfg: Config, root: Path) -> dict:
+    """Thiết lập đang dùng (kiểu, quyền, worktree, lệnh kiểm tra) dạng tham số save_onboard — lưu vai trò nhanh
+    mà không đổi những thứ này."""
+    i = initial(cfg, root)
+    return settings_of(i["style"], i["access"], i["apply"], i["verify"], cfg.default_workflow)
+
+
 def settings_of(style: str, access: str, apply: str, verify: str, flow_name: str = "") -> dict:
     """Lựa chọn của wizard → tham số `config.save_onboard`. flow_name: workflow chọn ở popup Luồng mặc định."""
     return {"full_access": access == "full", "approve_plan": style != "auto",

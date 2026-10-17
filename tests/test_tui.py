@@ -1591,3 +1591,51 @@ def test_tui_plan_view_and_todo(env, project, monkeypatch):
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
+
+
+def test_tui_quick_roles(env, project, monkeypatch):
+    """/roles: chỉ bước Vai trò của /setup — lưu là áp ngay, Esc đóng không đổi gì."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import Select
+
+    from ateam.config import ensure_global_config, load_config, save_project_setting
+    from ateam.db import DB
+    from ateam.tui import OnboardScreen, TeamApp
+
+    async def main():
+        ensure_global_config()
+        save_project_setting(project, "verify_command", "make test")
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.3)
+            app.run_command("/roles")
+            await pilot.pause(0.5)
+            scr = app.screen
+            assert isinstance(scr, OnboardScreen) and scr.only_roles
+            assert scr.STEPS[scr.step][0] == "roles" and not scr.query_one("#ob-back").display
+            await pilot.press("escape")                    # Esc: đóng luôn, không ghi gì
+            await pilot.pause(0.3)
+            assert not isinstance(app.screen, OnboardScreen)
+            app.run_command("/roles")
+            await pilot.pause(0.5)
+            scr = app.screen
+            lead_cli = scr.query_one("#ob-cli-lead", Select).value
+            eff = scr.query_one("#ob-effort-lead", Select)
+            choice = [v for _l, v in eff._options if isinstance(v, str) and v not in ("", eff.value)][0]
+            eff.value = choice
+            await pilot.press("ctrl+s")
+            await pilot.pause(0.8)
+            assert not isinstance(app.screen, OnboardScreen)
+            lead = app.cfg.lead
+            assert app.cfg.agents[lead].effort == choice and lead_cli in app.cfg.agents[lead].command[0]
+            assert app.cfg.verify.command == "make test"  # thiết lập khác giữ nguyên
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())

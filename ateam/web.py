@@ -197,6 +197,9 @@ def ui_strings() -> dict[str, str]:
         "src_plan": tr("Kế hoạch ban đầu"), "src_workflow": tr("Theo workflow"), "src_review": tr("Bổ sung khi review"),
         "src_followup": tr("Tiếp tục / làm thêm"), "src_delegate": tr("Giao việc chéo"), "src_user": tr("Thêm tay"),
         "plan_empty": tr("Mục tiêu này chưa có task nào"),
+        "roles_title": tr("Vai trò · model · effort"), "roles_full": tr("Thiết lập đầy đủ (/setup)…"),
+        "roles_hint": tr("Đổi CLI · model · effort cho từng vai trò — lưu là có hiệu lực ngay. Kiểu làm việc, quyền, "
+                         "lệnh kiểm tra giữ nguyên (đổi ở /setup)."),
         "lofi": tr("Nhạc lofi"), "lofi_play": tr("Phát"), "lofi_pause": tr("Tạm dừng"), "lofi_hide": tr("Thu gọn"),
         "lofi_show": tr("Mở rộng"), "lofi_close": tr("Tắt nhạc"), "lofi_custom": tr("Link của bạn"),
         "lofi_custom_ph": tr("Dán link YouTube hoặc stream mp3/aac rồi Enter…"),
@@ -697,6 +700,8 @@ class WebApp:
             return self.code.save(d)
         if op == "setup_save":
             return await self.setup.save_setup(d)
+        if op == "roles_save":
+            return await self.setup.save_roles(d)
         if op == "setup_skip":
             return self.setup.skip_setup()
         if op == "setup_discover":
@@ -906,6 +911,8 @@ class WebApp:
             return tr("Đang kiểm tra bản mới…"), "info", {"open": {"task": SYSTEM}}
         if cmd == "setup":
             return "", "", {"open": {"modal": "setup"}}
+        if cmd == "roles":
+            return "", "", {"open": {"modal": "roles"}}
         if cmd == "custom":
             return "", "", {"open": {"view": "custom"}}  # mục 🧩 Tuỳ chỉnh ở sidebar (popup vẫn mở từ /setup)
         if cmd == "dash":

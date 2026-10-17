@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.0 — 17/10/2026
+
+- **⚡ Sửa nhanh vai trò · model · effort** (`/roles`, web: nút ⚡ ở tab Đội và mục Tuỳ chỉnh): mở thẳng bảng vai trò
+  của `/setup` — chọn CLI (mọi CLI đã cài), model, effort cho từng vai trò rồi lưu là áp ngay, không phải đi lại
+  cả 7 bước. Kiểu làm việc, quyền, worktree, lệnh kiểm tra, workflow mặc định giữ nguyên.
+
 ## 0.17.0 — 17/10/2026
 
 - **📋 Xem lại kế hoạch của trưởng nhóm** sau khi đã duyệt / đã xong: nút 📋 trên thẻ mục tiêu (web) hoặc

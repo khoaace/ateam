@@ -159,6 +159,7 @@ Model & effort của từng agent (được lưu lại cho lần sau):
   /models <agent> làm mới           hỏi CLI danh sách model thật (opencode models, agy models)
   /agents                           xem model, effort, mức effort hợp lệ của từng agent
   /setup                            mở lại màn hình thiết lập: bật/tắt agent, trưởng nhóm, model, effort
+  /roles                            sửa nhanh vai trò · CLI · model · effort (không đi lại cả /setup)
   /theme [tên] [màu nhấn]           chọn theme màu (xem trước trực tiếp), vd /theme nord tím
   /lang en|vi                       đổi ngôn ngữ giao diện (app tự mở lại)
 
@@ -277,6 +278,7 @@ COMMANDS = [
     ("models", tr("[agent] [làm mới]"), tr("xem model & effort hỗ trợ")),
     ("agents", "", tr("cấu hình, lệnh chạy của từng agent")),
     ("setup", "", tr("màn hình thiết lập đội")),
+    ("roles", "", tr("sửa nhanh vai trò · CLI · model · effort của đội")),
     ("custom", "", tr("agent & workflow tuỳ chỉnh")),
     ("dash", "", tr("thống kê: token, cost, lịch sử mục tiêu")),
     ("flow-setup", "", tr("luồng mặc định: agent · model · effort từng bước")),
@@ -293,7 +295,7 @@ COMMANDS = [
     ("help", "", tr("toàn bộ lệnh & phím tắt")),
     ("quit", "", tr("thoát")),
 ]
-COMMAND_ALIASES = {"grill-me": "grill", "hoi": "grill", "h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
+COMMAND_ALIASES = {"vaitro": "roles", "role": "roles", "grill-me": "grill", "hoi": "grill", "h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
                    "workflows": "custom", "agent-moi": "custom", "exit": "quit", "q": "quit"}
 
 
@@ -959,7 +961,9 @@ class OnboardScreen(BaseModal):
     việc, mức chi phí, gán CLI · model · effort cho từng vai trò, an toàn & duyệt code, lệnh kiểm tra — rồi
     xem lại và lưu. Mỗi lúc chỉ dựng widget của bước đang mở. Esc = quay lại bước trước.
 
-    Trả về {"plan": TeamPlan, "settings": {...}} (xem config.save_onboard), hoặc None nếu đóng."""
+    Trả về {"plan": TeamPlan, "settings": {...}} (xem config.save_onboard), hoặc None nếu đóng.
+
+    only_roles (/roles): chỉ bước Vai trò · model · effort, mọi CLI đã cài; lưu ngay, các thiết lập khác giữ nguyên."""
 
     BINDINGS = [Binding("ctrl+s", "save", tr("Lưu"), priority=True)]
     DEFAULT_CSS = """
@@ -988,16 +992,20 @@ class OnboardScreen(BaseModal):
     """
     STEPS, STYLES, TIER_HINTS, APPLY = wizard.STEPS, wizard.STYLES, wizard.TIER_HINTS, wizard.APPLY
 
-    def __init__(self, root: Path, cfg: Config, orch: Orchestrator, timeout: float = 20):
+    def __init__(self, root: Path, cfg: Config, orch: Orchestrator, timeout: float = 20, only_roles: bool = False):
         super().__init__()
         self.root, self.cfg, self.orch, self.timeout = root, cfg, orch, timeout
-        self.step = 0
+        self.only_roles = only_roles
+        self.step = [k for k, _t, _s in self.STEPS].index("roles") if only_roles else 0
         init = wizard.initial(cfg, root)
         self.installed, self.providers = init["installed"], init["providers"]
         self.style, self.tier, self.assign = init["style"], init["tier"], init["assign"]
         # assign đang ứng với bộ CLI/mức nào; lần đầu thiết lập (None) thì bước Vai trò điền theo mức chi phí,
         # mở lại /setup thì giữ đội hiện tại cho tới khi đổi CLI hoặc mức
         self._assign_key = (tuple(self.providers), None if init["first"] else self.tier)
+        if only_roles:  # sửa nhanh: chọn được mọi CLI đã cài, giữ nguyên gán hiện tại
+            self.providers = wizard.quick_providers(init)
+            self._assign_key = (tuple(self.providers), self.tier)
         self.access, self.apply, self.verify = init["access"], init["apply"], init["verify"]
         self.flow_name = cfg.default_workflow  # workflow chọn ở popup "Luồng mặc định" ("" = mẫu tinh-nang)
         self.git = (root / ".git").exists()
@@ -1034,7 +1042,7 @@ class OnboardScreen(BaseModal):
 
     async def on_mount(self) -> None:
         self.run_worker(self._discover(), exclusive=True)
-        await self.show_step(0)
+        await self.show_step(self.step)
 
     async def _discover(self) -> None:
         try:
@@ -1048,19 +1056,24 @@ class OnboardScreen(BaseModal):
     async def show_step(self, i: int) -> None:
         self.step = i
         key, title, _short = self.STEPS[i]
-        self.query_one(".m-title", Static).update(Text(tr("Thiết lập đội AI · Bước {v}/{v2} — {title}", v=i + 1, v2=len(self.STEPS), title=title),
-                                                       "bold"))
+        self.query_one(".m-title", Static).update(Text(
+            tr("⚡ Vai trò · model · effort") if self.only_roles else
+            tr("Thiết lập đội AI · Bước {v}/{v2} — {title}", v=i + 1, v2=len(self.STEPS), title=title), "bold"))
         t = Text()
         for n, (_k, _title, name) in enumerate(self.STEPS):
             if n:
                 t.append("  ›  ", "dim")
             t.append(f"{n + 1}. {name}", "bold" if n == i else "dim" if n > i else "green")
-        self.query_one("#ob-steps", Static).update(t)
+        self.query_one("#ob-steps", Static).update(
+            Text(tr("Lưu là có hiệu lực ngay; kiểu làm việc, quyền, lệnh kiểm tra giữ nguyên (đổi ở /setup)."), "dim")
+            if self.only_roles else t)
         body = self.query_one("#ob-body", VerticalScroll)
         await body.remove_children()
         await body.mount_all(getattr(self, f"_step_{key}")())
         self.query_one("#ob-back", Button).disabled = i == 0
-        self.query_one("#ob-next", Button).label = tr("Lưu & bắt đầu (Ctrl+S)") if key == "review" else tr("Tiếp →")
+        self.query_one("#ob-back").display = not self.only_roles
+        self.query_one("#ob-next", Button).label = (tr("Lưu (Ctrl+S)") if self.only_roles else
+                                                    tr("Lưu & bắt đầu (Ctrl+S)") if key == "review" else tr("Tiếp →"))
         self.query_one("#ob-custom").display = key == "review"
         first = body.query("SelectionList, OptionList, Select, Input")
         (first.first() if first else self.query_one("#ob-next")).focus()
@@ -1272,7 +1285,7 @@ class OnboardScreen(BaseModal):
         bid = event.button.id
         if bid == "ob-next":
             event.stop()
-            if self.STEPS[self.step][0] == "review":
+            if self.STEPS[self.step][0] == "review" or self.only_roles:
                 self.action_save()
             else:
                 await self.go(1)
@@ -1305,6 +1318,9 @@ class OnboardScreen(BaseModal):
             await self.go(1)
 
     def action_request_close(self) -> None:
+        if self.only_roles:
+            self.close()
+            return
         if self.step > 0:  # Esc = quay lại bước trước
             self.run_worker(self.go(-1), exclusive=True, group="ob-nav")
             return
@@ -6047,6 +6063,13 @@ class TeamApp(App):
                          "/setup, /model, /effort.", lead=c.lead, v=', '.join(on), flow=flow))
         self.refresh_view()
 
+    def open_roles(self) -> None:
+        """/roles: sửa nhanh bảng Vai trò · model · effort của /setup, giữ nguyên các thiết lập khác."""
+        async def done(result) -> None:
+            if result:
+                await self._setup_done(result)
+        self.push_screen(OnboardScreen(self.root, self.cfg, self.orch, only_roles=True), done)
+
     def open_custom(self) -> None:
         async def done(changed) -> None:
             if changed:
@@ -6246,6 +6269,9 @@ class TeamApp(App):
             self.write_sys(reports.agents_text(self.cfg))
         elif cmd == "setup":
             self.open_setup()
+            return
+        elif cmd == "roles":
+            self.open_roles()
             return
         elif cmd == "dash":
             self.query_one("#tabs", TabbedContent).active = "tab-dash"

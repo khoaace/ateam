@@ -408,6 +408,18 @@ def test_web_setup_and_custom(env, project, monkeypatch):
             bad = dict(assign, lead=None)
             assert (await wa.handle({"op": "setup_save", "assign": bad}))[1] == "error"
 
+            # ⚡ /roles: chỉ đổi vai trò — kiểu làm việc, lệnh kiểm tra, quyền giữ nguyên
+            assert (await wa.command("/roles"))[2]["open"]["modal"] == "roles"
+            st = await (await client.get("/api/setup")).json()
+            assert set(st["quick_providers"]) >= {"claude", "codex", "agy"}  # mọi CLI đã cài, không chỉ đội
+            assert st["init"]["assign"]["lead"][0] == "codex"  # mở lại: đúng đội vừa lưu
+            quick = dict(st["init"]["assign"], lead=["codex", "", "high"])
+            r = await wa.handle({"op": "roles_save", "assign": quick})
+            assert r[1] == "ok" and r[2]["setup_saved"]
+            assert wa.cfg.lead == "codex" and wa.cfg.agents["codex"].effort == "high"
+            assert not wa.cfg.approve_plan and wa.cfg.verify.command == "make test"  # từ setup_save ở trên
+            assert (await wa.handle({"op": "roles_save", "assign": dict(quick, lead=None)}))[1] == "error"
+
             # /custom: agent nhanh, sửa sai tên, xoá
             q = await (await client.get("/api/custom/quick?provider=claude")).json()
             assert q["name"].startswith("claude")

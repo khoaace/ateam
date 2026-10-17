@@ -83,7 +83,8 @@ class SetupWeb:
             "models": {p: wizard.models_of(self.cfg, p) for p in provs},
             "efforts": {p: wizard.efforts_of(p) for p in provs},
             "custom_others": [n for n in self.cfg.custom_agents if n in self.cfg.agents and not
-                              load_custom().get("agents", {}).get(n, {}).get("wizard")]})
+                              load_custom().get("agents", {}).get(n, {}).get("wizard")],
+            "quick_providers": wizard.quick_providers(init)})
 
     async def api_assign(self, r: web.Request) -> web.Response:
         """Gán mặc định khi đổi bộ CLI / mức (?providers=a,b&tier=x), hoặc một vai trò (?role=&provider=)."""
@@ -118,6 +119,17 @@ class SetupWeb:
         self.app.orch.log(tr("⚙ Đã lưu thiết lập. Trưởng nhóm: {lead}. Đội: {v}.{flow} Đổi lại: "
                              "/setup, /model, /effort.", lead=c.lead, v=', '.join(on), flow=flow))
         return tr("Đã lưu thiết lập"), "ok", {"setup_saved": True}
+
+    async def save_roles(self, d: dict) -> tuple:
+        """⚡ Sửa nhanh vai trò (/roles): chỉ bảng vai trò · CLI · model · effort, thiết lập khác giữ nguyên."""
+        plan = plan_team(_assign_in(d.get("assign") or {}))
+        if not plan.lead:
+            return tr("Chưa có trưởng nhóm — chọn CLI cho vai trò ★ Trưởng nhóm"), "error"
+        save_onboard(self.app.root, plan, **wizard.current_settings(self.cfg, self.app.root))
+        await self.app.reload_config(setup=True)
+        team = ", ".join(f"{n} ({a.label()})" for n, a in self.cfg.active_agents().items())
+        self.app.orch.log(tr("⚡ Đã lưu vai trò. Trưởng nhóm: {lead}. Đội: {v}.", lead=self.cfg.lead, v=team))
+        return tr("Đã lưu vai trò"), "ok", {"setup_saved": True}
 
     def skip_setup(self) -> tuple:
         mark_setup_done()

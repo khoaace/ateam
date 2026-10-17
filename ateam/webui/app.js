@@ -127,6 +127,7 @@ function onToast(m) {
   if (o.modal === "help") helpModal();
   if (o.modal === "theme") themeModal();
   if (o.modal === "setup" && window.Setup) Setup.open(false);
+  if (o.modal === "roles" && window.Setup) Setup.rolesModal();
   if (o.modal === "custom" && window.Setup) Setup.custom();
   if (o.modal === "flow" && window.Setup) Setup.flowModal({ onSaved: () => { if (S.view === "custom") Setup.showCustom(); } });
   if ((o.modal === "branches" || o.modal === "stash") && window.GitView) GitView[o.modal]();
@@ -1323,6 +1324,7 @@ const ACTIONS = {
   "syslog": () => openTask(0),
   "phone": () => phoneModal(),
   "lofi": () => Lofi.open(),
+  "roles": () => Setup.rolesModal(),
   "goal-plan": (el, e) => { e.stopPropagation(); planModal(+el.dataset.goal); },
   "copy-url": (el) => { navigator.clipboard.writeText(el.dataset.url).then(() => toast(t("copied"), "ok")); },
   "close-drawer": () => closeDrawer(),

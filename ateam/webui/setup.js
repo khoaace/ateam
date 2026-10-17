@@ -157,6 +157,33 @@ window.Setup = (() => {
     row.outerHTML = roleRow(W.data.roles.find((r) => r.key === role));
   }
 
+  /* ---------------------------------------------------------------- ⚡ sửa nhanh vai trò (/roles) — chỉ bước Vai trò của
+     wizard, chọn được mọi CLI đã cài; lưu ngay (server giữ nguyên kiểu làm việc, quyền, worktree, lệnh kiểm tra) */
+  async function rolesModal() {
+    const data = await (await fetch("/api/setup")).json();
+    const i = data.init;
+    W = { data, quick: true, step: data.steps.findIndex((s) => s.key === "roles"), providers: data.quick_providers,
+      tier: i.tier, assign: i.assign, discovering: false };
+    const m = openModal(`${modalHead("⚡ " + esc(t("roles_title")))}<div class="modal-pad ob-body">
+      <div class="muted small">${esc(t("roles_hint"))}</div>
+      <div class="roles">${data.roles.map(roleRow).join("")}</div></div>
+      <div class="ob-foot"><button class="btn ghost" data-rq="setup">${esc(t("roles_full"))}</button><span style="flex:1"></span>
+        <button class="btn ghost" data-rq="cancel">${esc(t("cancel_edit"))}</button>
+        <button class="btn primary" data-rq="save">✓ ${esc(t("save"))}</button></div>`,
+    { box: "lg", onClose: () => { if (W && W.quick) W = null; } });
+    W.modal = m;
+    m.addEventListener("change", onChange);
+    m.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-rq]");
+      if (!b) return;
+      if (b.dataset.rq === "cancel") return closeModal(m);
+      if (b.dataset.rq === "setup") { closeModal(m); return open(false); }
+      collect();
+      const r = await request("roles_save", { assign: W.assign });
+      if (r.setup_saved) closeModal(m);
+    });
+  }
+
   /* ================================================================ /custom — mục 🧩 Tuỳ chỉnh + popup */
   function customHtml(d) {
     const agentRows = d.agents.map((a) => `<div class="c-row"><b>${esc(a.name)}</b>
@@ -174,7 +201,8 @@ window.Setup = (() => {
       <button class="btn sm" data-cu="add-agent">+ ${esc(t("cu_add_agent"))}</button>
       <div class="sec-title" style="margin-top:18px">Workflow</div>${flowRows}
       <div class="row-actions"><button class="btn sm" data-cu="add-flow">+ ${esc(t("cu_add_flow"))}</button>
-        <button class="btn sm" data-cu="default-flow">⚙ ${esc(t("df_title"))}</button></div>`;
+        <button class="btn sm" data-cu="default-flow">⚙ ${esc(t("df_title"))}</button>
+        <button class="btn sm" data-cu="roles">⚡ ${esc(t("roles_title"))}</button></div>`;
   }
   function customClick(d, reopen) {
     return async (e) => {
@@ -184,6 +212,7 @@ window.Setup = (() => {
       if (b.dataset.cu === "add-agent") agentForm(d, null, reopen);
       if (b.dataset.cu === "add-flow") flowForm(d, null, reopen);
       if (b.dataset.cu === "default-flow") flowModal({ onSaved: reopen });
+      if (b.dataset.cu === "roles") rolesModal();
       if (b.dataset.cu === "edit-agent") agentForm(d, d.agents.find((a) => a.name === name), reopen);
       if (b.dataset.cu === "edit-flow") flowForm(d, d.workflows.find((w) => w.name === name), reopen);
       if (b.dataset.cu === "del-agent" || b.dataset.cu === "del-flow") {
@@ -429,5 +458,5 @@ window.Setup = (() => {
     });
   }
 
-  return { open, discovered, custom, showCustom, flowModal };
+  return { open, discovered, custom, showCustom, flowModal, rolesModal };
 })();

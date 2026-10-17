@@ -64,7 +64,8 @@ lại bước trước, nút ✕ để đóng):
 
 Danh sách model được hỏi thật từ các CLI (`codex debug models`, `agy models`, `grok models`, `opencode models`)
 ngay khi wizard mở. Mở lại bất cứ lúc nào bằng `/setup` trong app hoặc `ateam setup` (wizard điền sẵn đội hiện
-tại). Agent tuỳ chỉnh bạn tự thêm ở `/custom` được giữ nguyên.
+tại). Agent tuỳ chỉnh bạn tự thêm ở `/custom` được giữ nguyên. Chỉ muốn đổi CLI · model · effort của vai trò thì dùng
+**`/roles`** (web: nút ⚡ ở tab Đội / Tuỳ chỉnh) — mở thẳng bảng vai trò, lưu là áp ngay, các thiết lập khác giữ nguyên.
 
 * **Gõ một câu bình thường** → giao mục tiêu cho trưởng nhóm. Kế hoạch hiện ra ở trạng thái *nháp*
   trong khung **Duyệt kế hoạch** ngay trên ô nhập (thấy ở cả tab Bảng việc và Đội): danh sách task kèm
@@ -249,6 +250,7 @@ Trong app (được lưu lại cho lần sau, ở `~/.config/ateam/state.json`):
 /models grok làm mới           hỏi CLI danh sách model thật (grok models, opencode models, agy models)
 /agents                        xem tất cả + mức effort hợp lệ
 /setup                         wizard thiết lập: CLI, kiểu làm việc, vai trò · model · effort, an toàn
+/roles                         sửa nhanh bảng vai trò · CLI · model · effort (không đi lại cả wizard)
 ```
 
 Tab Đội cũng hiện danh sách model/effort trong ô từng agent; bấm vào tiêu đề ô để chọn model rồi
