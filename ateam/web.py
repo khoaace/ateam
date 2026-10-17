@@ -20,7 +20,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import __version__, mentions, notify, reports, shell, theme, todos, update, wizard
+from . import __version__, clipboard, mentions, notify, reports, shell, theme, todos, update, wizard
 from .config import Config, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import ASKING, DB, GOAL_ENDED, Goal, Task
 from .qr import QR
@@ -33,6 +33,7 @@ from .web_setup import SetupWeb
 
 STATIC = Path(__file__).with_name("webui")
 LOG_TAIL = 600       # số dòng cuối của log gửi khi mở 1 task
+IMAGE_MAX = 20 * 1024 ** 2  # ảnh dán vào ô nhập
 TASK_LIMIT = 400     # bảng việc gửi tối đa ngần này task gần nhất
 
 
@@ -97,7 +98,7 @@ def ui_strings() -> dict[str, str]:
         "placeholder": tr("Nhập mục tiêu cho trưởng nhóm · / lệnh · ! lệnh terminal · @ nhắc file"),
         "placeholder_wf": tr("Nhập mục tiêu (chạy theo workflow '{wf}') · / lệnh · ! lệnh terminal · @ nhắc file"),
         "placeholder_grill": tr("Trả lời câu hỏi của trưởng nhóm (Enter) · gõ số để chọn phương án"),
-        "send_hint": tr("Enter gửi · Shift+Enter xuống dòng"),
+        "send_hint": tr("Enter gửi · Shift+Enter xuống dòng · ⌘V / kéo-thả để dán ảnh"),
         "retry": tr("Chạy lại"), "cancel": tr("Huỷ task"), "diff": tr("Xem diff"), "merge": tr("Merge"),
         "reject": tr("Từ chối"), "reject_ph": tr("Góp ý (để trống = chỉ từ chối, có góp ý = giao làm lại)"),
         "continue_task": tr("Hỏi tiếp"), "close": tr("Đóng"),
@@ -196,10 +197,23 @@ def ui_strings() -> dict[str, str]:
         "goal_plan": tr("Kế hoạch"), "goal_plan_title": tr("Kế hoạch mục tiêu #{id}"),
         "src_plan": tr("Kế hoạch ban đầu"), "src_workflow": tr("Theo workflow"), "src_review": tr("Bổ sung khi review"),
         "src_followup": tr("Tiếp tục / làm thêm"), "src_delegate": tr("Giao việc chéo"), "src_user": tr("Thêm tay"),
-        "plan_empty": tr("Mục tiêu này chưa có task nào"),
+        "plan_empty": tr("Mục tiêu này chưa có task nào"), "plan_summary": tr("Tổng kết của trưởng nhóm"),
+        "plan_lead": tr("Kế hoạch của trưởng nhóm"), "plan_agents": tr("Kết quả từng agent"),
+        "plan_show_prompt": tr("Xem prompt giao cho agent"),
         "roles_title": tr("Vai trò · model · effort"), "roles_full": tr("Thiết lập đầy đủ (/setup)…"),
         "roles_hint": tr("Đổi CLI · model · effort cho từng vai trò — lưu là có hiệu lực ngay. Kiểu làm việc, quyền, "
                          "lệnh kiểm tra giữ nguyên (đổi ở /setup)."),
+        "image_pasted": tr("Đã dán ảnh {v}"),
+        "sr_files": tr("File"), "sr_search": tr("Tìm"), "sr_replace_ph": tr("Thay bằng"),
+        "sr_case": tr("Phân biệt hoa/thường"), "sr_word": tr("Khớp nguyên từ"), "sr_regex": tr("Dùng regex"),
+        "sr_toggle_replace": tr("Hiện ô thay thế"), "sr_more": tr("Lọc file"),
+        "sr_include": tr("File gồm — vd src, *.ts"), "sr_exclude": tr("File bỏ qua — vd *.test.ts, dist"),
+        "sr_searching": tr("Đang tìm…"), "sr_none": tr("Không có kết quả"), "sr_summary": tr("{n} kết quả trong {f} file"),
+        "sr_truncated": tr("quá nhiều, chỉ hiện phần đầu — thu hẹp tìm kiếm"),
+        "sr_replace_all": tr("Thay tất cả"), "sr_replace_file": tr("Thay trong file này"),
+        "sr_dismiss": tr("Bỏ khỏi kết quả"),
+        "sr_confirm_q": tr("Thay {n} kết quả trong {f} file bằng \"{r}\"? App không hoàn tác được — xem lại bằng git diff."),
+        "sr_dirty": tr("Bỏ qua file đang sửa dở (chưa lưu): {v}"),
         "lofi": tr("Nhạc lofi"), "lofi_play": tr("Phát"), "lofi_pause": tr("Tạm dừng"), "lofi_hide": tr("Thu gọn"),
         "lofi_show": tr("Mở rộng"), "lofi_close": tr("Tắt nhạc"), "lofi_custom": tr("Link của bạn"),
         "lofi_custom_ph": tr("Dán link YouTube hoặc stream mp3/aac rồi Enter…"),
@@ -302,7 +316,7 @@ def guard_middleware(port: int):
 
 
 # --readonly: thao tác không đổi gì vẫn cho phép
-READONLY_OPS = ("custom_preview", "goal_plan")
+READONLY_OPS = ("custom_preview", "goal_plan", "code_search")
 
 
 def text_box(title: str, body: str) -> dict:
@@ -341,6 +355,7 @@ class WebApp:
             web.get("/api/job/{jid}", self.api_job),
             web.get("/api/scripts", self.api_scripts),
             web.get("/api/files", self.api_files),
+            web.post("/api/image", self.api_image),
             web.get("/api/continue", self.api_continue),
             web.get("/api/dashboard", self.api_dashboard),
             web.get("/api/goals", self.api_goals),
@@ -583,6 +598,20 @@ class WebApp:
     async def api_scripts(self, _request: web.Request) -> web.Response:
         return web.json_response([{"cmd": c, "desc": d} for c, d in shell.project_scripts(self.root)])
 
+    async def api_image(self, request: web.Request) -> web.Response:
+        """Dán / kéo-thả ảnh vào ô nhập: thân request là byte ảnh → lưu `.ateam/images/`, trả `@đường/dẫn` để chèn."""
+        if self.remote.readonly:
+            return web.json_response({"error": tr("Chế độ chỉ xem (--readonly) — không làm được thao tác này")})
+        data = await request.read()
+        if len(data) > IMAGE_MAX:
+            return web.json_response({"error": tr("Ảnh quá lớn (tối đa {n} MB)", n=IMAGE_MAX // 1024 ** 2)})
+        try:
+            p = clipboard.save_image(data, self.root / ".ateam" / "images")
+        except ValueError:
+            return web.json_response({"error": tr("Dữ liệu dán vào không phải ảnh")})
+        rel = clipboard.shorten(p, self.root)
+        return web.json_response({"path": rel, "mention": mentions.quote(rel)})
+
     async def api_files(self, request: web.Request) -> web.Response:
         if self.index.stale():
             await self.index.refresh()
@@ -696,6 +725,10 @@ class WebApp:
             return None
         if op == "git":
             return await self.git.op(d)
+        if op == "code_search":
+            return await self.code.search(d)
+        if op == "code_replace":
+            return await self.code.replace(d)
         if op == "save":
             return self.code.save(d)
         if op == "setup_save":
@@ -735,7 +768,7 @@ class WebApp:
         if not g:
             return tr("Không thấy mục tiêu #{id}", id=gid), "warn"
         tasks = [{k: v for k, v in task_json(t).items() if k in ("id", "agent", "title", "prompt", "status", "deps",
-                                                                 "source", "model", "effort")}
+                                                                 "source", "model", "effort", "result", "error", "started", "finished")}
                  for t in self.db.tasks(goal_id=g.id)]
         return "", "", {"goal_plan": {"goal": goal_json(g, False), "tasks": tasks}}
 
@@ -917,6 +950,8 @@ class WebApp:
             return "", "", {"open": {"view": "custom"}}  # mục 🧩 Tuỳ chỉnh ở sidebar (popup vẫn mở từ /setup)
         if cmd == "dash":
             return "", "", {"open": {"view": "dash"}}
+        if cmd == "search":
+            return "", "", {"open": {"search": rest}}
         if cmd == "plan":  # trống = mục tiêu mới nhất
             gid = int(rest.lstrip("#mM")) if rest.strip() else next((g.id for g in reversed(self.db.goals())), None)
             return ("", "", {"open": {"plan": gid}}) if gid else (tr("Chưa có mục tiêu nào"), "warn")

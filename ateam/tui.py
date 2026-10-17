@@ -30,7 +30,8 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import clipboard, diffview, editor, gitops, mentions, notify, reports, shell, theme, todos, update, wizard
+from . import (clipboard, diffview, editor, gitops, mentions, notify, reports, search, shell, theme, todos,
+               update, wizard)
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
 from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TIERS,
                      WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan,
@@ -207,6 +208,8 @@ Xem & sửa code (tab 📝 Code — Ctrl+T xoay tới, hoặc /code):
   /code [@file[:dòng]]              mở file trong editor (trống: mở tab, gõ để lọc file bên trái);
                                     /edit @file cũng được
                                     phím e ở tab Git (file đang chọn) / màn hình diff (đúng đoạn đang xem)
+  /search [từ khoá]   F3             tìm & thay trong toàn dự án như VS Code: Aa / nguyên từ / regex, lọc file,
+                                    xem trước chữ thay; Enter mở file đúng chỗ · r thay trong file · Ctrl+R thay tất cả
   phím vim                          i a I A o O sửa · Esc về normal · h j k l w b e 0 ^ $ gg G Ctrl+D/U
                                     x dd D dw cw cc yy p P J r u Ctrl+R · v V chọn · / ? n N * tìm
                                     :w lưu · :q đóng · :wq · :q! bỏ thay đổi · :e! nạp lại · :<số> tới dòng
@@ -264,6 +267,7 @@ COMMANDS = [
     ("retry", "<task>", tr("chạy lại task")),
     ("cancel", "<task>", tr("huỷ task")),
     ("review", tr("<mục tiêu>"), tr("bắt trưởng nhóm review ngay")),
+    ("search", tr("[từ khoá]"), tr("tìm & thay trong toàn dự án (F3), như VS Code")),
     ("plan", tr("[mục tiêu]"), tr("xem lại kế hoạch của mục tiêu, kể cả đã duyệt / đã xong")),
     ("todo", tr("[việc cần làm]"), tr("mở tab To-do (lưu ngoài repo); kèm nội dung thì thêm việc")),
     ("continue", tr("<m12|t40> <yêu cầu>"), tr("tiếp tục mục tiêu / thread đã xong (F6)")),
@@ -295,7 +299,7 @@ COMMANDS = [
     ("help", "", tr("toàn bộ lệnh & phím tắt")),
     ("quit", "", tr("thoát")),
 ]
-COMMAND_ALIASES = {"vaitro": "roles", "role": "roles", "grill-me": "grill", "hoi": "grill", "h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
+COMMAND_ALIASES = {"tim": "search", "find": "search", "grep": "search", "vaitro": "roles", "role": "roles", "grill-me": "grill", "hoi": "grill", "h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
                    "workflows": "custom", "agent-moi": "custom", "exit": "quit", "q": "quit"}
 
 
@@ -2593,70 +2597,72 @@ PLAN_SOURCES = [("plan", tr("Kế hoạch ban đầu")), ("workflow", tr("Theo w
 
 
 class PlanViewScreen(BaseModal):
-    """📋 Kế hoạch của một mục tiêu, xem lại cả khi đã duyệt / xong (/plan): task nhóm theo nguồn (cột source),
-    dòng đang chọn hiện prompt bên dưới. Như popup 📋 trên thẻ mục tiêu của web."""
+    """📋 Kế hoạch của một mục tiêu, xem lại cả khi đã duyệt / xong (/plan) — như popup 📋 của web, đọc từ trên
+    xuống: đề bài → kế hoạch của trưởng nhóm (bảng các bước) → kết quả từng agent (markdown đầy đủ) → tổng kết.
+    Phím p: hiện / ẩn prompt giao cho từng agent."""
 
+    BINDINGS = [Binding("p", "toggle_prompts", tr("Prompt"))]
     DEFAULT_CSS = """
     PlanViewScreen { align: center middle; }
-    #pv-box { width: 124; max-width: 100%; height: 90%; border: round $primary 70%; background: $surface; padding: 0 1; }
-    #pv-goal { height: auto; max-height: 6; margin-bottom: 1; }
-    #pv-list { height: 1fr; min-height: 6; border: none; }
-    #pv-prompt { height: 1fr; border-top: solid $primary-darken-2; }
+    #pv-box { width: 124; max-width: 100%; height: 92%; border: round $primary 70%; background: $surface; padding: 0 1; }
+    #pv-body { height: 1fr; }
     #pv-foot { height: 1; color: $text-muted; }
     """
 
     def __init__(self, goal, tasks: list):
         super().__init__()
-        self.goal, self.tasks, self.shown = goal, {t.id: t for t in tasks}, None
-        self.groups: dict[str, list] = {}
-        for t in tasks:
-            k = (t.source or "plan").split(":")[0]
-            self.groups.setdefault(k if k in dict(PLAN_SOURCES) else "plan", []).append(t)
+        self.goal, self.tasks, self.prompts = goal, tasks, False
+        self.doc = ""
 
     def compose(self) -> ComposeResult:
-        g = self.goal
-        head = Text(g.text.strip())
-        if g.summary:
-            head.append("\n" + g.summary.strip(), "italic dim")
-        opts: list = []
-        for key, label in PLAN_SOURCES:
-            for i, t in enumerate(self.groups.get(key, [])):
-                if not i:
-                    opts.append(Option(Text(f"{label} · {len(self.groups[key])}", "bold"), disabled=True))
-                st, style = STATUS.get(t.status, (t.status, ""))
-                line = Text(f"#{t.id:<4} ", "dim")
-                line.append(f"{t.agent:<12} ", "cyan")
-                line.append(t.title)
-                if t.source and t.source.startswith("delegate:"):
-                    line.append(f"  ← {t.source[9:]}", "dim")
-                if t.depends_on:
-                    line.append("  " + tr("sau {v}", v=", ".join(f"#{d}" for d in t.depends_on)), "dim")
-                line.append(f"  {STATUS_ICON.get(t.status, '●')} {st}", style)
-                opts.append(Option(line, id=str(t.id)))
         with Vertical(id="pv-box"):
-            yield self.title_bar(tr("📋 Kế hoạch mục tiêu #{id}", id=g.id))
-            yield Static(head, id="pv-goal")
-            yield OptionList(*opts, id="pv-list")
-            with VerticalScroll(id="pv-prompt"):
-                yield Static(Text(tr("Mục tiêu này chưa có task nào") if not self.tasks else ""), id="pv-text")
-            yield Static(tr("↑↓ chọn task để xem prompt · Esc đóng"), id="pv-foot")
+            yield self.title_bar(tr("📋 Kế hoạch mục tiêu #{id}", id=self.goal.id))
+            with VerticalScroll(id="pv-body"):
+                yield Static(id="pv-text")
+            yield Static(tr("↑↓ / PgUp PgDn cuộn · p hiện/ẩn prompt · Esc đóng"), id="pv-foot")
+
+    def build(self) -> str:
+        """Cả popup dạng markdown (rich vẽ bảng, tiêu đề, code…)."""
+        cell = (lambda v: str(v).replace("|", "\\|").replace("\n", " "))
+        status = (lambda t: f"{STATUS_ICON.get(t.status, '●')} {STATUS.get(t.status, (t.status, ''))[0]}")
+        out = [self.goal.text.strip(), ""]
+        if not self.tasks:
+            out.append(tr("Mục tiêu này chưa có task nào"))
+        else:
+            src = dict(PLAN_SOURCES)
+            out += [f"## 📋 {tr('Kế hoạch của trưởng nhóm')}", "",
+                    f"| # | Agent | {tr('Việc')} | {tr('Chạy sau')} | {tr('Trạng thái')} |", "|---|---|---|---|---|"]
+            for t in self.tasks:
+                k = (t.source or "plan").split(":")[0]
+                note = f" _({src[k]}{' ← ' + t.source[9:] if t.source.startswith('delegate:') else ''})_" \
+                    if k in src and k not in ("plan", "workflow") else ""
+                out.append(f"| #{t.id} | {cell(t.agent)} | {cell(t.title)}{note} | "
+                           f"{', '.join(f'#{d}' for d in t.depends_on)} | {status(t)} |")
+            out += ["", f"## 🤖 {tr('Kết quả từng agent')}"]
+            for t in self.tasks:
+                meta = " · ".join(x for x in (t.model, t.effort) if x)
+                dur = fmt_dur((t.finished or time.time()) - t.started) if t.started else ""
+                out += ["", f"### #{t.id} · {t.agent} — {t.title}",
+                        f"_{status(t)}{' · ' + dur if dur else ''}{' · ' + meta if meta else ''}_", "",
+                        (t.result or t.error or tr("Chưa có kết quả.")).strip()]
+                if self.prompts:
+                    out += ["", "**Prompt:**", "", "\n".join("> " + ln for ln in (t.prompt or "").splitlines())]
+        if self.goal.summary:
+            out += ["", "---", "", f"## ✔ {tr('Tổng kết của trưởng nhóm')}", "", self.goal.summary.strip()]
+        return "\n".join(out)
 
     def on_mount(self) -> None:
-        ol = self.query_one("#pv-list", OptionList)
-        ol.focus()
-        for i in range(ol.option_count):
-            if ol.get_option_at_index(i).id:
-                ol.highlighted = i
-                break
+        self.render_doc()
+        self.query_one("#pv-body").focus()
 
-    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
-        event.stop()
-        t = self.tasks.get(int(event.option.id)) if event.option.id else None
-        if t:
-            from rich.markdown import Markdown
-            self.shown = t.id
-            self.query_one("#pv-text", Static).update(Markdown(t.prompt or ""))
-            self.query_one("#pv-prompt").scroll_home(animate=False)
+    def render_doc(self) -> None:
+        from rich.markdown import Markdown
+        self.doc = self.build()
+        self.query_one("#pv-text", Static).update(Markdown(self.doc))
+
+    def action_toggle_prompts(self) -> None:
+        self.prompts = not self.prompts
+        self.render_doc()
 
 
 class TodoList(OptionList):
@@ -2785,6 +2791,228 @@ class TodoPanel(Vertical):
             event.stop()
             self.stop_edit()
             self.query_one(TodoList).focus()
+
+
+class SearchList(OptionList):
+    BINDINGS = [Binding("r", "replace_file", tr("Thay trong file")), Binding("x", "hide_file", tr("Bỏ file")),
+                Binding("tab", "app.focus_next", show=False)]
+
+    def action_replace_file(self) -> None:
+        self.screen.replace_current()  # type: ignore[attr-defined]
+
+    def action_hide_file(self) -> None:
+        self.screen.hide_current()  # type: ignore[attr-defined]
+
+
+class SearchScreen(BaseModal):
+    """🔍 Tìm & thay trong toàn dự án (F3, /search) — như ô Search của VS Code và mục 🔍 Tìm ở tab Code của web;
+    logic ở search.py. Gõ là tìm; có chữ ở ô "Thay bằng" thì kết quả hiện chữ cũ → mới. Enter trên một dòng:
+    đóng và mở file đúng chỗ đó ở tab 📝 Code. Trả về (đường dẫn, dòng, cột) hoặc None."""
+
+    BINDINGS = [Binding("ctrl+r", "replace_all", tr("Thay tất cả"), priority=True)]
+    DEFAULT_CSS = """
+    SearchScreen { align: center middle; }
+    #sr-box { width: 130; max-width: 100%; height: 92%; border: round $primary 70%; background: $surface; padding: 0 1; }
+    #sr-box .sr-row { height: 3; }
+    #sr-box #sr-q, #sr-box #sr-r { width: 1fr; }
+    #sr-box Checkbox { width: auto; border: none; padding: 0 1; margin-top: 0; }
+    #sr-box #sr-inc, #sr-box #sr-exc { width: 1fr; }
+    #sr-sum { height: 1; color: $text-muted; margin-top: 1; }
+    #sr-list { height: 1fr; border: none; }
+    #sr-foot { height: 1; color: $text-muted; }
+    """
+
+    def __init__(self, state: dict):
+        super().__init__()
+        self.state = state  # app giữ lại giữa các lần mở: query, replace, case, word, regex, include, exclude
+        self.res: dict | None = None
+        self.hidden: set[str] = set()
+        self._timer = None
+
+    def compose(self) -> ComposeResult:
+        st = self.state
+        with Vertical(id="sr-box"):
+            yield self.title_bar(tr("🔍 Tìm & thay trong dự án"))
+            with Horizontal(classes="sr-row"):
+                yield TextInput(st.get("query", ""), placeholder=tr("Tìm…"), id="sr-q")
+                yield Checkbox("Aa", st.get("case", False), id="sr-case", tooltip=tr("Phân biệt hoa/thường"))
+                yield Checkbox(tr("Nguyên từ"), st.get("word", False), id="sr-word")
+                yield Checkbox("Regex", st.get("regex", False), id="sr-regex")
+            with Horizontal(classes="sr-row"):
+                yield TextInput(st.get("replace", ""), placeholder=tr("Thay bằng… (để trống: chỉ tìm)"), id="sr-r")
+            with Horizontal(classes="sr-row"):
+                yield TextInput(st.get("include", ""), placeholder=tr("File gồm — vd src, *.ts"), id="sr-inc")
+                yield TextInput(st.get("exclude", ""), placeholder=tr("File bỏ qua — vd *.test.ts, dist"), id="sr-exc")
+            yield Static(id="sr-sum")
+            yield SearchList(id="sr-list")
+            yield Static(tr("Enter mở file · Tab sang kết quả · r thay trong file · x bỏ file · Ctrl+R thay tất cả · "
+                            "Esc đóng"), id="sr-foot")
+
+    def on_mount(self) -> None:
+        q = self.query_one("#sr-q", TextInput)
+        q.focus()
+        if q.value:
+            self.run_search()
+
+    # ---------------------------------------------------------------- tìm
+    def opts(self) -> dict:
+        return {k: self.query_one(f"#sr-{k}", Checkbox).value for k in ("case", "word", "regex")}
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        event.stop()
+        if self._timer:
+            self._timer.stop()
+        self._timer = self.set_timer(0.3, self.run_search)
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        event.stop()
+        self.run_search()
+
+    def run_search(self) -> None:
+        st = self.state
+        st.update(query=self.query_one("#sr-q", Input).value, replace=self.query_one("#sr-r", Input).value,
+                  include=self.query_one("#sr-inc", Input).value, exclude=self.query_one("#sr-exc", Input).value,
+                  **self.opts())
+        self.run_worker(self._search(), exclusive=True, group="sr")
+
+    async def _search(self) -> None:
+        st = self.state
+        self.hidden.clear()
+        if not st["query"]:
+            self.res = None
+            self.render_results()
+            return
+        self.query_one("#sr-sum", Static).update(Text(tr("Đang tìm…"), "dim"))
+        files = await self.app.search_files()  # type: ignore[attr-defined]
+        try:
+            self.res = await asyncio.to_thread(
+                search.search, self.app.root, files, st["query"], include=st["include"],  # type: ignore[attr-defined]
+                exclude=st["exclude"], replace=st["replace"] or None, **self.opts())
+        except ValueError as e:
+            self.res = {"error": tr("Regex không hợp lệ: {e}", e=e)}
+        self.render_results()
+
+    def render_results(self) -> None:
+        ol = self.query_one("#sr-list", SearchList)
+        sum_ = self.query_one("#sr-sum", Static)
+        ol.clear_options()
+        r = self.res
+        if not r:
+            sum_.update("")
+            return
+        if r.get("error"):
+            sum_.update(Text(r["error"], PAL.get("err", "red")))
+            return
+        files = [f for f in r["files"] if f["path"] not in self.hidden]
+        n = sum(len(f["matches"]) for f in files)
+        if not files:
+            sum_.update(Text(tr("Không có kết quả"), "dim"))
+            return
+        t = Text(tr("{n} kết quả trong {f} file", n=n, f=len(files)))
+        if r.get("truncated"):
+            t.append(" · " + tr("quá nhiều, chỉ hiện phần đầu — thu hẹp tìm kiếm"), PAL.get("warn", "yellow"))
+        sum_.update(t)
+        rep = bool(self.state.get("replace"))
+        opts: list = []
+        for f in files:
+            name = f["path"].rsplit("/", 1)[-1]
+            head = Text(no_wrap=True, overflow="ellipsis")
+            head.append(f"{name}  ", "bold")
+            head.append(f["path"][:-len(name)].rstrip("/") + "  ", "dim")
+            head.append(f"{len(f['matches'])}", "bold cyan")
+            opts.append(Option(head, id="F" + f["path"]))
+            for i, m in enumerate(f["matches"]):
+                pre = m["text"][:m["s"]].lstrip()
+                pre = "…" + pre[-30:] if len(pre) > 32 else pre
+                line = Text(no_wrap=True, overflow="ellipsis")
+                line.append(f"  {m['line']:>5}  ", "dim")
+                line.append(pre)
+                hit = m["text"][m["s"]:m["e"]]
+                if rep:
+                    line.append(hit, f"strike {PAL.get('err', 'red')}")
+                    line.append(m.get("repl", ""), f"bold {PAL.get('ok', 'green')}")
+                else:
+                    line.append(hit, f"bold reverse {PAL.get('warn', 'yellow')}")
+                line.append(m["text"][m["e"]:])
+                opts.append(Option(line, id=f"M{i}:{f['path']}"))
+        ol.add_options(opts)
+
+    def _at(self) -> tuple[str, dict | None]:
+        """(đường dẫn, chỗ khớp hoặc None nếu đang ở dòng tên file) của dòng đang chọn."""
+        ol = self.query_one("#sr-list", SearchList)
+        if ol.highlighted is None or not ol.option_count:
+            return "", None
+        oid = ol.get_option_at_index(ol.highlighted).id or ""
+        if oid.startswith("F"):
+            return oid[1:], None
+        idx, _, path = oid[1:].partition(":")
+        f = next((x for x in (self.res or {}).get("files", []) if x["path"] == path), None)
+        return path, (f["matches"][int(idx)] if f else None)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        path, m = self._at()
+        if path:
+            self.dismiss((path, m["line"] if m else 1, m["col"] if m else 0))
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        self.query_one("#sr-list", SearchList).focus()
+
+    # ---------------------------------------------------------------- thay
+    def visible(self) -> list[str]:
+        return [f["path"] for f in (self.res or {}).get("files", []) if f["path"] not in self.hidden]
+
+    def hide_current(self) -> None:
+        path, _m = self._at()
+        if path:
+            self.hidden.add(path)
+            self.render_results()
+
+    def replace_current(self) -> None:
+        path, _m = self._at()
+        if path:
+            self.replace_files([path])
+
+    def action_replace_all(self) -> None:
+        self.replace_files(self.visible())
+
+    def replace_files(self, paths: list[str]) -> None:
+        st = self.state
+        if not st.get("query") or not paths or self.res is None or self.res.get("error"):
+            return
+        if not st.get("replace"):
+            self.notify(tr("Gõ chữ thay thế ở ô \"Thay bằng\" trước"), severity="warning")
+            self.query_one("#sr-r", Input).focus()
+            return
+        dirty = set(self.app.code_unsaved())  # type: ignore[attr-defined]
+        skip = [p for p in paths if p in dirty]
+        if skip:
+            self.notify(tr("Bỏ qua file đang sửa dở (chưa lưu): {v}", v=", ".join(skip)), severity="warning")
+        paths = [p for p in paths if p not in dirty]
+        if not paths:
+            return
+        n = sum(len(f["matches"]) for f in self.res["files"] if f["path"] in paths)
+
+        async def go(ok) -> None:
+            if not ok:
+                return
+            try:
+                res = await asyncio.to_thread(search.replace_in, self.app.root,  # type: ignore[attr-defined]
+                                              paths, st["query"], st["replace"], **self.opts())
+            except (ValueError, OSError) as e:
+                self.notify(str(e), severity="error")
+                return
+            self.notify(tr("Đã thay {n} kết quả trong {f} file", n=res["total"], f=len(res["files"])))
+            await self.app.after_replace(list(res["files"]), st, res["total"])  # type: ignore[attr-defined]
+            self.run_search()
+
+        self.app.push_screen(ConfirmScreen(
+            tr("Thay tất cả"), tr("Thay {n} kết quả trong {f} file bằng \"{r}\"? App không hoàn tác được — xem lại "
+                                 "bằng git diff.", n=n, f=len(paths), r=st["replace"]), tr("Thay tất cả")), go)
+
+    def close(self) -> None:
+        self.dismiss(None)
 
 
 class StatusBar(Static):
@@ -3919,6 +4147,7 @@ class TeamApp(App):
         Binding("ctrl+d", "diff", tr("Xem diff"), priority=True),
         Binding("ctrl+y", "merge", "Merge", priority=True),
         Binding("ctrl+l", "syslog", tr("Log hệ thống"), priority=True),
+        Binding("f3", "search", tr("Tìm trong dự án"), priority=True),
     ]
 
     def __init__(self, root: Path, cfg: Config, db: DB, setup: bool = False):
@@ -3948,6 +4177,7 @@ class TeamApp(App):
         self._booted = False
         self.restart_requested = False  # /lang: cli.cmd_tui mở lại app sau khi thoát
         self.code_bufs: dict[str, dict] = {}  # tab 📝 Code: đường dẫn tuyệt đối -> buffer
+        self.search_state: dict = {}  # popup 🔍 Tìm & thay (F3): giữ từ khoá, tuỳ chọn giữa các lần mở
         self.code_order: list[str] = []
         self.code_cur: str | None = None
         self._code_check_at = 0.0
@@ -4295,6 +4525,8 @@ class TeamApp(App):
     CODE_YIELD = {"diff", "cancel_task", "retry", "approve", "continue", "merge", "syslog"}
 
     def check_action(self, action: str, parameters: tuple) -> bool | None:
+        if action == "retry" and isinstance(self.screen, SearchScreen):
+            return False  # Ctrl+R trong popup 🔍 = thay tất cả
         if action in self.CODE_YIELD:
             f = self.focused
             if isinstance(f, CodeEditor) and f.buffer is not None:
@@ -4364,12 +4596,45 @@ class TeamApp(App):
         if q and first is not None:
             ol.highlighted = first
 
-    def open_code(self, target: str = "", line: int | None = None) -> None:
+    # ------------------------------------------------------------------ 🔍 tìm & thay trong dự án (F3, /search)
+    def action_search(self, query: str | None = None) -> None:
+        st = self.search_state
+        ed = self.code_editor()
+        sel = ed.selected_text if ed.buffer is not None else ""
+        if query is None and sel and "\n" not in sel:
+            query = sel  # đang chọn chữ trong editor: tìm luôn chữ đó
+        if query is not None:
+            st["query"] = query
+
+        def done(r) -> None:
+            if r:
+                path, line, col = r
+                self.open_code(path, line, col)
+        self.push_screen(SearchScreen(st), done)
+
+    async def search_files(self) -> list[str]:
+        idx = self.query_one("#cmd", CommandInput).index
+        if idx.stale():
+            await idx.refresh()
+        return list(idx.entries)
+
+    async def after_replace(self, paths: list[str], st: dict, n: int) -> None:
+        """Sau khi thay: file đang mở (đã chắc chắn không sửa dở) nạp lại; ghi vào log hệ thống."""
+        self.orch.log(tr("🔍 Thay \"{q}\" → \"{r}\": {n} chỗ trong {f} file", q=st["query"], r=st["replace"], n=n,
+                         f=len(paths)))
+        changed = {str(Path(os.path.normpath(str(self.root / p)))) for p in paths}
+        for key in changed & set(self.code_bufs):
+            self.code_bufs[key].update(dirty=False, text=None)
+        ed = self.code_editor()
+        if ed.buffer is not None and str(ed.buffer.path) in changed:
+            await self.code_reload(keep_message=True)
+
+    def open_code(self, target: str = "", line: int | None = None, col: int = 0) -> None:
         self.query_one("#tabs", TabbedContent).active = "tab-code"
         if not target:
             self.code_tab_shown()
             return
-        self.run_worker(self._open_code(target, line), exclusive=True, group="code-open")
+        self.run_worker(self._open_code(target, line, col), exclusive=True, group="code-open")
 
     def _stash_code(self) -> None:
         """Ghi trạng thái buffer đang hiện (con trỏ, nội dung chưa lưu) trước khi đổi buffer."""
@@ -4380,7 +4645,7 @@ class TeamApp(App):
             b["dirty"] = ed.dirty
             b["text"] = ed.text if ed.dirty else None
 
-    async def _open_code(self, target: str, line: int | None = None) -> None:
+    async def _open_code(self, target: str, line: int | None = None, col: int = 0) -> None:
         path = Path(target).expanduser()
         if not path.is_absolute():
             path = self.root / path
@@ -4410,8 +4675,8 @@ class TeamApp(App):
         self.code_cur = key
         ed.load(sf, cursor=cursor, dirty_text=text)
         if line:
-            ed.move_cursor((max(0, line - 1), editor.first_nonblank(ed.document[max(0, min(line - 1,
-                            ed.document.line_count - 1))])), center=True)
+            row = max(0, min(line - 1, ed.document.line_count - 1))
+            ed.move_cursor((row, col or editor.first_nonblank(ed.document[row])), center=True)
         if not sf.mtime and not sf.text:
             ed.message = tr("File mới — :w để tạo")
         ed.focus()
@@ -6275,6 +6540,9 @@ class TeamApp(App):
             return
         elif cmd == "dash":
             self.query_one("#tabs", TabbedContent).active = "tab-dash"
+        elif cmd == "search":
+            self.action_search(rest or None)
+            return
         elif cmd == "plan":
             self.open_plan(int(rest.lstrip("#mM")) if rest else None)
             return

@@ -121,6 +121,7 @@ function onToast(m) {
   if (o.job != null) { setView("term"); openJob(o.job); }
   if (o.diff != null) DiffView.task(o.diff);
   if (o.plan != null) planModal(o.plan);
+  if (o.search != null) { setView("code"); CodeView.search(o.search); }
   if (o.task != null) openTask(o.task);
   if (o.view) setView(o.view);
   if (o.git_ai && window.GitView) GitView.aiMessage();
@@ -506,39 +507,50 @@ function renderGoals() {
   box.innerHTML = `<div class="goal goal-all${S.goalFilter == null ? " sel" : ""}" data-action="goal-filter" data-goal="">${esc(t("all_goals"))}</div>` + cards;
 }
 
-/* 📋 kế hoạch của một mục tiêu — xem lại sau khi đã duyệt / xong: mọi task, nhóm theo nguồn, bấm dòng xem prompt */
+/* 📋 kế hoạch của một mục tiêu — xem lại cả khi đã duyệt / xong. Đọc từ trên xuống: đề bài → kế hoạch của trưởng
+   nhóm (bảng các bước, bấm để nhảy tới kết quả) → kết quả từng agent (markdown đầy đủ, prompt thu gọn) → tổng kết */
 const PLAN_SOURCES = ["plan", "workflow", "review", "followup", "delegate", "user"];
 async function planModal(gid) {
   const r = await request("goal_plan", { goal: gid });
   const p = r.goal_plan;
   if (!p) return;
-  const groups = {};
-  for (const x of p.tasks) {
-    const k = (x.source || "plan").split(":")[0];
-    (groups[PLAN_SOURCES.includes(k) ? k : "plan"] = groups[PLAN_SOURCES.includes(k) ? k : "plan"] || []).push(x);
-  }
-  const row = (x) => `
-    <div class="plan-row">
-      <div class="plan-line" data-pv="${x.id}">
-        <span class="tid">#${x.id}</span>
-        <span>${agentHtml(x.agent)}</span>
-        <span class="plan-title">${esc(x.title)}${x.source && x.source.startsWith("delegate:") ? ` <span class="muted small">← ${esc(x.source.slice(9))}</span>` : ""}</span>
-        <span class="deps">${x.deps.length ? esc(t("after", { v: x.deps.map((d) => "#" + d).join(", ") })) : esc([x.model, x.effort].filter(Boolean).join(" · "))}</span>
-        ${badge(x.status, STATUS_LABEL(x.status), x.status === "running")}
-      </div>
-      <div class="plan-detail hidden"><div class="prompt-box md">${mdHtml(x.prompt)}</div></div>
+  const g = p.goal, ts = p.tasks;
+  const src = (x) => { const k = (x.source || "plan").split(":")[0]; return PLAN_SOURCES.includes(k) ? k : "plan"; };
+  const srcChip = (x) => ["plan", "workflow"].includes(src(x)) ? ""
+    : ` <span class="chip pv-src">${esc(t("src_" + src(x)))}${x.source.startsWith("delegate:") ? " ← " + esc(x.source.slice(9)) : ""}</span>`;
+  const after = (x) => x.deps.length ? esc(t("after", { v: x.deps.map((d) => "#" + d).join(", ") })) : "";
+  const steps = ts.map((x) => `
+    <div class="pv-step" data-jump="${x.id}">
+      <span class="tid">#${x.id}</span><span>${agentHtml(x.agent)}</span>
+      <span class="pv-step-title">${esc(x.title)}${srcChip(x)}</span>
+      <span class="deps">${after(x)}</span>${badge(x.status, STATUS_LABEL(x.status), x.status === "running")}
+    </div>`).join("");
+  const cards = ts.map((x) => {
+    const out = x.result || x.error;
+    const meta = [x.model, x.effort].filter(Boolean).join(" · ");
+    return `<div class="pv-card s-${esc(x.status)}" id="pv-task-${x.id}">
+      <div class="pv-card-head">${agentHtml(x.agent)}<span class="tid">#${x.id}</span>
+        <b class="pv-card-title">${esc(x.title)}</b>${meta ? `<span class="muted small">${esc(meta)}</span>` : ""}
+        ${elapsedHtml(x.started, x.finished)}${badge(x.status, STATUS_LABEL(x.status), x.status === "running")}</div>
+      <div class="pv-card-body md${x.error && !x.result ? " pv-err" : ""}">${out ? mdHtml(out) : `<span class="muted">${esc(t("no_result"))}</span>`}</div>
+      <details class="pv-prompt"><summary>${esc(t("plan_show_prompt"))}</summary><div class="prompt-box md">${mdHtml(x.prompt)}</div></details>
     </div>`;
-  const body = PLAN_SOURCES.filter((k) => groups[k]).map((k) => `
-    <div class="sec-title" style="margin:14px 0 6px">${esc(t("src_" + k))} <span class="muted">· ${groups[k].length}</span></div>
-    <div class="plan-rows plan-box">${groups[k].map(row).join("")}</div>`).join("");
-  const g = p.goal;
+  }).join("");
   const m = openModal(`${modalHead("📋 " + esc(t("goal_plan_title", { id: g.id })))}<div class="modal-pad">
-    <div class="prompt-box md">${mdHtml(g.text)}</div>
-    ${g.summary ? `<div class="goal-sum" style="margin-top:8px">${esc(g.summary)}</div>` : ""}
-    ${body || `<div class="muted" style="margin-top:12px">${esc(t("plan_empty"))}</div>`}</div>`, { box: "lg" });
+    <div class="pv-goal md">${mdHtml(g.text)}</div>
+    ${ts.length ? `<div class="pv-sec">📋 ${esc(t("plan_lead"))} <span class="muted">· ${esc(t("plan_count", { n: ts.length }))}</span></div>
+      <div class="pv-steps">${steps}</div>
+      <div class="pv-sec">🤖 ${esc(t("plan_agents"))}</div>${cards}`
+    : `<div class="muted">${esc(t("plan_empty"))}</div>`}
+    ${g.summary ? `<div class="pv-sec">✔ ${esc(t("plan_summary"))}</div><div class="pv-summary md">${mdHtml(g.summary)}</div>` : ""}
+  </div>`, { box: "lg", cls: "pv" });
   m.addEventListener("click", (e) => {
-    const line = e.target.closest("[data-pv]");
-    if (line) line.nextElementSibling.classList.toggle("hidden");
+    const s = e.target.closest("[data-jump]");
+    if (!s) return;
+    const card = $("#pv-task-" + s.dataset.jump, m);
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+    card.classList.add("flash");
+    setTimeout(() => card.classList.remove("flash"), 900);
   });
 }
 
@@ -1275,6 +1287,44 @@ function prefill(text) {
   renderComposerMode();
 }
 input.addEventListener("input", () => { autosize(); renderComposerMode(); updateSuggest(); renderContinueHint(); });
+
+/* dán (Ctrl/⌘+V) hoặc kéo-thả ảnh vào ô nhập: gửi byte ảnh lên server (lưu .ateam/images như Ctrl+V của TUI) rồi
+   chèn @đường/dẫn tại con trỏ — agent nhận ảnh theo cú pháp CLI của nó (mentions.render) */
+async function attachImages(files) {
+  for (const f of files) {
+    let r;
+    try { r = await (await fetch("/api/image", { method: "POST", body: f, headers: { "Content-Type": "application/octet-stream" } })).json(); }
+    catch (e) { r = { error: String(e) }; }
+    if (r.error) { toast(r.error, "warn"); continue; }
+    const at = input.selectionStart, before = input.value.slice(0, at);
+    const text = (before && !/\s$/.test(before) ? " " : "") + r.mention + " ";
+    input.setRangeText(text, at, input.selectionEnd, "end");
+    input.dispatchEvent(new Event("input"));
+    toast(t("image_pasted", { v: r.path }), "ok");
+  }
+  input.focus();
+}
+const imageFiles = (list) => [...(list || [])].filter((f) => f && /^image\//.test(f.type));
+input.addEventListener("paste", (e) => {
+  const dt = e.clipboardData;
+  if (!dt) return;
+  const files = imageFiles([...dt.items].filter((i) => i.kind === "file").map((i) => i.getAsFile()));
+  if (!files.length || dt.getData("text/plain")) return;  // có chữ (vd copy từ trang web) thì dán chữ như thường
+  e.preventDefault();
+  attachImages(files);
+});
+const composerBox = $("#composer-box");
+composerBox.addEventListener("dragover", (e) => {
+  if ([...e.dataTransfer.items].some((i) => i.kind === "file")) { e.preventDefault(); composerBox.classList.add("drop"); }
+});
+composerBox.addEventListener("dragleave", () => composerBox.classList.remove("drop"));
+composerBox.addEventListener("drop", (e) => {
+  composerBox.classList.remove("drop");
+  const files = imageFiles(e.dataTransfer.files);
+  if (!files.length) return;
+  e.preventDefault();
+  attachImages(files);
+});
 input.addEventListener("keydown", (e) => {
   const open = S.suggest.items.length > 0;
   if (open && e.key === "ArrowDown") { e.preventDefault(); moveSuggest(1); return; }

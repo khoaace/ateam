@@ -651,6 +651,9 @@ def test_web_goal_plan_after_run(env, project, monkeypatch):
         assert [(x["title"], x["source"]) for x in p["tasks"]] == [("Tạo a", "plan"), ("Tạo b", "review"),
                                                                     ("Phụ", "delegate:codex")]
         assert p["tasks"][1]["deps"] == [t1] and p["tasks"][0]["prompt"] == "tạo file a"
+        db.update_task(t1, result="## Xong\n- tạo **a**")
+        p = (await wa.handle({"op": "goal_plan", "goal": gid}))[2]["goal_plan"]
+        assert p["tasks"][0]["result"] == "## Xong\n- tạo **a**"  # popup hiện kết quả đầy đủ của từng task
         assert (await wa.handle({"op": "goal_plan", "goal": 999}))[1] == "warn"
 
     asyncio.run(main())
@@ -686,3 +689,30 @@ def test_web_help_columns(tmp_path):
     assert len(by["/continue <m12|t40> <yêu cầu>"]) == 3
     assert by["F2 = Ctrl+G, F5 = Ctrl+R, F6 = Ctrl+O"][-1] == "MacBook: giữ fn khi bấm F2/F5"
     assert {"head": "Giao việc:"} in vi
+
+
+def test_web_paste_image(env, project, monkeypatch):
+    """Dán / kéo-thả ảnh vào ô nhập web: POST /api/image lưu .ateam/images (đúng đuôi), trả @đường/dẫn để chèn."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    from aiohttp.test_utils import TestClient, TestServer
+    wa = _web_app(env, project, monkeypatch)
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+    jpg = b"\xff\xd8\xff\xe0" + b"\x00" * 32
+
+    async def main():
+        client = TestClient(TestServer(wa.make_app(), host="127.0.0.1", port=wa.port))
+        await client.start_server()
+        try:
+            r = await (await client.post("/api/image", data=png)).json()
+            assert r["path"].startswith(".ateam/images/paste-") and r["path"].endswith(".png")
+            assert r["mention"] == "@" + r["path"] and (project / r["path"]).read_bytes() == png
+            r2 = await (await client.post("/api/image", data=jpg)).json()
+            assert r2["path"].endswith(".jpg") and r2["path"] != r["path"]
+            assert "error" in await (await client.post("/api/image", data=b"hello")).json()
+            wa.remote.readonly = True
+            assert "error" in await (await client.post("/api/image", data=png)).json()
+        finally:
+            await client.close()
+
+    asyncio.run(main())

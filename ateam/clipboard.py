@@ -57,13 +57,39 @@ def looks_like_image(data: bytes) -> bool:
             or data[:2] == b"BM" or data[:4] in (b"II*\x00", b"MM\x00*"))
 
 
-def new_path(folder: Path) -> Path:
+def new_path(folder: Path, ext: str = ".png") -> Path:
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    p = folder / f"paste-{stamp}.png"
+    p = folder / f"paste-{stamp}{ext}"
     i = 2
     while p.exists():
-        p = folder / f"paste-{stamp}-{i}.png"
+        p = folder / f"paste-{stamp}-{i}{ext}"
         i += 1
+    return p
+
+
+def image_ext(data: bytes) -> str:
+    """Đuôi file theo nội dung ảnh (dán từ trình duyệt có thể là JPEG/GIF/WebP, không chỉ PNG)."""
+    if data.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return ".gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    if data[:2] == b"BM":
+        return ".bmp"
+    if data[:4] in (b"II*\x00", b"MM\x00*"):
+        return ".tiff"
+    return ".png"
+
+
+def save_image(data: bytes, folder: Path) -> Path:
+    """Lưu ảnh dán từ trình duyệt (tab web) vào `.ateam/images/` như Ctrl+V của TUI. ValueError nếu không phải ảnh."""
+    if not looks_like_image(data):
+        raise ValueError("not an image")
+    folder.mkdir(parents=True, exist_ok=True)
+    prune(folder)
+    p = new_path(folder, image_ext(data))
+    p.write_bytes(data)
     return p
 
 

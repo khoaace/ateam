@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.19.0 — 17/10/2026
+
+- **🔍 Tìm & thay trong toàn dự án** như VS Code — web: ⌘⇧F hoặc mục 🔍 Tìm ở sidebar tab Code; TUI: **F3** hoặc
+  `/search [từ khoá]`. Aa / nguyên từ / regex (`$1` trong chuỗi thay), lọc file gồm · bỏ qua, xem trước chữ cũ → mới,
+  thay từng file hoặc tất cả. Tôn trọng `.gitignore`, bỏ file nhị phân, giữ CRLF/BOM/quyền file; file đang sửa dở
+  chưa lưu không bị thay, file đang mở tự nạp lại.
+- **📋 Popup Kế hoạch mới** (web + TUI `/plan`): đề bài → kế hoạch của trưởng nhóm (bảng các bước) → kết quả từng
+  agent (markdown đầy đủ, prompt thu gọn) → tổng kết của trưởng nhóm (đầy đủ, có định dạng thay vì bị cắt 2 dòng).
+- **Dán ảnh vào ô nhập web** (⌘V hoặc kéo-thả): ảnh lưu `.ateam/images/`, chèn `@ảnh` vào prompt như Ctrl+V của TUI —
+  dùng được cả khi mở từ điện thoại / qua tunnel.
+
 ## 0.18.0 — 17/10/2026
 
 - **⚡ Sửa nhanh vai trò · model · effort** (`/roles`, web: nút ⚡ ở tab Đội và mục Tuỳ chỉnh): mở thẳng bảng vai trò

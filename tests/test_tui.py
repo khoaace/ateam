@@ -569,7 +569,7 @@ def test_tui_command_popup_help_and_empty_state(env, project, monkeypatch):
             await pilot.pause(0.2)
             assert popup.display and popup.border_title == "/ lệnh"
             ids = [popup.get_option_at_index(i).id for i in range(popup.option_count)]
-            assert ids == ["set", "setup", "flow-setup", "pause"]  # bắt đầu bằng "se" trước, rồi chứa "se"
+            assert ids == ["set", "search", "setup", "flow-setup", "pause"]  # bắt đầu bằng "se" trước, rồi chứa "se"
             await pilot.press("tab")                # chèn lệnh có tham số, chờ gõ tiếp
             assert box.value == "/set " and not popup.display
             box.value = ""
@@ -1528,7 +1528,7 @@ def test_tui_plan_view_and_todo(env, project, monkeypatch):
 
     import ateam.config
     importlib.reload(ateam.config)
-    from textual.widgets import OptionList, TabbedContent
+    from textual.widgets import TabbedContent
 
     from ateam import todos
     from ateam.config import ensure_global_config, load_config
@@ -1543,6 +1543,7 @@ def test_tui_plan_view_and_todo(env, project, monkeypatch):
         db.add_task("claude", "Sửa lệch giờ", "PROMPT-B cho lệch ±1", goal_id=gid, source="review", depends_on=[a])
         for t in db.tasks():
             db.conn.execute("UPDATE tasks SET status='done' WHERE id=?", (t.id,))
+        db.update_task(a, result="## KẾT-QUẢ-A\n- đã thêm **totpSecret**")
         db.conn.commit()
         app = TeamApp(project, load_config(project), db)
         async with app.run_test(size=(160, 48)) as pilot:
@@ -1550,14 +1551,16 @@ def test_tui_plan_view_and_todo(env, project, monkeypatch):
             app.run_command("/plan")  # trống: mục tiêu mới nhất
             await pilot.pause(0.4)
             assert isinstance(app.screen, PlanViewScreen)
-            ol = app.screen.query_one("#pv-list", OptionList)
-            rows = [str(ol.get_option_at_index(i).prompt) for i in range(ol.option_count)]
-            assert rows[0].startswith("Kế hoạch ban đầu · 1") and "Thêm field" in rows[1]
-            assert rows[2].startswith("Bổ sung khi review · 1") and "sau #1" in rows[3]
-            assert app.screen.shown == a                   # dòng task đầu (bỏ qua tiêu đề nhóm)
-            await pilot.press("down")
+            doc = app.screen.doc  # đề bài → kế hoạch → kết quả từng agent → tổng kết
+            plan, agents = doc.index("Kế hoạch của trưởng nhóm"), doc.index("Kết quả từng agent")
+            assert doc.startswith("làm 2FA") and plan < agents
+            assert "| #1 | codex | Thêm field |" in doc and "| #2 | claude | Sửa lệch giờ _(Bổ sung khi review)_ | #1 |" in doc
+            assert "### #1 · codex — Thêm field" in doc and "KẾT-QUẢ-A" in doc and "PROMPT-A" not in doc
+            if app.db.goal(gid).summary:                   # trưởng nhóm giả lập đã review xong: tổng kết ở cuối
+                assert doc.index("Tổng kết của trưởng nhóm") > agents
+            await pilot.press("p")                         # hiện prompt giao cho từng agent
             await pilot.pause(0.2)
-            assert app.screen.shown == a + 1               # nhảy qua tiêu đề nhóm "Bổ sung khi review"
+            assert "PROMPT-A" in app.screen.doc and "PROMPT-B" in app.screen.doc
             await pilot.press("escape")
             await pilot.pause(0.2)
             assert not isinstance(app.screen, PlanViewScreen)
@@ -1636,6 +1639,80 @@ def test_tui_quick_roles(env, project, monkeypatch):
             lead = app.cfg.lead
             assert app.cfg.agents[lead].effort == choice and lead_cli in app.cfg.agents[lead].command[0]
             assert app.cfg.verify.command == "make test"  # thiết lập khác giữ nguyên
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+
+
+def test_tui_search_replace(env, project, monkeypatch):
+    """F3 / /search: tìm trong toàn dự án, Enter mở file đúng dòng/cột, thay tất cả (bỏ file đang sửa dở)."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+    (project / "src").mkdir()
+    (project / "src" / "app.ts").write_text('import { parseFilm } from "./u";\nrun(parseFilm("x"));\n', encoding="utf-8")
+    (project / "src" / "u.ts").write_text("export const parseFilm = 1;\n", encoding="utf-8")
+    (project / "note.md").write_text("parseFilm trong note\n", encoding="utf-8")
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import ConfirmScreen, SearchScreen, TeamApp
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.3)
+            app.run_command("/search parseFilm")
+            await pilot.pause(0.8)
+            scr = app.screen
+            assert isinstance(scr, SearchScreen) and scr.res["total"] == 4
+            scr.query_one("#sr-inc").value = "src"  # chỉ thư mục src
+            await pilot.pause(0.8)
+            assert scr.res["total"] == 3 and [f["path"] for f in scr.res["files"]] == ["src/app.ts", "src/u.ts"]
+            lst = scr.query_one("#sr-list")
+            lst.focus()
+            lst.highlighted = 2                            # dòng khớp thứ 2 của app.ts: run(parseFilm("x"))
+            await pilot.press("enter")
+            await pilot.pause(0.6)
+            assert not isinstance(app.screen, SearchScreen)
+            ed = app.code_editor()
+            assert ed.buffer.path.name == "app.ts" and ed.cursor_location == (1, 4)
+            app.action_search()                            # mở lại: giữ từ khoá + bộ lọc
+            await pilot.pause(0.8)
+            scr = app.screen
+            assert scr.query_one("#sr-q").value == "parseFilm" and scr.res["total"] == 3
+            scr.query_one("#sr-r").value = "loadFilm"
+            await pilot.pause(0.8)
+            await pilot.press("ctrl+r")
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, ConfirmScreen)
+            await pilot.press("y")
+            await pilot.pause(0.8)
+            assert (project / "src" / "u.ts").read_text() == "export const loadFilm = 1;\n"
+            assert "loadFilm" in ed.text and not ed.dirty  # file đang mở (không sửa dở) nạp lại ngay
+            assert (project / "note.md").read_text() == "parseFilm trong note\n"  # ngoài bộ lọc: giữ nguyên
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            # file đang sửa dở (chưa lưu) thì không bị thay
+            ed.focus()
+            ed.text = ed.text + "// sửa dở loadFilm\n"
+            assert ed.dirty
+            app.action_search("loadFilm")
+            await pilot.pause(0.8)
+            app.screen.query_one("#sr-r").value = "getFilm"
+            await pilot.pause(0.8)
+            await pilot.press("ctrl+r")
+            await pilot.pause(0.3)
+            await pilot.press("y")
+            await pilot.pause(0.8)
+            assert "loadFilm" in (project / "src" / "app.ts").read_text()
+            assert (project / "src" / "u.ts").read_text() == "export const getFilm = 1;\n"
+            await pilot.press("escape")
             await pilot.press("ctrl+q")
 
     asyncio.run(main())

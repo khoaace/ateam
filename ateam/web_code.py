@@ -6,12 +6,13 @@ và thư mục `.git` bị từ chối. Ghi file kèm mtime lúc mở để phá
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from aiohttp import web
 
-from . import editor
+from . import editor, search
 from .i18n import tr
 
 if TYPE_CHECKING:
@@ -81,6 +82,47 @@ class CodeWeb:
     async def api_stat(self, r: web.Request) -> web.Response:
         p = safe_path(self.app.root, r.query.get("path", ""))
         return web.json_response({"mtime": editor.disk_mtime(p) if p else 0.0})
+
+    @staticmethod
+    def _opts(d: dict) -> dict:
+        return {"regex": bool(d.get("regex")), "case": bool(d.get("case")), "word": bool(d.get("word"))}
+
+    async def search(self, d: dict) -> tuple:
+        """🔍 Tìm trong toàn dự án (⌘⇧F): {"query", "regex", "case", "word", "include", "exclude", "replace"?}."""
+        q = str(d.get("query") or "")
+        if not q:
+            return "", "", {"search": {"files": [], "total": 0, "truncated": False}}
+        idx = self.app.index
+        if idx.stale():
+            await idx.refresh()
+        rep = d.get("replace")
+        try:
+            res = await asyncio.get_running_loop().run_in_executor(None, lambda: search.search(
+                self.app.root, list(idx.entries), q, include=str(d.get("include") or ""),
+                exclude=str(d.get("exclude") or ""), replace=None if rep is None else str(rep), **self._opts(d)))
+        except ValueError as e:
+            return "", "", {"search": {"error": tr("Regex không hợp lệ: {e}", e=e)}}
+        return "", "", {"search": res}
+
+    async def replace(self, d: dict) -> tuple:
+        """Thay trong các file đang hiện ở kết quả (trình duyệt gửi danh sách, đã bỏ file đang sửa dở)."""
+        q = str(d.get("query") or "")
+        files = [str(f) for f in d.get("files") or []]
+        if not q or not files:
+            return tr("Không có gì để thay"), "warn"
+        root = self.app.root.resolve()
+        rels = [p.relative_to(root).as_posix() for p in (safe_path(self.app.root, f) for f in files) if p and p.is_file()]
+        try:
+            res = await asyncio.get_running_loop().run_in_executor(None, lambda: search.replace_in(
+                root, rels, q, str(d.get("replacement") or ""), **self._opts(d)))
+        except ValueError as e:
+            return tr("Regex không hợp lệ: {e}", e=e), "error"
+        except OSError as e:
+            return tr("Không ghi được file: {e}", e=e), "error"
+        self.app.orch.log(tr("🔍 Thay \"{q}\" → \"{r}\": {n} chỗ trong {f} file", q=q, r=d.get("replacement") or "",
+                             n=res["total"], f=len(res["files"])))
+        return (tr("Đã thay {n} kết quả trong {f} file", n=res["total"], f=len(res["files"])), "ok",
+                {"replaced": res})
 
     def save(self, d: dict) -> tuple:
         """{"path", "text", "mtime" (lúc mở; 0 = file mới), "force"} → ghi; xung đột → ("…", "warn", {conflict})."""

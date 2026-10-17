@@ -176,7 +176,12 @@ ateam web --open           # mở http://127.0.0.1:8000  ·  đổi cổng: atea
 - Ô nhập dưới cùng dùng như trong terminal và gợi ý cả tham số: `/task ` → agent, `codex:` → model, `@` → effort;
   `/model <agent>`, `/assign`, `/retry <task>`, `/continue`, `/flow`, `/checkout <nhánh>`, `/code @file`… Ctrl+K về ô
   nhập, F2 duyệt kế hoạch, F6 tiếp tục, F1 trợ giúp, Esc đóng. Tab Git: phím `space a u x d c e` như TUI. Tab Code:
-  ⌘P tìm file, ⌘S lưu, ⌘⇧V đổi chế độ xem trước markdown.
+  ⌘P tìm file, ⌘S lưu, ⌘⇧V đổi chế độ xem trước markdown, **⌘⇧F tìm & thay trong toàn dự án** như VS Code (mục 🔍 Tìm ở
+  sidebar: Aa / nguyên từ / regex, lọc file gồm · bỏ qua, xem trước chữ thay, thay từng file hoặc tất cả — `$1` trong
+  chuỗi thay khi dùng regex; tôn trọng `.gitignore`, giữ CRLF/BOM; file đang sửa dở chưa lưu thì bỏ qua). TUI: **F3** hoặc
+  `/search [từ khoá]` mở cùng chức năng (Enter mở file đúng chỗ · r thay trong file · x bỏ file · Ctrl+R thay tất cả).
+- Dán ảnh (⌘V) hoặc kéo-thả file ảnh vào ô nhập: ảnh lưu vào `.ateam/images/` và chèn `@ảnh` vào prompt như Ctrl+V
+  của TUI — ảnh đọc ngay trong trình duyệt nên dùng được cả khi mở từ điện thoại / qua tunnel.
 - ✅ **To-do** (tab trên thanh bên, cả TUI: tab ✅ To-do hoặc `/todo [việc]`): danh sách việc cần làm riêng cho từng dự án —
   Enter để thêm, tick xong, bấm đúp để sửa, kéo để đổi thứ tự (TUI: Space · e · d · Shift+↑↓ · c). Lưu ở
   `~/.config/ateam/todos/`, **không** nằm trong thư mục dự án nên không cần `.gitignore`; TUI và web dùng chung.
