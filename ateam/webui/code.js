@@ -1,7 +1,8 @@
 /* Tab Code — như tab 📝 Code của TUI: cây thư mục + lọc file, nhiều file mở (tối đa 10), editor CodeMirror 6
    (vendor/codemirror.js, nạp khi mở tab lần đầu) với phím vim (bật/tắt dùng chung TUI: /vim on|off), :w :q :wq
    :x :q! :e! :e <file> :bn :bp, Ctrl/⌘+S lưu. File đổi trên đĩa (agent sửa): chưa sửa → tự nạp lại, đang sửa → cảnh
-   báo; lưu khi file đã đổi → hỏi ghi đè. */
+   báo; lưu khi file đã đổi → hỏi ghi đè. File .md: Sửa / Chia đôi / Xem trước (mdHtml của app.js, Ctrl/⌘+Shift+V đổi
+   chế độ, nhớ trong localStorage "ateam-md"). */
 "use strict";
 
 window.CodeView = (() => {
@@ -28,6 +29,8 @@ window.CodeView = (() => {
     return C.comp;
   }
   const vimOn = () => S.prefs.vim !== false;
+  const MD_MODES = ["edit", "split", "view"];
+  C.md = (() => { try { return localStorage.getItem("ateam-md") || "edit"; } catch (e) { return "edit"; } })();
 
   function extensions(buf) {
     const c = comps();
@@ -39,7 +42,7 @@ window.CodeView = (() => {
       c.lang.of(buf.lang ? buf.lang.support : []),
       c.ro.of(CM.EditorState.readOnly.of(!!buf.ro)),
       CM.EditorView.updateListener.of((u) => {
-        if (u.docChanged) { buf.dirty = u.state.doc.toString() !== buf.saved; renderTabs(); }
+        if (u.docChanged) { buf.dirty = u.state.doc.toString() !== buf.saved; renderTabs(); schedulePreview(); }
         if (u.docChanged || u.selectionSet) renderStatus();
       }),
     ];
@@ -78,7 +81,10 @@ window.CodeView = (() => {
       </aside>
       <section class="code-main">
         <div class="code-tabs" id="code-tabs"></div>
-        <div class="code-host" id="code-editor"></div>
+        <div class="code-body" data-md="edit">
+          <div class="code-host" id="code-editor"></div>
+          <div class="code-preview md" id="code-preview"></div>
+        </div>
         <div class="code-status" id="code-status"></div>
       </section>`;
     $("#code-filter").addEventListener("input", (e) => { C.filter = e.target.value; renderTree(); });
@@ -167,8 +173,44 @@ window.CodeView = (() => {
       <span style="flex:1"></span>${b.ro ? `<span class="chip warn">${esc(t("code_readonly", { v: b.note }))}</span>` : ""}
       ${b.newline === "\r\n" ? `<span class="chip">CRLF</span>` : ""}<span>${esc((b.lang && b.lang.name) || b.language || t("code_plain"))}</span>
       <span class="mono">${esc(t("code_pos", { r: line.number, n: st.doc.lines, c: pos - line.from + 1 }))}</span>
+      ${isMd(b) ? `<span class="seg" title="${esc(t("code_md_title"))}">${MD_MODES.map((m) =>
+        `<button class="mini${m === C.md ? " on" : ""}" data-cact="md" data-md="${m}">${esc(t("code_md_" + m))}</button>`).join("")}</span>` : ""}
       <button class="mini" data-cact="vim" title="/vim on|off">vim ${vimOn() ? "✓" : "✗"}</button>`;
   }
+
+  /* ---------------------------------------------------------------- xem trước markdown */
+  const isMd = (b) => !!b && /\.(md|markdown|mdx)$/i.test(b.path);
+  function mdMode() { return isMd(C.cur && C.bufs.get(C.cur)) ? C.md : "edit"; }
+  let pvTimer = null;
+  function renderPreview() {
+    const box = $("#code-preview");
+    if (!box) return;
+    const mode = mdMode();
+    box.parentElement.dataset.md = mode;
+    box.innerHTML = mode === "edit" || !C.view ? "" : mdHtml(C.view.state.doc.toString());
+  }
+  function schedulePreview() {
+    if (mdMode() === "edit") return;
+    clearTimeout(pvTimer);
+    pvTimer = setTimeout(renderPreview, 150);
+  }
+  function setMd(mode) {
+    C.md = mode;
+    try { localStorage.setItem("ateam-md", mode); } catch (e) { /* chặn lưu */ }
+    renderPreview(); renderStatus();
+    if (C.view) { C.view.requestMeasure(); if (mode !== "view") C.view.focus(); }
+  }
+  function syncScroll() {  // chia đôi: preview cuộn theo editor (theo tỉ lệ)
+    const src = C.view && C.view.scrollDOM, box = $("#code-preview");
+    if (!src || !box || mdMode() !== "split") return;
+    const r = src.scrollTop / Math.max(1, src.scrollHeight - src.clientHeight);
+    box.scrollTop = r * (box.scrollHeight - box.clientHeight);
+  }
+  function newView(state) {
+    C.view = new CM.EditorView({ state, parent: $("#code-editor") });
+    C.view.scrollDOM.addEventListener("scroll", syncScroll);
+  }
+
   function stash() {
     const b = C.cur && C.bufs.get(C.cur);
     if (b && C.view) b.state = C.view.state;
@@ -180,7 +222,7 @@ window.CodeView = (() => {
     C.cur = path;
     if (!b.state) b.state = CM.EditorState.create({ doc: b.saved, extensions: extensions(b) });
     if (!C.view) {
-      C.view = new CM.EditorView({ state: b.state, parent: $("#code-editor") });
+      newView(b.state);
       watchVim();
     } else C.view.setState(b.state);
     refreshConfig();
@@ -189,7 +231,7 @@ window.CodeView = (() => {
       C.view.dispatch({ selection: { anchor: ln.from }, effects: CM.EditorView.scrollIntoView(ln.from, { y: "center" }) });
     }
     C.view.focus();
-    renderTabs(); renderStatus();
+    renderTabs(); renderStatus(); renderPreview();
     revealInTree(path);
   }
   function watchVim() {
@@ -240,7 +282,7 @@ window.CodeView = (() => {
       C.cur = null;
       const next = C.order[Math.min(i, C.order.length - 1)];
       if (next) activate(next);
-      else { C.view.setState(CM.EditorState.create({ doc: "", extensions: [CM.EditorState.readOnly.of(true), comps().theme.of(isDark() ? CM.oneDark : [])] })); renderStatus(); }
+      else { C.view.setState(CM.EditorState.create({ doc: "", extensions: [CM.EditorState.readOnly.of(true), comps().theme.of(isDark() ? CM.oneDark : [])] })); renderStatus(); renderPreview(); }
     }
     renderTabs();
   }
@@ -280,7 +322,7 @@ window.CodeView = (() => {
     b.state = CM.EditorState.create({ doc: r.text, extensions: extensions(b), selection: { anchor: Math.min(head, r.text.length) } });
     C.view.setState(b.state);
     refreshConfig();
-    renderTabs(); renderStatus();
+    renderTabs(); renderStatus(); renderPreview();
     toast(quiet === "disk" ? t("code_reloaded_disk") : t("code_reloaded"), "info");
   }
   async function checkDisk() {  // agent sửa file đang mở
@@ -300,7 +342,7 @@ window.CodeView = (() => {
     renderTree(); renderTabs(); renderStatus();
     try { await loadCM(); } catch (e) { toast(t("code_load_fail"), "error"); return; }
     if (!C.view) {
-      C.view = new CM.EditorView({ state: CM.EditorState.create({ doc: "", extensions: [CM.EditorState.readOnly.of(true), comps().theme.of(isDark() ? CM.oneDark : [])] }), parent: $("#code-editor") });
+      newView(CM.EditorState.create({ doc: "", extensions: [CM.EditorState.readOnly.of(true), comps().theme.of(isDark() ? CM.oneDark : [])] }));
     }
     if (C.cur) C.view.focus(); else $("#code-filter").focus();
   }
@@ -313,10 +355,15 @@ window.CodeView = (() => {
     const tab = e.target.closest(".ctab");
     if (tab) return activate(tab.dataset.path);
     if (e.target.closest("[data-cact=vim]")) request("prefs", { vim: !vimOn() });
+    const md = e.target.closest("[data-cact=md]");
+    if (md) setMd(md.dataset.md);
   });
   document.addEventListener("keydown", (e) => {
     if (S.view !== "code") return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "v" && isMd(C.cur && C.bufs.get(C.cur))) {
+      e.preventDefault(); setMd(MD_MODES[(MD_MODES.indexOf(C.md) + 1) % MD_MODES.length]);
+    }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "p") { e.preventDefault(); $("#code-filter").focus(); $("#code-filter").select(); }
   });
   window.addEventListener("beforeunload", (e) => {

@@ -658,6 +658,20 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 .code-host .cm-scroller { font-family: var(--mono); line-height: 1.55; }
 .code-host .cm-editor.cm-focused { outline: none; }
 .code-host .cm-gutters { background: transparent; border-right: 1px solid var(--border); color: var(--term-dim); }
+.code-body { flex: 1; min-height: 0; display: flex; }
+.code-body .code-host { min-width: 0; }
+.code-preview { display: none; flex: 1; min-width: 0; overflow: auto; padding: 16px 24px 40px; border-left: 1px solid var(--border); font-size: 13px; }
+.code-body[data-md="split"] .code-preview, .code-body[data-md="view"] .code-preview { display: block; }
+.code-body[data-md="view"] .code-host { display: none; }
+.code-body[data-md="view"] .code-preview { border-left: 0; padding-left: max(24px, calc((100% - 900px) / 2)); padding-right: max(24px, calc((100% - 900px) / 2)); }
+.code-preview .l.md-h1 { font-size: 1.5em; }
+.code-preview .l.md-h2 { font-size: 1.3em; margin-top: 14px; }
+.code-preview .l.md-h3 { font-size: 1.12em; margin-top: 10px; }
+.seg { display: inline-flex; }
+.seg .mini { border-radius: 0; margin-left: -1px; }
+.seg .mini:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.seg .mini:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.seg .mini.on { background: var(--accent); border-color: var(--accent); color: var(--on-fill); }
 .code-status { display: flex; align-items: center; gap: 12px; padding: 3px 10px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); flex: none; background: var(--side); min-height: 26px; }
 .vmode { font: 650 11px var(--mono); padding: 0 6px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text-2); }
 .vmode.m-insert { background: var(--done); color: var(--on-fill); border-color: var(--done); }
@@ -766,6 +780,8 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
   .gmain { grid-template-columns: 1fr; }
   .code { grid-template-columns: 1fr; grid-template-rows: 200px 1fr; }
   .code-side { border-right: 0; border-bottom: 1px solid var(--border); }
+  .code-body[data-md="split"] { flex-direction: column; }
+  .code-body[data-md="split"] .code-preview { border-left: 0; border-top: 1px solid var(--border); }
   .d-layout { grid-template-columns: 1fr; grid-template-rows: 140px 1fr; }
   .d-files { border-right: 0; border-bottom: 1px solid var(--border); }
   .role-row { grid-template-columns: 1fr 1fr; }

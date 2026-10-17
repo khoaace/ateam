@@ -162,7 +162,8 @@ Giao diện web hiện đại, **đủ chức năng như terminal**: bảng Kanb
 Lỗi), thẻ mục tiêu có tiến độ, duyệt kế hoạch bằng nút (đổi agent, sửa nội dung task), `/grill` bấm chọn phương án,
 ngăn chi tiết task (log trực tiếp, diff, merge/từ chối, chạy lại, hỏi tiếp), tab **Đội**, **Terminal**, **Git**
 (stage, commit — AI viết message, amend, nhánh, stash, pull/push, lịch sử, revert), **Code** (cây thư mục,
-editor CodeMirror có phím vim `:w :q :wq :e! :bn`, nhiều file, tự nạp lại khi agent sửa file), diff kiểu VS Code
+editor CodeMirror có phím vim `:w :q :wq :e! :bn`, nhiều file, tự nạp lại khi agent sửa file, file `.md` có
+Sửa / Chia đôi / Xem trước), diff kiểu VS Code
 (2 cột, chữ đổi trong dòng, tô cú pháp), `/setup`, `/custom`, `/help`, `/usage`, `/models`… Sáng/tối, màu nhấn dùng
 chung với terminal, dùng được trên điện thoại.
 
@@ -174,7 +175,7 @@ ateam web --open           # mở http://127.0.0.1:8000  ·  đổi cổng: atea
 - Ô nhập dưới cùng dùng như trong terminal và gợi ý cả tham số: `/task ` → agent, `codex:` → model, `@` → effort;
   `/model <agent>`, `/assign`, `/retry <task>`, `/continue`, `/flow`, `/checkout <nhánh>`, `/code @file`… Ctrl+K về ô
   nhập, F2 duyệt kế hoạch, F6 tiếp tục, F1 trợ giúp, Esc đóng. Tab Git: phím `space a u x d c e` như TUI. Tab Code:
-  ⌘P tìm file, ⌘S lưu.
+  ⌘P tìm file, ⌘S lưu, ⌘⇧V đổi chế độ xem trước markdown.
 - Một server giữ **một** bộ lập lịch: mở bao nhiêu tab trình duyệt cũng được, không chạy trùng task. Trong lúc
   đó `ateam` ở terminal sẽ báo dự án đang mở ở phiên khác.
 - Mặc định chỉ nghe `127.0.0.1` và từ chối yêu cầu có Host/Origin lạ — trang web khác không điều khiển được ateam

@@ -2348,6 +2348,12 @@ EN: dict[str, str] = {
         'vim: i insert · Esc · :w save · :q close · :bn/:bp switch file · /vim off to disable',
     'Ctrl/⌘+S lưu · /vim on để bật phím vim':
         'Ctrl/⌘+S saves · /vim on enables vim keys',
+    'Chia đôi':
+        'Split',
+    'Xem trước':
+        'Preview',
+    'Xem trước markdown (Ctrl/⌘+Shift+V đổi chế độ)':
+        'Markdown preview (Ctrl/⌘+Shift+V switches mode)',
     'dòng {r}/{n}, cột {c}':
         'line {r}/{n}, col {c}',
     'chỉ đọc: {v}':

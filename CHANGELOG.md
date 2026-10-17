@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.0 — 17/10/2026
+
+- **Xem trước markdown ở tab Code (web)**: mở file `.md` có ba chế độ ở thanh trạng thái — *Sửa*, *Chia đôi*
+  (preview cập nhật khi gõ, cuộn theo editor) và *Xem trước* (chỉ bản đã định dạng). `Ctrl/⌘+Shift+V` đổi chế độ,
+  lựa chọn được nhớ cho lần sau.
+
 ## 0.15.0 — 17/10/2026
 
 - **✨ Gợi ý workflow bằng AI**: ở form *Thêm workflow* (`/custom`, TUI lẫn web) gõ quy trình bạn muốn bằng lời

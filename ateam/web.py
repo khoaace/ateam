@@ -168,6 +168,8 @@ def ui_strings() -> dict[str, str]:
         "code_changed_dirty": tr("File vừa đổi trên đĩa (có thể do agent sửa) — :e! để nạp lại (bỏ phần đang sửa) "
                                  "hoặc :w! để ghi đè"),
         "code_new_file": tr("File mới — :w để tạo"),
+        "code_md_edit": tr("Sửa"), "code_md_split": tr("Chia đôi"), "code_md_view": tr("Xem trước"),
+        "code_md_title": tr("Xem trước markdown (Ctrl/⌘+Shift+V đổi chế độ)"),
         "code_load_fail": tr("Không nạp được editor (vendor/codemirror.js)"),
         # --- gợi ý ô nhập
         "cmds": tr("Lệnh"), "sg_agent": tr("Agent"), "sg_agent_task": tr("Agent · thêm :model hoặc @effort"),
