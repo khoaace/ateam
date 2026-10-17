@@ -523,6 +523,26 @@ def test_diffview_split_rows_and_word_spans():
     assert word_spans("hoàn toàn khác", "xyz 123 !!") == ([], [])  # khác hẳn: chỉ tô nền dòng
 
 
+def test_diffview_long_lines_do_not_hang():
+    """Dòng cực dài (tsconfig.tsbuildinfo, *.min.js…): không so từng chữ (difflib bình phương làm treo app), chỉ hiện
+    phần đầu dòng — cả diff dựng xong ngay."""
+    import time
+
+    from ateam import diffview
+    from ateam.web_git import diffset_json
+    old = '{"program":{"fileNames":[' + ",".join(f'"./src/f{i}.ts"' for i in range(30000)) + "]}}"
+    new = old.replace("f29999", "g29999").replace("f7", "h7")
+    patch = f"diff --git a/t.tsbuildinfo b/t.tsbuildinfo\n--- a/t.tsbuildinfo\n+++ b/t.tsbuildinfo\n@@ -1 +1 @@\n-{old}\n+{new}\n"
+    start = time.time()
+    fd = diffview.parse_unified(patch)[0]
+    assert diffview.word_spans(old, new) == ([], [])
+    shown = fd.hunks[0].lines[0].text
+    assert len(shown) < diffview.MAX_LINE_CHARS + 100 and "+" in shown[diffview.MAX_LINE_CHARS:]
+    out = diffset_json(diffview.DiffSet(0, "x", [fd], "HEAD", None))
+    assert len(out["files"][0]["hunks"][0]["lines"]) == 2
+    assert time.time() - start < 3  # trước khi sửa: treo hàng giờ
+
+
 def test_diffview_render_fits_width():
     from ateam.diffview import added_file, parse_unified, render
     files = parse_unified(DIFF_SAMPLE)

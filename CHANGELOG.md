@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.19.1 — 17/10/2026
+
+- **Sửa treo app khi xem diff có dòng cực dài** (vd `tsconfig.tsbuildinfo` một dòng ~500 nghìn ký tự mà `tsc` /
+  `npm run build` ghi lại, file `*.min.js`): phần tô chữ khác nhau trong dòng (difflib, chạy theo bình phương) làm
+  web và TUI đứng hàng giờ ở 100% CPU. Giờ dòng quá dài không so từng chữ, chỉ hiện 2.000 ký tự đầu (kèm số ký tự
+  bị ẩn) như VS Code; web dựng diff trong thread riêng nên một diff nặng không làm treo cả server.
+
 ## 0.19.0 — 17/10/2026
 
 - **🔍 Tìm & thay trong toàn dự án** như VS Code — web: ⌘⇧F hoặc mục 🔍 Tìm ở sidebar tab Code; TUI: **F3** hoặc

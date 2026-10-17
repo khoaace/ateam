@@ -6,6 +6,7 @@ Diff gửi trình duyệt: mỗi dòng kèm token tô cú pháp (pygments) và �
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
@@ -159,7 +160,7 @@ class GitWeb:
             if not ds.files:
                 return web.json_response({"error": tr("Commit {short} không đổi file nào (vd commit merge)",
                                                       short=commits[0].short)})
-            return web.json_response(diffset_json(ds))
+            return web.json_response(await asyncio.to_thread(diffset_json, ds))
         path, kind = q.get("path", ""), q.get("kind", "unstaged")
         if kind == "conflict":
             ds = diffview.DiffSet(0, tr("Xung đột · {path}", path=path),
@@ -169,7 +170,7 @@ class GitWeb:
         if not ds.files:
             return web.json_response({"error": tr("Không có diff để xem")})
         start = next((i for i, f in enumerate(ds.files) if f.path == path), 0)
-        return web.json_response(diffset_json(ds, start))
+        return web.json_response(await asyncio.to_thread(diffset_json, ds, start))
 
     async def api_task_diff(self, r: web.Request) -> web.Response:
         res = await self.app.orch.diff_files(int(r.match_info["tid"]))
@@ -177,7 +178,7 @@ class GitWeb:
             return web.json_response({"error": res})
         if not res.files:
             return web.json_response({"error": tr("Task #{tid} không thay đổi file nào.", tid=res.tid)})
-        return web.json_response(diffset_json(res))
+        return web.json_response(await asyncio.to_thread(diffset_json, res))
 
     # ------------------------------------------------------------------ thao tác
     BUSY = {"pull", "checkout", "create_branch", "merge", "stash_push", "stash_apply", "stash_pop", "revert",

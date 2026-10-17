@@ -2360,6 +2360,8 @@ EN: dict[str, str] = {
         "Lead's summary",
     'Tìm':
         'Search',
+    ' … (+{n} ký tự — dòng quá dài, mở file để xem đủ)':
+        ' … (+{n} characters — line too long, open the file to see it all)',
     '[từ khoá]':
         '[keyword]',
     'tìm & thay trong toàn dự án (F3), như VS Code':

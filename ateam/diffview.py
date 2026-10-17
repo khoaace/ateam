@@ -17,6 +17,11 @@ from rich.text import Span, Text
 from .i18n import tr
 
 MAX_ROWS = 4000  # mỗi file; dài hơn thì cắt, mở bằng VS Code (phím o) để xem đủ
+# Dòng rất dài (file sinh tự động: tsconfig.tsbuildinfo, *.min.js, lock một dòng — có thể hàng trăm nghìn ký tự)
+# chỉ hiện phần đầu như VS Code, và không so từng chữ: difflib chạy theo bình phương số token, một dòng như vậy
+# làm treo cả app (vòng lặp sự kiện của web / TUI đứng hàng giờ).
+MAX_LINE_CHARS = 2000
+MAX_WORD_TOKENS = 600
 
 # màu nền giống VS Code (Dark+); Textual tự hạ xuống 256 màu nếu terminal không có truecolor.
 # Theme sáng (set_light) dùng màu kiểu GitHub light.
@@ -99,6 +104,13 @@ def _unquote(p: str) -> str:
     return p
 
 
+def clip(text: str) -> str:
+    """Dòng hiển thị trong diff: quá MAX_LINE_CHARS thì cắt, ghi số ký tự bị ẩn."""
+    if len(text) <= MAX_LINE_CHARS:
+        return text
+    return text[:MAX_LINE_CHARS] + tr(" … (+{n} ký tự — dòng quá dài, mở file để xem đủ)", n=len(text) - MAX_LINE_CHARS)
+
+
 def parse_unified(text: str) -> list[FileDiff]:
     """Bóc output `git diff -M --no-color` thành danh sách file."""
     files: list[FileDiff] = []
@@ -118,7 +130,7 @@ def parse_unified(text: str) -> list[FileDiff]:
         if hunk is not None and raw[:1] in (" ", "-", "+", "\\", ""):
             if raw.startswith("\\"):  # "\ No newline at end of file"
                 continue
-            kind, body = (raw[0], raw[1:]) if raw else (" ", "")
+            kind, body = (raw[0], clip(raw[1:])) if raw else (" ", "")
             if kind == "-":
                 hunk.lines.append(DiffLine("-", old_no, None, body))
                 old_no += 1
@@ -158,7 +170,7 @@ def added_file(path: str, text: str | None) -> FileDiff:
     if text:
         lines = text.splitlines()
         fd.hunks.append(Hunk(f"@@ -0,0 +1,{len(lines)} @@",
-                             [DiffLine("+", None, i + 1, ln) for i, ln in enumerate(lines)]))
+                             [DiffLine("+", None, i + 1, clip(ln)) for i, ln in enumerate(lines)]))
     return fd
 
 
@@ -201,6 +213,8 @@ def word_spans(a: str, b: str) -> tuple[list[tuple[int, int]], list[tuple[int, i
     """Đoạn khác nhau giữa dòng cũ a và dòng mới b, so theo từ như VS Code (không vụn từng ký tự).
     Hai dòng khác hẳn nhau thì không tô gì (cả dòng đã có nền)."""
     ta, tb = TOKEN_RE.findall(a), TOKEN_RE.findall(b)
+    if len(ta) > MAX_WORD_TOKENS or len(tb) > MAX_WORD_TOKENS:
+        return [], []  # quá dài để so từng chữ (difflib bình phương): chỉ tô nền cả dòng
     sm = difflib.SequenceMatcher(None, ta, tb, autojunk=False)
     # độ giống tính trên chữ (bỏ khoảng trắng, vốn trùng nhau ở hầu hết mọi cặp dòng)
     same = sum(len(t) for blk in sm.get_matching_blocks() for t in ta[blk.a:blk.a + blk.size] if not t.isspace())
