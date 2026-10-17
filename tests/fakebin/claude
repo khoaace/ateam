@@ -55,6 +55,12 @@ elif [[ "$P" == *"git COMMIT MESSAGE"* ]]; then
   echo "Thêm file mới cho bản demo"
   echo ""
   echo "Ghi chú: viết bởi claude giả lập."
+elif [[ "$P" == *"reusable ateam WORKFLOW"* ]]; then
+  # Gợi ý workflow tuỳ chỉnh: agent lạ (ghost) và effort lạ để test chuẩn hoá
+  echo '{"name": "Tính năng UI", "description": "Thiết kế → code → kiểm tra giao diện", "review": false, "steps": [
+    {"agent": "lead", "title": "Thiết kế {goal}", "prompt": "Viết thiết kế ngắn cho {goal}", "after": []},
+    {"agent": "codex", "title": "Viết code", "prompt": "Làm {goal} theo thiết kế", "effort": "rất cao"},
+    {"agent": "ghost", "title": "Kiểm tra", "prompt": "Chạy test cho {goal}", "after": [1, 9]}]}'
 elif [[ "$P" == *"NEW FOLLOW-UP REQUEST"* ]]; then
   # Tiếp tục mục tiêu đã xong: 1 task bổ sung
   echo '[{"id":1,"agent":"codex","title":"Tạo d.txt","prompt":"tạo file d.txt","depends_on":[]}]'

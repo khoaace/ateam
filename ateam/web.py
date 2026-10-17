@@ -238,7 +238,11 @@ def ui_strings() -> dict[str, str]:
         "cu_flow_copy": tr("'{name}' nằm trong file cấu hình — lưu sẽ tạo bản sao với tên mới."),
         "cu_lead": tr("trưởng nhóm ({lead})"), "cu_not_in_team": tr("{v} (không có trong đội)"),
         "cu_step_title": tr("Tiêu đề"), "cu_step_prompt": tr("việc cần làm, có thể dùng {goal}"),
-        "cu_step_after": tr("Sau bước"), "cu_add_step": tr("Thêm bước"), "cu_one_step": tr("Workflow cần ít nhất 1 bước"),
+        "cu_step_after": tr("Sau bước"), "cu_add_step": tr("Thêm bước"),
+        "cu_ai": tr("✨ Gợi ý"), "cu_ai_btn": tr("Gợi ý"),
+        "cu_ai_ph": tr("mô tả quy trình, vd: thiết kế → code → test → review"),
+        "cu_ai_hint": tr("trưởng nhóm điền các bước"),
+        "cu_ai_wait": tr("✨ {lead} đang thiết kế workflow…"), "cu_one_step": tr("Workflow cần ít nhất 1 bước"),
     }
 
 
@@ -685,6 +689,8 @@ class WebApp:
             return await self.setup.save_custom(d)
         if op == "custom_delete":
             return await self.setup.delete_custom(d)
+        if op == "workflow_suggest":
+            return await self.setup.suggest_workflow(d)
         if op == "default_flow_save":
             return await self.setup.save_default_flow(d)
         if op == "custom_preview":

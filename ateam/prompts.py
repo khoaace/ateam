@@ -297,6 +297,29 @@ Do NOT modify any files and do NOT run git yourself.
 End your answer with a line 'SUMMARY:' followed by the commit message only (nothing after it)."""
 
 
+def workflow_suggest_prompt(cfg: Config, description: str, cwd: str) -> str:
+    return f"""You are designing a reusable ateam WORKFLOW (a fixed chain of steps the team runs for a goal)
+for the repository at: {cwd}
+
+TEAM MEMBERS (name: role){' and their effort levels' if any(a.efforts for a in cfg.active_agents().values()) else ''}:
+{roster(cfg, with_effort=True)}
+Use "lead" as the agent of a step that the team lead ("{cfg.lead}") should do (design, review, planning).
+
+WHAT THE USER WANTS THE WORKFLOW TO DO:
+{description}
+
+Design 2-6 steps. Each step is one task for one member. In titles and prompts write {{goal}} where the
+user's goal text should go (the workflow is reused for many goals). Prompts must be self-contained
+instructions. "after" lists the step numbers (1-based) this step waits for; omit it to wait for the
+previous step, use [] to start immediately (parallel steps). "effort" is optional (one of that member's
+effort levels). "review": true if the lead should review the result at the end.
+Write name as a short kebab-case slug; write description, titles and prompts in the language of the
+user's request above. Do NOT modify any files.
+
+Reply with ONLY a JSON object, no other text:
+{{"name": "...", "description": "...", "review": true, "steps": [{{"agent": "<member or lead>", "title": "...", "prompt": "...", "after": [1], "effort": ""}}]}}"""
+
+
 def extract_commit_message(text: str) -> str:
     """Commit message sau dòng SUMMARY: cuối cùng (bỏ rào ``` và ngoặc kép bao ngoài)."""
     if "SUMMARY:" not in text:

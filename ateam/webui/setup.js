@@ -376,6 +376,7 @@ window.Setup = (() => {
     const m = openModal(`${modalHead(esc(w && w.in_file ? t("cu_edit_flow", { name: w.name }) : t("cu_add_flow")))}<div class="modal-pad form">
       <div class="muted small">${esc(t("cu_flow_hint"))}</div>
       ${w && !w.in_file ? `<div class="warn-text small">${esc(t("cu_flow_copy", { name: w.name }))}</div>` : ""}
+      <label>${esc(t("cu_ai"))}<span class="wf-ai"><input class="field one" id="wf-ai-desc" placeholder="${esc(t("cu_ai_ph"))}"><button class="btn sm" data-wf="ai">${esc(t("cu_ai_btn"))}</button></span><span class="muted small">${esc(t("cu_ai_hint"))}</span></label>
       <label>${esc(t("cu_template"))}<select class="field one" id="wf-template"><option value="">${esc(t("cu_pick_template"))}</option>${d.workflow_templates.map((x) => `<option value="${esc(x.key)}">${esc(x.key)} — ${esc(x.description)}</option>`).join("")}</select></label>
       <label>${esc(t("cu_name"))}<input class="field one" id="wf-name" value="${esc(w && w.in_file ? w.name : "")}"></label>
       <label>${esc(t("cu_desc"))}<input class="field one" id="wf-desc" value="${esc(raw.description || "")}"></label>
@@ -395,10 +396,27 @@ window.Setup = (() => {
       if (!$("#wf-name", m).value.trim()) $("#wf-name", m).value = e.target.value;
       renumber();
     });
+    const suggest = async () => {
+      const b = $('[data-wf="ai"]', m);
+      if (b.disabled) return;
+      b.disabled = true;
+      toast(t("cu_ai_wait", { lead: d.lead }));
+      const r = await request("workflow_suggest", { description: $("#wf-ai-desc", m).value });
+      b.disabled = false;
+      const f = r.wf_suggest;
+      if (!f) return;
+      $("#wf-desc", m).value = f.description;
+      $("#wf-review", m).checked = f.review;
+      $("#wf-steps", m).innerHTML = f.steps.map(stepRow).join("");
+      if (!$("#wf-name", m).value.trim()) $("#wf-name", m).value = f.name;
+      renumber();
+    };
+    $("#wf-ai-desc", m).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); suggest(); } });
     m.addEventListener("click", async (e) => {
       const b = e.target.closest("[data-wf]");
       if (!b) return;
       const a = b.dataset.wf;
+      if (a === "ai") { e.preventDefault(); suggest(); }
       if (a === "add") { $("#wf-steps", m).insertAdjacentHTML("beforeend", stepRow({ agent: "lead" })); renumber(); }
       if (a === "del") { if ($$(".wf-step", m).length > 1) { b.closest(".wf-step").remove(); renumber(); } else toast(t("cu_one_step"), "warn"); }
       if (a === "cancel") closeModal(m);

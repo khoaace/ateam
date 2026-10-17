@@ -421,6 +421,11 @@ model/effort ở `/setup`, trưởng nhóm thấy nó khi lập kế hoạch).
 test), *sửa lỗi* (tái hiện → sửa → test chống tái diễn), *review code*. Tick *Trưởng nhóm review khi
 xong* để trưởng nhóm review và giao thêm việc như mục tiêu thường.
 
+Không muốn tự điền từng bước? Gõ quy trình bạn muốn vào ô **✨ Gợi ý** (vd: *"thiết kế API, hai agent code
+song song backend và frontend, rồi viết test e2e"*) rồi Enter / bấm *Gợi ý*: trưởng nhóm thiết kế các bước
+theo đúng thành viên trong đội — agent, tiêu đề, prompt có `{goal}`, *Sau bước*, effort — và điền sẵn vào form
+(chưa lưu). Sửa lại nếu cần rồi lưu. Agent không có trong đội thành trưởng nhóm, effort không hợp lệ bị bỏ.
+
 ```
 /flow                                  xem các workflow
 /flow tinh-nang thêm đăng nhập Google  tạo mục tiêu theo workflow (các bước ở trạng thái nháp → /go)

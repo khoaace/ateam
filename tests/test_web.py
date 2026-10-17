@@ -489,6 +489,29 @@ def test_web_setup_and_custom(env, project, monkeypatch):
     asyncio.run(main())
 
 
+def test_web_suggest_workflow(env, project, monkeypatch):
+    """✨ Gợi ý ở form workflow: trưởng nhóm thiết kế bước theo mô tả → điền form (chuẩn hoá), lưu được."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    wa = _web_app(env, project, monkeypatch)
+
+    async def main():
+        assert (await wa.handle({"op": "workflow_suggest", "description": "  "}))[1] == "warn"
+        r = await wa.handle({"op": "workflow_suggest", "description": "thiết kế, code rồi kiểm tra giao diện"})
+        f = r[2]["wf_suggest"]
+        assert r[1] == "ok" and f["name"] == "tinh-nang-ui" and f["review"] is False
+        assert [st["agent"] for st in f["steps"]] == ["lead", "codex", "lead"]  # 'ghost' không có trong đội
+        assert [st["after"] for st in f["steps"]] == ["0", "", ""]  # [1, 9] sai -> sau bước trước
+        assert f["steps"][1]["effort"] == "" and "{goal}" in f["steps"][0]["title"]
+        r = await wa.handle({"op": "custom_save", "kind": "workflows", "name": f["name"],
+                             "description": f["description"], "review": f["review"], "steps": f["steps"]})
+        assert r[1] == "ok" and len(wa.cfg.workflows["tinh-nang-ui"].steps) == 3
+        again = await wa.handle({"op": "workflow_suggest", "description": "như trên"})
+        assert again[2]["wf_suggest"]["name"] == "tinh-nang-ui-2"  # không trùng workflow đã có
+        assert "===== Gợi ý workflow — claude" in (project / ".ateam/logs/lead.log").read_text()
+    asyncio.run(main())
+
+
 def test_web_markdown_renderer(tmp_path):
     """Log/kết quả của agent hiện markdown dễ đọc: tiêu đề, danh sách, ```, bảng, khối NOTE, SUMMARY (app.js)."""
     import json

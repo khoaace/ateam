@@ -968,6 +968,22 @@ class Orchestrator:
             return False, tr("{agent} không trả về commit message (xem .ateam/logs/lead.log)", agent=writer)
         return True, msg
 
+    async def suggest_workflow(self, description: str) -> tuple[bool, "dict | str"]:
+        """Trưởng nhóm thiết kế workflow tuỳ chỉnh theo mô tả của người dùng (form /custom → ✨ Gợi ý).
+        Trả về (thành công, dữ liệu điền form — xem wizard.suggestion_form — hoặc lời nhắn lỗi)."""
+        from . import wizard
+        if not description.strip():
+            return False, tr("Mô tả quy trình bạn muốn trước (vd: thiết kế → code → test → review)")
+        out = await self._call_lead(P.workflow_suggest_prompt(self.cfg, description.strip(), str(self.root)),
+                                    tr("Gợi ý workflow"))
+        raw = P.extract_json(out or "", dict)
+        if not raw:
+            return False, tr("{agent} không trả về workflow (xem .ateam/logs/lead.log)", agent=self.cfg.lead)
+        try:
+            return True, wizard.suggestion_form(self.cfg, raw)
+        except ValueError as e:
+            return False, str(e)
+
     def force_review(self, gid: int) -> str:
         g = self.db.goal(gid)
         if not g:

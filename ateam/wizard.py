@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import shlex
 import shutil
+import unicodedata
 from pathlib import Path
 
 from . import shell
@@ -325,6 +326,35 @@ def workflow_body(cfg: Config, name: str, old: str | None, description: str, rev
     if not out:
         raise ValueError(tr("Workflow cần ít nhất 1 bước"))
     return workflow_to_dict(Workflow(name=name, description=description.strip(), steps=out, review=review))
+
+
+def suggestion_form(cfg: Config, raw: dict) -> dict:
+    """Workflow trưởng nhóm gợi ý (JSON) → dữ liệu điền form: tên chưa trùng, agent lạ → trưởng nhóm, effort
+    lạ bỏ, 'Sau bước' sai bỏ (= sau bước liền trước). Không có bước nào → ValueError."""
+    steps = []
+    for st in raw.get("steps") or []:
+        if not isinstance(st, dict) or not (st.get("title") or st.get("prompt")):
+            continue
+        agent = str(st.get("agent") or LEAD_ALIAS)
+        agent = agent if agent in cfg.active_agents() else LEAD_ALIAS
+        a = cfg.agents.get(flow_agent(cfg, agent))
+        effort = str(st.get("effort") or "").strip().lower()
+        after = st.get("after")
+        after = after if isinstance(after, list) else None if after is None else [after]
+        if after and not all(isinstance(x, int) and 0 < x <= len(steps) for x in after):
+            after = None
+        steps.append({"agent": agent, "title": str(st.get("title") or "").strip(),
+                      "prompt": str(st.get("prompt") or "").strip(), "after": after_text(after),
+                      "effort": effort if a and effort in a.efforts else ""})
+    if not steps:
+        raise ValueError(tr("Trưởng nhóm không gợi ý được bước nào — thử mô tả rõ hơn"))
+    slug = unicodedata.normalize("NFKD", str(raw.get("name") or "").translate({0x111: "d", 0x110: "D"}))  # đ/Đ không tách dấu
+    base = re.sub(r"[^a-z0-9_-]+", "-", slug.encode("ascii", "ignore").decode().lower()).strip("-_")[:30] or "workflow"
+    name, i = base, 2
+    while name in cfg.workflows:
+        name, i = f"{base}-{i}", i + 1
+    return {"name": name, "description": str(raw.get("description") or "").strip(),
+            "review": raw.get("review") is not False, "steps": steps}
 
 
 # ---------------------------------------------------------------------------- popup "Luồng mặc định"

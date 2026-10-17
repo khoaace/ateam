@@ -2746,4 +2746,26 @@ EN: dict[str, str] = {
         'Too many wrong tokens — try again in a few minutes',
     'Mạng LAN':
         'LAN',
+    'Trưởng nhóm không gợi ý được bước nào — thử mô tả rõ hơn':
+        'The lead suggested no steps — try a clearer description',
+    'Mô tả quy trình bạn muốn trước (vd: thiết kế → code → test → review)':
+        'Describe the process you want first (e.g. design → code → test → review)',
+    'Gợi ý workflow':
+        'Suggest workflow',
+    '{agent} không trả về workflow (xem .ateam/logs/lead.log)':
+        '{agent} returned no workflow (see .ateam/logs/lead.log)',
+    '✨ Gợi ý':
+        '✨ Suggest',
+    'Gợi ý':
+        'Suggest',
+    'mô tả quy trình, vd: thiết kế → code → test → review':
+        'describe the process, e.g. design → code → test → review',
+    'trưởng nhóm điền các bước':
+        'the lead fills in the steps',
+    '✨ {lead} đang thiết kế workflow…':
+        '✨ {lead} is designing the workflow…',
+    '✨ Đã điền {n} bước — xem lại rồi Ctrl+S để lưu':
+        '✨ Filled {n} steps — review, then Ctrl+S to save',
+    '✨ Đã điền {n} bước — xem lại rồi bấm Lưu':
+        '✨ Filled {n} steps — review, then press Save',
 }

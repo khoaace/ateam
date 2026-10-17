@@ -1628,6 +1628,9 @@ class WorkflowEditScreen(BaseModal):
     #flow-head { height: 1; color: $text-muted; text-style: bold; margin-top: 1; }
     #flow-head Static { padding: 0 0 0 1; }
     #flow-add { margin-left: 4; }
+    #wf-ai-row { width: 64; height: 3; }
+    #wf-ai-desc { width: 1fr; }
+    #wf-ai { margin-top: 1; }
     """
 
     def __init__(self, cfg: Config, name: str | None = None, raw: dict | None = None):
@@ -1650,6 +1653,9 @@ class WorkflowEditScreen(BaseModal):
                                  "ngay, 1,2 = sau bước 1 và 2."),
                               "dim"))
             with VerticalScroll(classes="f-scroll"):
+                yield form_row(tr("✨ Gợi ý"), Horizontal(
+                    TextInput(placeholder=tr("mô tả quy trình, vd: thiết kế → code → test → review"), id="wf-ai-desc"),
+                    Btn(tr("Gợi ý"), id="wf-ai"), id="wf-ai-row"), tr("trưởng nhóm điền các bước"))
                 yield form_row(tr("Mẫu"), Select([(f"{k} — {v['description']}", k)
                                               for k, v in WORKFLOW_TEMPLATES.items()],
                                              prompt=tr("(chọn để điền sẵn)"), id="wf-template",
@@ -1714,9 +1720,35 @@ class WorkflowEditScreen(BaseModal):
         if not name.value.strip():
             name.value = str(event.value)
 
+    async def suggest(self) -> None:
+        btn = self.query_one("#wf-ai", Button)
+        if btn.disabled:
+            return
+        btn.disabled = True
+        self.notify(tr("✨ {lead} đang thiết kế workflow…", lead=self.cfg.lead))
+        try:
+            ok, form = await self.app.orch.suggest_workflow(self.query_one("#wf-ai-desc", Input).value)
+        finally:
+            btn.disabled = False
+        if not ok:
+            self.notify(str(form), severity="warning", timeout=8)
+            return
+        await self.fill(form)
+        name = self.query_one("#wf-name", Input)
+        if not name.value.strip():
+            name.value = form["name"]
+        self.notify(tr("✨ Đã điền {n} bước — xem lại rồi Ctrl+S để lưu", n=len(form["steps"])))
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "wf-ai-desc":
+            event.stop()
+            self.run_worker(self.suggest(), exclusive=True, group="wf-ai")
+
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id or ""
-        if bid == "wf-add":
+        if bid == "wf-ai":
+            self.run_worker(self.suggest(), exclusive=True, group="wf-ai")
+        elif bid == "wf-add":
             await self.query_one("#flow-steps", Vertical).mount(self.step_row({}))
             self.renumber()
         elif bid.startswith("wf-del-"):

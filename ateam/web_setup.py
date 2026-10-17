@@ -234,6 +234,13 @@ class SetupWeb:
         return tr("Đã lưu {v} '{name}'", v="agent" if kind == "agents" else "workflow", name=name), "ok", \
             {"custom_saved": True}
 
+    async def suggest_workflow(self, d: dict) -> tuple:
+        """✨ Gợi ý ở form workflow: trưởng nhóm thiết kế các bước theo mô tả — điền form, chưa lưu."""
+        ok, form = await self.app.orch.suggest_workflow(str(d.get("description") or ""))
+        if not ok:
+            return str(form), "warn"
+        return tr("✨ Đã điền {n} bước — xem lại rồi bấm Lưu", n=len(form["steps"])), "ok", {"wf_suggest": form}
+
     # ------------------------------------------------------------------ popup "Luồng mặc định"
     async def api_default_flow(self, r: web.Request) -> web.Response:
         """Như DefaultFlowScreen: workflow, bước (agent/model/effort) + model/effort gợi ý của mọi agent."""

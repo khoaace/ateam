@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0 — 17/10/2026
+
+- **✨ Gợi ý workflow bằng AI**: ở form *Thêm workflow* (`/custom`, TUI lẫn web) gõ quy trình bạn muốn bằng lời
+  thường, trưởng nhóm thiết kế sẵn các bước (agent trong đội, tiêu đề, prompt có `{goal}`, chạy sau bước nào,
+  effort) và điền vào form để bạn sửa rồi lưu — không cần tự nghĩ từng bước. Tên được tự đặt không trùng
+  workflow đã có; agent lạ thành trưởng nhóm, effort / thứ tự sai được bỏ.
+
 ## 0.14.0 — 17/10/2026
 
 - **Giao diện web mới** kiểu terminal hiện đại (tối / giấy), cả trang đăng nhập khi dùng từ xa.
