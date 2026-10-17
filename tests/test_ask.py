@@ -67,6 +67,8 @@ def test_ask_waits_for_answer_and_keeps_worktree(env, project, monkeypatch):
         assert o.db.task(c).status == "asking"
         o.cancel(c)
         assert o.db.task(c).status == "cancelled" and o.ask_active() is None
+        # huỷ sinh `git branch -D` chạy nền: chờ xong, kẻo asyncio.run() huỷ nó giữa lúc tạo tiến trình con -> treo
+        await asyncio.gather(*list(o._bg), return_exceptions=True)
     asyncio.run(main())
 
 
