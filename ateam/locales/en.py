@@ -2616,4 +2616,114 @@ EN: dict[str, str] = {
         'Goal history',
     'Tiếp tục mục tiêu':
         'Continue goal',
+    'Chưa cài cloudflared — cài bằng `brew install cloudflared` (macOS) rồi chạy lại.':
+        'cloudflared is not installed — install it with `brew install cloudflared` (macOS) and run again.',
+    '--public-url phải là địa chỉ đầy đủ, vd https://ateam.ten-mien.com':
+        '--public-url must be a full address, e.g. https://ateam.your-domain.com',
+    'địa chỉ nghe, vd 0.0.0.0 để mở từ điện thoại trong LAN (bật token)':
+        'address to listen on, e.g. 0.0.0.0 to open from a phone on the LAN (enables the token)',
+    'mở Cloudflare Tunnel (cloudflared, https, không cần tài khoản) + in mã QR':
+        'open a Cloudflare Tunnel (cloudflared, https, no account needed) + print a QR code',
+    'địa chỉ công khai khi bạn tự chạy named tunnel / domain riêng (bật token)':
+        'public address when you run your own named tunnel / domain (enables the token)',
+    'chỉ cho xem, không thao tác':
+        'view only, no actions',
+    'tạo token mới (thiết bị cũ phải quét lại)':
+        'create a new token (old devices must scan again)',
+    '--tui chỉ chạy trên máy này — bỏ --host/--tunnel/--public-url, hoặc dùng `ateam web` (giao diện web) để mở từ điện thoại.':
+        '--tui only runs on this machine — drop --host/--tunnel/--public-url, or use `ateam web` (the web UI) to open it from a phone.',
+    '🔒 Chế độ từ xa: cần token (lưu ở .ateam/web_token; --new-token để đổi)':
+        '🔒 Remote mode: a token is required (stored in .ateam/web_token; --new-token to change it)',
+    '⚠ Qua http trong LAN, token đi dạng rõ — ngoài mạng nhà nên dùng --tunnel (https).':
+        '⚠ Over http on the LAN the token travels in clear text — outside your home network use --tunnel (https).',
+    '⏳ Đang mở Cloudflare Tunnel… URL công khai + mã QR sẽ in ở dưới.':
+        '⏳ Opening Cloudflare Tunnel… the public URL + QR code will be printed below.',
+    ' · chỉ xem (--readonly)':
+        ' · view only (--readonly)',
+    ' · token có toàn quyền như trên máy này':
+        ' · the token has full control, same as on this machine',
+    '❓ Agent hỏi bạn':
+        '❓ An agent asks you',
+    'Đã trả lời — {agent} làm tiếp task #{tid}':
+        'Answered — {agent} continues task #{tid}',
+    'Task #{tid} không có câu hỏi nào đang chờ':
+        'Task #{tid} has no pending question',
+    '💬 #{tid} trả lời {agent}: {a}':
+        '💬 #{tid} answer to {agent}: {a}',
+    ' · tiếp tục phiên {s}':
+        ' · resuming session {s}',
+    '↻ không tiếp tục được phiên cũ — chạy lại với đầy đủ ngữ cảnh':
+        '↻ could not resume the previous session — running again with full context',
+    '❓ #{tid} {agent} hỏi: {q} — tự trả lời: {a}':
+        '❓ #{tid} {agent} asks: {q} — auto-answered: {a}',
+    '❓ #{tid} {agent} hỏi bạn: {q}':
+        '❓ #{tid} {agent} asks you: {q}',
+    '❓ {agent} hỏi · task #{tid} ':
+        '❓ {agent} asks · task #{tid} ',
+    '❓ Agent hỏi giữa task':
+        '❓ Agent question during a task',
+    ' · còn {others} task khác đang hỏi':
+        ' · {others} more tasks are asking',
+    '⏭ Để agent tự quyết':
+        '⏭ Let the agent decide',
+    '📜 Xem task':
+        '📜 View task',
+    '✗ Huỷ task':
+        '✗ Cancel task',
+    'Điện thoại':
+        'Phone',
+    'Mở trên điện thoại':
+        'Open on your phone',
+    'Quét mã bằng camera điện thoại. URL chứa token toàn quyền — đừng gửi cho người khác.':
+        "Scan the code with your phone camera. The URL contains a full-access token — don't share it.",
+    'Server đang ở chế độ chỉ xem (--readonly).':
+        'The server is in view-only mode (--readonly).',
+    'Server đang chỉ nghe trên máy này. Để mở từ điện thoại, chạy lại với:':
+        'The server only listens on this machine. To open it from a phone, restart with:',
+    'cùng Wi-Fi (http, token đi dạng rõ trong LAN)':
+        'same Wi-Fi (http, the token travels in clear text on the LAN)',
+    'mọi nơi qua Cloudflare Tunnel (https, cần cài cloudflared)':
+        'from anywhere via Cloudflare Tunnel (https, needs cloudflared)',
+    'Chép':
+        'Copy',
+    'Đã chép':
+        'Copied',
+    '👁 Chế độ chỉ xem — thao tác bị tắt':
+        '👁 View-only mode — actions are disabled',
+    'Agent hỏi giữa task':
+        'Agent question during a task',
+    '{agent} hỏi · task #{id}':
+        '{agent} asks · task #{id}',
+    'Để agent tự quyết':
+        'Let the agent decide',
+    'Xem task':
+        'View task',
+    'còn {n} task khác đang hỏi':
+        '{n} more tasks are asking',
+    'Trả lời câu hỏi của agent (Enter) · gõ số để chọn phương án':
+        "Answer the agent's question (Enter) · type a number to pick an option",
+    '🌐 Cloudflare Tunnel: {url}':
+        '🌐 Cloudflare Tunnel: {url}',
+    '✗ cloudflared đã dừng (mã {rc})':
+        '✗ cloudflared stopped (code {rc})',
+    'Chế độ chỉ xem (--readonly) — không làm được thao tác này':
+        'View-only mode (--readonly) — this action is not allowed',
+    '✗ Không chạy được cloudflared: {e}':
+        '✗ Could not run cloudflared: {e}',
+    'Máy này':
+        'This machine',
+    'Quét mã QR trong terminal đang chạy `ateam web`, hoặc dán token (file .ateam/web_token) vào đây.':
+        'Scan the QR code in the terminal running `ateam web`, or paste the token (file .ateam/web_token) here.',
+    'Vào':
+        'Sign in',
+    'Token không đúng':
+        'Wrong token',
+    'Cloudflare Tunnel':
+        'Cloudflare Tunnel',
+    'Địa chỉ công khai':
+        'Public address',
+    'Sai token quá nhiều lần — thử lại sau ít phút':
+        'Too many wrong tokens — try again in a few minutes',
+    'Mạng LAN':
+        'LAN',
 }

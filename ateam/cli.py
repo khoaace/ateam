@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -93,12 +94,25 @@ def cmd_tui(args) -> int:
 
 
 def cmd_web(args) -> int:
+    remote_args = args.tunnel or args.public_url or args.host not in ("127.0.0.1", "localhost", "::1", "[::1]")
     if args.tui:
+        if remote_args:
+            print(tr("--tui chỉ chạy trên máy này — bỏ --host/--tunnel/--public-url, hoặc dùng `ateam web` "
+                     "(giao diện web) để mở từ điện thoại."), file=sys.stderr)
+            return 1
         return cmd_web_tui(args)
     try:
         from . import web
+        from .web_auth import Remote, is_loopback
     except ImportError:
         print(tr("Cần cài thêm aiohttp: {v}", v=f"{shlex.quote(sys.executable)} -m pip install aiohttp"))
+        return 1
+    if args.tunnel and not shutil.which("cloudflared"):
+        print(tr("Chưa cài cloudflared — cài bằng `brew install cloudflared` (macOS) rồi chạy lại."),
+              file=sys.stderr)
+        return 1
+    if args.public_url and not re.match(r"https?://[^/\s]+", args.public_url):
+        print(tr("--public-url phải là địa chỉ đầy đủ, vd https://ateam.ten-mien.com"), file=sys.stderr)
         return 1
     root = find_root(args.dir)
     notes = ensure_global_config()
@@ -109,12 +123,23 @@ def cmd_web(args) -> int:
     if lock is None:
         print(tr("Dự án này đang mở ở một phiên ateam khác — đóng phiên đó rồi chạy lại."))
         return 1
+    remote = Remote(root / ".ateam", host=args.host, port=args.port, public_url=args.public_url or "",
+                    tunnel=args.tunnel, readonly=args.readonly, new_token=args.new_token)
     url = f"http://127.0.0.1:{args.port}"
+    if remote.enabled:
+        url = remote.urls()[-1][1]  # máy này, kèm token
+        print(tr("🔒 Chế độ từ xa: cần token (lưu ở .ateam/web_token; --new-token để đổi)")
+              + (tr(" · chỉ xem (--readonly)") if args.readonly else tr(" · token có toàn quyền như trên máy này")))
+        web.print_remote(remote)
+        if not is_loopback(args.host):
+            print(tr("⚠ Qua http trong LAN, token đi dạng rõ — ngoài mạng nhà nên dùng --tunnel (https)."))
+        if args.tunnel:
+            print(tr("⏳ Đang mở Cloudflare Tunnel… URL công khai + mã QR sẽ in ở dưới."))
     print(tr("Mở trên trình duyệt: {v}  (Ctrl+C để dừng)", v=url))
     if args.open:
         import webbrowser
         webbrowser.open(url)
-    web.serve(root, cfg, open_db(root), args.port)
+    web.serve(root, cfg, open_db(root), args.port, remote)
     return 0
 
 
@@ -271,6 +296,7 @@ def cmd_goal(args) -> int:
 
     async def main() -> int:
         orch = Orchestrator(root, cfg, db, on_event=_printer(not args.quiet))
+        orch.auto_answer = True  # chạy không tương tác: agent hỏi (<<<ASK>>>) thì theo phương án đề xuất
         await orch.setup()
         if getattr(args, "ref", None):  # ateam continue <m12|t40> <yêu cầu>
             res = orch.continue_any(args.ref, " ".join(args.text))
@@ -408,6 +434,7 @@ def cmd_run(args) -> int:
 
     async def main():
         orch = Orchestrator(root, cfg, db, on_event=_printer(not args.quiet))
+        orch.auto_answer = True  # chạy không tương tác: agent hỏi (<<<ASK>>>) thì theo phương án đề xuất
         await orch.setup()
         await orch.run_until_idle()
     asyncio.run(main())
@@ -549,6 +576,14 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--port", type=int, default=8000)
     s.add_argument("--open", action="store_true", help=tr("tự mở trình duyệt"))
     s.add_argument("--tui", action="store_true", help=tr("giao diện terminal trong trình duyệt (cần textual-serve)"))
+    s.add_argument("--host", default="127.0.0.1",
+                   help=tr("địa chỉ nghe, vd 0.0.0.0 để mở từ điện thoại trong LAN (bật token)"))
+    s.add_argument("--tunnel", action="store_true",
+                   help=tr("mở Cloudflare Tunnel (cloudflared, https, không cần tài khoản) + in mã QR"))
+    s.add_argument("--public-url", default="",
+                   help=tr("địa chỉ công khai khi bạn tự chạy named tunnel / domain riêng (bật token)"))
+    s.add_argument("--readonly", action="store_true", help=tr("chỉ cho xem, không thao tác"))
+    s.add_argument("--new-token", action="store_true", help=tr("tạo token mới (thiết bị cũ phải quét lại)"))
     s = sub.add_parser("lang", help=tr("xem / đổi ngôn ngữ giao diện (vi | en), lưu cho các lần sau"))
     s.add_argument("code", nargs="?")
     sub.add_parser("setup", help=tr("mở giao diện ở màn hình thiết lập: agent, trưởng nhóm, model, "

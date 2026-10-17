@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.13.0 — 17/10/2026
+
+- **Giữ phiên agent**: `/retry`, từ chối kèm góp ý, vòng sửa khi kiểm tra fail, trả lời câu hỏi của agent và
+  `/continue` (thread `/task`) tiếp tục đúng phiên CLI (`claude --resume`, `codex exec resume`, `grok --resume`), chỉ
+  gửi phần mới thay vì nhồi lại cả ngữ cảnh; `/continue m<id>` tiếp tục phiên lập kế hoạch của trưởng nhóm. Phiên
+  không còn thì tự chạy lại với đủ ngữ cảnh. Token/cost của lượt resume đọc đúng file phiên. Cấu hình: `session_args`,
+  `resume_args`, `session_re`.
+- **Agent hỏi lại giữa task** bằng `<<<ASK>>>`: task chuyển sang *đang hỏi bạn*, câu hỏi hiện ở khung /grill (terminal
+  và web) với phương án gợi ý; trả lời là agent làm tiếp trong cùng phiên, phần làm dở được giữ. Có thông báo.
+  `ateam goal -y` / `ateam run` tự chọn phương án khuyên dùng.
+- **Dùng từ điện thoại**: `ateam web --tunnel` (Cloudflare quick tunnel, https, không cần tài khoản), `--host 0.0.0.0`
+  (LAN), `--public-url` (named tunnel / domain riêng). Chế độ từ xa bắt buộc token (`.ateam/web_token`), in URL + mã
+  QR ra terminal và nút 📱 Điện thoại trên web; cookie HttpOnly, chặn Origin lạ, khoá khi sai token nhiều lần;
+  `--readonly` chỉ xem, `--new-token` đổi token. Giao diện web gọn hơn ở màn hình ≤ 480px.
+
 ## 0.12.0 — 17/10/2026
 
 - **Thông báo** khi có việc cần bạn: kế hoạch chờ duyệt, task chờ duyệt diff, task lỗi hoặc xung đột merge.

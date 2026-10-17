@@ -719,3 +719,24 @@ kbd { font: 600 10.5px var(--mono); padding: 1px 5px; border-radius: 5px; backgr
   .swatches { grid-template-columns: repeat(2, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* mở trên điện thoại + chế độ chỉ xem */
+.phone-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.phone-item { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.phone-qr { width: 220px; height: 220px; max-width: 100%; border-radius: 8px; background: #fff; image-rendering: pixelated; }
+.phone-url { display: flex; gap: 6px; align-items: center; width: 100%; }
+.phone-url code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.phone-cmd { display: flex; flex-direction: column; gap: 2px; margin: 10px 0; }
+.ro-banner { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 50; padding: 4px 12px;
+  border-radius: 0 0 8px 8px; background: var(--review, #f59e0b); color: #000; font-size: 12.5px; }
+body.readonly .composer, body.readonly .row-actions, body.readonly .panel-actions, body.readonly .top-actions .btn,
+body.readonly .card-actions { display: none !important; }
+@media (max-width: 480px) {
+  .main { padding-bottom: env(safe-area-inset-bottom); }
+  .top { padding: 8px 12px; }
+  .top-actions .btn { padding: 4px 8px; }
+  .panel-actions { flex-wrap: wrap; }
+  .options .opt { width: 100%; }
+  .chip { white-space: nowrap; }
+  .modal-box { width: calc(100vw - 16px) !important; max-height: calc(100vh - 16px); }
+}

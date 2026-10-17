@@ -367,11 +367,22 @@ def test_continue_goal_and_thread(env, project, tmp_path):
     r = ateam(env, project, "continue", "zz", "x", check=False)
     assert r.returncode == 1 and "Không hiểu" in r.stderr
 
-    # thread /task: hỏi tiếp cùng agent, prompt kèm lượt trước
+    # thread /task: hỏi tiếp cùng agent trong cùng phiên CLI (codex exec resume), chỉ gửi yêu cầu mới
     ateam(env, project, "add", "--to", "codex", "viết hàm cộng")
     ateam(env, project, "run", "-q")
-    tid = next(t.id for t in tasks(project) if t.title == "viết hàm cộng")
+    first = next(t for t in tasks(project) if t.title == "viết hàm cộng")
+    tid = first.id
+    assert first.session and first.session_agent == "codex"
     r = ateam(env, project, "continue", f"t{tid}", "-q", "thêm test cho hàm")
     t = next(t for t in tasks(project) if t.parent_id == tid and t.source == "followup")
     assert t.parent_id == tid and t.source == "followup" and t.goal_id is None and t.status == "done"
-    assert "nhớ lượt trước" in (project / f".ateam/logs/t{t.id}.log").read_text()
+    assert f"tiếp tục phiên {first.session}" in (project / f".ateam/logs/t{t.id}.log").read_text()
+    assert t.session == first.session
+    # phiên không còn (CLI đã xoá) -> chạy lại không resume, prompt kèm lượt trước
+    import shutil
+    shutil.rmtree(env["CODEX_HOME"] + "/fake_sessions")
+    ateam(env, project, "continue", f"t{t.id}", "-q", "thêm docstring")
+    t2 = next(x for x in tasks(project) if x.parent_id == t.id)
+    log = (project / f".ateam/logs/t{t2.id}.log").read_text()
+    assert t2.status == "done" and "không tiếp tục được phiên cũ" in log and "nhớ lượt trước" in log
+    assert t2.session and t2.session != first.session

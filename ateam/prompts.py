@@ -99,7 +99,8 @@ def thread_prompt(turns: list[tuple[str, str]], new: str) -> str:
 
 def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: str,
                 goal: str | None, deps: list[tuple[int, str, str, str]], notes: str,
-                cwd: str, can_delegate: bool) -> str:
+                cwd: str, can_delegate: bool, qa: list[dict] | None = None,
+                can_ask: bool = True) -> str:
     others = [n for n in cfg.active_agents() if n != agent]
     parts = [
         f'You are "{agent}", a member of an AI agent team (team lead: "{cfg.lead}").',
@@ -114,6 +115,8 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
             parts.append(f"--- #{did} by {dagent}: {dtitle} ---\n{dres or '(no summary)'}")
     if notes:
         parts.append(f"\nSHARED TEAM NOTES:\n{notes}")
+    if qa:
+        parts.append(qa_text(qa))
     rules = [
         "\nRULES:",
         "- Do your task yourself and stay within its scope.",
@@ -126,6 +129,7 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
             "full self-contained instructions",
             "<<<END>>>",
         ]
+    rules += ASK_RULES if can_ask else [ASK_DONE_RULE]
     rules += [
         "- To leave information for the whole team, print: <<<NOTE>>>your note<<<END>>>",
         "- End your answer with a line starting with 'SUMMARY:' followed by a concise summary:"
@@ -133,6 +137,65 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
     ]
     parts.extend(rules)
     return "\n".join(parts)
+
+
+def qa_text(qa: list[dict] | None) -> str:
+    """Các câu agent đã hỏi người dùng (<<<ASK>>>) và câu trả lời — gửi kèm khi không tiếp tục được phiên."""
+    if not qa:
+        return ""
+    lines = [f"Q: {x.get('q', '')}\nA: {x.get('a') or '(no answer)'}" for x in qa]
+    return "\n\nYOU ASKED THE USER EARLIER (continue the task with these answers):\n" + "\n".join(lines)
+
+
+ASK_RULES = [
+    "- If a requirement is genuinely ambiguous and guessing wrong would change the result (not for"
+    " details you can reasonably decide yourself), ask the user ONE question and stop your turn by printing:",
+    '<<<ASK>>>{"question": "...", "why": "why it matters", "options": ["...", "..."], "recommended": "..."}<<<END>>>',
+    "  You will be resumed with the answer. Write the question in the language of the task.",
+]
+ASK_DONE_RULE = ("- Do not ask the user more questions: decide yourself and state your assumptions in the"
+                 " SUMMARY.")
+
+
+def retry_prompt(reason: str, reset: bool) -> str:
+    """Chạy lại task trong cùng phiên (/retry): agent đã nhớ đề bài, chỉ cần biết lần trước ra sao."""
+    where = ("The working tree was reset to the base commit, so your previous changes are gone — redo"
+             " the work." if reset else "Your previous changes are still in the working tree.")
+    return (f"The user asked you to run this same task again. Previous attempt ended with: "
+            f"{reason or '(no error recorded)'}\n{where}\nFinish the task. End your answer with a line"
+            " starting with 'SUMMARY:'.")
+
+
+def feedback_prompt(feedback: str, reset: bool) -> str:
+    """Bị từ chối khi duyệt diff, làm lại kèm góp ý — trong cùng phiên."""
+    where = ("The working tree was reset to the base commit (your rejected changes are gone)." if reset
+             else "Your previous changes are still in the working tree.")
+    return (f"REVIEWER FEEDBACK — your previous attempt was rejected, address this:\n{feedback}\n{where}\n"
+            "End your answer with a line starting with 'SUMMARY:'.")
+
+
+def answer_prompt(question: str, answer: str, can_ask: bool) -> str:
+    """Tiếp tục phiên sau khi người dùng trả lời câu hỏi <<<ASK>>>."""
+    more = "" if can_ask else " Do not ask further questions; decide yourself and state assumptions."
+    return (f"The user answered your question.\nQ: {question}\nA: {answer}\nContinue the task.{more}"
+            " End your answer with a line starting with 'SUMMARY:'.")
+
+
+SKIP_ANSWER = "(The user did not decide — choose the option you think is best and state your assumption.)"
+
+
+def fix_resume_prompt(*, command: str, rc: int, output: str, attempt: int, max_attempts: int) -> str:
+    """Vòng sửa verify trong cùng phiên: agent nhớ task, chỉ gửi lỗi."""
+    return f"""The project's verification command fails after your change. Fix attempt {attempt} of {max_attempts}.
+
+VERIFICATION COMMAND: {command}
+EXIT CODE: {rc}
+OUTPUT (last lines):
+{output}
+
+Fix the code so the verification command passes. Do not delete or weaken tests to make them pass,
+unless a test is clearly wrong — then say why. Run the command yourself if you can.
+End your answer with a line starting with 'SUMMARY:' describing what you fixed."""
 
 
 def review_prompt(cfg: Config, goal: str, round_no: int, results: str, cwd: str) -> str:
@@ -274,6 +337,22 @@ def extract_json(text: str, kind: type):
 DELEGATE_RE = re.compile(
     r'<<<DELEGATE\s+to="([^"]+)"(?:\s+title="([^"]*)")?\s*>>>\s*(.*?)\s*<<<END>>>', re.S)
 NOTE_RE = re.compile(r"<<<NOTE>>>\s*(.*?)\s*<<<END>>>", re.S)
+ASK_RE = re.compile(r"<<<ASK>>>\s*(.*?)\s*<<<END>>>", re.S)
+
+
+def parse_ask(text: str) -> dict | None:
+    """Câu hỏi agent gửi người dùng (khối <<<ASK>>> cuối cùng): {"q","why","options","rec"} hoặc None.
+    Nội dung không phải JSON → cả khối là câu hỏi."""
+    found = [b for b in ASK_RE.findall(text or "") if '"question": "..."' not in b]  # bỏ ví dụ trong prompt
+    if not found:
+        return None
+    body = found[-1].strip()
+    d = extract_json(body, dict) if body.startswith("{") or "```" in body else None
+    if not isinstance(d, dict) or not str(d.get("question") or "").strip():
+        return {"q": body, "why": "", "options": [], "rec": ""} if body else None
+    opts = [str(o).strip() for o in (d.get("options") or []) if str(o).strip()][:6]
+    return {"q": str(d["question"]).strip(), "why": str(d.get("why") or "").strip(), "options": opts,
+            "rec": str(d.get("recommended") or "").strip()}
 
 
 def parse_delegations(text: str) -> list[tuple[str, str, str]]:
@@ -292,7 +371,7 @@ def extract_summary(text: str, limit: int = 2500) -> str:
     else:
         s = text.strip()
         s = s[-limit:]
-    s = DELEGATE_RE.sub("", NOTE_RE.sub("", s)).strip()
+    s = ASK_RE.sub("", DELEGATE_RE.sub("", NOTE_RE.sub("", s))).strip()
     return s[:limit]
 
 

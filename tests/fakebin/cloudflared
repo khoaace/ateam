@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Giả lập cloudflared quick tunnel: in URL trycloudflare ra stderr như bản thật, rồi chờ tới khi bị dừng.
+echo "INF Requesting new quick Tunnel on trycloudflare.com..." >&2
+echo "INF |  https://fake-tunnel-abc.trycloudflare.com  |" >&2
+[ -n "${ATEAM_FAKE_ARGS_LOG:-}" ] && echo "cloudflared $*" >> "$ATEAM_FAKE_ARGS_LOG"
+exec sleep 600

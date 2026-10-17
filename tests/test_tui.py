@@ -1443,7 +1443,7 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
     from ateam.db import DB
     from ateam.tui import CustomPanel, DefaultFlowScreen, OnboardScreen, TeamApp
 
-    async def wait_for(pilot, cond, n=40):
+    async def wait_for(pilot, cond, n=80):
         for _ in range(n):
             await pilot.pause(0.1)
             if cond():
@@ -1495,6 +1495,7 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
             await pilot.pause(0.2)
             ob.style = "approve"
             await ob.show_step(ob.step)
+            await pilot.pause(0.2)
             ob.query_one("#ob-flow").press()
             assert await wait_for(pilot, lambda: isinstance(app.screen, DefaultFlowScreen))
             assert not app.screen.query_one("#df-default").display and app.screen.in_setup

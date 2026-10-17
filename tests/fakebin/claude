@@ -1,27 +1,39 @@
 #!/usr/bin/env bash
 # Giả lập Claude Code (trưởng nhóm). Lấy prompt là đối số ngay sau -p.
-fake_flags="-p --print --permission-mode --model --effort"
+fake_flags="-p --print --permission-mode --model --effort --session-id --resume"
 source "$(dirname "$0")/_common.sh"
-P=""; prev=""; for a in "$@"; do [ "$prev" = "-p" ] && P="$a"; prev="$a"; done
+P=""; SID=""; RESUME=""; prev=""
+for a in "$@"; do
+  [ "$prev" = "-p" ] && P="$a"
+  [ "$prev" = "--session-id" ] && SID="$a"
+  [ "$prev" = "--resume" ] && RESUME="$a"
+  prev="$a"
+done
 if [ "$P" = "/usage" ]; then  # như claude -p /usage thật: không gọi model
   echo "Current session: 41% used · resets Oct 15 at 7:40pm"
   echo "Current week (all models): 26% used · resets Oct 20 at 6am"
   exit 0
 fi
 if fake_limited claude; then echo "Claude AI usage limit reached|$(( $(date +%s) + 3600 ))"; exit 1; fi
-# Như Claude Code thật: ghi file phiên ~/.claude/projects/<thư mục>/<phiên>.jsonl có usage (dashboard đọc)
+# Như Claude Code thật: ghi file phiên ~/.claude/projects/<thư mục>/<phiên>.jsonl có usage (dashboard đọc);
+# --session-id đặt tên phiên, --resume <id> nối tiếp phiên đó (không có file → lỗi như CLI thật)
 if [ -n "${CLAUDE_CONFIG_DIR:-}" ] && command -v python3 >/dev/null; then
-  python3 - "$P" "$PWD" <<'PY'
+  python3 - "$P" "$PWD" "$SID" "$RESUME" <<'PY' || exit 1
 import json, os, re, sys, time, uuid
-p, cwd = sys.argv[1], sys.argv[2]
+p, cwd, sid, resume = sys.argv[1:5]
 d = os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "projects", re.sub(r"[^A-Za-z0-9]", "-", cwd))
 os.makedirs(d, exist_ok=True)
 ts = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
 mid = "msg_" + uuid.uuid4().hex
 usage = {"input_tokens": 1000, "output_tokens": 200, "cache_read_input_tokens": 5000,
          "cache_creation_input_tokens": 300}
-with open(os.path.join(d, uuid.uuid4().hex + ".jsonl"), "w") as f:
-    f.write(json.dumps({"type": "user", "timestamp": ts, "message": {"role": "user", "content": p}}) + "\n")
+path = os.path.join(d, (resume or sid or uuid.uuid4().hex) + ".jsonl")
+if resume and not os.path.exists(path):
+    print(f"No conversation found with session ID: {resume}")
+    sys.exit(1)
+with open(path, "a") as f:
+    if not resume:
+        f.write(json.dumps({"type": "user", "timestamp": ts, "message": {"role": "user", "content": p}}) + "\n")
     for _ in range(2):  # một tin nhắn, hai khối nội dung: cùng message.id → chỉ tính một lần
         f.write(json.dumps({"type": "assistant", "timestamp": ts,
                             "message": {"id": mid, "model": "claude-sonnet-4-6", "usage": usage}}) + "\n")
@@ -66,7 +78,13 @@ elif [[ "$P" == *"Review round 1 of"* ]]; then
   echo '{"done": false, "summary": "Còn thiếu c.txt", "new_tasks": [{"id":1,"agent":"claude","title":"Tạo c.txt","prompt":"tạo c.txt","depends_on":[]}]}'
 elif [[ "$P" == *"Review round"* ]]; then
   echo '{"done": true, "summary": "Đã đủ a, b, c.", "new_tasks": []}'
+elif [[ "$P" == *"ASKME"* && "$P" != *"YOU ASKED THE USER EARLIER"* ]] && [ -z "$RESUME" ]; then
+  # <<<ASK>>>: hỏi người dùng giữa task (lượt đầu, chưa có câu trả lời)
+  echo wip > wip.txt
+  echo '<<<ASK>>>{"question": "Dùng SQLite hay Postgres?", "why": "đổi cách lưu", "options": ["SQLite", "Postgres"], "recommended": "SQLite"}<<<END>>>'
 else
+  [ -n "$RESUME" ] && echo "claude: tiếp tục phiên $RESUME"
+  [[ "$P" == *"A: "* ]] && echo "claude: câu trả lời ${P##*A: }" | head -1
   for i in 1 2 3; do echo "claude bước $i"; fake_sleep; done
   echo c > c.txt
   echo "SUMMARY: đã tạo c.txt"

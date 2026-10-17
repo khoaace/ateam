@@ -22,7 +22,9 @@ from aiohttp import WSMsgType, web
 
 from . import __version__, mentions, notify, reports, shell, theme, update, wizard
 from .config import Config, load_config, load_state, needs_setup, save_project_setting, save_state
-from .db import DB, GOAL_ENDED, Goal, Task
+from .db import ASKING, DB, GOAL_ENDED, Goal, Task
+from .qr import QR
+from .web_auth import Remote, auth_middleware, security_headers
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, tr
 from .orchestrator import SYSTEM, Orchestrator
 from .web_code import CodeWeb
@@ -38,7 +40,15 @@ def ui_strings() -> dict[str, str]:
     """Mọi chữ hiển thị trên trang web (JS chỉ dùng các khoá này — tests/test_web.py bắt chữ viết thẳng trong JS)."""
     return {
         "board": tr("Bảng việc"), "team": tr("Đội"), "terminal": tr("Terminal"), "git": tr("Git"),
-        "code": tr("Code"), "syslog": tr("Log hệ thống"),
+        "code": tr("Code"), "syslog": tr("Log hệ thống"), "phone": tr("Điện thoại"),
+        "phone_title": tr("Mở trên điện thoại"),
+        "phone_hint": tr("Quét mã bằng camera điện thoại. URL chứa token toàn quyền — đừng gửi cho người khác."),
+        "phone_ro": tr("Server đang ở chế độ chỉ xem (--readonly)."),
+        "phone_local": tr("Server đang chỉ nghe trên máy này. Để mở từ điện thoại, chạy lại với:"),
+        "phone_local_lan": tr("cùng Wi-Fi (http, token đi dạng rõ trong LAN)"),
+        "phone_local_tunnel": tr("mọi nơi qua Cloudflare Tunnel (https, cần cài cloudflared)"),
+        "phone_copy": tr("Chép"), "copied": tr("Đã chép"),
+        "readonly_banner": tr("👁 Chế độ chỉ xem — thao tác bị tắt"),
         "custom": tr("Tuỳ chỉnh"), "dash": tr("Thống kê"), "dash_today": tr("Hôm nay"), "dash_week": tr("7 ngày"),
         "dash_month": tr("30 ngày"), "dash_runs": tr("{n} lượt"), "dash_failed": tr("{f} lỗi · {r} hết hạn mức"),
         "dash_chart": tr("Token theo ngày (14 ngày)"), "dash_by_agent": tr("Theo agent (30 ngày)"),
@@ -58,7 +68,11 @@ def ui_strings() -> dict[str, str]:
         "clear": tr("Dọn việc đã xong"), "theme": tr("Giao diện & màu nhấn"),
         "running": tr("đang chạy"), "queued": tr("chờ chạy"), "review": tr("chờ duyệt"),
         "failed": tr("lỗi"), "done": tr("xong"), "draft": tr("nháp"), "cancelled": tr("đã huỷ"),
-        "blocked": tr("bị chặn"), "conflict": tr("xung đột"),
+        "blocked": tr("bị chặn"), "conflict": tr("xung đột"), "asking": tr("đang hỏi bạn"),
+        "ask_title": tr("Agent hỏi giữa task"), "ask_head": tr("{agent} hỏi · task #{id}"),
+        "ask_skip": tr("Để agent tự quyết"), "ask_view": tr("Xem task"), "ask_cancel": tr("Huỷ task"),
+        "ask_more": tr("còn {n} task khác đang hỏi"),
+        "placeholder_ask": tr("Trả lời câu hỏi của agent (Enter) · gõ số để chọn phương án"),
         "col_draft": tr("Nháp"), "col_queued": tr("Chờ chạy"), "col_running": tr("Đang chạy"),
         "col_review": tr("Chờ duyệt"), "col_done": tr("Xong"), "col_bad": tr("Lỗi / huỷ"),
         "empty_col": tr("Trống"), "no_goals": tr("Chưa có mục tiêu nào"),
@@ -235,7 +249,7 @@ def task_json(t: Task) -> dict:
             "prompt": t.prompt, "status": t.status, "deps": t.depends_on, "source": t.source,
             "result": t.result, "error": t.error, "branch": t.branch, "created": t.created,
             "started": t.started, "finished": t.finished, "model": t.model, "effort": t.effort,
-            "attempts": t.attempts}
+            "attempts": t.attempts, "question": t.question()}
 
 
 def goal_json(g: Goal, busy: bool) -> dict:
@@ -254,24 +268,14 @@ def tail_file(path: Path, n: int = LOG_TAIL) -> list[str]:
     return text.splitlines()[-n:]
 
 
-def allowed_hosts(port: int) -> set[str]:
-    return {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
-
-
 def guard_middleware(port: int):
     """Chỉ phục vụ khi Host là máy này (chặn DNS rebinding) và Origin (nếu có) cũng là máy này (chặn trang
-    web lạ mở WebSocket tới ateam — giao diện chạy được lệnh shell)."""
-    hosts = allowed_hosts(port)
+    web lạ mở WebSocket tới ateam — giao diện chạy được lệnh shell). Từ xa: xem web_auth."""
+    return auth_middleware(Remote(Path("."), port=port), port)
 
-    @web.middleware
-    async def guard(request: web.Request, handler):
-        if request.host not in hosts:
-            return web.Response(status=403, text="forbidden host")
-        origin = request.headers.get("Origin")
-        if origin and re.sub(r"^https?://", "", origin) not in hosts:
-            return web.Response(status=403, text="forbidden origin")
-        return await handler(request)
-    return guard
+
+# --readonly: thao tác không đổi gì vẫn cho phép
+READONLY_OPS = ("custom_preview",)
 
 
 def text_box(title: str, body: str) -> dict:
@@ -280,8 +284,9 @@ def text_box(title: str, body: str) -> dict:
 
 
 class WebApp:
-    def __init__(self, root: Path, cfg: Config, db: DB, port: int = 8000):
+    def __init__(self, root: Path, cfg: Config, db: DB, port: int = 8000, remote: Remote | None = None):
         self.root, self.cfg, self.db, self.port = root, cfg, db, port
+        self.remote = remote or Remote(Path(root) / ".ateam", port=port)
         self.orch = Orchestrator(root, cfg, db, on_event=self.on_orch_event)
         self.shell = shell.ShellManager(root, on_event=self.on_shell_event)
         self.index = mentions.FileIndex(root)
@@ -296,9 +301,13 @@ class WebApp:
 
     # ------------------------------------------------------------------ dựng app
     def make_app(self) -> web.Application:
-        app = web.Application(middlewares=[guard_middleware(self.port)], client_max_size=32 * 1024 ** 2)
+        app = web.Application(middlewares=[auth_middleware(self.remote, self.port)],
+                              client_max_size=32 * 1024 ** 2)
+        app.on_response_prepare.append(security_headers)
         app.add_routes([
             web.get("/", self.page),
+            web.get("/login", self.login_done),
+            web.get("/api/remote", self.api_remote),
             web.get("/ws", self.ws),
             web.get("/api/log/{tid}", self.api_log),
             web.get("/api/agent/{name}", self.api_agent_tail),
@@ -320,12 +329,27 @@ class WebApp:
             self.orch.log("ℹ " + n)
         self._spawn(self.orch.run_forever())
         self._spawn(self._push_loop())
+        if self.remote.tunnel:
+            self._spawn(self._tunnel())
         if not needs_setup():  # như TUI: hỏi model của CLI chưa từng hỏi (wizard tự hỏi khi mở)
             found = load_state().get("models_found", {})
             self._spawn(self.orch.discover_all([n for n in self.cfg.active_agents() if n not in found],
                                                on_done=lambda _n, msg: self.orch.log("⚙ " + msg)))
 
+    async def _tunnel(self) -> None:
+        def ready(url: str) -> None:
+            print_remote(self.remote, only=url)
+            self.orch.log(tr("🌐 Cloudflare Tunnel: {url}", url=url))
+        try:
+            await self.remote.start_tunnel(ready)
+        except OSError as e:
+            self.orch.log(tr("✗ Không chạy được cloudflared: {e}", e=e))
+            return
+        if self.remote.proc and self.remote.proc.returncode not in (None, 0):
+            self.orch.log(tr("✗ cloudflared đã dừng (mã {rc})", rc=self.remote.proc.returncode))
+
     async def _shutdown(self, _app) -> None:
+        await self.remote.stop_tunnel()
         self.shell.stop_all()  # không để lại dev server mồ côi
         for run in list(self.orch.runs.values()):
             if run is not None:
@@ -455,10 +479,15 @@ class WebApp:
             grill = {"goal": g.id, "text": _first_line(g.text, 300), "busy": busy, "question": q,
                      "n": len(qa), "answered": sum(1 for x in qa if x.get("a") is not None),
                      "error": "" if busy else str((g.grill or {}).get("error") or "")}
+        ask = None
+        at = o.ask_active() if not grill else None
+        if at:
+            ask = {"task": at.id, "agent": at.agent, "title": at.title, "question": at.question(),
+                   "n": len((at.ask or {}).get("qa") or []), "more": len(self.db.tasks(status=ASKING)) - 1}
         jobs = [{"id": j.id, "cmd": j.cmd, "status": j.status, "started": j.started, "finished": j.finished,
                  "rc": j.rc, "ports": j.ports} for j in self.shell.jobs.values()]
         return {"t": "state", "goals": goals, "tasks": [task_json(t) for t in tasks], "agents": agents,
-                "grill": grill, "jobs": jobs, "paused": o.paused, "worktree": o.use_worktree,
+                "grill": grill, "ask": ask, "jobs": jobs, "paused": o.paused, "worktree": o.use_worktree,
                 "lead": cfg.lead, "commit_agent": cfg.commit_agent, "workflow": cfg.default_workflow, "compacting": o.compacting,
                 "continue": reports.continue_candidates(self.db), "busy": len(o.runs)}
 
@@ -466,6 +495,7 @@ class WebApp:
         from .tui import COMMANDS, HELP  # danh sách lệnh + trợ giúp dùng chung với TUI
         st = load_state()
         return {"t": "hello", "version": __version__, "project": self.root.name, "root": str(self.root),
+                "remote": self.remote.enabled, "readonly": self.remote.readonly,
                 "lang": get_lang(), "T": ui_strings(), "help": HELP,
                 "commands": [{"name": n, "args": a, "desc": d} for n, a, d in COMMANDS],
                 # dữ liệu gợi ý tham số lệnh (/task agent:model@effort, /model, /flow…)
@@ -483,6 +513,18 @@ class WebApp:
                 "needs_setup": needs_setup()}
 
     # ------------------------------------------------------------------ HTTP
+    async def login_done(self, _r: web.Request) -> web.Response:  # đã đăng nhập mà mở lại /login
+        raise web.HTTPFound("/")
+
+    async def api_remote(self, _r: web.Request) -> web.Response:
+        """Mở trên điện thoại: các URL kèm token + mã QR (chỉ người đã đăng nhập mới gọi được)."""
+        r = self.remote
+        # máy này (127.0.0.1) không cần mã QR: điện thoại không mở được địa chỉ đó
+        urls = [{"label": lb, "url": u, "svg": "" if "//127.0.0.1:" in u else QR(u).to_svg(5)}
+                for lb, u in r.urls()] if r.enabled else []
+        return web.json_response({"enabled": r.enabled, "readonly": r.readonly, "tunnel": r.tunnel,
+                                  "urls": urls}, headers={"Cache-Control": "no-store"})
+
     async def page(self, _request: web.Request) -> web.StreamResponse:
         html = (STATIC / "index.html").read_text(encoding="utf-8")
         # ?v=: bản mới (hoặc file trang vừa sửa) không bị trình duyệt dùng lại JS/CSS cũ trong cache
@@ -560,6 +602,8 @@ class WebApp:
     async def handle(self, d: dict) -> tuple | None:
         """Một thao tác từ trình duyệt. Trả (thông báo, mức: info|ok|warn|error[, thêm]) hoặc None."""
         o, op = self.orch, d.get("op")
+        if self.remote.readonly and op not in READONLY_OPS:
+            return tr("Chế độ chỉ xem (--readonly) — không làm được thao tác này"), "warn"
         if op == "submit":
             return await self.submit(str(d.get("text") or ""))
         if op == "approve":
@@ -578,6 +622,12 @@ class WebApp:
                 return o.retry_grill(gid), "info"
             if act == "cancel":
                 return o.cancel_grill(gid), "info"
+        if op == "ask":
+            act, tid = d.get("action"), int(d.get("task") or 0)
+            if act == "answer":
+                return o.answer_task(tid, str(d.get("text") or "")), "info"
+            if act == "skip":
+                return o.answer_task(tid, None), "info"
         if op == "retry":
             return o.retry(int(d["task"])), "info"
         if op == "cancel":
@@ -653,6 +703,12 @@ class WebApp:
             if text.isdigit() and 1 <= int(text) <= len(opts):
                 text = opts[int(text) - 1]  # gõ số = chọn phương án đó
             return self.orch.answer_grill(g.id, text), "info"
+        at = self.orch.ask_active() if not g else None
+        if not text.startswith("/") and at:
+            opts = (at.question() or {}).get("options") or []
+            if text.isdigit() and 1 <= int(text) <= len(opts):
+                text = opts[int(text) - 1]
+            return self.orch.answer_task(at.id, text), "info"
         if not text.startswith("/"):
             return self.start_goal(text, self.cfg.default_workflow)
         return await self.command(text)
@@ -916,7 +972,17 @@ class WebApp:
         raise AssertionError(f"/{cmd}: not handled in WebApp.command")  # test_web bắt lệnh TUI chưa có ở web
 
 
-def serve(root: Path, cfg: Config, db: DB, port: int) -> None:
+def print_remote(remote: Remote, only: str = "") -> None:
+    """In các URL kèm token + mã QR (quét bằng điện thoại) ra terminal chạy `ateam web`."""
+    for label, url in remote.urls():
+        if only and not url.startswith(only):
+            continue
+        print(f"\n📱 {label}: {url}")
+        if only or url.startswith("https://") or "127.0.0.1" not in url:
+            print(QR(url).to_text())
+
+
+def serve(root: Path, cfg: Config, db: DB, port: int, remote: Remote | None = None) -> None:
     """Chạy server tới khi Ctrl+C."""
-    wa = WebApp(root, cfg, db, port)
-    web.run_app(wa.make_app(), host="127.0.0.1", port=port, print=None, access_log=None)
+    wa = WebApp(root, cfg, db, port, remote)
+    web.run_app(wa.make_app(), host=wa.remote.host, port=port, print=None, access_log=None)

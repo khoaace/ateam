@@ -197,6 +197,26 @@ CATALOG: dict[str, dict] = {
         "usage_command": ["opencode", "stats", "--days", "7"],  # token & chi phí 7 ngày qua
     },
 }
+# Giữ phiên giữa các lượt (/retry, vòng sửa verify, /continue, trả lời <<<ASK>>>): cờ đặt id phiên cho lượt
+# mới, cờ tiếp tục phiên, regex bắt id trong output (khi CLI không cho tự đặt id). Ghi đè bằng khoá cùng tên
+# trong [agents.<tên>]; [] = tắt. agy/opencode: chưa có cách lấy id chắc chắn → chạy như cũ (xem ROADMAP).
+SESSION_PRESETS: dict[str, dict] = {
+    "claude": {"session_args": ["--session-id", "{session}"], "resume_args": ["--resume", "{session}"]},
+    "grok": {"session_args": ["--session-id", "{session}"], "resume_args": ["--resume", "{session}"]},
+    # codex exec resume [OPTIONS] <SESSION_ID> <PROMPT>; header của `codex exec` in "session id: <uuid>"
+    "codex": {"session_args": [], "resume_args": ["{session}"],
+              "session_re": r"session id:\s*([0-9a-fA-F-]{36})"},
+}
+
+
+def apply_resume(command: list[str]) -> list[str]:
+    """Lệnh tiếp tục phiên: codex cần lệnh con `exec resume`; CLI khác chỉ thêm cờ (resume_args)."""
+    cmd = list(command)
+    if cmd and Path(cmd[0]).name == "codex" and "exec" in cmd and "resume" not in cmd:
+        cmd.insert(cmd.index("exec") + 1, "resume")
+    return cmd
+
+
 # codex không có lệnh xem hạn mức không cần gọi model: /usage đọc ảnh chụp rate_limits mà codex ghi
 # trong file phiên gần nhất (~/.codex/sessions), xem limits.codex_rate_limits
 # Cờ quyền theo CLI: "chỉ sửa file" (mặc định trong DEFAULT_CONFIG) <-> "toàn quyền" (chạy lệnh shell, mạng).
@@ -333,6 +353,9 @@ class AgentConfig:
     file_ref: str = ""                        # "" = theo mentions.SYNTAX của lệnh
     file_args: list[str] | None = None        # None = theo mentions.SYNTAX của lệnh
     image_args: list[str] | None = None       # None = theo mentions.IMAGE_ARGS (vắng thì như file_args)
+    session_args: list[str] | None = None     # None = theo SESSION_PRESETS; đặt id phiên cho lượt mới
+    resume_args: list[str] | None = None      # None = theo SESSION_PRESETS; tiếp tục phiên {session}
+    session_re: str | None = None             # None = theo SESSION_PRESETS; regex bắt id phiên trong output
 
     @property
     def binary(self) -> str:
@@ -362,14 +385,31 @@ class AgentConfig:
         variant = f"{stem}-{effort}"
         return (variant if variant in self.models else model), ""
 
+    def _preset(self, key: str):
+        own = getattr(self, key)
+        return own if own is not None else SESSION_PRESETS.get(Path(self.binary).name, {}).get(key)
+
+    def session_flags(self, resume: bool) -> list[str]:
+        return list(self._preset("resume_args" if resume else "session_args") or [])
+
+    def session_pattern(self) -> str:
+        return self._preset("session_re") or ""
+
+    def can_resume(self) -> bool:
+        """Giữ được phiên: biết cờ tiếp tục phiên và biết id phiên (tự đặt hoặc bắt từ output)."""
+        return bool(self.session_flags(True)) and bool(self.session_flags(False) or self.session_pattern())
+
     def argv(self, prompt: str, *, model: str | None = None, effort: str | None = None,
-             plan: bool = False) -> list[str]:
-        """Dựng lệnh: thay {prompt}/{model}/{effort}, chèn cờ model/effort ngay trước prompt."""
+             plan: bool = False, session: str | None = None, resume: bool = False) -> list[str]:
+        """Dựng lệnh: thay {prompt}/{model}/{effort}, chèn cờ model/effort ngay trước prompt.
+        session: id phiên — lượt mới thì đặt id (session_args), resume=True thì tiếp tục phiên đó."""
         model = (model if model else self.model) or ""
         effort = (effort if effort else self.effort) or ""
         model, effort = self.split_effort(model, effort)
         base = apply_access(self.plan_command if plan and self.plan_command else self.command,
                             self.full_access)
+        if session and resume:
+            base = apply_resume(base)
         extra: list[str] = []
         combined = any("{model}" in a for a in self.effort_args)  # vd opencode: --model {model}#{effort}
         if combined and effort and model and not any("{model}" in c or "{effort}" in c for c in base):
@@ -379,6 +419,14 @@ class AgentConfig:
                 extra += [a.replace("{model}", model) for a in self.model_args]
             if effort and self.effort_args and not combined and not any("{effort}" in c for c in base):
                 extra += [a.replace("{effort}", effort) for a in self.effort_args]
+        if session:
+            if resume and Path(self.binary).name == "codex" and "--sandbox" in base:
+                # `codex exec resume` không có --sandbox: đổi sang -c sandbox_mode="…"
+                j = base.index("--sandbox")
+                mode = base[j + 1] if j + 1 < len(base) else "workspace-write"
+                del base[j:j + 2]
+                extra += ["-c", f'sandbox_mode="{mode}"']
+            extra += [a.replace("{session}", session) for a in self.session_flags(resume)]
         idx = next((i for i, c in enumerate(base) if "{prompt}" in c), None)
         if idx is None:
             base.append("{prompt}")
@@ -1155,6 +1203,9 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
         file_ref=str(a.get("file_ref", "") or ""),
         file_args=_strs(a["file_args"]) if "file_args" in a else None,
         image_args=_strs(a["image_args"]) if "image_args" in a else None,
+        session_args=_strs(a["session_args"]) if "session_args" in a else None,
+        resume_args=_strs(a["resume_args"]) if "resume_args" in a else None,
+        session_re=str(a["session_re"]) if "session_re" in a else None,
     )
 
 

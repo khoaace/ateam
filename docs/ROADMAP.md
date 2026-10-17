@@ -36,6 +36,12 @@ nhưng chưa có báo cáo chạy thật. Cần xác nhận:
       (`aider --yes-always --no-auto-commits --message …`, `--model`, `--file`) trong `/custom`
       (`EXTRA_AGENT_TEMPLATES` ở `config.py`) chưa chạy thử trên CLI thật.
 - [ ] Kế hoạch JSON của Claude thật được bóc ổn định (`.ateam/logs/lead.log` khi lỗi).
+- [ ] Giữ phiên: `claude -p --session-id <uuid>` rồi `--resume <uuid>` trong worktree tạo lại cùng đường dẫn;
+      `codex exec resume --skip-git-repo-check -c sandbox_mode="workspace-write" <id> "…"` vẫn sửa được file
+      (sandbox qua `-c`); thông báo "mất phiên" thật của codex/grok khớp `SESSION_LOST_RE`; `grok -p --session-id`.
+- [ ] Agent thật có tuân thủ `<<<ASK>>>` (chỉ hỏi khi thật mơ hồ, JSON đúng mẫu) không.
+- [ ] `ateam web --tunnel` với cloudflared thật: dòng URL trong stderr khớp `TUNNEL_RE`; WebSocket qua tunnel;
+      cookie `Secure` khi `X-Forwarded-Proto: https`; mã QR in ra terminal quét được bằng camera iPhone/Android.
 
 ## Backlog tính năng (đã đề xuất với người dùng, chưa làm)
 
@@ -44,9 +50,8 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
 1. **Best-of-N cho task khó** — chạy cùng task trên 2–3 agent trong worktree riêng, trưởng nhóm chọn
    bản tốt nhất. Gợi ý: cột `variant_of` trong `tasks`; `_run_task` cho mỗi biến thể; một lượt
    `_call_lead` với diff của từng nhánh; merge nhánh thắng, xoá nhánh còn lại.
-2. **Giữ phiên làm việc của agent** — dùng `--resume`/`--continue` của từng CLI khi `/retry` hoặc
-   vòng sửa test, để agent nhớ ngữ cảnh. Gợi ý: khoá `resume_args` theo agent, lưu session id (đọc từ
-   output JSON nếu CLI có) vào cột mới của `tasks`.
+2. ~~**Giữ phiên làm việc của agent**~~ — đã làm (claude, codex, grok; `SESSION_PRESETS`). Còn: agy
+   (`--conversation <id>`) và opencode (`--session <id>`) chưa có cách lấy id phiên chắc chắn.
 3. **Token và chi phí thật** — đọc output JSON (`claude --output-format stream-json`,
    `codex exec --json`, `opencode run --format json`) thay vì ước tính theo ký tự. Cần bộ chuyển
    JSON → dòng chữ cho log/SUMMARY, và giữ đường văn bản hiện tại làm dự phòng. Lưu ý lỗi đã biết:
@@ -57,8 +62,7 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
    Còn có thể: workflow riêng theo dự án sửa được trong app (hiện `/custom` chỉ ghi file chung).
 6. **Thông báo** — macOS (`osascript -e 'display notification …'`), Telegram/Slack webhook khi mục
    tiêu xong hoặc task lỗi. Gợi ý: khối `[notify]`, gọi trong `_review` và nhánh `failed` của `_run_task`.
-7. **Agent hỏi lại người dùng** — khối `<<<ASK>>>câu hỏi<<<END>>>` → task chuyển trạng thái `waiting`,
-   TUI hiện câu hỏi, câu trả lời được nối vào prompt và task chạy lại.
+7. ~~**Agent hỏi lại người dùng**~~ — đã làm (`<<<ASK>>>`, trạng thái `asking`, khung /grill).
 8. **Phân việc dựa trên lịch sử** — thống kê từ bảng `runs` (tỉ lệ thành công, thời gian theo agent),
    chèn vào `plan_prompt`.
 9. **Checkpoint / `/undo`** — git tag trước mỗi mục tiêu; `/undo <mục tiêu>` reset về tag (cần xác

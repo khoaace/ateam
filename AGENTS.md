@@ -9,7 +9,8 @@ Antigravity (`agy`), Grok Build (`grok`), OpenCode, hoặc bất kỳ CLI nào c
 một đội trên cùng một repo của người dùng:
 
 - **Trưởng nhóm** (mặc định `claude`) lập kế hoạch thành task JSON, review kết quả, giao thêm việc;
-  `/grill` cho trưởng nhóm hỏi người dùng từng câu để chốt đặc tả trước khi lập kế hoạch.
+  `/grill` cho trưởng nhóm hỏi người dùng từng câu để chốt đặc tả trước khi lập kế hoạch; thành viên hỏi
+  giữa task bằng `<<<ASK>>>` (trạng thái `asking`); `/retry`, vòng sửa, `/continue` tiếp tục đúng phiên CLI (`--resume`).
 - **Bảng việc** SQLite (`.ateam/team.db`) là nguồn sự thật duy nhất; TUI, CLI và agent cùng đọc/ghi.
 - **Bộ lập lịch** chạy task theo phụ thuộc và giới hạn song song; agent giao việc chéo bằng
   khối `<<<DELEGATE …>>>` trong output.
@@ -26,6 +27,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/cli.py` | Lệnh `ateam` (argparse): `tui` (mặc định, khoá 1 phiên/dự án), `web` (giao diện web; `--tui`: TUI qua textual-serve), `setup`, `goal`, `continue`, `add`, `run`, `diff`, `merge`, `reject`, `verify`, `usage`, `cooldown`, `set`, `doctor`, … |
 | `ateam/tui.py` | Giao diện Textual: tab Bảng việc, tab Đội (AgentPane + Timeline), wizard thiết lập (`OnboardScreen`), popup chung (`BaseModal`, nút `Btn`), log co giãn (`ReflowLog`), agent/workflow tuỳ chỉnh (`CustomPanel` dùng ở tab 🧩 Tuỳ chỉnh và popup `CustomScreen`, `AgentEditScreen`, `WorkflowEditScreen`, `DefaultFlowScreen`), tab 📊 Thống kê (`_refresh_dash`), thông báo (`show_notices`), lệnh `/…`, phím tắt |
 | `ateam/web.py`, `web_git.py`, `web_code.py`, `web_setup.py`, `ateam/webui/` | `ateam web`: server aiohttp (một `Orchestrator` cho mọi tab, WebSocket đẩy ảnh chụp trạng thái, lệnh `/…` như TUI, `ui_strings()` cho chữ hiển thị) + trang HTML/CSS/JS thuần: `app.js` (Kanban, kế hoạch, /grill, Đội, Terminal, gợi ý lệnh, thông báo), `git.js`, `dash.js` (Thống kê), `code.js` (CodeMirror + vim ở `webui/vendor/`, build bằng `scripts/editor/`), `diff.js`, `setup.js` (/setup, mục Tuỳ chỉnh, popup Luồng mặc định) |
+| `ateam/web_auth.py`, `ateam/qr.py` | `ateam web` từ xa (`--host`, `--tunnel` Cloudflare, `--public-url`, `--readonly`): token `.ateam/web_token` → cookie, chặn Origin lạ, khoá khi sai nhiều, chạy cloudflared; mã QR thuần Python (terminal + SVG, nút 📱) |
 | `ateam/wizard.py`, `ateam/reports.py` | Logic dùng chung TUI ↔ web: wizard /setup, form /custom, popup Luồng mặc định (`wizard`); /usage, dashboard + lịch sử mục tiêu, /agents, /flow, /models, gợi ý /continue (`reports`) |
 | `ateam/orchestrator.py` | Lõi: lập kế hoạch, `tick()` lập lịch, `_run_task`, verify, worktree/merge, hạn mức, review |
 | `ateam/runner.py` | `Run`: chạy 1 tiến trình (pipe hoặc pty), stream từng dòng, timeout, huỷ theo process group |
@@ -70,7 +72,7 @@ Chạy thử với agent giả lập thay vì CLI thật:
    (`tests/test_i18n.py` bắt chuỗi thiếu bọc/thiếu dịch); **prompt gửi agent tiếng Anh** (agent tuân thủ tốt hơn), nhưng
    prompt luôn dặn agent viết theo ngôn ngữ của mục tiêu.
 6. **Giữ nguyên giao thức output** mà `prompts.py` bóc: `SUMMARY:`, `<<<DELEGATE to="…" title="…">>> … <<<END>>>`,
-   `<<<NOTE>>> … <<<END>>>`, kế hoạch là mảng JSON, review là object JSON, câu hỏi `/grill` là object JSON
+   `<<<NOTE>>> … <<<END>>>`, `<<<ASK>>>{json câu hỏi}<<<END>>>`, kế hoạch là mảng JSON, review là object JSON, câu hỏi `/grill` là object JSON
    (`question`/`options`/`recommended` hoặc `done`/`spec`). Đổi giao thức = đổi
    cả prompt, parser, agent giả lập và test.
 7. **Đổi mặc định trong `DEFAULT_CONFIG`** → tăng `CONFIG_VERSION` (file của người dùng sẽ được sao lưu

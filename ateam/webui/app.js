@@ -93,6 +93,8 @@ function onHello(m) {
   $("#btn-theme").title = t("theme");
   $("#kbd-hint").textContent = t("shortcuts");
   applyPrefs(m.prefs);
+  document.body.classList.toggle("readonly", !!m.readonly);
+  if (m.readonly && !$("#ro-banner")) document.body.insertAdjacentHTML("afterbegin", `<div id="ro-banner" class="ro-banner">${esc(t("readonly_banner"))}</div>`);
   setConn(true);
   if (S.openTask != null) loadLog(S.openTask);
   if (S.openJob != null) loadJob(S.openJob);
@@ -205,7 +207,7 @@ function counts() {
   for (const x of S.state.tasks) {
     if (x.status === "running") c.running++;
     else if (x.status === "queued") c.queued++;
-    else if (x.status === "review" || x.status === "conflict") c.review++;
+    else if (x.status === "review" || x.status === "conflict" || x.status === "asking") c.review++;
     else if (x.status === "failed" || x.status === "blocked") c.failed++;
     else if (x.status === "draft") c.draft++;
   }
@@ -250,26 +252,48 @@ function setCount(sel, n, live) {
 }
 
 /* hỏi đáp */
+function questionHtml(q, n, pick) {  // câu hỏi + phương án (bấm để chọn) — dùng cho /grill và <<<ASK>>>
+  const opts = (q.options || []).map((o, i) => `
+    <button class="opt${o === q.rec ? " rec" : ""}" data-action="${pick}" data-i="${i}">
+      <span class="n">${i + 1}</span><span>${esc(o)}</span>
+      ${o === q.rec ? `<span class="rec-tag">★ ${esc(t("recommended"))}</span>` : ""}
+    </button>`).join("");
+  const recExtra = q.rec && !(q.options || []).includes(q.rec)
+    ? `<div class="q-why">★ ${esc(t("recommended"))}: ${esc(q.rec)}</div>` : "";
+  return `<div class="q-text"><span class="q-num">${esc(t("grill_q", { n }))} ·</span> ${esc(q.q)}</div>
+    ${q.why ? `<div class="q-why">${esc(q.why)}</div>` : ""}
+    ${opts ? `<div class="options">${opts}</div>` : ""}${recExtra}
+    <div class="muted" style="font-size:12.5px">${esc(t("grill_hint"))}</div>`;
+}
+function renderAsk(box) {  // agent hỏi giữa task (<<<ASK>>>): cùng khung với /grill
+  const a = S.state.ask;
+  if (!a) { box.innerHTML = ""; box.dataset.sig = ""; return; }
+  const sig = JSON.stringify(a);
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+  box.innerHTML = `
+    <div class="panel amber">
+      <div class="panel-head">
+        <div class="panel-title">❓ ${esc(t("ask_title"))}</div>
+        <div class="panel-actions">
+          <button class="btn sm ghost" data-action="ask-skip">⏭ ${esc(t("ask_skip"))}</button>
+          <button class="btn sm" data-action="open-task" data-task="${a.task}">📜 ${esc(t("ask_view"))}</button>
+          <button class="btn sm danger" data-action="ask-cancel">${esc(t("ask_cancel"))}</button>
+        </div>
+      </div>
+      <div class="panel-sub">${esc(t("ask_head", { agent: a.agent, id: a.task }))} · ${esc(a.title)}${a.more > 0 ? ` · ${esc(t("ask_more", { n: a.more }))}` : ""}</div>
+      <div class="panel-body">${questionHtml(a.question, a.n, "ask-pick")}</div>
+    </div>`;
+}
 function renderGrill() {
   const g = S.state.grill, box = $("#grill");
-  if (!g) { box.innerHTML = ""; return; }
+  if (!g) { renderAsk(box); return; }
   const q = g.question;
   let body;
   if (g.busy) body = `<div class="thinking"><span class="spin"></span>${esc(t("grill_thinking", { lead: S.state.lead }))}</div>`;
   else if (g.error) body = `<div class="err-text">⚠ ${esc(g.error)}</div>`;
-  else if (q) {
-    const opts = (q.options || []).map((o, i) => `
-      <button class="opt${o === q.rec ? " rec" : ""}" data-action="grill-pick" data-i="${i}">
-        <span class="n">${i + 1}</span><span>${esc(o)}</span>
-        ${o === q.rec ? `<span class="rec-tag">★ ${esc(t("recommended"))}</span>` : ""}
-      </button>`).join("");
-    const recExtra = q.rec && !(q.options || []).includes(q.rec)
-      ? `<div class="q-why">★ ${esc(t("recommended"))}: ${esc(q.rec)}</div>` : "";
-    body = `<div class="q-text"><span class="q-num">${esc(t("grill_q", { n: g.n }))} ·</span> ${esc(q.q)}</div>
-      ${q.why ? `<div class="q-why">${esc(q.why)}</div>` : ""}
-      ${opts ? `<div class="options">${opts}</div>` : ""}${recExtra}
-      <div class="muted" style="font-size:12.5px">${esc(t("grill_hint"))}</div>`;
-  } else body = "";
+  else if (q) body = questionHtml(q, g.n, "grill-pick");
+  else body = "";
   const sig = JSON.stringify(g);
   if (box.dataset.sig === sig) return;
   box.dataset.sig = sig;
@@ -385,7 +409,7 @@ const COLUMNS = [
   { key: "draft", st: ["draft"], c: "var(--draft)", optional: true },
   { key: "queued", st: ["queued"], c: "var(--queued)" },
   { key: "running", st: ["running"], c: "var(--running)" },
-  { key: "review", st: ["review", "conflict"], c: "var(--review)" },
+  { key: "review", st: ["review", "conflict", "asking"], c: "var(--review)" },
   { key: "done", st: ["done"], c: "var(--done)" },
   { key: "bad", st: ["failed", "blocked", "cancelled"], c: "var(--failed)" },
 ];
@@ -585,6 +609,23 @@ function taskActions(x) {
   return b.join("");
 }
 
+/* mở trên điện thoại: URL kèm token + mã QR (GET /api/remote) */
+async function phoneModal() {
+  let r;
+  try { r = await fetch("/api/remote").then((x) => x.json()); } catch (e) { return; }
+  let body;
+  if (!r.enabled) {
+    body = `<p>${esc(t("phone_local"))}</p>
+      <div class="phone-cmd"><code>ateam web --host 0.0.0.0</code><span class="muted small">${esc(t("phone_local_lan"))}</span></div>
+      <div class="phone-cmd"><code>ateam web --tunnel</code><span class="muted small">${esc(t("phone_local_tunnel"))}</span></div>`;
+  } else {
+    body = `<p class="muted small">${esc(t("phone_hint"))}${r.readonly ? " " + esc(t("phone_ro")) : ""}</p>
+      <div class="phone-grid">${r.urls.map((u) => `<div class="phone-item"><b>${esc(u.label)}</b>${u.svg ? `<img class="phone-qr" alt="QR" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(u.svg)}">` : ""}
+        <div class="phone-url"><code>${esc(u.url)}</code><button class="btn sm" data-action="copy-url" data-url="${esc(u.url)}">${esc(t("phone_copy"))}</button></div></div>`).join("")}</div>`;
+  }
+  openModal(`${modalHead("📱 " + esc(t("phone_title")))}<div class="modal-pad">${body}</div>`);
+}
+
 /* ------------------------------------------------------------------ khung nổi (modal) xếp chồng */
 function openModal(html, opts = {}) {
   const m = document.createElement("div");
@@ -717,7 +758,7 @@ function askNotifyPermission() {
 document.addEventListener("pointerdown", askNotifyPermission, { once: true });
 function pendingCount() {  // việc chờ người dùng: kế hoạch chờ duyệt + task chờ duyệt diff/xung đột
   if (!S.state) return 0;
-  return S.state.goals.filter((g) => g.status === "awaiting").length + S.state.tasks.filter((x) => x.status === "review" || x.status === "conflict").length;
+  return S.state.goals.filter((g) => g.status === "awaiting").length + S.state.tasks.filter((x) => ["review", "conflict", "asking"].includes(x.status)).length;
 }
 function toast(text, level = "info") {
   const el = document.createElement("div");
@@ -732,7 +773,7 @@ function toast(text, level = "info") {
 /* ------------------------------------------------------------------ ô nhập + gợi ý */
 const input = $("#input");
 function autosize() { input.style.height = "auto"; input.style.height = Math.min(220, input.scrollHeight) + "px"; }
-function grillWaiting() { return !!(S.state && S.state.grill && S.state.grill.question); }
+function grillWaiting() { return !!(S.state && ((S.state.grill && S.state.grill.question) || S.state.ask)); }
 function renderComposerMode() {
   const v = input.value, mode = $("#mode"), box = $("#composer-box");
   const grill = grillWaiting() && !v.startsWith("/") && !v.startsWith("!");
@@ -740,7 +781,7 @@ function renderComposerMode() {
   mode.textContent = v.startsWith("/") ? "/" : v.startsWith("!") ? "$" : grill ? "?" : "";
   box.classList.toggle("grill", grill);
   const wf = S.state && S.state.workflow;
-  input.placeholder = grill ? t("placeholder_grill") : wf ? t("placeholder_wf", { wf }) : t("placeholder");
+  input.placeholder = grill ? t(S.state.grill ? "placeholder_grill" : "placeholder_ask") : wf ? t("placeholder_wf", { wf }) : t("placeholder");
   $("#hint").textContent = t("send_hint");
 }
 function submit() {
@@ -1046,6 +1087,8 @@ const ACTIONS = {
   "clear": () => send("clear"),
   "theme": () => themeModal(),
   "syslog": () => openTask(0),
+  "phone": () => phoneModal(),
+  "copy-url": (el) => { navigator.clipboard.writeText(el.dataset.url).then(() => toast(t("copied"), "ok")); },
   "close-drawer": () => closeDrawer(),
   "close-modal": (el) => closeModal(el.closest(".modal")),
   "open-task": (el) => openTask(+el.dataset.task),
@@ -1058,6 +1101,9 @@ const ACTIONS = {
     const g = S.state.grill, q = g.question || {};
     send("grill", { action: "answer", goal: g.goal, text: q.rec ? t("grill_skip_rec", { v: q.rec }) : t("grill_skip_answer") });
   },
+  "ask-pick": (el) => { const a = S.state.ask; send("ask", { action: "answer", task: a.task, text: a.question.options[+el.dataset.i] }); },
+  "ask-skip": () => send("ask", { action: "skip", task: S.state.ask.task }),
+  "ask-cancel": () => send("cancel", { task: S.state.ask.task }),
   "grill-done": () => send("grill", { action: "done", goal: S.state.grill.goal }),
   "grill-retry": () => send("grill", { action: "retry", goal: S.state.grill.goal }),
   "grill-cancel": () => send("grill", { action: "cancel", goal: S.state.grill.goal }),

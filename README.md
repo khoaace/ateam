@@ -122,6 +122,17 @@ Chỉ đổi khi đường dẫn có thật trong dự án, nên `a@b.com`, `@pr
 Đường dẫn có dấu cách viết `@"thư mục/file.md"`. Đổi cú pháp cho một agent bằng `file_ref` /
 `file_args` trong config (xem `docs/CONFIG.md`); `ateam doctor` và `/agents` in cú pháp đang dùng.
 
+### Agent hỏi lại giữa task và nhớ phiên làm việc
+
+- Gặp chỗ mơ hồ làm đổi kết quả, agent dừng và hỏi bạn (khối `<<<ASK>>>`): task chuyển sang **đang hỏi bạn**, câu hỏi
+  hiện ở cùng khung với `/grill` (TUI lẫn web) kèm phương án gợi ý — bấm/gõ số hoặc gõ câu trả lời; "Để agent tự
+  quyết", "Huỷ task". Có thông báo như task chờ duyệt. Tối đa 3 câu mỗi task; phần đang làm dở được giữ (worktree:
+  trên nhánh của task). `ateam goal -y`/`ateam run` không có ai trả lời nên tự chọn phương án agent khuyên dùng.
+- **Giữ phiên CLI**: `/retry`, từ chối kèm góp ý, vòng sửa khi kiểm tra fail, trả lời câu hỏi và `/continue` (thread
+  `/task`) tiếp tục *đúng phiên* của agent (`claude --resume`, `codex exec resume`, `grok --resume`) thay vì gửi lại
+  toàn bộ ngữ cảnh — đỡ token, sửa lỗi trúng hơn. `/continue m<id>`: trưởng nhóm tiếp tục phiên lập kế hoạch của mục
+  tiêu đó. Phiên không còn (CLI đã xoá, khác thư mục) thì tự chạy lại với đầy đủ ngữ cảnh. agy/opencode chưa hỗ trợ.
+
 ### Để trưởng nhóm hỏi kỹ trước khi làm — `/grill`
 
 Yêu cầu còn mơ hồ? `/grill Thêm trang đăng nhập` (kiểu "grill me"): thay vì lập kế hoạch ngay, trưởng nhóm
@@ -166,9 +177,31 @@ ateam web --open           # mở http://127.0.0.1:8000  ·  đổi cổng: atea
   ⌘P tìm file, ⌘S lưu.
 - Một server giữ **một** bộ lập lịch: mở bao nhiêu tab trình duyệt cũng được, không chạy trùng task. Trong lúc
   đó `ateam` ở terminal sẽ báo dự án đang mở ở phiên khác.
-- Chỉ nghe `127.0.0.1` và từ chối yêu cầu có Host/Origin lạ — trang web khác không điều khiển được ateam (giao
-  diện chạy được lệnh shell). Tab Code không mở/ghi được file ngoài dự án hay trong `.git`.
+- Mặc định chỉ nghe `127.0.0.1` và từ chối yêu cầu có Host/Origin lạ — trang web khác không điều khiển được ateam
+  (giao diện chạy được lệnh shell). Tab Code không mở/ghi được file ngoài dự án hay trong `.git`.
 - `ateam web --tui` (cần `textual-serve`): chính giao diện terminal vẽ trong trình duyệt; mỗi dự án chỉ 1 phiên.
+
+### Theo dõi đội từ điện thoại
+
+```bash
+brew install cloudflared                        # một lần
+ateam web --tunnel                              # https://<ngẫu nhiên>.trycloudflare.com — không cần tài khoản
+ateam web --host 0.0.0.0                        # chỉ trong cùng Wi-Fi (http)
+ateam web --public-url https://ateam.ten-mien.com   # bạn tự chạy named tunnel trỏ về http://127.0.0.1:8000
+```
+
+- Bật một trong các cờ trên là **chế độ từ xa**: mọi trang/API/WebSocket cần **token** (tạo một lần, lưu ở
+  `.ateam/web_token`, quyền 600). Terminal in URL kèm token và **mã QR** — quét bằng camera điện thoại là vào; nút
+  **📱 Điện thoại** ở sidebar cũng hiện mã QR. Trình duyệt nhận cookie HttpOnly (30 ngày) rồi xoá token khỏi thanh
+  địa chỉ; không có cookie thì hiện trang dán token.
+- Token có **toàn quyền** như trên máy (duyệt kế hoạch, trả lời agent, merge, `!lệnh`, sửa file, git push) — đừng
+  gửi URL cho người khác. `--readonly`: chỉ xem. `--new-token`: đổi token, mọi thiết bị cũ phải quét lại. Sai token
+  20 lần trong 10 phút thì khoá tạm.
+- `--tunnel` dùng quick tunnel của Cloudflare (URL đổi mỗi lần chạy). Muốn URL cố định: tạo named tunnel
+  (`cloudflared tunnel create ateam`, `cloudflared tunnel route dns ateam ateam.ten-mien.com`, chạy
+  `cloudflared tunnel run --url http://127.0.0.1:8000 ateam`) rồi `ateam web --public-url https://ateam.ten-mien.com`.
+  Có thể đặt thêm **Cloudflare Access** (Zero Trust) trước domain để bắt đăng nhập email/Google — token vẫn cần.
+- `--host 0.0.0.0` đi qua http: token truyền dạng rõ trong LAN, ngoài mạng nhà nên dùng `--tunnel`.
 
 ## Theme màu và ngôn ngữ
 

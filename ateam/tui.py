@@ -39,7 +39,7 @@ from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, T
                      clear_agent_state, load_config, load_custom, load_state, mark_setup_done,
                      save_commit_agent, save_custom_item, save_state,
                      save_project_setting, workflow_to_dict)
-from .db import ACTIVE, DB, GOAL_ENDED
+from .db import ACTIVE, ASKING, DB, GOAL_ENDED
 from .orchestrator import SYSTEM, Orchestrator
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, tr
 
@@ -51,7 +51,7 @@ STATUS: dict[str, tuple[str, str]] = {}
 BAR_STYLE: dict[str, str] = {}
 GOAL_STATUS: dict[str, tuple[str, str]] = {}
 STATUS_ICON = {"draft": "✎", "queued": "◌", "done": "✓", "failed": "✗", "cancelled": "–",
-               "blocked": "⊘", "conflict": "≠", "review": "◆"}  # running: dùng SPIN
+               "blocked": "⊘", "conflict": "≠", "review": "◆", "asking": "?"}  # running: dùng SPIN
 
 
 PAL: dict[str, str] = {}  # màu ngữ nghĩa của theme hiện tại (theme.palette)
@@ -75,10 +75,11 @@ def apply_palette(pal: dict[str, str]) -> None:
         "blocked": (tr("bị chặn"), err),
         "conflict": (tr("xung đột"), f"bold {warn}"),
         "review": (tr("chờ duyệt"), f"bold {warn}"),
+        "asking": (tr("đang hỏi bạn"), f"bold {warn}"),
     })
     BAR_STYLE.clear()
     BAR_STYLE.update({"running": RUNNING, "done": ok, "failed": err, "cancelled": "grey50",
-                      "blocked": err, "conflict": warn, "review": warn})
+                      "blocked": err, "conflict": warn, "review": warn, "asking": warn})
     GOAL_STATUS.clear()
     GOAL_STATUS.update({
         "planning": (tr("đang lập kế hoạch"), RUNNING),
@@ -2555,7 +2556,7 @@ class StatusBar(Static):
         for x in tasks:
             counts[x.status] = counts.get(x.status, 0) + 1
         shown = False
-        for key in ("running", "queued", "review", "failed"):
+        for key in ("running", "queued", "asking", "review", "failed"):
             n = counts.get(key, 0)
             if n:
                 icon = SPIN[app._frame] if key == "running" else STATUS_ICON.get(key, "·")
@@ -2591,13 +2592,15 @@ def hang(text: str, width: int, indent: int, first: int = 0) -> str:
 
 class GrillBar(Vertical):
     """Khung hỏi đáp (/grill): câu hỏi hiện tại của trưởng nhóm, các phương án gợi ý (bấm hoặc gõ số),
-    nút chốt / để trưởng nhóm tự quyết / hỏi lại / bỏ. Câu trả lời gõ ở ô nhập chính."""
+    nút chốt / để trưởng nhóm tự quyết / hỏi lại / bỏ. Câu trả lời gõ ở ô nhập chính.
+    Cũng dùng cho câu hỏi agent gửi giữa task (<<<ASK>>>, task_id đặt) khi không có /grill nào đang chạy."""
 
     BINDINGS = [Binding("escape", "leave", show=False)]
 
     def __init__(self, **kw):
         super().__init__(**kw)
         self.goal_id: int | None = None
+        self.task_id: int | None = None  # câu hỏi của agent trong task này (<<<ASK>>>)
         self.question: dict | None = None  # câu đang chờ trả lời (None: trưởng nhóm đang nghĩ / lỗi)
         self._sig: tuple = ()
 
@@ -2609,14 +2612,80 @@ class GrillBar(Vertical):
             yield Btn(tr("⏭ Để trưởng nhóm tự quyết"), id="grill-skip")
             yield Btn(tr("↻ Hỏi tiếp"), id="grill-retry")
             yield Btn(tr("✗ Bỏ mục tiêu"), id="grill-cancel", variant="error")
+            yield Btn(tr("⏭ Để agent tự quyết"), id="grill-askskip")
+            yield Btn(tr("📜 Xem task"), id="grill-askview")
+            yield Btn(tr("✗ Huỷ task"), id="grill-askcancel", variant="error")
+
+    def _buttons(self, ask: bool) -> None:
+        for b in ("grill-done", "grill-skip", "grill-retry", "grill-cancel"):
+            self.query_one(f"#{b}", Button).display = not ask
+        for b in ("grill-askskip", "grill-askview", "grill-askcancel"):
+            self.query_one(f"#{b}", Button).display = ask
+
+    def _question(self, q: dict, label: str, width: int) -> Text:
+        # chữ thường trên nền mặc định: nền màu + chữ đen (bản trước) gần như không đọc được trên
+        # Terminal.app 256 màu và loang cả khối khi dòng dài xuống hàng. Dòng dài thụt lề thẳng chữ.
+        body = Text()
+        body.append(label, "bold yellow")
+        body.append(hang(q.get("q", ""), width, len(label) + 1, first=len(label) + 1), "bold")
+        if q.get("why"):
+            body.append("\n   ")
+            body.append(hang(q["why"], width, 3, first=3), "italic dim")
+        rec = q.get("rec")
+        if q.get("options"):
+            body.append("\n")  # dòng trống tách câu hỏi với các phương án
+        for i, opt in enumerate(q.get("options") or [], 1):
+            click = {"@click": f"app.grill_pick({i})"}
+            body.append("\n   ")
+            body.append(f"{i}. ", Style(color="green" if opt == rec else "cyan", bold=True))
+            body.append(hang(opt, width, 6, first=6), Style(meta=click, bold=opt == rec))
+            if opt == rec:
+                body.append(tr("  ★ khuyên dùng"), "bold green")
+        if rec and rec not in (q.get("options") or []):
+            body.append("\n   ")
+            body.append(tr("★ khuyên dùng: "), "bold green")
+            body.append(hang(rec, width, 18, first=18))
+        body.append(tr("\n   Gõ câu trả lời ở ô dưới rồi Enter · gõ số (1, 2…) hoặc bấm vào "
+                       "phương án để chọn"),
+                    "dim")
+        return body
+
+    def update_ask(self, app: "TeamApp") -> bool:
+        """Câu hỏi của agent giữa task (<<<ASK>>>). True khi vừa có câu hỏi mới."""
+        t = app.orch.ask_active()
+        q = t.question() if t else None
+        if not q:
+            self.task_id, self.question, self._sig = None, None, ()
+            self.display = False
+            return False
+        is_new = self.task_id != t.id or self.question is None or self.question.get("q") != q.get("q")
+        self.goal_id, self.task_id, self.question = None, t.id, q
+        self.display = True
+        sig = ("ask", t.id, q.get("q"), self.size.width)
+        if sig == self._sig:
+            return False
+        self._sig = sig
+        head = Text()
+        head.append(tr("❓ {agent} hỏi · task #{tid} ", agent=t.agent, tid=t.id), "bold")
+        head.append(t.title[:160])
+        others = len(app.db.tasks(status=ASKING)) - 1
+        if others > 0:
+            head.append(tr(" · còn {others} task khác đang hỏi", others=others), "dim")
+        self.query_one("#grill-head", Static).update(head)
+        width = max(40, (self.size.width or 120) - 4)
+        n = len((t.ask or {}).get("qa") or [])
+        self.query_one("#grill-q", Static).update(self._question(q, tr("❓ Câu {v}: ", v=n), width))
+        self._buttons(True)
+        return is_new
 
     def update_grill(self, app: "TeamApp") -> bool:
         """Vẽ lại theo DB. Trả về True khi vừa có câu hỏi MỚI (để app báo và đưa con trỏ về ô nhập)."""
         g = app.orch.grill_active()
         if not g:
-            self.goal_id, self.question, self._sig = None, None, ()
-            self.display = False
-            return False
+            self.goal_id = None
+            return self.update_ask(app)
+        self.task_id = None
+        self._buttons(False)
         busy = g.id in app.orch.lead_busy
         q = None if busy else app.orch.grill_question(g)
         data = g.grill or {}
@@ -2646,32 +2715,7 @@ class GrillBar(Vertical):
         elif err:
             body.append(f"⚠ {err}", "bold red")
         elif q:
-            # chữ thường trên nền mặc định: nền màu + chữ đen (bản trước) gần như không đọc được trên
-            # Terminal.app 256 màu và loang cả khối khi dòng dài xuống hàng. Dòng dài thụt lề thẳng chữ.
-            width = max(40, (self.size.width or 120) - 4)
-            label = tr("❓ Câu {v}: ", v=len(qa))
-            body.append(label, "bold yellow")
-            body.append(hang(q.get("q", ""), width, len(label) + 1, first=len(label) + 1), "bold")
-            if q.get("why"):
-                body.append("\n   ")
-                body.append(hang(q["why"], width, 3, first=3), "italic dim")
-            rec = q.get("rec")
-            if q.get("options"):
-                body.append("\n")  # dòng trống tách câu hỏi với các phương án
-            for i, opt in enumerate(q.get("options") or [], 1):
-                click = {"@click": f"app.grill_pick({i})"}
-                body.append("\n   ")
-                body.append(f"{i}. ", Style(color="green" if opt == rec else "cyan", bold=True))
-                body.append(hang(opt, width, 6, first=6), Style(meta=click, bold=opt == rec))
-                if opt == rec:
-                    body.append(tr("  ★ khuyên dùng"), "bold green")
-            if rec and rec not in (q.get("options") or []):
-                body.append("\n   ")
-                body.append(tr("★ khuyên dùng: "), "bold green")
-                body.append(hang(rec, width, 18, first=18))
-            body.append(tr("\n   Gõ câu trả lời ở ô dưới rồi Enter · gõ số (1, 2…) hoặc bấm vào "
-                           "phương án để chọn"),
-                        "dim")
+            body = self._question(q, tr("❓ Câu {v}: ", v=len(qa)), max(40, (self.size.width or 120) - 4))
         self.query_one("#grill-q", Static).update(body)
         self.query_one("#grill-done", Button).disabled = busy
         self.query_one("#grill-skip", Button).display = q is not None
@@ -5211,15 +5255,17 @@ class TeamApp(App):
         bar = self.query_one("#grill", GrillBar)
         was = bar.question is not None
         new = bar.update_grill(self)
-        bar.border_title = tr("🔎 Trưởng nhóm hỏi để hiểu rõ yêu cầu")
+        bar.border_title = (tr("❓ Agent hỏi giữa task") if bar.task_id is not None
+                            else tr("🔎 Trưởng nhóm hỏi để hiểu rõ yêu cầu"))
         waiting = bar.question is not None
-        if waiting != was:
+        if waiting != was or new:
             self._show_input_mode()
         if new:
             box = self.query_one("#cmd", Input)
             if self.screen is self.screen_stack[0]:
                 box.focus()
-            self.notify(tr("❓ Trưởng nhóm hỏi — trả lời ở ô nhập (hoặc gõ số phương án)"), timeout=5)
+            if bar.task_id is None:  # câu hỏi của agent đã có thông báo riêng (notify.Watcher)
+                self.notify(tr("❓ Trưởng nhóm hỏi — trả lời ở ô nhập (hoặc gõ số phương án)"), timeout=5)
 
     def answer_grill(self, text: str) -> None:
         bar = self.query_one("#grill", GrillBar)
@@ -5227,7 +5273,10 @@ class TeamApp(App):
         opts = (q or {}).get("options") or []
         if text.strip().isdigit() and 1 <= int(text.strip()) <= len(opts):
             text = opts[int(text.strip()) - 1]  # gõ số = chọn phương án đó
-        self.notify(self.orch.answer_grill(bar.goal_id, text))
+        if bar.task_id is not None:
+            self.notify(self.orch.answer_task(bar.task_id, text))
+        else:
+            self.notify(self.orch.answer_grill(bar.goal_id, text))
         self.refresh_view()
 
     def action_grill_pick(self, i: int) -> None:
@@ -5274,6 +5323,12 @@ class TeamApp(App):
                 self.notify(o.retry_grill(bar.goal_id))
             elif bid == "grill-cancel":
                 self.notify(o.cancel_grill(bar.goal_id))
+            elif bid == "grill-askskip" and bar.task_id is not None:
+                self.notify(o.answer_task(bar.task_id, None))
+            elif bid == "grill-askcancel" and bar.task_id is not None:
+                self.notify(o.cancel(bar.task_id))
+            elif bid == "grill-askview" and bar.task_id is not None:
+                self.show_task(bar.task_id)
             self.refresh_view()
             return
         if bid.startswith("job-"):
@@ -5593,10 +5648,12 @@ class TeamApp(App):
     def _show_input_mode(self) -> None:
         """Ô nhập cho biết gõ mục tiêu sẽ đi đâu: workflow mặc định hay trưởng nhóm."""
         wf = self.cfg.default_workflow
-        if self.query_one("#grill", GrillBar).question is not None:
+        bar = self.query_one("#grill", GrillBar)
+        if bar.question is not None:
             self.query_one("#cmd", Input).placeholder = (
-                tr("Trả lời câu hỏi của trưởng nhóm (Enter) · gõ số để chọn phương án · /grill "
-                   "xong để chốt"))
+                tr("Trả lời câu hỏi của agent (Enter) · gõ số để chọn phương án") if bar.task_id is not None
+                else tr("Trả lời câu hỏi của trưởng nhóm (Enter) · gõ số để chọn phương án · /grill "
+                        "xong để chốt"))
             return
         self.query_one("#cmd", Input).placeholder = (
             tr("Nhập mục tiêu (chạy theo workflow '{wf}') · /goal: trưởng nhóm lập kế hoạch · "

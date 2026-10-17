@@ -92,6 +92,9 @@ cache_read = 0.15
 | `enabled` | `true` | `false` = tạm tắt |
 | `file_ref` | theo lệnh | Cách viết file được nhắc bằng `@` trong prompt; `{path}` được thay. Vắng = theo `mentions.SYNTAX`: `"@{path}"` cho `claude`/`agy`/`gemini`, `"{path}"` cho lệnh khác |
 | `file_args` | theo lệnh | Cờ thêm vào lệnh cho mỗi file/thư mục được nhắc (chèn trước prompt). Vắng = `["-f", "{path}"]` cho `opencode`, `[]` cho lệnh khác; `[]` = tắt |
+| `session_args` | theo lệnh | Cờ đặt id phiên cho lượt mới (`{session}` = uuid ateam sinh). Vắng = `SESSION_PRESETS` (`config.py`): claude/grok `["--session-id", "{session}"]`, codex `[]` (id bắt từ output) |
+| `resume_args` | theo lệnh | Cờ tiếp tục phiên `{session}` khi `/retry`, vòng sửa verify, trả lời `<<<ASK>>>`, `/continue`. Vắng = preset: claude/grok `["--resume", "{session}"]`, codex `["{session}"]` (ateam đổi lệnh sang `codex exec resume`); `[]` = tắt (luôn gửi lại đủ ngữ cảnh) |
+| `session_re` | theo lệnh | Regex (nhóm 1 = id) bắt id phiên trong output khi CLI không cho tự đặt id. Vắng = preset: codex `session id:\s*([0-9a-fA-F-]{36})` |
 | `image_args` | theo lệnh | Như `file_args` nhưng cho file ảnh (`.png`, `.jpg`, `.webp`…, gồm ảnh dán bằng Ctrl+V). Vắng = `["--image={path}"]` cho `codex`, lệnh khác dùng `file_args`; `[]` = chỉ ghi đường dẫn trong prompt |
 
 ## `[workflows.<tên>]`

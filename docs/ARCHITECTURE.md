@@ -51,12 +51,24 @@ stateDiagram-v2
   conflict --> done: /merge (thử lại)
   failed --> queued: /retry
   blocked --> queued: /retry task gây chặn
+  running --> asking: agent in <<<ASK>>> (giữ phần làm dở: worktree commit WIP vào nhánh)
+  asking --> queued: người dùng trả lời / "để agent tự quyết" (ateam goal -y tự trả lời)
+  asking --> cancelled: /cancel, nút Huỷ task
 ```
 
 Cột đáng chú ý: `depends_on` (JSON list id), `depth` (số tầng giao chéo), `source`
 (`user` | `plan` | `review` | `followup` | `cli` | `delegate:<agent>`), `model`/`effort` (ghi đè riêng task),
 `branch`/`base`/`head` (worktree, dùng cho diff), `attempts` (số lần sửa sau khi verify fail),
-`result` (SUMMARY đã bóc), `error`.
+`result` (SUMMARY đã bóc), `error`, `session`/`session_agent` (id phiên CLI của lượt gần nhất — `--resume`),
+`resume` (prompt ngắn gửi khi tiếp tục phiên: lý do `/retry`, góp ý, câu trả lời, yêu cầu `/continue`; xoá khi chạy),
+`ask` (JSON `{"qa": [{q, why, options, rec, a}], "parked"}` — câu hỏi `<<<ASK>>>`). `goals.lead_session`: phiên
+trưởng nhóm lúc lập kế hoạch, `/continue m<id>` tiếp tục nó.
+
+Giữ phiên: `AgentConfig.argv(session=, resume=)` thêm `session_args` (lượt mới, ateam tự sinh uuid) hoặc
+`resume_args` (+ `apply_resume`: codex đổi sang `exec resume`, `--sandbox` → `-c sandbox_mode=`); preset theo binary
+ở `config.SESSION_PRESETS`. `_run_agent` lưu id (tự đặt hoặc bắt bằng `session_re`) khi agent là agent của task;
+gặp `SESSION_LOST_RE` lúc resume thì chạy lại với prompt đầy đủ. `usage_logs.collect(session=)` chọn đúng file phiên
+(codex: lấy hiệu tổng token so với trước lượt).
 
 Hằng số trạng thái ở đầu `db.py`; `ACTIVE = (draft, queued, running, review)` — mục tiêu chưa
 được review khi còn task ở các trạng thái này.
@@ -364,8 +376,12 @@ nhập + gợi ý tham số, modal, theme), `diff.js`, `git.js`, `code.js`, `set
 - Logic dùng chung với TUI nằm ngoài Textual: `wizard.py` (giá trị khởi tạo/gán vai trò/cài đặt của wizard, kiểm tra
   form agent/workflow, áp cấu hình mới vào config đang chạy), `reports.py` (/usage, /agents, /flow, /models, gợi ý
   /continue). Tuỳ chọn `vim` và `accent` trong `state.json` dùng chung hai giao diện.
-- `guard_middleware`: Host phải là `127.0.0.1|localhost|[::1]:<port>` (chặn DNS rebinding), Origin nếu có cũng
-  vậy (chặn trang lạ mở WebSocket). Áp cho cả `ateam web --tui`.
+- `web_auth.auth_middleware` (`guard_middleware` ở chế độ cục bộ): Host phải là `127.0.0.1|localhost|[::1]:<port>`
+  (chặn DNS rebinding), Origin nếu có cũng vậy (chặn trang lạ mở WebSocket). Áp cho cả `ateam web --tui`. Chế độ từ
+  xa (`Remote.enabled`: `--host` khác loopback, `--tunnel`, `--public-url`): mọi request trừ `/static` và `/login`
+  cần token (`?t=` → cookie `ateam_auth`, hoặc `Authorization: Bearer`), Origin phải trùng Host, sai 20 lần/10 phút
+  → 429; `--readonly` chặn mọi op WebSocket trừ `READONLY_OPS`. `--tunnel` chạy `cloudflared tunnel --url` trong
+  `_startup`, đọc URL `*.trycloudflare.com` từ stderr; `/api/remote` trả URL + mã QR (`qr.py`) cho nút 📱.
 - Chữ hiển thị nằm ở `ui_strings()` (qua `tr()`, có bản dịch); JS chỉ dùng khoá — `tests/test_web.py` bắt chữ
   tiếng Việt viết thẳng trong JS/HTML (trừ `vendor/`).
 

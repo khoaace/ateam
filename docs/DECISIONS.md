@@ -90,6 +90,18 @@ CLI/agent khác ghi DB. Logic nằm trong màn hình Textual (wizard /setup, for
 `wizard.py`/`reports.py` để hai giao diện dùng chung; riêng bộ điều phối lệnh `/…` viết hai nơi (lệnh TUI gắn chặt
 widget) — test đối chiếu `tui.COMMANDS` giữ chúng đồng bộ. Chỉ nghe `127.0.0.1` + kiểm Host/Origin vì giao diện chạy
 được shell.
+**Từ xa (`--tunnel`/`--host`/`--public-url`)**: token ngẫu nhiên 256 bit lưu `.ateam/web_token` thay vì mật khẩu —
+không có gì để đoán, quét QR là vào. Token vào bằng `/?t=` một lần rồi đổi thành cookie HttpOnly + SameSite=Strict
+(fetch/WebSocket tự gửi, không phải sửa ~30 chỗ gọi API, token không nằm lại trong lịch sử/Referer). Ở chế độ từ xa
+*mọi* request cần token kể cả từ 127.0.0.1 (cloudflared nối vào từ localhost nên không phân biệt được) và bỏ danh sách
+Host (tunnel/domain/IP LAN đều hợp lệ): DNS rebinding không mang được cookie của host thật; còn Origin phải trùng Host.
+Chế độ cục bộ giữ như cũ (không token) để không làm phiền người chỉ dùng trên máy. QR tự viết (`qr.py`, ~250 dòng)
+thay vì thêm dependency. Quick tunnel (`trycloudflare.com`) vì không cần tài khoản; named tunnel người dùng tự chạy.
+**Giữ phiên (`--resume`) và `<<<ASK>>>`**: id phiên do ateam tự đặt khi CLI cho phép (`--session-id`, chắc chắn hơn
+đoán file) hoặc bắt từ header (`codex: session id:`); preset theo tên binary trong code (`SESSION_PRESETS`) để không
+phải tăng `CONFIG_VERSION`. Chỉ resume khi có *lý do* (cột `tasks.resume` = prompt ngắn) và cùng agent; mất phiên →
+chạy lại với prompt đầy đủ, nên resume không bao giờ làm task hỏng hơn trước. Câu hỏi của agent dùng chung khung
+/grill (đã quen tay) và trạng thái `asking` thuộc `ACTIVE` để mục tiêu không kết thúc khi còn câu hỏi.
 **Editor**: CodeMirror 6 + `@replit/codemirror-vim` đóng gói một lần (`scripts/editor/`, esbuild) thành
 `webui/vendor/codemirror.js` (~1,2 MB, ~400 KB nén) và commit vào repo — không CDN, không Node lúc chạy; chỉ gói
 ~25 ngôn ngữ phổ biến (gói `language-data` đầy đủ 1,7 MB). Vim thật (`:w`, chế độ, thanh ghi) thay vì port `VimState`

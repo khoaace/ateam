@@ -13,7 +13,7 @@ import sys
 from dataclasses import dataclass
 
 from .config import load_state, save_state
-from .db import CONFLICT, FAILED, REVIEW
+from .db import ASKING, CONFLICT, FAILED, REVIEW
 from .i18n import tr
 
 MODES = ("all", "app", "off")
@@ -21,7 +21,7 @@ MODES = ("all", "app", "off")
 
 @dataclass
 class Notice:
-    kind: str  # failed | conflict | review | plan
+    kind: str  # failed | conflict | review | plan | ask
     title: str
     body: str
     task_id: int | None = None
@@ -69,6 +69,10 @@ class Watcher:
                                   goal_id=t.goal_id, level="warn"))
             elif t.status == REVIEW:
                 out.append(Notice("review", tr("👀 Task chờ duyệt diff"), head, task_id=t.id, goal_id=t.goal_id))
+            elif t.status == ASKING:
+                q = t.question() if hasattr(t, "question") else None
+                out.append(Notice("ask", tr("❓ Agent hỏi bạn"), head + (" — " + _short(q["q"], 140) if q else ""),
+                                  task_id=t.id, goal_id=t.goal_id))
         return out
 
 

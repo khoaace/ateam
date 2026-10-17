@@ -3,6 +3,17 @@
 # (tạo fixed.txt) và biết làm trưởng nhóm dự phòng.
 fake_flags="--sandbox --skip-git-repo-check -m --model -c --config"
 source "$(dirname "$0")/_common.sh"
+# `codex exec resume [OPTIONS] <SESSION_ID> <PROMPT>`: không nhận --sandbox; phiên lạ → lỗi
+RESUME=""
+if [ "${1:-}" = "exec" ] && [ "${2:-}" = "resume" ]; then
+  for a in "$@"; do
+    if [ "$a" = "--sandbox" ]; then printf "error: unexpected argument '--sandbox' found\n" >&2; exit 2; fi
+  done
+  RESUME="${@: -2:1}"
+  if [ -n "${CODEX_HOME:-}" ] && [ ! -f "$CODEX_HOME/fake_sessions/$RESUME" ]; then
+    echo "Error: thread $RESUME not found"; exit 1
+  fi
+fi
 # Như codex >= 0.152: --full-auto đã bị bỏ
 for a in "$@"; do
   if [ "$a" = "--full-auto" ]; then
@@ -15,6 +26,11 @@ if [ "${1:-}" = "debug" ] && [ "${2:-}" = "models" ]; then  # như codex thật:
 fi
 P="$fake_prompt"
 if fake_limited codex; then echo "ERROR: You've hit your usage limit. Try again in 7 minutes."; exit 1; fi
+# header như `codex exec` thật
+SID="${RESUME:-$(python3 -c 'import uuid; print(uuid.uuid4())')}"
+echo "session id: $SID"
+if [ -n "${CODEX_HOME:-}" ]; then mkdir -p "$CODEX_HOME/fake_sessions"; touch "$CODEX_HOME/fake_sessions/$SID"; fi
+[ -n "$RESUME" ] && echo "codex: tiếp tục phiên $RESUME"
 if [[ "$P" == *"git COMMIT MESSAGE"* ]]; then printf 'SUMMARY:\nCodex viết message này\n'; exit 0; fi
 if [[ "$P" == *"TEAM LEAD"* && "$P" == *"Reply with ONLY a JSON array"* ]]; then
   echo '[{"id":1,"agent":"grok","title":"Kế hoạch do codex lập","prompt":"tạo file b.txt","depends_on":[]}]'; exit 0

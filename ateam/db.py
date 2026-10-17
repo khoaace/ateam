@@ -18,7 +18,9 @@ CREATE TABLE IF NOT EXISTS goals (
     created REAL,
     workflow TEXT,
     followups TEXT,
-    grill TEXT
+    grill TEXT,
+    lead_session TEXT,
+    lead_session_agent TEXT
 );
 CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +43,11 @@ CREATE TABLE IF NOT EXISTS tasks (
     effort TEXT,
     base TEXT,
     head TEXT,
-    attempts INTEGER
+    attempts INTEGER,
+    session TEXT,
+    session_agent TEXT,
+    resume TEXT,
+    ask TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +93,8 @@ COMPACT_AUTHOR = "compact"
 DRAFT, QUEUED, RUNNING, DONE, FAILED, CANCELLED, BLOCKED, CONFLICT, REVIEW = (
     "draft", "queued", "running", "done", "failed", "cancelled", "blocked", "conflict", "review",
 )
-ACTIVE = (DRAFT, QUEUED, RUNNING, REVIEW)
+ASKING = "asking"  # agent hỏi người dùng giữa task (<<<ASK>>>), chờ trả lời
+ACTIVE = (DRAFT, QUEUED, RUNNING, REVIEW, ASKING)
 FINISHED_BAD = (FAILED, CANCELLED, BLOCKED)
 # trạng thái mục tiêu đã kết thúc (không còn lập kế hoạch / chạy / review nữa)
 GOAL_ENDED = ("done", "incomplete", "failed", "cancelled")
@@ -116,12 +123,23 @@ class Task:
     base: str | None = None
     head: str | None = None
     attempts: int | None = None
+    session: str | None = None        # id phiên CLI của lượt gần nhất (để --resume)
+    session_agent: str | None = None  # agent sở hữu phiên đó (đổi agent → không dùng lại)
+    resume: str | None = None         # prompt ngắn gửi khi tiếp tục phiên (lý do chạy lại / câu trả lời)
+    # <<<ASK>>>: {"qa": [{"q", "why", "options", "rec", "a"}]} — câu hỏi của agent và câu trả lời
+    ask: dict | None = None
 
     @classmethod
     def from_row(cls, r: sqlite3.Row) -> "Task":
         d = dict(r)
         d["depends_on"] = json.loads(d.get("depends_on") or "[]")
+        d["ask"] = json.loads(d["ask"]) if d.get("ask") else None
         return cls(**d)
+
+    def question(self) -> dict | None:
+        """Câu hỏi đang chờ trả lời (task ở trạng thái asking)."""
+        qa = (self.ask or {}).get("qa") or []
+        return qa[-1] if qa and qa[-1].get("a") is None else None
 
 
 @dataclass
@@ -137,6 +155,8 @@ class Goal:
     # /grill: trưởng nhóm phỏng vấn người dùng trước khi lập kế hoạch —
     # {"qa": [{"q", "why", "options", "rec", "a"}], "spec": "", "error": ""}
     grill: dict | None = None
+    lead_session: str | None = None        # phiên trưởng nhóm lúc lập kế hoạch (/continue m<id> tiếp tục)
+    lead_session_agent: str | None = None
 
     @classmethod
     def from_row(cls, r: sqlite3.Row) -> "Goal":
@@ -176,7 +196,8 @@ class DB:
         self.conn.executescript(SCHEMA)
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(tasks)")}
         for col, typ in (("model", "TEXT"), ("effort", "TEXT"), ("base", "TEXT"),
-                         ("head", "TEXT"), ("attempts", "INTEGER")):
+                         ("head", "TEXT"), ("attempts", "INTEGER"), ("session", "TEXT"),
+                         ("session_agent", "TEXT"), ("resume", "TEXT"), ("ask", "TEXT")):
             if col not in cols:  # nâng cấp DB cũ
                 self.conn.execute(f"ALTER TABLE tasks ADD COLUMN {col} {typ}")
         rcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(runs)")}
@@ -184,7 +205,7 @@ class DB:
             if col not in rcols:  # nâng cấp DB cũ: token/cost đọc từ log phiên của CLI (usage_logs.py)
                 self.conn.execute(f"ALTER TABLE runs ADD COLUMN {col} {typ}")
         gcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(goals)")}
-        for col in ("workflow", "followups", "grill"):
+        for col in ("workflow", "followups", "grill", "lead_session", "lead_session_agent"):
             if col not in gcols:  # nâng cấp DB cũ
                 self.conn.execute(f"ALTER TABLE goals ADD COLUMN {col} TEXT")
 
@@ -254,6 +275,8 @@ class DB:
             return
         if "depends_on" in fields:
             fields["depends_on"] = json.dumps(fields["depends_on"])
+        if fields.get("ask") is not None:
+            fields["ask"] = json.dumps(fields["ask"], ensure_ascii=False)
         keys = ", ".join(f"{k}=?" for k in fields)
         self.conn.execute(f"UPDATE tasks SET {keys} WHERE id=?", (*fields.values(), tid))
 

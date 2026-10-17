@@ -98,13 +98,16 @@ def _dirs(cwd: str) -> list[str]:
     return out
 
 
-def claude_usage(cwd: str, started: float, finished: float, prompt: str) -> Usage | None:
+def claude_usage(cwd: str, started: float, finished: float, prompt: str,
+                 session: str | None = None) -> Usage | None:
     root = claude_projects()
     files = []
     for d in {encode_dir(p) for p in _dirs(cwd)}:
         folder = root / d
         if folder.is_dir():
             files += [f for f in folder.glob("*.jsonl") if f.stat().st_mtime >= started - SLACK]
+    if session and any(f.stem == session for f in files):
+        files = [f for f in files if f.stem == session]  # biết id phiên (file <id>.jsonl): khỏi đoán theo prompt
     found: list[tuple[bool, Usage]] = []
     for f in files:
         first_user, msgs, model = None, {}, ""
@@ -128,7 +131,7 @@ def claude_usage(cwd: str, started: float, finished: float, prompt: str) -> Usag
             us.out_tok += int(u.get("output_tokens") or 0)
             us.cache_read += int(u.get("cache_read_input_tokens") or 0)
             us.cache_write += int(u.get("cache_creation_input_tokens") or 0)
-        found.append((_same_prompt(prompt, first_user or ""), us))
+        found.append((f.stem == session or _same_prompt(prompt, first_user or ""), us))
     return _pick(found)
 
 
@@ -140,56 +143,65 @@ def _pick(found: list) -> Usage | None:
     return found[0][1] if len(found) == 1 else None
 
 
-def codex_usage(cwd: str, started: float, finished: float, prompt: str) -> Usage | None:
+def codex_usage(cwd: str, started: float, finished: float, prompt: str,
+                session: str | None = None) -> Usage | None:
     root = codex_sessions()
     days = {time.strftime("%Y/%m/%d", time.localtime(t)) for t in (started - 86400, started, finished)}
     days |= {time.strftime("%Y/%m/%d", time.gmtime(t)) for t in (started, finished)}
     dirs = set(_dirs(cwd))
     found: list[tuple[bool, Usage]] = []
-    for day in days:
-        folder = root / day
-        if not folder.is_dir():
+    if session:  # biết id phiên: file rollout-<thời điểm>-<id>.jsonl, có thể ở ngày cũ (lượt --resume)
+        files = list(root.glob(f"*/*/*/*{session}*.jsonl"))
+    else:
+        files = [f for day in days if (root / day).is_dir() for f in (root / day).glob("*.jsonl")]
+    for f in files:
+        try:
+            if f.stat().st_mtime < started - SLACK:
+                continue
+        except OSError:
             continue
-        for f in folder.glob("*.jsonl"):
-            try:
-                if f.stat().st_mtime < started - SLACK:
-                    continue
-            except OSError:
-                continue
-            us, total, user, ok_dir, t0 = Usage(), None, None, False, 0.0
-            for d in _lines(f):
-                p = d.get("payload") or {}
-                kind = d.get("type")
-                if kind == "session_meta":
-                    ok_dir = p.get("cwd") in dirs
-                    t0 = _ts(p.get("timestamp") or d.get("timestamp"))
-                    if not ok_dir:
-                        break
-                elif kind == "turn_context":
-                    us.model = p.get("model") or us.model
-                elif kind == "event_msg" and p.get("type") == "user_message" and user is None:
-                    user = p.get("message") or ""
-                elif kind == "event_msg" and p.get("type") == "token_count" and (p.get("info") or {}).get(
-                        "total_token_usage"):
+        us, total, before, user, ok_dir, t0 = Usage(), None, None, None, False, 0.0
+        for d in _lines(f):
+            p = d.get("payload") or {}
+            kind = d.get("type")
+            if kind == "session_meta":
+                ok_dir = p.get("cwd") in dirs
+                t0 = _ts(p.get("timestamp") or d.get("timestamp"))
+                if not ok_dir:
+                    break
+            elif kind == "turn_context":
+                us.model = p.get("model") or us.model
+            elif kind == "event_msg" and p.get("type") == "user_message" and user is None:
+                user = p.get("message") or ""
+            elif kind == "event_msg" and p.get("type") == "token_count" and (p.get("info") or {}).get(
+                    "total_token_usage"):
+                if _ts(d.get("timestamp")) < started - SLACK:
+                    before = p["info"]["total_token_usage"]  # cộng dồn của các lượt trước (phiên tiếp tục)
+                else:
                     total = p["info"]["total_token_usage"]
-            if not ok_dir or total is None or not (started - 60 <= t0 <= finished + SLACK):
-                continue
-            cached = int(total.get("cached_input_tokens") or 0)
-            us.in_tok = max(0, int(total.get("input_tokens") or 0) - cached)
-            us.cache_read = cached
-            us.out_tok = int(total.get("output_tokens") or 0)
-            found.append((_same_prompt(prompt, user or ""), us))
+        if not ok_dir or total is None or not (session or started - 60 <= t0 <= finished + SLACK):
+            continue
+
+        def n(key: str) -> int:
+            return int(total.get(key) or 0) - int((before or {}).get(key) or 0)
+        cached = n("cached_input_tokens")
+        us.in_tok = max(0, n("input_tokens") - cached)
+        us.cache_read = max(0, cached)
+        us.out_tok = max(0, n("output_tokens"))
+        found.append((bool(session) or _same_prompt(prompt, user or ""), us))
     return _pick(found)
 
 
-def collect(binary: str, cwd: str, started: float, finished: float, prompt: str) -> Usage | None:
-    """Token thật của một lượt chạy CLI `binary` trong thư mục `cwd`, hoặc None nếu không đọc được."""
+def collect(binary: str, cwd: str, started: float, finished: float, prompt: str,
+            session: str | None = None) -> Usage | None:
+    """Token thật của một lượt chạy CLI `binary` trong thư mục `cwd`, hoặc None nếu không đọc được.
+    session: id phiên (khi biết) — chọn đúng file phiên, cả khi lượt này tiếp tục phiên cũ (--resume)."""
     name = Path(binary or "").name
     try:
         if name == "claude":
-            return claude_usage(cwd, started, finished, prompt)
+            return claude_usage(cwd, started, finished, prompt, session)
         if name == "codex":
-            return codex_usage(cwd, started, finished, prompt)
+            return codex_usage(cwd, started, finished, prompt, session)
     except Exception:  # file phiên hỏng / định dạng đổi: coi như không có
         return None
     return None
