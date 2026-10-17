@@ -103,6 +103,7 @@ def ui_strings() -> dict[str, str]:
         "continue_task": tr("Hỏi tiếp"), "close": tr("Đóng"),
         "tab_log": tr("Log"), "tab_prompt": tr("Nội dung"), "tab_result": tr("Kết quả"),
         "no_log": tr("Chưa có log."), "no_result": tr("Chưa có kết quả."), "error": tr("Lỗi"),
+        "md_note": tr("Ghi chú"), "md_summary": tr("Tóm tắt"), "md_delegate": tr("Giao việc"),
         "started": tr("Bắt đầu"), "duration": tr("Thời gian"),
         "deps": tr("Phụ thuộc"), "attempts": tr("Lần thử"), "branch": tr("Nhánh"),
         "lead": tr("trưởng nhóm"), "idle": tr("rảnh"), "not_installed": tr("chưa cài"),

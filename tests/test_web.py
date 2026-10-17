@@ -487,3 +487,43 @@ def test_web_setup_and_custom(env, project, monkeypatch):
             await client.close()
 
     asyncio.run(main())
+
+
+def test_web_markdown_renderer(tmp_path):
+    """Log/kết quả của agent hiện markdown dễ đọc: tiêu đề, danh sách, ```, bảng, khối NOTE, SUMMARY (app.js)."""
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("không có node")
+    from ateam.web import STATIC
+    src = (STATIC / "app.js").read_text(encoding="utf-8")
+    code = src[src.index("const TS_RE"):src.index("function appendLines")]
+    lines = ["#### 3. Dung lượng", "- **Đã giữ:** `node_modules` (214M)", "  ```text", "$ du -sh", "  ```",
+             "14. `a` (191M)", "<<<NOTE>>>[Gemini_flash] Task #41 hoàn tất <<<END>>>",
+             '<<<DELEGATE to="codex" title="Viết test">>>', "làm *X*", "<<<END>>>", "SUMMARY: xong <b>",
+             "[12:00:01] ✓ ok", "2 * 3 * 4 và snake_case_name"]
+    js = ("const esc = (s) => String(s).replace(/[&<>\"']/g, (c) => `&#${c.charCodeAt(0)};`);\n"
+          "const t = (k) => k;\n" + code +
+          f"const st = {{}}; console.log(JSON.stringify({json.dumps(lines)}.map((s) => lineHtml(s, st))));"
+          "console.log(JSON.stringify(mdHtml('| a | b |\\n|---|---|\\n| `x` | y |')));")
+    (tmp_path / "t.js").write_text(js, encoding="utf-8")
+    out = subprocess.run([node, str(tmp_path / "t.js")], capture_output=True, text=True, check=True).stdout.splitlines()
+    h = json.loads(out[0])
+    assert 'md-h4">3. Dung lượng<' in h[0]
+    assert "md-li" in h[1] and "<b>Đã giữ:</b>" in h[1] and '<code class="md-c">node_modules</code>' in h[1]
+    assert "md-pre-start" in h[2] and 'md-lang">text<' in h[2]
+    assert 'class="l md-pre"' in h[3] and "$ du -sh" in h[3]  # trong ``` vẫn là code, không phải dòng lệnh ateam
+    assert "md-pre-end" in h[4] and "md-ol" in h[5] and ">14.<" in h[5]
+    assert "md-note md-start md-end" in h[6] and 'md-who">Gemini_flash<' in h[6] and "&#60;&#60;&#60;" not in h[6]
+    assert "md-del md-start" in h[7] and "codex" in h[7] and "Viết test" in h[7]
+    assert "md-del" in h[8] and "<i>X</i>" in h[8] and "md-end" in h[9]
+    assert "md-sum" in h[10] and "md_summary" in h[10] and "&#60;b&#62;" in h[10]  # HTML của agent bị escape
+    assert "l-ok" in h[11] and 'class="ts"' in h[11]
+    assert "<i>" not in h[12] and "snake_case_name" in h[12]
+    table = json.loads(out[1])
+    assert "<th>a</th>" in table and '<td><code class="md-c">x</code></td>' in table

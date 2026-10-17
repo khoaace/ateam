@@ -147,11 +147,18 @@ def login_page(error: str = "") -> web.Response:
     err = f'<p class="err">{html.escape(error)}</p>' if error else ""
     body = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>ateam</title>
-<style>:root{{color-scheme:light dark}}body{{font:16px system-ui,sans-serif;display:grid;place-items:center;
-min-height:100vh;margin:0;padding:16px;box-sizing:border-box}}form{{max-width:360px;width:100%}}
-input,button{{font:inherit;width:100%;box-sizing:border-box;padding:10px;margin-top:8px;border-radius:8px;
-border:1px solid #8886}}button{{background:#7c3aed;color:#fff;border:0}}.err{{color:#e11d48}}
-p{{opacity:.8}}</style></head><body><form method="post" action="/login">
+<style>:root{{color-scheme:dark}}body{{font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+display:grid;place-items:center;min-height:100vh;margin:0;padding:16px;box-sizing:border-box;
+background:#10110e;color:#e8e6dc}}form{{max-width:420px;width:100%;border:1px solid #35372f;padding:16px 16px 18px}}
+h2{{margin:0 0 8px;font-size:15px;font-weight:650}}h2::before{{content:"❯ ";color:#8b5cf6}}
+p{{margin:0;color:#8d897c;font-size:12px}}
+input,button{{font:inherit;width:100%;box-sizing:border-box;padding:8px 10px;margin-top:8px;border-radius:2px}}
+input{{background:#0c0d0b;color:#e8e6dc;border:1px solid #484b40}}
+button{{background:#8b5cf6;color:#fff;border:1px solid #8b5cf6;cursor:pointer}}
+.err{{color:#f07178}}
+@media (prefers-color-scheme:light){{body{{background:#f3efe6;color:#1c1914}}
+form{{border-color:#d5ccba}}p{{color:#6f675c}}
+input{{background:#faf7f0;color:#1c1914;border-color:#c2b7a2}}}}</style></head><body><form method="post" action="/login">
 <h2>ateam</h2><p>{html.escape(tr("Quét mã QR trong terminal đang chạy `ateam web`, hoặc dán token (file .ateam/web_token) vào đây."))}</p>
 {err}<input name="token" type="password" autocomplete="current-password" placeholder="token" autofocus>
 <button type="submit">{html.escape(tr("Vào"))}</button></form></body></html>"""

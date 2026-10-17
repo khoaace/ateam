@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.0 — 17/10/2026
+
+- **Giao diện web mới** kiểu terminal hiện đại (tối / giấy), cả trang đăng nhập khi dùng từ xa.
+- **Markdown dễ đọc trên web**: log của agent, tab Nội dung / Kết quả và chi tiết kế hoạch hiện tiêu đề, danh sách,
+  chữ đậm, `code`, khối ``` , bảng, link thay vì ký tự thô. Khối `<<<NOTE>>>` thành khung 📝 Ghi chú (kèm tên agent),
+  `<<<DELEGATE>>>` thành khung ⇒ Giao việc, dòng `SUMMARY:` thành khung ✔ Tóm tắt. Tab Terminal giữ nguyên output.
+
 ## 0.13.1 — 17/10/2026
 
 - **Âm thanh trên web**: mỗi loại thông báo một giai điệu ngắn (kế hoạch / diff chờ duyệt, agent hỏi, task lỗi /

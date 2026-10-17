@@ -2177,6 +2177,12 @@ EN: dict[str, str] = {
         'Result',
     'Chưa có kết quả.':
         'No result yet.',
+    'Ghi chú':
+        'Note',
+    'Tóm tắt':
+        'Summary',
+    'Giao việc':
+        'Delegate',
     'Lỗi':
         'Error',
     'Bắt đầu':

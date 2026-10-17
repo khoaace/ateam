@@ -153,16 +153,114 @@ function lineClass(s) {
 function linkify(html) {
   return html.replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
 }
-function lineHtml(s) {
+function lineHtml(s, st) {
+  if (st && (st.fence || st.block || (!TS_RE.test(s) && !s.startsWith("$ ")))) return mdLine(s, st);
   const cls = lineClass(s);
   const m = TS_RE.exec(s);
   const body = m ? `<span class="ts">${esc(m[1])}</span> ${linkify(esc(m[2]))}` : linkify(esc(s));
   return `<div class="l ${cls}">${body || "&nbsp;"}</div>`;
 }
-function appendLines(box, lines, max = 4000) {
+
+/* markdown của agent (log, kết quả, nội dung task) — từng dòng một vì log đến theo dòng;
+   st giữ trạng thái giữa các dòng: đang trong ``` hay trong khối <<<NOTE>>>/<<<DELEGATE>>> */
+function mdInline(s) {
+  const keep = [];
+  const stash = (h) => `\u0000${keep.push(h) - 1}\u0000`;
+  s = s.replace(/`([^`]+)`/g, (_, c) => stash(`<code class="md-c">${esc(c)}</code>`))
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, txt, url) => stash(`<a href="${esc(url)}" target="_blank" rel="noopener">${esc(txt)}</a>`));
+  return linkify(esc(s))
+    .replace(/\*\*(?=\S)(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/~~(?=\S)(.+?)~~/g, "<s>$1</s>")
+    .replace(/(^|[^\w*])\*(?=[^\s*])([^*]+?)\*(?![\w*])/g, "$1<i>$2</i>")
+    .replace(/\u0000(\d+)\u0000/g, (_, i) => keep[+i]);
+}
+function mdCells(s) {
+  return s.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+}
+const MD_TSEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+function mdBlockOpen(s, st) {  // <<<NOTE>>> / <<<DELEGATE to=… title=…>>> — có thể kết thúc ngay trên dòng này
+  const m = /<<<(NOTE|DELEGATE)\b([^>]*)>>>/.exec(s);
+  if (!m) return null;
+  let rest = s.slice(m.index + m[0].length), head;
+  const kind = m[1] === "NOTE" ? "note" : "del";
+  if (kind === "note") {
+    const who = /^\s*\[([^\]]+)\]\s*/.exec(rest);
+    if (who) rest = rest.slice(who[0].length);
+    head = `<span class="md-tag">📝 ${esc(t("md_note"))}</span>${who ? `<span class="md-who">${esc(who[1])}</span>` : ""}`;
+  } else {
+    const attr = (k) => { const a = new RegExp(k + '="([^"]*)"').exec(m[2]); return a ? a[1] : ""; };
+    head = `<span class="md-tag">⇒ ${esc(t("md_delegate"))}</span><span class="md-who">${esc(attr("to"))}</span>${attr("title") ? `<b>${esc(attr("title"))}</b>` : ""}`;
+  }
+  const end = rest.indexOf("<<<END>>>");
+  if (end >= 0) rest = rest.slice(0, end); else st.block = kind;
+  const pre = s.slice(0, m.index).trim();
+  return (pre ? `<div class="l">${mdInline(pre)}</div>` : "")
+    + `<div class="l md-${kind} md-start${end >= 0 ? " md-end" : ""}">${head}${rest.trim() ? (kind === "note" ? " " : "<br>") + mdInline(rest.trim()) : ""}</div>`;
+}
+function mdLine(s, st) {
+  if (st.fence) {  // st.fence = số cấp thụt lề của ``` (khối code nằm trong danh sách) + 1
+    const d = `style="--d:${st.fence - 1}"`;
+    if (/^\s*```/.test(s)) { st.fence = 0; return `<div class="l md-pre md-pre-end" ${d}></div>`; }
+    return `<div class="l md-pre" ${d}>${esc(s.replace(new RegExp(`^ {0,${(st.fence - 1) * 2}}`), "")) || "&nbsp;"}</div>`;
+  }
+  if (st.block) {
+    const end = s.indexOf("<<<END>>>");
+    const body = end >= 0 ? s.slice(0, end) : s;
+    const cls = `l md-${st.block}${end >= 0 ? " md-end" : ""}`;
+    if (end >= 0) st.block = null;
+    return `<div class="${cls}">${mdInline(body) || "&nbsp;"}</div>`;
+  }
+  let m = /^(\s*)```\s*([\w+#.-]*)/.exec(s);
+  if (m) {
+    st.fence = Math.floor(m[1].length / 2) + 1;
+    return `<div class="l md-pre md-pre-start" style="--d:${st.fence - 1}">${m[2] ? `<span class="md-lang">${esc(m[2])}</span>` : ""}</div>`;
+  }
+  const blk = mdBlockOpen(s, st);
+  if (blk) return blk;
+  if ((m = /^\s*SUMMARY:\s*(.*)$/.exec(s))) return `<div class="l md-sum"><span class="md-tag">✔ ${esc(t("md_summary"))}</span> ${mdInline(m[1])}</div>`;
+  if ((m = /^\s{0,3}(#{1,6})\s+(.*?)[\s#]*$/.exec(s))) return `<div class="l md-h md-h${m[1].length}">${mdInline(m[2])}</div>`;
+  if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(s)) return `<div class="l md-hr"></div>`;
+  if ((m = /^\s*>\s?(.*)$/.exec(s))) return `<div class="l md-quote">${mdInline(m[1]) || "&nbsp;"}</div>`;
+  if ((m = /^(\s*)[-*+]\s+(?:\[([ xX])\]\s+)?(.*)$/.exec(s))) {
+    const box = m[2] ? (m[2] === " " ? "☐ " : "☑ ") : "";
+    return `<div class="l md-li" style="--d:${Math.floor(m[1].length / 2)}"><span class="md-b">•</span>${box}${mdInline(m[3])}</div>`;
+  }
+  if ((m = /^(\s*)(\d+)[.)]\s+(.*)$/.exec(s))) {
+    return `<div class="l md-li md-ol" style="--d:${Math.floor(m[1].length / 2)}"><span class="md-b">${m[2]}.</span>${mdInline(m[3])}</div>`;
+  }
+  if (MD_TSEP.test(s) && s.includes("|")) return `<div class="l md-tsep"></div>`;
+  if (/^\s*\|.*\|\s*$/.test(s)) return `<div class="l md-tr">${mdCells(s).map((c) => `<span class="md-td">${mdInline(c)}</span>`).join('<span class="md-bar">│</span>')}</div>`;
+  const cls = lineClass(s);
+  return `<div class="l ${cls}">${mdInline(s) || "&nbsp;"}</div>`;
+}
+/* cả một đoạn markdown (kết quả, nội dung task): như log, thêm bảng thật cho các dòng | … | liền nhau */
+function mdHtml(text) {
+  const st = {}, out = [];
+  let rows = [];
+  const flush = () => {
+    if (!rows.length) return;
+    const head = rows.length > 1 && MD_TSEP.test(rows[1]);
+    const body = rows.filter((r, i) => !(head && i === 1)).map((r, i) => {
+      const tag = head && i === 0 ? "th" : "td";
+      return `<tr>${mdCells(r).map((c) => `<${tag}>${mdInline(c)}</${tag}>`).join("")}</tr>`;
+    });
+    out.push(`<div class="md-table"><table>${body.join("")}</table></div>`);
+    rows = [];
+  };
+  for (const s of String(text || "").replace(/\s+$/, "").split("\n")) {
+    if (!st.fence && !st.block && /^\s*\|.*\|\s*$/.test(s)) { rows.push(s); continue; }
+    flush();
+    out.push(mdLine(s, st));
+  }
+  flush();
+  return out.join("");
+}
+function appendLines(box, lines, max = 4000, md = true) {
   if (!box) return;
+  if (!box.childElementCount) box._md = {};  // hộp vừa xoá: bắt đầu lại trạng thái markdown
+  const st = md ? box._md || (box._md = {}) : null;
   const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-  box.insertAdjacentHTML("beforeend", lines.map(lineHtml).join(""));
+  box.insertAdjacentHTML("beforeend", lines.map((s) => lineHtml(s, st)).join(""));
   while (box.childElementCount > max) box.firstElementChild.remove();
   if (stick) box.scrollTop = box.scrollHeight;
 }
@@ -334,7 +432,7 @@ function renderPlan() {
         <span class="muted" style="font-size:12px">${esc([x.model, x.effort].filter(Boolean).join(" · "))}</span>
       </div>
       ${S.expanded.has(x.id) ? `<div class="plan-detail">
-        <pre>${esc(x.prompt)}</pre>
+        <div class="prompt-box md">${mdHtml(x.prompt)}</div>
         <div class="row-actions"><button class="btn sm" data-action="plan-edit" data-task="${x.id}">✎ ${esc(t("edit"))}</button></div>
       </div>` : ""}
     </div>`;
@@ -531,13 +629,13 @@ async function loadJob(id) {
     const body = $("#tw-body");
     if (!body) return;
     body.innerHTML = "";
-    appendLines(body, r.lines, 5000);
+    appendLines(body, r.lines, 5000, false);
     body.scrollTop = body.scrollHeight;
     delete $("#tw-head").dataset.sig;
     renderTerm();
   } catch (e) { /* bỏ qua */ }
 }
-function onJobLine(m) { if (m.id === S.openJob) appendLines($("#tw-body"), [m.line], 5000); }
+function onJobLine(m) { if (m.id === S.openJob) appendLines($("#tw-body"), [m.line], 5000, false); }
 async function loadScripts() {
   S.scriptsAt = now();
   try { S.scripts = await (await fetch("/api/scripts")).json(); } catch (e) { S.scripts = []; }
@@ -588,9 +686,9 @@ function renderDrawer(full) {
   const tabs = x ? `<div class="tabs">${["log", "prompt", "result"].map((k) => `<button class="tab${S.drawerTab === k ? " on" : ""}" data-action="dr-tab" data-tab="${k}">${esc(t("tab_" + k))}</button>`).join("")}</div>` : "";
   let body;
   if (!x || S.drawerTab === "log") body = `<div class="dr-body dark"><div class="log" id="dr-log"></div></div>`;
-  else if (S.drawerTab === "prompt") body = `<div class="dr-body"><pre class="prompt-box" style="max-height:none">${esc(x.prompt)}</pre></div>`;
+  else if (S.drawerTab === "prompt") body = `<div class="dr-body"><div class="prompt-box md" style="max-height:none">${mdHtml(x.prompt)}</div></div>`;
   else body = `<div class="dr-body">${x.error ? `<div class="sec-title">${esc(t("error"))}</div><div class="error-box">${esc(x.error)}</div>` : ""}
-      <div class="result-box">${x.result ? linkify(esc(x.result)) : `<span class="muted">${esc(t("no_result"))}</span>`}</div></div>`;
+      <div class="result-box md">${x.result ? mdHtml(x.result) : `<span class="muted">${esc(t("no_result"))}</span>`}</div></div>`;
   dr.innerHTML = `<div class="dr-head">${head}</div>${tabs}${body}`;
   if (logNode) $("#dr-log").replaceWith(logNode);  // giữ log đang hiện (và vị trí cuộn), chỉ vẽ lại phần đầu
   if (S.rejecting) $("#reject-fb").focus();

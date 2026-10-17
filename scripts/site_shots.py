@@ -124,11 +124,38 @@ if "google_bp" not in s:
     s = s.replace("    app.register_blueprint(home_bp)\n", "    app.register_blueprint(home_bp)\n    app.register_blueprint(google_bp)\n")
 open(p, "w").write(s)
 PY
-  for l in "Đọc app/__init__.py, app/models.py" "Thêm app/auth/google.py: route /auth/google, /auth/callback" \
-           "Kiểm tra state chống CSRF, lưu next để quay lại trang trước" "Đăng ký blueprint trong create_app()" \
-           "Chạy pytest -q tests/test_auth.py" "4 passed in 0.41s" "Rà lại xử lý lỗi khi Google trả về error=access_denied" \
-           "Thêm abort(400) khi state không khớp"; do echo "$l"; slow; done
-  echo "SUMMARY: Thêm OAuth Google: /auth/google, /auth/callback, lưu user + phiên"; exit 0
+  cat <<'MD'
+### Kế hoạch
+1. Đọc `app/__init__.py`, `app/models.py`
+2. Thêm `app/auth/google.py`: route **/auth/google**, **/auth/callback**
+3. Đăng ký blueprint trong `create_app()`
+MD
+  slow
+  cat <<'MD'
+
+### Đã làm
+- **OAuth 2.0 + PKCE**: kiểm tra `state` chống CSRF, lưu `next` để quay lại trang trước
+- **Người dùng mới**: tạo `User` từ `email`, `name`, `picture`
+  - Google trả về `error=access_denied` → `abort(400)`
+MD
+  slow
+  cat <<'MD'
+
+### Kiểm tra
+```text
+$ pytest -q tests/test_auth.py
+....                                                         [100%]
+4 passed in 0.41s
+```
+
+| Route | Việc |
+|---|---|
+| `/auth/google` | chuyển sang trang đồng ý của Google |
+| `/auth/callback` | đổi `code` lấy token, lưu phiên |
+
+<<<NOTE>>>[codex] Cần đặt `GOOGLE_CLIENT_ID` và `GOOGLE_CLIENT_SECRET` trong `.env`; redirect URI cho dev: http://localhost:5000/auth/callback<<<END>>>
+MD
+  echo "SUMMARY: Thêm OAuth Google: **/auth/google**, **/auth/callback**, lưu user + phiên"; exit 0
 fi
 if [ "$name" = agy ]; then
   mkdir -p app/templates
@@ -424,9 +451,12 @@ async def shoot_web(base: Path, proj: Path) -> None:
                 await c.until("S.state.tasks.some((t) => t.status === 'draft')")
                 await c.js("send('approve', {goal: S.state.goals[0].id})")
                 await c.until("S.state.tasks.filter((t) => t.status === 'running').length >= 2")
-                await asyncio.sleep(4.5)
-                await c.js("openTask(S.state.tasks.find((t) => t.status === 'running').id)")
+                # log markdown của codex (tiêu đề, danh sách, khối code, bảng, NOTE, SUMMARY) khi nó vừa xong
+                codex = "S.state.tasks.find((t) => t.agent === 'codex')"
+                await c.until(f"!['queued', 'running'].includes({codex}.status)")
+                await c.js(f"openTask({codex}.id)")
                 await asyncio.sleep(1.0)
+                await c.js("document.querySelector('#toasts').replaceChildren()")  # toast đè lên ngăn log
                 await c.shot("web-board")
                 await c.js("closeDrawer(); setView('code'); CodeView.open('app/auth/google.py', 35)")
                 await c.until("document.querySelector('#code .cm-editor')")
