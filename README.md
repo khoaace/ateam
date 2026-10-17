@@ -176,6 +176,14 @@ ateam web --open           # mở http://127.0.0.1:8000  ·  đổi cổng: atea
   `/model <agent>`, `/assign`, `/retry <task>`, `/continue`, `/flow`, `/checkout <nhánh>`, `/code @file`… Ctrl+K về ô
   nhập, F2 duyệt kế hoạch, F6 tiếp tục, F1 trợ giúp, Esc đóng. Tab Git: phím `space a u x d c e` như TUI. Tab Code:
   ⌘P tìm file, ⌘S lưu, ⌘⇧V đổi chế độ xem trước markdown.
+- ✅ **To-do** (tab trên thanh bên, cả TUI: tab ✅ To-do hoặc `/todo [việc]`): danh sách việc cần làm riêng cho từng dự án —
+  Enter để thêm, tick xong, bấm đúp để sửa, kéo để đổi thứ tự (TUI: Space · e · d · Shift+↑↓ · c). Lưu ở
+  `~/.config/ateam/todos/`, **không** nằm trong thư mục dự án nên không cần `.gitignore`; TUI và web dùng chung.
+- 📋 **Xem lại kế hoạch**: nút 📋 trên thẻ mục tiêu (TUI và ô nhập web: `/plan [mục tiêu]`) mở toàn bộ kế hoạch của
+  trưởng nhóm kể cả khi đã duyệt / đã xong — task chia theo nguồn (kế hoạch ban đầu, bổ sung khi review, tiếp tục,
+  giao việc chéo), trạng thái, chọn dòng xem prompt.
+- 🎧 **Nhạc lofi** (nút ở thanh bên): phát radio lofi online trong khung nổi — chọn đài (Chillhop, Lofi Girl…) hoặc dán
+  link YouTube / stream mp3 của bạn, chỉnh âm lượng, thu gọn để nghe nền. Cần mạng; lưu riêng cho từng trình duyệt.
 - Một server giữ **một** bộ lập lịch: mở bao nhiêu tab trình duyệt cũng được, không chạy trùng task. Trong lúc
   đó `ateam` ở terminal sẽ báo dự án đang mở ở phiên khác.
 - Mặc định chỉ nghe `127.0.0.1` và từ chối yêu cầu có Host/Origin lạ — trang web khác không điều khiển được ateam

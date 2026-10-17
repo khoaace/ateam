@@ -20,7 +20,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import __version__, mentions, notify, reports, shell, theme, update, wizard
+from . import __version__, mentions, notify, reports, shell, theme, todos, update, wizard
 from .config import Config, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import ASKING, DB, GOAL_ENDED, Goal, Task
 from .qr import QR
@@ -189,6 +189,20 @@ def ui_strings() -> dict[str, str]:
         "accent_shared": tr("Màu nhấn lưu chung với giao diện terminal; sáng/tối chỉ áp cho trình duyệt này."),
         "sound": tr("Âm thanh"), "sound_on": tr("Phát âm thanh khi có thông báo"), "sound_volume": tr("Âm lượng"),
         "sound_test": tr("Nghe thử"),
+        "todo": tr("To-do"), "todo_ph": tr("Thêm việc cần làm rồi Enter…"),
+        "todo_left": tr("{n} việc chưa xong"), "todo_clear": tr("Xoá việc đã xong"), "todo_empty": tr("Chưa có việc nào"),
+        "todo_where": tr("Lưu riêng cho dự án này ở {path} — ngoài thư mục dự án, không cần .gitignore."),
+        "todo_edit": tr("Bấm đúp để sửa"), "todo_del": tr("Xoá"),
+        "goal_plan": tr("Kế hoạch"), "goal_plan_title": tr("Kế hoạch mục tiêu #{id}"),
+        "src_plan": tr("Kế hoạch ban đầu"), "src_workflow": tr("Theo workflow"), "src_review": tr("Bổ sung khi review"),
+        "src_followup": tr("Tiếp tục / làm thêm"), "src_delegate": tr("Giao việc chéo"), "src_user": tr("Thêm tay"),
+        "plan_empty": tr("Mục tiêu này chưa có task nào"),
+        "lofi": tr("Nhạc lofi"), "lofi_play": tr("Phát"), "lofi_pause": tr("Tạm dừng"), "lofi_hide": tr("Thu gọn"),
+        "lofi_show": tr("Mở rộng"), "lofi_close": tr("Tắt nhạc"), "lofi_custom": tr("Link của bạn"),
+        "lofi_custom_ph": tr("Dán link YouTube hoặc stream mp3/aac rồi Enter…"),
+        "lofi_bad_url": tr("Link không phát được — dùng link YouTube hoặc link stream http(s)"),
+        "lofi_blocked": tr("Video này không cho phát nhúng ngoài YouTube — thử đài hoặc link khác"),
+        "lofi_hint": tr("Radio online (cần mạng). Đài và âm lượng lưu riêng cho trình duyệt này."),
         "sound_local": tr("Mỗi loại có âm riêng: kế hoạch / diff chờ duyệt, agent hỏi, task lỗi, mục tiêu xong. Lưu riêng cho trình duyệt này."),
         # --- /setup
         "ob_title": tr("Thiết lập đội AI · Bước {v}/{n} — {title}"), "ob_back": tr("Quay lại"), "ob_next": tr("Tiếp"),
@@ -285,7 +299,7 @@ def guard_middleware(port: int):
 
 
 # --readonly: thao tác không đổi gì vẫn cho phép
-READONLY_OPS = ("custom_preview",)
+READONLY_OPS = ("custom_preview", "goal_plan")
 
 
 def text_box(title: str, body: str) -> dict:
@@ -499,12 +513,13 @@ class WebApp:
         return {"t": "state", "goals": goals, "tasks": [task_json(t) for t in tasks], "agents": agents,
                 "grill": grill, "ask": ask, "jobs": jobs, "paused": o.paused, "worktree": o.use_worktree,
                 "lead": cfg.lead, "commit_agent": cfg.commit_agent, "workflow": cfg.default_workflow, "compacting": o.compacting,
-                "continue": reports.continue_candidates(self.db), "busy": len(o.runs)}
+                "continue": reports.continue_candidates(self.db), "busy": len(o.runs), "todos": todos.load(self.root)}
 
     def hello(self) -> dict:
         from .tui import COMMANDS, HELP  # danh sách lệnh + trợ giúp dùng chung với TUI
         st = load_state()
         return {"t": "hello", "version": __version__, "project": self.root.name, "root": str(self.root),
+                "todo_file": str(todos.path_for(self.root)).replace(str(Path.home()), "~", 1),
                 "remote": self.remote.enabled, "readonly": self.remote.readonly,
                 "lang": get_lang(), "T": ui_strings(), "help": HELP,
                 "commands": [{"name": n, "args": a, "desc": d} for n, a, d in COMMANDS],
@@ -699,7 +714,25 @@ class WebApp:
             return self.setup.preview_agent(d)
         if op == "prefs":
             return self.setup.set_prefs(d)
+        if op == "todo":
+            try:
+                todos.apply(self.root, str(d.get("action") or ""), d)
+            except ValueError:
+                return tr("Nhập nội dung việc cần làm"), "warn"
+            return None
+        if op == "goal_plan":
+            return self.goal_plan(d.get("goal"))
         return tr("Không hiểu thao tác {op}", op=op), "warn"
+
+    def goal_plan(self, gid) -> tuple:
+        """📋 Kế hoạch của một mục tiêu (cả khi đã duyệt / xong): mọi task của nó, nhóm theo nguồn."""
+        g = self.db.goal(int(gid)) if str(gid or "").isdigit() else None
+        if not g:
+            return tr("Không thấy mục tiêu #{id}", id=gid), "warn"
+        tasks = [{k: v for k, v in task_json(t).items() if k in ("id", "agent", "title", "prompt", "status", "deps",
+                                                                 "source", "model", "effort")}
+                 for t in self.db.tasks(goal_id=g.id)]
+        return "", "", {"goal_plan": {"goal": goal_json(g, False), "tasks": tasks}}
 
     async def submit(self, text: str) -> tuple | None:
         """Ô nhập chính — cùng luật với TUI: !lệnh, trả lời /grill, mục tiêu mới, hoặc lệnh /…"""
@@ -877,6 +910,13 @@ class WebApp:
             return "", "", {"open": {"view": "custom"}}  # mục 🧩 Tuỳ chỉnh ở sidebar (popup vẫn mở từ /setup)
         if cmd == "dash":
             return "", "", {"open": {"view": "dash"}}
+        if cmd == "plan":  # trống = mục tiêu mới nhất
+            gid = int(rest.lstrip("#mM")) if rest.strip() else next((g.id for g in reversed(self.db.goals())), None)
+            return ("", "", {"open": {"plan": gid}}) if gid else (tr("Chưa có mục tiêu nào"), "warn")
+        if cmd == "todo":
+            if rest.strip():
+                todos.apply(self.root, "add", {"text": rest})
+            return (tr("✅ Đã thêm vào To-do") if rest.strip() else ""), "ok", {"open": {"view": "todo"}}
         if cmd == "flow-setup":
             return "", "", {"open": {"modal": "flow"}}
         if cmd == "theme":

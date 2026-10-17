@@ -42,6 +42,10 @@
         <svg viewBox="0 0 24 24"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg>
         <span data-t="code"></span>
       </button>
+      <button class="nav-item" data-view="todo">
+        <svg viewBox="0 0 24 24"><path d="M4 6.5l1.6 1.6L8.5 5M4 12.5l1.6 1.6 2.9-3.1M4 18.5l1.6 1.6 2.9-3.1M11.5 7h8.5M11.5 13h8.5M11.5 19h8.5"/></svg>
+        <span data-t="todo"></span><span class="nav-count" id="count-todo"></span>
+      </button>
       <button class="nav-item" data-view="dash">
         <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
         <span data-t="dash"></span>
@@ -52,6 +56,10 @@
       </button>
     </nav>
     <div class="side-foot">
+      <button class="nav-item" data-action="lofi">
+        <svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg>
+        <span data-t="lofi"></span>
+      </button>
       <button class="nav-item" data-action="phone">
         <svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>
         <span data-t="phone"></span>
@@ -99,6 +107,9 @@
       <section class="view view-code hidden" id="view-code">
         <div class="code" id="code"></div>
       </section>
+      <section class="view hidden" id="view-todo">
+        <div class="todo" id="todo"></div>
+      </section>
       <section class="view hidden" id="view-dash">
         <div class="dash" id="dash"></div>
       </section>
@@ -129,6 +140,8 @@
 <script src="/static/code.js?v={{V}}"></script>
 <script src="/static/setup.js?v={{V}}"></script>
 <script src="/static/dash.js?v={{V}}"></script>
+<script src="/static/lofi.js?v={{V}}"></script>
+<script src="/static/todo.js?v={{V}}"></script>
 <script src="/static/app.js?v={{V}}"></script>
 </body>
 </html>

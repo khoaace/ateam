@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.17.0 — 17/10/2026
+
+- **📋 Xem lại kế hoạch của trưởng nhóm** sau khi đã duyệt / đã xong: nút 📋 trên thẻ mục tiêu (web) hoặc
+  `/plan [mục tiêu]` (TUI và web). Task chia theo nguồn — kế hoạch ban đầu, theo workflow, bổ sung khi review,
+  tiếp tục, giao việc chéo, thêm tay — kèm agent, thứ tự phụ thuộc, trạng thái và prompt.
+- **✅ To-do theo dự án** (tab mới ở cả web và TUI, `/todo [việc]`): thêm, tick xong, sửa, đổi thứ tự, xoá việc đã
+  xong. Lưu ở `~/.config/ateam/todos/` — ngoài thư mục dự án nên không cần `.gitignore`, không lẫn vào commit.
+- **🎧 Nhạc lofi trên web**: nút ở thanh bên mở khung phát radio lofi online (Chillhop, Lofi Girl…) hoặc link YouTube /
+  stream mp3 của bạn; chỉnh âm lượng, thu gọn để nghe nền, nhạc không ngắt khi đổi tab.
+- Sửa popup Trợ giúp trên web: lệnh và mô tả thẳng cột, dòng mô tả nối tiếp không còn lạc sang cột lệnh.
+- Sửa kiểu chữ markdown bị áp nhầm lên cả khung popup cỡ vừa (Trợ giúp, danh sách nhánh git) từ 0.14.0.
+
 ## 0.16.0 — 17/10/2026
 
 - **Xem trước markdown ở tab Code (web)**: mở file `.md` có ba chế độ ở thanh trạng thái — *Sửa*, *Chia đôi*

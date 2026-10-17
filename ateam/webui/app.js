@@ -120,6 +120,7 @@ function onToast(m) {
   const o = m.open || {};
   if (o.job != null) { setView("term"); openJob(o.job); }
   if (o.diff != null) DiffView.task(o.diff);
+  if (o.plan != null) planModal(o.plan);
   if (o.task != null) openTask(o.task);
   if (o.view) setView(o.view);
   if (o.git_ai && window.GitView) GitView.aiMessage();
@@ -318,12 +319,13 @@ function render() {
   if (S.view === "board") { renderGrill(); renderPlan(); renderGoals(); renderKanban(); }
   if (S.view === "team") renderTeam();
   if (S.view === "term") renderTerm();
+  if (window.TodoView) TodoView.render();  // cả số việc chưa xong trên thanh bên
   if (S.openTask != null) renderDrawer(false);
   renderContinueHint();
 }
 function renderTop() {
   const st = S.state, c = counts();
-  const titles = { board: t("board"), team: t("team"), term: t("terminal"), git: t("git"), code: t("code"), custom: t("custom"), dash: t("dash") };
+  const titles = { board: t("board"), team: t("team"), term: t("terminal"), git: t("git"), code: t("code"), todo: t("todo"), custom: t("custom"), dash: t("dash") };
   $("#view-title").textContent = titles[S.view];
   const chips = [];
   if (c.running) chips.push(`<span class="chip s-running" style="color:var(--running)"><span class="dot"></span>${c.running} ${esc(t("running"))}</span>`);
@@ -495,11 +497,48 @@ function renderGoals() {
       <div class="goal-foot">
         ${ts.length ? `<div class="progress"><i class="p-done" style="width:${d / n * 100}%"></i><i class="p-run" style="width:${r / n * 100}%"></i><i class="p-bad" style="width:${b / n * 100}%"></i></div><span>${d}/${ts.length}</span>` : ""}
         ${g.followups.length ? `<span>↪ ${esc(t("followups", { n: g.followups.length }))}</span>` : ""}
-        ${g.ended ? `<button class="btn sm" data-action="goal-continue" data-goal="${g.id}" style="margin-left:auto">${esc(t("continue"))}</button>` : ""}
+        ${ts.length ? `<button class="btn sm ghost" data-action="goal-plan" data-goal="${g.id}" style="margin-left:auto" title="${esc(t("goal_plan"))}">📋</button>` : ""}
+        ${g.ended ? `<button class="btn sm" data-action="goal-continue" data-goal="${g.id}"${ts.length ? "" : ` style="margin-left:auto"`}>${esc(t("continue"))}</button>` : ""}
       </div>
     </div>`;
   }).join("");
   box.innerHTML = `<div class="goal goal-all${S.goalFilter == null ? " sel" : ""}" data-action="goal-filter" data-goal="">${esc(t("all_goals"))}</div>` + cards;
+}
+
+/* 📋 kế hoạch của một mục tiêu — xem lại sau khi đã duyệt / xong: mọi task, nhóm theo nguồn, bấm dòng xem prompt */
+const PLAN_SOURCES = ["plan", "workflow", "review", "followup", "delegate", "user"];
+async function planModal(gid) {
+  const r = await request("goal_plan", { goal: gid });
+  const p = r.goal_plan;
+  if (!p) return;
+  const groups = {};
+  for (const x of p.tasks) {
+    const k = (x.source || "plan").split(":")[0];
+    (groups[PLAN_SOURCES.includes(k) ? k : "plan"] = groups[PLAN_SOURCES.includes(k) ? k : "plan"] || []).push(x);
+  }
+  const row = (x) => `
+    <div class="plan-row">
+      <div class="plan-line" data-pv="${x.id}">
+        <span class="tid">#${x.id}</span>
+        <span>${agentHtml(x.agent)}</span>
+        <span class="plan-title">${esc(x.title)}${x.source && x.source.startsWith("delegate:") ? ` <span class="muted small">← ${esc(x.source.slice(9))}</span>` : ""}</span>
+        <span class="deps">${x.deps.length ? esc(t("after", { v: x.deps.map((d) => "#" + d).join(", ") })) : esc([x.model, x.effort].filter(Boolean).join(" · "))}</span>
+        ${badge(x.status, STATUS_LABEL(x.status), x.status === "running")}
+      </div>
+      <div class="plan-detail hidden"><div class="prompt-box md">${mdHtml(x.prompt)}</div></div>
+    </div>`;
+  const body = PLAN_SOURCES.filter((k) => groups[k]).map((k) => `
+    <div class="sec-title" style="margin:14px 0 6px">${esc(t("src_" + k))} <span class="muted">· ${groups[k].length}</span></div>
+    <div class="plan-rows plan-box">${groups[k].map(row).join("")}</div>`).join("");
+  const g = p.goal;
+  const m = openModal(`${modalHead("📋 " + esc(t("goal_plan_title", { id: g.id })))}<div class="modal-pad">
+    <div class="prompt-box md">${mdHtml(g.text)}</div>
+    ${g.summary ? `<div class="goal-sum" style="margin-top:8px">${esc(g.summary)}</div>` : ""}
+    ${body || `<div class="muted" style="margin-top:12px">${esc(t("plan_empty"))}</div>`}</div>`, { box: "lg" });
+  m.addEventListener("click", (e) => {
+    const line = e.target.closest("[data-pv]");
+    if (line) line.nextElementSibling.classList.toggle("hidden");
+  });
 }
 
 /* kanban */
@@ -779,12 +818,35 @@ function inputBox(title, label, value = "") {
 function textModal(title, body) {
   openModal(`${modalHead(esc(title))}<div class="modal-body plain"><pre class="text-pre">${linkify(esc(body))}</pre></div>`, { box: "md" });
 }
+/* chữ trợ giúp (HELP của tui.py) căn cột kiểu terminal: lệnh ở trái, mô tả từ một cột cố định, dòng chỉ có mô tả
+   (thụt sâu) là phần tiếp của lệnh trên. Cột mô tả = độ thụt hay gặp nhất của các dòng thụt sâu. */
+function helpRows(text) {
+  const ls = String(text || "").split("\n"), ind = (l) => l.length - l.trimStart().length;
+  const deep = ls.filter((l) => l.trim() && ind(l) > 12).map(ind);
+  const freq = {};
+  deep.forEach((n) => { freq[n] = (freq[n] || 0) + 1; });
+  const col = deep.length ? +Object.keys(freq).sort((a, b) => freq[b] - freq[a])[0] : 36;
+  const out = [];
+  let last = null;
+  for (const l of ls) {
+    if (!l.trim()) { last = null; out.push({ gap: true }); continue; }
+    if (last && ind(l) > 2 && ind(l) >= Math.min(last.at, col) - 1) { last.desc.push(l.trim()); continue; }
+    if (!/^\s/.test(l) && !l.includes("  ")) { last = null; out.push({ head: l.trim() }); continue; }
+    let cut = /^\s/.test(l) ? col : l.indexOf("  ");
+    if (cut < l.length && l[cut - 1] !== " ") {  // lệnh dài lấn sang cột mô tả: tách ở khoảng trắng đôi kế tiếp
+      const m = /\s{2,}/.exec(l.slice(cut));
+      cut = m ? cut + m.index : l.length;
+    }
+    const rest = l.slice(cut), at = rest.trim() ? cut + rest.length - rest.trimStart().length : col;
+    last = { cmd: l.slice(0, cut).trim(), desc: rest.trim() ? [rest.trim()] : [], at };
+    out.push(last);
+  }
+  return out;
+}
 function helpModal() {
-  const lines = (S.meta.help || "").split("\n").map((l) => {
-    if (/^\S/.test(l) && !/^\s/.test(l) && l.trim() && !l.includes("  ")) return `<div class="h-head">${esc(l)}</div>`;
-    const m = /^(\s+)(\S.{0,34}?)(\s{2,})(.*)$/.exec(l);
-    return m ? `<div class="h-row"><code>${esc(m[2])}</code><span>${esc(m[4])}</span></div>` : `<div class="h-text">${esc(l) || "&nbsp;"}</div>`;
-  }).join("");
+  const lines = helpRows(S.meta.help).map((r) => r.gap ? `<div class="h-gap"></div>`
+    : r.head ? `<div class="h-head">${esc(r.head)}</div>`
+    : `<div class="h-row"><code>${esc(r.cmd)}</code><span>${r.desc.map(esc).join("<br>")}</span></div>`).join("");
   openModal(`${modalHead(esc(t("help")))}<div class="modal-body plain help">${lines}</div>`, { box: "md" });
 }
 /* bảng chọn model/effort cho một agent (/model <agent>, bấm vào agent ở tab Đội) */
@@ -1236,7 +1298,7 @@ input.addEventListener("keydown", (e) => {
 input.addEventListener("blur", () => setTimeout(hideSuggest, 150));
 
 /* ------------------------------------------------------------------ hành động (bấm) */
-const VIEWS = ["board", "team", "term", "git", "code", "dash", "custom"];
+const VIEWS = ["board", "team", "term", "git", "code", "todo", "dash", "custom"];
 function setView(v) {
   if (!VIEWS.includes(v)) return;
   const prev = S.view;
@@ -1251,6 +1313,7 @@ function setView(v) {
   if (v === "code" && window.CodeView) CodeView.show();
   if (v === "custom" && window.Setup) Setup.showCustom();
   if (v === "dash" && window.DashView) DashView.show();
+  if (v === "todo" && window.TodoView) TodoView.show();
 }
 const ACTIONS = {
   "send": () => submit(),
@@ -1259,6 +1322,8 @@ const ACTIONS = {
   "theme": () => themeModal(),
   "syslog": () => openTask(0),
   "phone": () => phoneModal(),
+  "lofi": () => Lofi.open(),
+  "goal-plan": (el, e) => { e.stopPropagation(); planModal(+el.dataset.goal); },
   "copy-url": (el) => { navigator.clipboard.writeText(el.dataset.url).then(() => toast(t("copied"), "ok")); },
   "close-drawer": () => closeDrawer(),
   "close-modal": (el) => closeModal(el.closest(".modal")),

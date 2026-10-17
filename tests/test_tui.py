@@ -1516,3 +1516,78 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
+
+
+def test_tui_plan_view_and_todo(env, project, monkeypatch):
+    """/plan xem lại kế hoạch đã duyệt (nhóm theo nguồn, prompt của dòng chọn); tab ✅ To-do lưu ngoài repo."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import OptionList, TabbedContent
+
+    from ateam import todos
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import PlanViewScreen, TeamApp, TodoList
+
+    async def main():
+        ensure_global_config()
+        db = DB(project / ".ateam/team.db")
+        gid = db.add_goal("làm 2FA")
+        a = db.add_task("codex", "Thêm field", "PROMPT-A thêm totpSecret", goal_id=gid, source="plan")
+        db.add_task("claude", "Sửa lệch giờ", "PROMPT-B cho lệch ±1", goal_id=gid, source="review", depends_on=[a])
+        for t in db.tasks():
+            db.conn.execute("UPDATE tasks SET status='done' WHERE id=?", (t.id,))
+        db.conn.commit()
+        app = TeamApp(project, load_config(project), db)
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.3)
+            app.run_command("/plan")  # trống: mục tiêu mới nhất
+            await pilot.pause(0.4)
+            assert isinstance(app.screen, PlanViewScreen)
+            ol = app.screen.query_one("#pv-list", OptionList)
+            rows = [str(ol.get_option_at_index(i).prompt) for i in range(ol.option_count)]
+            assert rows[0].startswith("Kế hoạch ban đầu · 1") and "Thêm field" in rows[1]
+            assert rows[2].startswith("Bổ sung khi review · 1") and "sau #1" in rows[3]
+            assert app.screen.shown == a                   # dòng task đầu (bỏ qua tiêu đề nhóm)
+            await pilot.press("down")
+            await pilot.pause(0.2)
+            assert app.screen.shown == a + 1               # nhảy qua tiêu đề nhóm "Bổ sung khi review"
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, PlanViewScreen)
+
+            app.run_command("/todo viết test")
+            await pilot.pause(0.3)
+            assert app.query_one("#tabs", TabbedContent).active == "tab-todo"
+            inp = app.query_one("#todo-input")
+            inp.focus()
+            for s in ("sửa README", "deploy"):
+                inp.value = s
+                await pilot.press("enter")
+                await pilot.pause(0.1)
+            assert [x["text"] for x in todos.load(project)] == ["viết test", "sửa README", "deploy"]
+            assert inp.value == "" and not app.db.goals()[1:]  # Enter ở ô To-do không thành mục tiêu
+            lst = app.query_one(TodoList)
+            lst.focus()
+            lst.highlighted = 0
+            await pilot.press("space")                     # xong
+            await pilot.press("down", "shift+up")          # "sửa README" lên đầu
+            await pilot.press("e")                         # sửa dòng đang chọn
+            await pilot.pause(0.1)
+            assert inp.value == "sửa README"
+            inp.value = "sửa README phần 2FA"
+            await pilot.press("enter")
+            await pilot.pause(0.1)
+            await pilot.press("c")                         # xoá việc đã xong
+            await pilot.pause(0.2)
+            assert [x["text"] for x in todos.load(project)] == ["sửa README phần 2FA", "deploy"]
+            assert not (project / ".ateam" / "todos").exists() and project not in todos.path_for(project).parents
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())

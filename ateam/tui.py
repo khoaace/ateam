@@ -30,7 +30,7 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import clipboard, diffview, editor, gitops, mentions, notify, reports, shell, theme, update, wizard
+from . import clipboard, diffview, editor, gitops, mentions, notify, reports, shell, theme, todos, update, wizard
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
 from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TIERS,
                      WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan,
@@ -121,6 +121,7 @@ Giao việc:
                                     đổi effort/model riêng cho 1 task ('-' = theo agent)
   /retry <task>   /cancel <task>    chạy lại (F5 hoặc Ctrl+R) / huỷ (Ctrl+K) task
   /review <mục tiêu>                bắt trưởng nhóm review ngay
+  /plan [mục tiêu]                  xem lại kế hoạch kể cả khi đã duyệt / xong (nút 📋 ở thẻ mục tiêu trên web)
   /continue <m12|t40> <yêu cầu>     tiếp tục mục tiêu (m) hoặc thread /task (t) đã xong: trưởng nhóm
                                     lập task bổ sung dựa trên việc đã làm / agent nhận kèm các lượt trước.
                                     F6 (Ctrl+O) với task đang chọn, hoặc bấm "↪ Tiếp tục" ở khung mục tiêu
@@ -173,6 +174,7 @@ Agent & workflow tuỳ chỉnh:
 
 Khác:
   /pause  /resume                   tạm dừng / tiếp tục nhận task mới
+  /todo [việc cần làm]              tab ✅ To-do: việc cần làm riêng dự án, lưu ngoài repo (không cần .gitignore)
   /clear                            dọn task & mục tiêu đã kết thúc khỏi bảng (nút 🗑 trên bảng)
   /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
@@ -261,6 +263,8 @@ COMMANDS = [
     ("retry", "<task>", tr("chạy lại task")),
     ("cancel", "<task>", tr("huỷ task")),
     ("review", tr("<mục tiêu>"), tr("bắt trưởng nhóm review ngay")),
+    ("plan", tr("[mục tiêu]"), tr("xem lại kế hoạch của mục tiêu, kể cả đã duyệt / đã xong")),
+    ("todo", tr("[việc cần làm]"), tr("mở tab To-do (lưu ngoài repo); kèm nội dung thì thêm việc")),
     ("continue", tr("<m12|t40> <yêu cầu>"), tr("tiếp tục mục tiêu / thread đã xong (F6)")),
     ("note", tr("<nội dung>"), tr("ghi chú chung cho cả đội")),
     ("diff", "<task>", tr("xem thay đổi của task")),
@@ -2567,6 +2571,206 @@ class ThemeScreen(BaseModal):
         self.dismiss(None)
 
 
+PLAN_SOURCES = [("plan", tr("Kế hoạch ban đầu")), ("workflow", tr("Theo workflow")),
+                ("review", tr("Bổ sung khi review")), ("followup", tr("Tiếp tục / làm thêm")),
+                ("delegate", tr("Giao việc chéo")), ("user", tr("Thêm tay"))]
+
+
+class PlanViewScreen(BaseModal):
+    """📋 Kế hoạch của một mục tiêu, xem lại cả khi đã duyệt / xong (/plan): task nhóm theo nguồn (cột source),
+    dòng đang chọn hiện prompt bên dưới. Như popup 📋 trên thẻ mục tiêu của web."""
+
+    DEFAULT_CSS = """
+    PlanViewScreen { align: center middle; }
+    #pv-box { width: 124; max-width: 100%; height: 90%; border: round $primary 70%; background: $surface; padding: 0 1; }
+    #pv-goal { height: auto; max-height: 6; margin-bottom: 1; }
+    #pv-list { height: 1fr; min-height: 6; border: none; }
+    #pv-prompt { height: 1fr; border-top: solid $primary-darken-2; }
+    #pv-foot { height: 1; color: $text-muted; }
+    """
+
+    def __init__(self, goal, tasks: list):
+        super().__init__()
+        self.goal, self.tasks, self.shown = goal, {t.id: t for t in tasks}, None
+        self.groups: dict[str, list] = {}
+        for t in tasks:
+            k = (t.source or "plan").split(":")[0]
+            self.groups.setdefault(k if k in dict(PLAN_SOURCES) else "plan", []).append(t)
+
+    def compose(self) -> ComposeResult:
+        g = self.goal
+        head = Text(g.text.strip())
+        if g.summary:
+            head.append("\n" + g.summary.strip(), "italic dim")
+        opts: list = []
+        for key, label in PLAN_SOURCES:
+            for i, t in enumerate(self.groups.get(key, [])):
+                if not i:
+                    opts.append(Option(Text(f"{label} · {len(self.groups[key])}", "bold"), disabled=True))
+                st, style = STATUS.get(t.status, (t.status, ""))
+                line = Text(f"#{t.id:<4} ", "dim")
+                line.append(f"{t.agent:<12} ", "cyan")
+                line.append(t.title)
+                if t.source and t.source.startswith("delegate:"):
+                    line.append(f"  ← {t.source[9:]}", "dim")
+                if t.depends_on:
+                    line.append("  " + tr("sau {v}", v=", ".join(f"#{d}" for d in t.depends_on)), "dim")
+                line.append(f"  {STATUS_ICON.get(t.status, '●')} {st}", style)
+                opts.append(Option(line, id=str(t.id)))
+        with Vertical(id="pv-box"):
+            yield self.title_bar(tr("📋 Kế hoạch mục tiêu #{id}", id=g.id))
+            yield Static(head, id="pv-goal")
+            yield OptionList(*opts, id="pv-list")
+            with VerticalScroll(id="pv-prompt"):
+                yield Static(Text(tr("Mục tiêu này chưa có task nào") if not self.tasks else ""), id="pv-text")
+            yield Static(tr("↑↓ chọn task để xem prompt · Esc đóng"), id="pv-foot")
+
+    def on_mount(self) -> None:
+        ol = self.query_one("#pv-list", OptionList)
+        ol.focus()
+        for i in range(ol.option_count):
+            if ol.get_option_at_index(i).id:
+                ol.highlighted = i
+                break
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        event.stop()
+        t = self.tasks.get(int(event.option.id)) if event.option.id else None
+        if t:
+            from rich.markdown import Markdown
+            self.shown = t.id
+            self.query_one("#pv-text", Static).update(Markdown(t.prompt or ""))
+            self.query_one("#pv-prompt").scroll_home(animate=False)
+
+
+class TodoList(OptionList):
+    BINDINGS = [Binding("space", "toggle", tr("Xong/chưa")), Binding("e", "edit", tr("Sửa")),
+                Binding("delete,backspace,d", "delete", tr("Xoá")), Binding("shift+up,K", "move(-1)", tr("Lên")),
+                Binding("shift+down,J", "move(1)", tr("Xuống")), Binding("c", "clear", tr("Xoá việc đã xong"))]
+
+    def _panel(self) -> "TodoPanel":
+        return self.parent  # type: ignore[return-value]
+
+    def action_toggle(self) -> None:
+        self._panel().act("toggle")
+
+    def action_edit(self) -> None:
+        self._panel().start_edit()
+
+    def action_delete(self) -> None:
+        self._panel().act("delete")
+
+    def action_move(self, d: int) -> None:
+        self._panel().act("move", d)
+
+    def action_clear(self) -> None:
+        self._panel().act("clear")
+
+
+class TodoPanel(Vertical):
+    """Tab ✅ To-do: việc cần làm của riêng dự án, lưu ngoài repo (todos.py) — dùng chung file với web."""
+
+    DEFAULT_CSS = """
+    TodoPanel { padding: 0 1; }
+    #todo-input { margin-bottom: 1; }
+    #todo-list { height: 1fr; border: none; }
+    #todo-foot { height: auto; color: $text-muted; }
+    """
+
+    def __init__(self, root: Path, **kw):
+        super().__init__(**kw)
+        self.root, self.editing, self._sig = root, None, None
+
+    def compose(self) -> ComposeResult:
+        yield TextInput(id="todo-input", placeholder=tr("Thêm việc cần làm rồi Enter…"))
+        yield TodoList(id="todo-list")
+        yield Static(id="todo-foot")
+
+    def items(self) -> list:
+        return todos.load(self.root)
+
+    def current(self) -> dict | None:
+        ol = self.query_one(TodoList)
+        o = ol.get_option_at_index(ol.highlighted) if ol.highlighted is not None and ol.option_count else None
+        return next((x for x in self.items() if o and str(x.get("id")) == o.id), None)
+
+    def reload(self, focus_id: int | None = None) -> None:
+        items = self.items()
+        ol = self.query_one(TodoList)
+        sig = json.dumps(items, ensure_ascii=False)
+        if sig != self._sig:
+            self._sig = sig
+            keep = focus_id if focus_id is not None else (self.current() or {}).get("id")
+            ol.clear_options()
+            for x in items:
+                t = Text("☑ " if x.get("done") else "☐ ", "green" if x.get("done") else "")
+                t.append(x["text"], "strike" if x.get("done") else "")
+                ol.add_option(Option(t, id=str(x["id"])))
+            ids = [x["id"] for x in items]
+            if ids:
+                ol.highlighted = ids.index(keep) if keep in ids else 0
+        left = sum(1 for x in items if not x.get("done"))
+        foot = Text(tr("{n} việc chưa xong", n=left) + "  ·  ", "bold" if left else "")
+        foot.append(tr("Space xong/chưa · e sửa · d xoá · Shift+↑↓ đổi thứ tự · c xoá việc đã xong"), "dim")
+        path = str(todos.path_for(self.root)).replace(str(Path.home()), "~", 1)
+        foot.append("\n" + tr("Lưu riêng cho dự án này ở {path} — ngoài thư mục dự án, không cần .gitignore.",
+                               path=path), "dim")
+        set_static(self.query_one("#todo-foot", Static), foot)
+
+    def act(self, action: str, d: int = 0) -> None:
+        x = self.current()
+        if action != "clear" and not x:
+            return
+        data: dict = {"id": x and x["id"]}
+        if action == "move":
+            items = self.items()
+            data["to"] = max(0, items.index(x) + d)
+        todos.apply(self.root, action, data)
+        self.reload(focus_id=data["id"] if action != "delete" else None)
+
+    def start_edit(self) -> None:
+        x = self.current()
+        if not x:
+            return
+        self.editing = x["id"]
+        inp = self.query_one("#todo-input", TextInput)
+        inp.value = x["text"]
+        inp.placeholder = tr("Sửa việc — Enter lưu, Esc huỷ")
+        inp.focus()
+
+    def stop_edit(self) -> None:
+        self.editing = None
+        inp = self.query_one("#todo-input", TextInput)
+        inp.value = ""
+        inp.placeholder = tr("Thêm việc cần làm rồi Enter…")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        text = event.value.strip()
+        if self.editing is not None:
+            if text:
+                todos.apply(self.root, "edit", {"id": self.editing, "text": text})
+            gid = self.editing
+            self.stop_edit()
+            self.reload(focus_id=gid)
+            self.query_one(TodoList).focus()
+            return
+        if text:
+            todos.apply(self.root, "add", {"text": text})
+            event.input.value = ""
+            self.reload(focus_id=max(x["id"] for x in self.items()))
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        self.start_edit()
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "escape" and self.editing is not None:
+            event.stop()
+            self.stop_edit()
+            self.query_one(TodoList).focus()
+
+
 class StatusBar(Static):
     """Thanh trạng thái phía trên Footer: nhánh git, số task theo trạng thái, agent đang nghỉ, theme,
     ngôn ngữ. Bấm vào theme / ngôn ngữ để đổi."""
@@ -3830,6 +4034,8 @@ class TeamApp(App):
                         yield Static(id="code-head")
                         yield CodeEditor(id="code-editor")
                         yield Static(id="code-status")
+            with TabPane(tr("✅ To-do"), id="tab-todo"):
+                yield TodoPanel(self.root, id="todo-tab")
             with TabPane(tr("🧩 Tuỳ chỉnh"), id="tab-custom"):
                 yield CustomPanel(self.root, self.cfg, id="custom-tab")
             with TabPane(tr("📊 Thống kê"), id="tab-dash"):
@@ -4867,6 +5073,8 @@ class TeamApp(App):
             fns += [self._check_code_disk]
         elif tab == "tab-dash":
             fns += [self._refresh_dash]
+        elif tab == "tab-todo":
+            fns += [self.query_one("#todo-tab", TodoPanel).reload]  # web sửa cùng file: đọc lại theo mtime
         elif tab == "tab-git" and time.time() - self._git_at > 3 and not self._git_loading:
             # thay đổi do agent/editor bên ngoài: đọc lại git status định kỳ khi đang xem tab
             self.run_worker(self.refresh_git(), exclusive=False)
@@ -5064,6 +5272,10 @@ class TeamApp(App):
                 self.run_worker(self.query_one("#custom-tab", CustomPanel).refill(), exclusive=False)
             elif event.pane.id == "tab-code":
                 self.code_tab_shown()
+            elif event.pane.id == "tab-todo":
+                panel = self.query_one("#todo-tab", TodoPanel)
+                panel.reload()
+                panel.query_one(TodoList if panel.items() else "#todo-input").focus()
 
     def _refresh_agents(self) -> None:
         chunks: list[Text] = []
@@ -5517,9 +5729,20 @@ class TeamApp(App):
         else:
             self.push_screen(HelpScreen())
 
+    def open_plan(self, gid: int | None) -> None:
+        """/plan [mục tiêu]: trống = mục tiêu của task đang chọn, không có thì mục tiêu mới nhất."""
+        if gid is None:
+            t = self.db.task(self.selected_task()) if self.selected_task() else None
+            gid = t.goal_id if t and t.goal_id else next((g.id for g in reversed(self.db.goals())), None)
+        g = self.db.goal(gid) if gid else None
+        if not g:
+            self.notify(tr("Không thấy mục tiêu #{id}", id=gid or "?"), severity="warning")
+            return
+        self.push_screen(PlanViewScreen(g, self.db.tasks(goal_id=g.id)))
+
     def action_toggle_tab(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
-        order = ["tab-board", "tab-team", "tab-term", "tab-git", "tab-code", "tab-custom", "tab-dash"]
+        order = ["tab-board", "tab-team", "tab-term", "tab-git", "tab-code", "tab-todo", "tab-custom", "tab-dash"]
         tabs.active = order[(order.index(tabs.active) + 1) % len(order)] if tabs.active in order else order[0]
         self.refresh_view()
 
@@ -6026,6 +6249,15 @@ class TeamApp(App):
             return
         elif cmd == "dash":
             self.query_one("#tabs", TabbedContent).active = "tab-dash"
+        elif cmd == "plan":
+            self.open_plan(int(rest.lstrip("#mM")) if rest else None)
+            return
+        elif cmd == "todo":
+            if rest.strip():
+                todos.apply(self.root, "add", {"text": rest})
+                self.notify(tr("✅ Đã thêm vào To-do"))
+            self.query_one("#tabs", TabbedContent).active = "tab-todo"
+            return
         elif cmd == "flow-setup":
             self.open_default_flow()
             return

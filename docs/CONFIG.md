@@ -22,6 +22,10 @@ Nguồn cấu hình, ưu tiên tăng dần:
    chạy lại wizard thì các agent này được xoá và tạo lại.
 6. Riêng từng task: cột `model`/`effort` (`/task agent:model@effort`, `/set`, kế hoạch của trưởng nhóm).
 
+Tab ✅ To-do của web lưu ở `~/.config/ateam/todos/<tên thư mục>-<10 ký tự sha1 của đường dẫn>.json` (mảng
+`{id, text, done, created}`, `ateam/todos.py`) — cố ý **ngoài** dự án để không phải `.gitignore`; đổi tên/chuyển thư
+mục dự án thì danh sách cũ nằm lại ở file theo đường dẫn cũ.
+
 `XDG_CONFIG_HOME` đổi được vị trí thư mục `~/.config`.
 
 ## Khoá cấp cao

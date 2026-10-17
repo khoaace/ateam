@@ -550,3 +550,127 @@ def test_web_markdown_renderer(tmp_path):
     assert "<i>" not in h[12] and "snake_case_name" in h[12]
     table = json.loads(out[1])
     assert "<th>a</th>" in table and '<td><code class="md-c">x</code></td>' in table
+
+
+def test_web_lofi_links(tmp_path):
+    """Nhạc lofi (lofi.js): nhận link YouTube các dạng → id, link http(s) khác → stream, còn lại từ chối."""
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("không có node")
+    from ateam.web import STATIC
+    js = ("const window = { addEventListener() {} }; const localStorage = { getItem: () => null };\n"
+          + (STATIC / "lofi.js").read_text(encoding="utf-8") +
+          "\nconst P = window.Lofi.parse; console.log(JSON.stringify([P('https://www.youtube.com/watch?v=7NOSDKb0HlU&t=1'),"
+          " P('https://youtu.be/5yx6BWlEVcY'), P('https://www.youtube.com/live/4xDzrJKXOOY?si=x'),"
+          " P('https://radio.example/lofi.mp3'), P('lofi'), P(''), window.Lofi.STATIONS.length]))")
+    (tmp_path / "t.js").write_text(js, encoding="utf-8")
+    out = json.loads(subprocess.run([node, str(tmp_path / "t.js")], capture_output=True, text=True, check=True).stdout)
+    assert out[:3] == [{"yt": "7NOSDKb0HlU"}, {"yt": "5yx6BWlEVcY"}, {"yt": "4xDzrJKXOOY"}]
+    assert out[3] == {"audio": "https://radio.example/lofi.mp3"} and out[4] is None and out[5] is None
+    assert out[6] >= 3
+
+
+def test_web_todos_outside_repo(env, project, monkeypatch):
+    """✅ To-do: lưu theo dự án ở ~/.config/ateam/todos (không trong repo), thêm/sửa/đánh dấu/đổi thứ tự/xoá."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    from pathlib import Path
+
+    from ateam import todos
+    wa = _web_app(env, project, monkeypatch)
+
+    async def main():
+        assert (await wa.handle({"op": "todo", "action": "add", "text": "  "}))[1] == "warn"
+        for s in ("viết test", "sửa `README`", "deploy"):
+            assert await wa.handle({"op": "todo", "action": "add", "text": s}) is None
+        ids = [x["id"] for x in wa.snapshot()["todos"]]
+        await wa.handle({"op": "todo", "action": "toggle", "id": ids[0]})
+        await wa.handle({"op": "todo", "action": "edit", "id": ids[2], "text": "deploy lên prod"})
+        await wa.handle({"op": "todo", "action": "move", "id": ids[2], "to": 0})
+        st = wa.snapshot()["todos"]
+        assert [x["text"] for x in st] == ["deploy lên prod", "viết test", "sửa `README`"]
+        assert [x["done"] for x in st] == [False, True, False]
+        await wa.handle({"op": "todo", "action": "clear"})
+        await wa.handle({"op": "todo", "action": "delete", "id": ids[1]})
+        assert [x["text"] for x in wa.snapshot()["todos"]] == ["deploy lên prod"]
+
+    asyncio.run(main())
+    f = todos.path_for(project)
+    assert f.exists() and Path(env["XDG_CONFIG_HOME"]) in f.parents and project not in f.parents
+    assert "todo" not in "".join(p.name for p in project.rglob("*") if ".git" not in p.parts)
+    other = project.parent / "khac"
+    other.mkdir()
+    assert todos.load(other) == [] and todos.path_for(other) != f  # mỗi thư mục một danh sách
+    assert wa.hello()["todo_file"].endswith(f.name)
+
+    async def cmds():
+        r = await wa.command("/todo hỏi team")
+        assert r[2]["open"]["view"] == "todo" and todos.load(project)[-1]["text"] == "hỏi team"
+        assert (await wa.command("/plan"))[1] == "warn"  # chưa có mục tiêu
+        gid = wa.db.add_goal("x")
+        assert (await wa.command("/plan"))[2]["open"]["plan"] == gid
+        assert (await wa.command(f"/plan m{gid}"))[2]["open"]["plan"] == gid
+
+    asyncio.run(cmds())
+
+
+def test_web_goal_plan_after_run(env, project, monkeypatch):
+    """📋 Xem lại kế hoạch sau khi đã duyệt: mọi task của mục tiêu, kèm nguồn, prompt, phụ thuộc."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    wa = _web_app(env, project, monkeypatch)
+    db = wa.db
+    gid = db.add_goal("làm a và b")
+    t1 = db.add_task("codex", "Tạo a", "tạo file a", goal_id=gid, source="plan")
+    db.add_task("claude", "Tạo b", "tạo file b", goal_id=gid, source="review", depends_on=[t1])
+    db.add_task("grok", "Phụ", "giúp", goal_id=gid, source="delegate:codex")
+    db.add_task("codex", "Khác", "x", source="user")
+
+    async def main():
+        r = await wa.handle({"op": "goal_plan", "goal": gid})
+        p = r[2]["goal_plan"]
+        assert p["goal"]["id"] == gid and p["goal"]["text"] == "làm a và b"
+        assert [(x["title"], x["source"]) for x in p["tasks"]] == [("Tạo a", "plan"), ("Tạo b", "review"),
+                                                                    ("Phụ", "delegate:codex")]
+        assert p["tasks"][1]["deps"] == [t1] and p["tasks"][0]["prompt"] == "tạo file a"
+        assert (await wa.handle({"op": "goal_plan", "goal": 999}))[1] == "warn"
+
+    asyncio.run(main())
+
+
+def test_web_help_columns(tmp_path):
+    """Popup Trợ giúp (helpRows của app.js): tách lệnh / mô tả theo cột của HELP, dòng thụt sâu là phần tiếp của
+    lệnh trên — kể cả lệnh dài lấn cột và lệnh không có mô tả trên cùng dòng (vi lẫn en)."""
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("không có node")
+    from ateam.locales.en import EN
+    from ateam.tui import HELP  # test chạy tiếng Việt: HELP là bản gốc, EN[HELP] là bản dịch
+    from ateam.web import STATIC
+    src = (STATIC / "app.js").read_text(encoding="utf-8")
+    code = src[src.index("function helpRows"):src.index("function helpModal")]
+    (tmp_path / "t.js").write_text(code + f"console.log(JSON.stringify({json.dumps([HELP, EN[HELP]])}.map(helpRows)));",
+                                   encoding="utf-8")
+    out = json.loads(subprocess.run([node, str(tmp_path / "t.js")], capture_output=True, text=True, check=True).stdout)
+    for rows in out:
+        cmds = [r for r in rows if "cmd" in r]
+        assert cmds and all(r["cmd"] and len(r["cmd"]) <= 40 for r in cmds)  # không dòng mô tả nào mồ côi
+    vi = out[0]
+    by = {r["cmd"]: r["desc"] for r in vi if "cmd" in r}
+    assert by["/set <task> effort|model <giá trị>"] == ["đổi effort/model riêng cho 1 task ('-' = theo agent)"]
+    assert by["/retry <task>   /cancel <task>"][0].startswith("chạy lại")
+    assert len(by["/continue <m12|t40> <yêu cầu>"]) == 3
+    assert by["F2 = Ctrl+G, F5 = Ctrl+R, F6 = Ctrl+O"][-1] == "MacBook: giữ fn khi bấm F2/F5"
+    assert {"head": "Giao việc:"} in vi

@@ -370,7 +370,7 @@ select.agent-select:focus { border-color: var(--accent); }
 .log a { color: var(--term-link); }
 
 /* markdown của agent: log, tab Kết quả / Nội dung, chi tiết kế hoạch (mdLine/mdHtml trong app.js) */
-.md { font: 12px/1.6 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--term-fg); }
+.md:not(.modal-box) { font: 12px/1.6 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--term-fg); }
 .md .l { min-height: 1.6em; }
 .md a { color: var(--term-link); }
 .l .md-c { font: inherit; color: var(--term-cyan); background: var(--term-blank); border: 1px solid color-mix(in srgb, var(--term-dim) 30%, transparent); padding: 0 4px; border-radius: var(--radius-sm); }
@@ -530,7 +530,8 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 .help .h-head:first-child { margin-top: 0; }
 .help .h-row { display: grid; grid-template-columns: minmax(180px, 34%) 1fr; gap: 12px; padding: 2px 0; font-size: 12px; }
 .help .h-row code { font: 12px var(--mono); color: var(--accent); }
-.help .h-text { font-size: 12px; color: var(--text-2); white-space: pre-wrap; }
+.help .h-gap { height: 6px; }
+.help .h-row code { white-space: pre-wrap; }
 .picks { display: flex; flex-wrap: wrap; gap: 6px; }
 .pick { padding: 5px 8px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; cursor: pointer; font: 12px var(--mono); }
 .pick:hover { border-color: var(--accent); }
@@ -796,6 +797,47 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
   .df-row .df-step { grid-column: 1 / -1; }
   .swatches { grid-template-columns: repeat(2, 1fr); }
 }
+/* tab To-do (todo.js) */
+.todo-box { max-width: 760px; display: flex; flex-direction: column; gap: 10px; }
+.todo-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.todo-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+.todo-item:last-child { border-bottom: 0; }
+.todo-item input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; flex: none; cursor: pointer; }
+.todo-text { flex: 1; min-width: 0; word-break: break-word; cursor: text; }
+.todo-text .md-c { font: inherit; color: var(--accent); }
+.todo-item.done .todo-text { color: var(--muted); text-decoration: line-through; }
+.todo-grip { color: var(--muted); cursor: grab; font-size: 11px; letter-spacing: -2px; opacity: .5; }
+.todo-item:hover .todo-grip { opacity: 1; }
+.todo-x { opacity: 0; width: 24px; height: 24px; }
+.todo-item:hover .todo-x, .todo-x:focus { opacity: 1; }
+.todo-foot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.todo-edit { height: 26px; }
+@media (hover: none) { .todo-x { opacity: 1; } }
+
+/* nhạc lofi (lofi.js): khung nổi góc dưới phải, trên ô nhập lệnh */
+.lofi { position: fixed; right: 16px; bottom: 96px; z-index: 40; width: 320px; max-width: calc(100vw - 32px); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,.35); overflow: hidden; }
+.lofi-media { aspect-ratio: 16 / 9; background: #000; }
+.lofi-media iframe { width: 100%; height: 100%; border: 0; display: block; }
+.lofi-media audio { display: none; }
+.lofi-media:not(:has(iframe)) { display: none; }
+.lofi.min .lofi-media { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.lofi.min .lofi-more { display: none; }
+.lofi-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
+.lofi-bar input[type=range] { width: 56px; accent-color: var(--accent); }
+.lofi-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.lofi-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; width: 14px; }
+.lofi-eq i { width: 3px; height: 3px; background: var(--accent); border-radius: 1px; }
+.lofi.playing .lofi-eq i { animation: lofi-eq 1s ease-in-out infinite; }
+.lofi.playing .lofi-eq i:nth-child(2) { animation-delay: -.35s; }
+.lofi.playing .lofi-eq i:nth-child(3) { animation-delay: -.7s; }
+@keyframes lofi-eq { 0%, 100% { height: 3px; } 50% { height: 12px; } }
+.lofi-more { display: flex; flex-direction: column; gap: 8px; padding: 2px 8px 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+.lofi-sts { display: flex; flex-wrap: wrap; gap: 4px; }
+.lofi-st { font: inherit; font-size: 11px; padding: 3px 8px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text-2); cursor: pointer; }
+.lofi-st:hover { color: var(--text); background: var(--surface-2); }
+.lofi-st.on { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.nav-item.playing svg { color: var(--accent); }
+@media (max-width: 480px) { .lofi { right: 8px; left: 8px; bottom: 96px; width: auto; max-width: none; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 /* mở trên điện thoại + chế độ chỉ xem */
