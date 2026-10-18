@@ -2956,4 +2956,20 @@ EN: dict[str, str] = {
         '✨ Filled {n} steps — review, then Ctrl+S to save',
     '✨ Đã điền {n} bước — xem lại rồi bấm Lưu':
         '✨ Filled {n} steps — review, then press Save',
+    '⚠ Lỗi nội bộ: {e!r}':
+        '⚠ Internal error: {e!r}',
+    'Lỗi khi lập kế hoạch: {e!r}':
+        'Error while planning: {e!r}',
+    '✗ Lập kế hoạch mục tiêu #{gid} lỗi: {e!r}':
+        '✗ Planning goal #{gid} failed: {e!r}',
+    'Lỗi khi review: {e!r}':
+        'Error during review: {e!r}',
+    '✗ Review mục tiêu #{gid} lỗi: {e!r}':
+        '✗ Review of goal #{gid} failed: {e!r}',
+    'Không commit được thay đổi trong worktree {path} (giữ nguyên để bạn lấy lại): {v}':
+        'Could not commit the changes in worktree {path} (kept as is so you can recover them): {v}',
+    '⚠ #{id}: không mở lại được nhánh {branch} ({v}) — làm lại từ HEAD':
+        '⚠ #{id}: could not reopen branch {branch} ({v}) — starting over from HEAD',
+    'Thư mục chính đang merge dở — hoàn tất hoặc huỷ merge đó rồi /merge {id}':
+        'The main folder has a merge in progress — finish or abort it, then /merge {id}',
 }

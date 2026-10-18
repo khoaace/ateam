@@ -59,6 +59,17 @@ def acquire_session_lock(root: Path):
     return f
 
 
+def ui_session_running(root: Path) -> bool:
+    """Có phiên giao diện (TUI/web) đang giữ khoá dự án không — không giữ khoá lại, để vẫn mở được giao diện
+    trong lúc `ateam goal`/`ateam run` chạy."""
+    lock = acquire_session_lock(root)
+    if lock is None:
+        return True
+    if lock is not True:
+        lock.close()
+    return False
+
+
 def cmd_tui(args) -> int:
     root = find_root(args.dir)
     notes = ensure_global_config()
@@ -297,7 +308,8 @@ def cmd_goal(args) -> int:
     async def main() -> int:
         orch = Orchestrator(root, cfg, db, on_event=_printer(not args.quiet))
         orch.auto_answer = True  # chạy không tương tác: agent hỏi (<<<ASK>>>) thì theo phương án đề xuất
-        await orch.setup()
+        # giao diện đang mở: task RUNNING là của nó, không phải dở dang từ phiên trước
+        await orch.setup(cleanup=not ui_session_running(root))
         if getattr(args, "ref", None):  # ateam continue <m12|t40> <yêu cầu>
             res = orch.continue_any(args.ref, " ".join(args.text))
             if isinstance(res, str):
@@ -435,7 +447,8 @@ def cmd_run(args) -> int:
     async def main():
         orch = Orchestrator(root, cfg, db, on_event=_printer(not args.quiet))
         orch.auto_answer = True  # chạy không tương tác: agent hỏi (<<<ASK>>>) thì theo phương án đề xuất
-        await orch.setup()
+        # giao diện đang mở: task RUNNING là của nó, không phải dở dang từ phiên trước
+        await orch.setup(cleanup=not ui_session_running(root))
         await orch.run_until_idle()
     asyncio.run(main())
     return 0

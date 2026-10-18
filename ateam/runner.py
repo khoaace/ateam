@@ -7,7 +7,10 @@ import codecs
 import os
 import re
 import signal
+from collections import deque
 from typing import Callable
+
+MAX_PARTIAL = 64 * 1024  # dòng chưa có \n dài hơn thế (spinner chỉ dùng \r, JSON một dòng…) thì cắt/đẩy ra
 
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
 
@@ -27,19 +30,32 @@ class Run:
     """Một lần chạy agent. Gọi `await run.start()`; `run.cancel()` để dừng."""
 
     def __init__(self, argv: list[str], cwd: str, env: dict[str, str], *, use_pty: bool,
-                 timeout: float, on_line: Callable[[str], None]):
+                 timeout: float, on_line: Callable[[str], None], keep_lines: int | None = None):
+        """keep_lines: chỉ giữ N dòng cuối trong bộ nhớ (lệnh chạy rất lâu như dev server)."""
         self.argv, self.cwd, self.env = argv, cwd, env
         self.use_pty, self.timeout, self.on_line = use_pty, timeout, on_line
         self.proc: asyncio.subprocess.Process | None = None
-        self.lines: list[str] = []
+        self.lines: list[str] | deque[str] = deque(maxlen=keep_lines) if keep_lines else []
+        self._output: str | None = None
         self.cancelled = False
         self.timed_out = False
 
     def _emit_text(self, buf: list[str], text: str, final: bool = False) -> None:
-        buf[0] += text.replace("\r\n", "\n")
-        while "\n" in buf[0]:
-            line, buf[0] = buf[0].split("\n", 1)
-            self._emit(line)
+        text = text.replace("\r\n", "\n")
+        if "\n" in text:  # chỉ tách khi đoạn mới có \n: không quét lại cả dòng dài mỗi lần đọc
+            *lines, buf[0] = (buf[0] + text).split("\n")
+            for line in lines:
+                self._emit(line)
+        else:
+            buf[0] += text
+        if len(buf[0]) > MAX_PARTIAL:
+            # spinner/progress chỉ ghi đè bằng \r: giữ từ dấu \r áp chót (clean_line lấy đoạn cuối có chữ)
+            cut = buf[0].rfind("\r", 0, len(buf[0]) - 1)
+            if cut > 0:
+                buf[0] = buf[0][cut:]
+            if len(buf[0]) > MAX_PARTIAL:
+                self._emit(buf[0])
+                buf[0] = ""
         if final and buf[0]:
             self._emit(buf[0])
             buf[0] = ""
@@ -47,6 +63,7 @@ class Run:
     def _emit(self, raw: str) -> None:
         line = clean_line(raw)
         self.lines.append(line)
+        self._output = None
         try:
             self.on_line(line)
         except Exception:
@@ -75,12 +92,22 @@ class Run:
         dec = codecs.getincrementaldecoder("utf-8")(errors="replace")
         buf = [""]
         assert self.proc.stdout
+        stdout = self.proc.stdout
         while True:
-            chunk = await self.proc.stdout.read(4096)
+            try:
+                chunk = await asyncio.wait_for(stdout.read(4096), 0.5)
+            except asyncio.TimeoutError:
+                # proc.wait() của asyncio chờ cả pipe đóng: tiến trình con chạy nền (vd `npm run dev &`) giữ stdout
+                # thì sẽ chờ tới timeout. Tiến trình chính đã thoát và im lặng 0,5s -> coi như xong.
+                if self.proc.returncode is not None:
+                    break
+                continue
             if not chunk:
                 break
             self._emit_text(buf, dec.decode(chunk))
         self._emit_text(buf, dec.decode(b"", final=True), final=True)
+        if self.proc.returncode is not None:
+            return self.proc.returncode
         return await self.proc.wait()
 
     async def _run_pty(self) -> int:
@@ -90,15 +117,20 @@ class Run:
         import termios
 
         master, slave = pty.openpty()
-        try:  # terminal rộng để agent không ngắt dòng
-            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 50, 220, 0, 0))
-        except OSError:
-            pass
-        env = dict(self.env)
-        env.setdefault("TERM", "xterm-256color")
-        self.proc = await asyncio.create_subprocess_exec(
-            *self.argv, cwd=self.cwd, env=env, stdin=slave, stdout=slave, stderr=slave,
-            start_new_session=True)
+        try:
+            try:  # terminal rộng để agent không ngắt dòng
+                fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 50, 220, 0, 0))
+            except OSError:
+                pass
+            env = dict(self.env)
+            env.setdefault("TERM", "xterm-256color")
+            self.proc = await asyncio.create_subprocess_exec(
+                *self.argv, cwd=self.cwd, env=env, stdin=slave, stdout=slave, stderr=slave,
+                start_new_session=True)
+        except BaseException:  # không chạy được (hoặc bị huỷ lúc đang mở): không rò 2 fd
+            os.close(slave)
+            os.close(master)
+            raise
         # Giữ slave mở tới khi tiến trình thoát: trên macOS, đóng hết phía slave làm mất phần
         # output còn nằm trong pty chưa kịp đọc (agent in nhanh rồi thoát -> mất sạch output).
         loop = asyncio.get_running_loop()
@@ -177,10 +209,20 @@ class Run:
             except RuntimeError:
                 pass
 
+    def kill_now(self) -> None:
+        """SIGKILL cả nhóm tiến trình ngay — lúc thoát app, hẹn giờ SIGKILL của _kill không kịp chạy."""
+        if self.proc and self.proc.returncode is None:
+            try:
+                os.killpg(self.proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+
     def cancel(self) -> None:
         self.cancelled = True
         self._kill()
 
     @property
     def output(self) -> str:
-        return "\n".join(self.lines)
+        if self._output is None:  # được đọc nhiều lần sau mỗi lượt (_classify, session_of, parse_ask…)
+            self._output = "\n".join(self.lines)
+        return self._output

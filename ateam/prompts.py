@@ -334,26 +334,35 @@ def extract_commit_message(text: str) -> str:
 
 # ---------------- tách kết quả ----------------
 
-def extract_json(text: str, kind: type):
-    """Tìm giá trị JSON đầu tiên có kiểu `kind` (list hoặc dict) trong văn bản."""
+def extract_json(text: str, kind: type, keys: tuple[str, ...] = ()):
+    """Tìm giá trị JSON đầu tiên có kiểu `kind` (list hoặc dict) trong văn bản. Bỏ giá trị rỗng;
+    `keys`: object (hoặc mọi phần tử của mảng) phải có ít nhất một khoá trong đó — tránh lấy nhầm
+    `[]`/`{...}` agent in ra trước kết quả thật (vd `files: []`, nội dung package.json)."""
     candidates: list[str] = []
     for m in re.finditer(r"```(?:json)?\s*(.*?)```", text, re.S):
         candidates.append(m.group(1))
     candidates.append(text)
     opener = "[" if kind is list else "{"
     dec = json.JSONDecoder()
+
+    def fits(d) -> bool:
+        return isinstance(d, dict) and (not keys or any(k in d for k in keys))
+
     for cand in candidates:
-        for i, ch in enumerate(cand):
-            if ch != opener:
-                continue
+        i = cand.find(opener)
+        while i >= 0:
             try:
-                val, _ = dec.raw_decode(cand[i:])
+                val, end = dec.raw_decode(cand, i)
             except json.JSONDecodeError:
+                i = cand.find(opener, i + 1)
                 continue
-            if isinstance(val, kind):
-                if kind is list and val and not all(isinstance(x, dict) for x in val):
-                    continue
-                return val
+            if isinstance(val, kind) and val:
+                if kind is list and all(fits(x) for x in val):
+                    return val
+                if kind is dict and fits(val):
+                    return val
+            # bỏ qua cả giá trị vừa đọc (mảng/object lồng bên trong không phải kết quả)
+            i = cand.find(opener, end if isinstance(val, (list, dict)) else i + 1)
     return None
 
 
@@ -384,7 +393,8 @@ def parse_delegations(text: str) -> list[tuple[str, str, str]]:
 
 
 def parse_notes(text: str) -> list[str]:
-    return [m.group(1).strip() for m in NOTE_RE.finditer(text) if m.group(1).strip()]
+    # bỏ câu ví dụ trong prompt (CLI có thể in lại prompt)
+    return [m.group(1).strip() for m in NOTE_RE.finditer(text) if m.group(1).strip() not in ("", "your note")]
 
 
 def extract_summary(text: str, limit: int = 2500) -> str:

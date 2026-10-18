@@ -5356,10 +5356,10 @@ class TeamApp(App):
             fns += [self._refresh_dash]
         elif tab == "tab-todo":
             fns += [self.query_one("#todo-tab", TodoPanel).reload]  # web sửa cùng file: đọc lại theo mtime
-        elif tab == "tab-git" and time.time() - self._git_at > 3 and not self._git_loading:
+        if tab == "tab-git" and time.time() - self._git_at > 3 and not self._git_loading:
             # thay đổi do agent/editor bên ngoài: đọc lại git status định kỳ khi đang xem tab
             self.run_worker(self.refresh_git(), exclusive=False)
-        elif time.time() - self._git_at > 10 and not self._git_loading:
+        elif tab != "tab-git" and time.time() - self._git_at > 10 and not self._git_loading:
             # thanh trạng thái hiện nhánh git: ngoài tab Git đọc lại thưa hơn
             self.run_worker(self.refresh_git(), exclusive=False)
         fns.append(self._refresh_statusbar)

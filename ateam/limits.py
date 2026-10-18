@@ -12,7 +12,8 @@ from .i18n import tr
 LIMIT_RE = re.compile(
     r"rate[ _-]?limit|usage[ _-]?limit|quota|too many requests|\b429\b|limit (?:reached|exceeded)"
     r"|resource[_ ]exhausted|out of (?:credits|usage)|hit (?:your|the) (?:usage )?limit"
-    r"|(?:have|'ve) reached (?:your|the)|credit balance is too low|weekly limit|session limit",
+    r"|(?:have|'ve) reached (?:your|the) (?:\w+ )?(?:usage |rate )?limit|credit balance is too low|weekly limit"
+    r"|session limit",
     re.I)
 IN_RE = re.compile(r"(?:try again|retry|resets?|available again)\s+in\s+(?:about\s+)?(\d+)\s*"
                    r"(s|sec|second|m|min|minute|h|hr|hour)s?\b", re.I)
@@ -21,9 +22,10 @@ EPOCH_RE = re.compile(r"\|(\d{10})\b")
 
 
 def looks_rate_limited(output: str, rc: int) -> bool:
-    """Chỉ xét khi agent thất bại hoặc in rất ít — tránh nhầm với code có chữ 'rate limit'."""
+    """Chỉ xét khi agent thất bại hoặc gần như không in gì — tránh nhầm câu trả lời ngắn có chữ
+    'rate limit' (vd SUMMARY "thêm rate limiting") với thông báo hết hạn mức."""
     lines = [l for l in output.splitlines() if l.strip()]
-    if rc == 0 and len(lines) > 15:
+    if rc == 0 and len(lines) > 3:
         return False
     return bool(LIMIT_RE.search("\n".join(lines[-30:])))
 

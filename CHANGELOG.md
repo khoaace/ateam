@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.19.2 — 18/10/2026
+
+Sửa các lỗi tiềm ẩn có thể làm mất việc hoặc chạy trùng task:
+
+- **Không còn nhận nhầm "hết hạn mức"**: câu trả lời ngắn mà có chữ như "I've reached the root cause" hay
+  "thêm rate limiting" từng bị coi là hết hạn mức — task bị xếp lại, ở chế độ worktree nhánh đã làm xong bị xoá.
+- **Worktree không mất việc khi commit lỗi**: pre-commit hook (husky, lint-staged) hay `commit.gpgsign` làm commit
+  của task thất bại thì trước đây worktree vẫn bị xoá và task báo xong. Giờ commit nội bộ bỏ qua hook/ký; nếu vẫn
+  lỗi, task báo FAILED và worktree được giữ nguyên.
+- **`ateam goal` / `ateam run` chạy cùng lúc với TUI/web**: không còn đánh dấu FAILED các task giao diện đang chạy;
+  mỗi task chỉ một tiến trình chiếm được (không chạy trùng).
+- **Tự merge không phá merge dở của bạn** ở tab Git (trước đây gặp lỗi là `merge --abort`).
+- **Huỷ task lúc đang chạy lệnh kiểm tra** giờ dừng hẳn, không giao agent "sửa lỗi test" nữa.
+- Mục tiêu không còn kẹt ở "đang lập kế hoạch"/"đang review" khi trưởng nhóm gặp lỗi bất ngờ; lỗi của tác vụ nền
+  được ghi vào log hệ thống thay vì im lặng.
+- Bóc kế hoạch/review chắc hơn: bỏ qua `[]`/`{…}` rỗng hoặc không đúng mẫu agent in ra trước kết quả thật
+  (vd `files: []`, nội dung package.json); không còn chậm theo bình phương với output nhiều dấu ngoặc.
+- Runner: output chỉ có `\r` (spinner) hoặc một dòng cực dài không làm phình bộ nhớ/CPU; lệnh `!` chạy lâu
+  (dev server) không còn rò bộ nhớ; agent để lại tiến trình chạy nền không làm task treo tới hết giờ; không rò fd
+  khi không mở được pty.
+- `ateam web` từ xa: người lạ đoán sai token nhiều lần không còn khoá luôn cả bạn (đã đăng nhập); `.GIT/…` (viết hoa)
+  bị chặn như `.git/…` ở tab Code; tắt server thì dừng hẳn tiến trình con còn sống.
+- TUI: tên nhánh git trên thanh trạng thái tự cập nhật ở mọi tab; bỏ ghi chú rác "your note" khi CLI in lại prompt.
+
 ## 0.19.1 — 17/10/2026
 
 - **Sửa treo app khi xem diff có dòng cực dài** (vd `tsconfig.tsbuildinfo` một dòng ~500 nghìn ký tự mà `tsc` /

@@ -392,10 +392,19 @@ class WebApp:
 
     async def _shutdown(self, _app) -> None:
         await self.remote.stop_tunnel()
+        runs = [j.run for j in self.shell.jobs.values() if j.run and j.alive]
+        runs += [r for r in self.orch.runs.values() if r is not None]
         self.shell.stop_all()  # không để lại dev server mồ côi
-        for run in list(self.orch.runs.values()):
-            if run is not None:
-                run.cancel()
+        for run in runs:
+            run.cancel()
+        procs = [r.proc for r in runs if r.proc and r.proc.returncode is None]
+        if procs:  # chờ SIGTERM một chút, còn sống thì SIGKILL ngay (vòng lặp sắp dừng)
+            try:
+                await asyncio.wait_for(asyncio.gather(*(p.wait() for p in procs)), 3)
+            except asyncio.TimeoutError:
+                pass
+            for run in runs:
+                run.kill_now()
         for ws in list(self.clients):
             await ws.close()
         for t in list(self._bg):

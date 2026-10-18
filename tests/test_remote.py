@@ -109,6 +109,8 @@ def test_token_cookie_origin_and_lockout(env, project, monkeypatch):
             for _ in range(20):
                 await c.get("/?t=doan-mo")
             assert (await c.get(f"/?t={tok}")).status == 429
+            # người đã đăng nhập không bị khoá theo
+            assert (await c.get("/api/goals", headers={"Authorization": f"Bearer {tok}"})).status == 200
         finally:
             await c.close()
     asyncio.run(main())

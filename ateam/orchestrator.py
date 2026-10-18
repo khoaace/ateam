@@ -97,8 +97,13 @@ class Orchestrator:
     def _spawn(self, coro) -> asyncio.Task:
         t = asyncio.get_running_loop().create_task(coro)
         self._bg.add(t)
-        t.add_done_callback(self._bg.discard)
+        t.add_done_callback(self._bg_done)
         return t
+
+    def _bg_done(self, t: asyncio.Task) -> None:
+        self._bg.discard(t)
+        if not t.cancelled() and t.exception() is not None:  # lỗi ngoài dự kiến: ghi lại thay vì im lặng
+            self.log(tr("⚠ Lỗi nội bộ: {e!r}", e=t.exception()))
 
     def _usage_job(self, rid: int, a: AgentConfig, prompt: str, session: str | None = None) -> None:
         t = self._spawn(self._collect_usage(rid, a, prompt, session))
@@ -203,7 +208,12 @@ class Orchestrator:
         return "\n".join(f"- [{a}] {t}" for a, t in self.db.recent_notes())
 
     # ------------------------------------------------------------------ khởi động
-    async def setup(self) -> None:
+    async def setup(self, cleanup: bool = True) -> None:
+        """cleanup=False: phiên giao diện khác đang chạy trên dự án — task RUNNING/mục tiêu đang lập
+        kế hoạch là của phiên đó, không phải dở dang."""
+        await self.apply_isolation()
+        if not cleanup:
+            return
         # dọn trạng thái dở dang từ phiên trước
         for t in self.db.tasks(status=RUNNING):
             self.db.update_task(t.id, status=FAILED,
@@ -218,7 +228,6 @@ class Orchestrator:
                 self.db.set_grill(g.id, dict(g.grill or {}, error=tr("Phiên trước dừng khi trưởng "
                                                                      "nhóm đang nghĩ câu hỏi — bấm "
                                                                      "↻ Hỏi tiếp")))
-        await self.apply_isolation()
 
     async def apply_isolation(self) -> None:
         """Chọn chế độ làm việc theo cfg.isolation (gọi lại được khi /setup đổi chế độ)."""
@@ -340,7 +349,7 @@ class Orchestrator:
                 prompt = P.plan_prompt(self.cfg, goal.base_text(), str(self.root), self.notes_text())
             out = await self._call_lead(prompt, tr("Lập kế hoạch mục tiêu #{gid}", gid=gid), goal_id=gid,
                                         keep_session=True)
-            plan = P.extract_json(out or "", list)
+            plan = P.extract_json(out or "", list, keys=("prompt", "agent", "title"))
             if not plan:
                 self.db.update_goal(gid, status="failed", summary=tr("Trưởng nhóm không trả về kế hoạch JSON hợp lệ"))
                 self.log(tr("✗ Không đọc được kế hoạch cho mục tiêu #{gid} (xem "
@@ -354,6 +363,9 @@ class Orchestrator:
             else:
                 self.db.update_goal(gid, status="running")
                 self.log(tr("📋 Kế hoạch #{gid}: {v} task — bắt đầu chạy.", gid=gid, v=len(ids)))
+        except Exception as e:  # không để mục tiêu kẹt ở "planning" tới lần mở app sau
+            self.db.update_goal(gid, status="failed", summary=tr("Lỗi khi lập kế hoạch: {e!r}", e=e))
+            self.log(tr("✗ Lập kế hoạch mục tiêu #{gid} lỗi: {e!r}", gid=gid, e=e))
         finally:
             self.lead_busy.discard(gid)
             self.emit("changed")
@@ -402,7 +414,7 @@ class Orchestrator:
             g = self.db.goal(gid)
             if not g or g.status != "grilling":  # người dùng huỷ trong lúc chờ
                 return
-            res = P.extract_json(out or "", dict) or {}
+            res = P.extract_json(out or "", dict, keys=("question", "done", "spec")) or {}
             question = str(res.get("question") or "").strip()
             if question and not finish and not res.get("done"):
                 opts = [str(x).strip() for x in res.get("options") or [] if str(x).strip()][:6]
@@ -879,10 +891,9 @@ class Orchestrator:
             return tr("Không có task #{tid}", tid=tid)
         if t.status == RUNNING and tid in self.runs:
             run = self.runs[tid]
+            self._cancel_req.add(tid)  # cả khi đang chạy lệnh kiểm tra: không giao sửa lỗi nữa
             if run is not None:
                 run.cancel()
-            else:
-                self._cancel_req.add(tid)
             return tr("Đang dừng task #{tid}…", tid=tid)
         if t.status in (DRAFT, QUEUED, ASKING):
             if t.status == ASKING and t.branch and (t.ask or {}).get("parked"):
@@ -976,7 +987,7 @@ class Orchestrator:
             return False, tr("Mô tả quy trình bạn muốn trước (vd: thiết kế → code → test → review)")
         out = await self._call_lead(P.workflow_suggest_prompt(self.cfg, description.strip(), str(self.root)),
                                     tr("Gợi ý workflow"))
-        raw = P.extract_json(out or "", dict)
+        raw = P.extract_json(out or "", dict, keys=("steps", "name"))
         if not raw:
             return False, tr("{agent} không trả về workflow (xem .ateam/logs/lead.log)", agent=self.cfg.lead)
         try:
@@ -1053,8 +1064,10 @@ class Orchestrator:
                 self.log(tr("✗ Task #{id}: chưa cài '{binary}'.", id=t.id, binary=a.binary))
                 changed = True
                 continue
-            # chiếm chỗ ngay để không chạy trùng
-            self.db.update_task(t.id, status=RUNNING, started=time.time(), error=None)
+            # chiếm chỗ ngay để không chạy trùng (tiến trình khác cùng DB có thể vừa chiếm)
+            if not self.db.claim_task(t.id):
+                changed = True
+                continue
             self.runs[t.id] = None  # type: ignore[assignment]
             self._spawn(self._run_task(t.id))
             changed = True
@@ -1273,9 +1286,10 @@ class Orchestrator:
 
     async def _run_task(self, tid: int) -> None:
         t = self.db.task(tid)
-        agent = self.cfg.agents[t.agent]
-        goal = self.db.goal(t.goal_id) if t.goal_id else None
-        log_file = open(self.log_path(tid), "w", encoding="utf-8")
+        if not t:  # bị xoá giữa lúc chiếm chỗ và chạy
+            self.runs.pop(tid, None)
+            return
+        log_file = None
         status, error, summary = FAILED, None, None
         workdir = self.root
         outputs: list[str] = []
@@ -1287,9 +1301,12 @@ class Orchestrator:
         parked = False
         # tiếp tục phiên CLI cũ (cùng agent) khi có lý do chạy lại: /retry, góp ý, trả lời câu hỏi, /continue
         sess = t.session if t.resume and t.session and t.session_agent == t.agent else None
-        if t.resume:
-            self.db.update_task(tid, resume=None)
         try:
+            agent = self.cfg.agents[t.agent]
+            goal = self.db.goal(t.goal_id) if t.goal_id else None
+            log_file = open(self.log_path(tid), "w", encoding="utf-8")
+            if t.resume:
+                self.db.update_task(tid, resume=None)
             if self.use_worktree:
                 workdir = await self._wt_prepare(t)
             deps = []
@@ -1392,8 +1409,10 @@ class Orchestrator:
         except Exception as e:
             status, error = FAILED, tr("Lỗi nội bộ: {e!r}", e=e)
         finally:
-            log_file.close()
+            if log_file:
+                log_file.close()
             self.runs.pop(tid, None)
+            self._cancel_req.discard(tid)  # yêu cầu huỷ của lượt này không được ảnh hưởng lượt /retry sau
             if asked and status == DONE:
                 qa.append(dict(asked, a=None))
                 if self.auto_answer:  # không ai trả lời (ateam goal -y / run): theo đề xuất của agent
@@ -1464,7 +1483,7 @@ class Orchestrator:
             out = await self._call_lead(
                 P.review_prompt(self.cfg, g.full_text(), g.round, self._results_text(gid), str(self.root)),
                 tr("Review mục tiêu #{gid} vòng {round}", gid=gid, round=g.round), goal_id=gid)
-            data = P.extract_json(out or "", dict)
+            data = P.extract_json(out or "", dict, keys=("done", "summary", "new_tasks"))
             if not data:
                 self.db.update_goal(gid, status="incomplete",
                                     summary=tr("Không đọc được kết quả review (xem .ateam/logs/lead.log)"))
@@ -1486,6 +1505,9 @@ class Orchestrator:
                 ids = self._insert_plan(gid, new, source="review")
                 if self.cfg.approve_plan:
                     self.log(tr("📋 {v} task bổ sung đang ở trạng thái NHÁP — /go {gid} để chạy.", v=len(ids), gid=gid))
+        except Exception as e:  # không để mục tiêu kẹt ở "reviewing"
+            self.db.update_goal(gid, status="incomplete", summary=tr("Lỗi khi review: {e!r}", e=e))
+            self.log(tr("✗ Review mục tiêu #{gid} lỗi: {e!r}", gid=gid, e=e))
         finally:
             self.lead_busy.discard(gid)
             self.emit("changed")
@@ -1537,6 +1559,8 @@ class Orchestrator:
             if rc == 0:
                 self._wt_base[t.id] = t.base
                 return path
+            self.log(tr("⚠ #{id}: không mở lại được nhánh {branch} ({v}) — làm lại từ HEAD", id=t.id,
+                        branch=t.branch, v=out.strip()[:200]))
         _, base = await self._git("rev-parse", "HEAD")
         self._wt_base[t.id] = base.strip()
         rc, out = await self._git("worktree", "add", "-B", branch, str(path), "HEAD")
@@ -1545,13 +1569,25 @@ class Orchestrator:
         self.db.update_task(t.id, branch=branch, base=base.strip(), head=None)
         return path
 
-    async def _wt_park(self, t: Task, path: Path) -> None:
-        """Task dừng giữa chừng (agent hỏi người dùng): commit phần đã làm vào nhánh, gỡ worktree."""
+    async def _wt_commit(self, path: Path, msg: str) -> str | None:
+        """Commit mọi thay đổi trong worktree. Bỏ hook (pre-commit/husky) và ký GPG: đây là commit nội bộ
+        của nhánh task, không được để chúng chặn rồi mất việc. Trả lỗi (chuỗi) nếu commit không được."""
         await self._git("add", "-A", cwd=path)
         _, st = await self._git("status", "--porcelain", cwd=path)
-        if st.strip():
-            await self._git(*(await self.git_ident()), "commit", "-q", "-m",
-                            f"ateam #{t.id} ({t.agent}): {t.title} (WIP)", cwd=path)
+        if not st.strip():
+            return None
+        rc, out = await self._git(*(await self.git_ident()), "-c", "commit.gpgsign=false", "commit", "-q",
+                                  "--no-verify", "-m", msg, cwd=path)
+        if rc != 0:
+            return tr("Không commit được thay đổi trong worktree {path} (giữ nguyên để bạn lấy lại): {v}",
+                      path=path, v=out.strip()[:300])
+        return None
+
+    async def _wt_park(self, t: Task, path: Path) -> None:
+        """Task dừng giữa chừng (agent hỏi người dùng): commit phần đã làm vào nhánh, gỡ worktree."""
+        err = await self._wt_commit(path, f"ateam #{t.id} ({t.agent}): {t.title} (WIP)")
+        if err:
+            raise RuntimeError(err)
         await self._git("worktree", "remove", "--force", str(path))
         self._wt_base.pop(t.id, None)
 
@@ -1559,11 +1595,10 @@ class Orchestrator:
                          error: str | None) -> tuple[str, str | None]:
         """Commit thay đổi của task; tự merge (merge=auto) hoặc để chờ duyệt (merge=review)."""
         branch = f"ateam/t{t.id}"
-        await self._git("add", "-A", cwd=path)
-        _, st = await self._git("status", "--porcelain", cwd=path)
-        if st.strip():
-            await self._git(*(await self.git_ident()), "commit", "-q", "-m",
-                            f"ateam #{t.id} ({t.agent}): {t.title}", cwd=path)
+        err = await self._wt_commit(path, f"ateam #{t.id} ({t.agent}): {t.title}")
+        if err:
+            self.log("⚠ " + err)
+            return FAILED, err
         _, head = await self._git("rev-parse", "HEAD", cwd=path)
         await self._git("worktree", "remove", "--force", str(path))
         base = self._wt_base.pop(t.id, "") or (t.base or "")
@@ -1590,6 +1625,10 @@ class Orchestrator:
     async def _merge_branch(self, t: Task) -> tuple[bool, str | None]:
         branch = f"ateam/t{t.id}"
         async with self._merge_lock():
+            if (await self._git("rev-parse", "-q", "--verify", "MERGE_HEAD"))[0] == 0:
+                # người dùng đang merge dở (tab Git): không merge chồng, càng không được --abort phần của họ
+                return False, tr("Thư mục chính đang merge dở — hoàn tất hoặc huỷ merge đó rồi /merge {id}",
+                                 id=t.id)
             rc, out = await self._git(*(await self.git_ident()), "merge", "--no-ff", "--no-edit", "-m",
                                       f"ateam: merge #{t.id} ({t.agent}) {t.title}", branch)
             if rc != 0:

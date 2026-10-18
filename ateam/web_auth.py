@@ -188,6 +188,12 @@ def auth_middleware(remote: Remote, port: int):
             return web.Response(status=403, text="forbidden origin")
         if request.path.startswith("/static/"):
             return await handler(request)
+        auth = request.headers.get("Authorization", "")
+        bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else None
+        q = request.query.get("t")
+        # đã đăng nhập: không bị khoá vì người lạ đoán token sai nhiều lần (khoá chỉ chặn đăng nhập mới)
+        if q is None and (remote.check(request.cookies.get(COOKIE)) or remote.check(bearer)):
+            return await handler(request)
         if remote.locked():
             return web.Response(status=429, text=tr("Sai token quá nhiều lần — thử lại sau ít phút"))
         if request.path == "/login" and request.method == "POST":
@@ -196,16 +202,11 @@ def auth_middleware(remote: Remote, port: int):
                 return _logged_in(request, remote.token)
             remote.fails.append(time.time())
             return login_page(tr("Token không đúng"))
-        q = request.query.get("t")
         if q is not None:
             if remote.check(q):
                 return _logged_in(request, remote.token, request.path if request.path != "/login" else "/")
             remote.fails.append(time.time())
             return login_page(tr("Token không đúng"))
-        auth = request.headers.get("Authorization", "")
-        bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else None
-        if remote.check(request.cookies.get(COOKIE)) or remote.check(bearer):
-            return await handler(request)
         if bearer is not None:
             remote.fails.append(time.time())
         if request.path in ("/", "/login") and request.method == "GET":

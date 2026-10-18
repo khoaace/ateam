@@ -28,7 +28,7 @@ def safe_path(root: Path, rel: str) -> Path | None:
     p = (root / rel).resolve()
     if p != root and root not in p.parents:
         return None
-    if ".git" in p.relative_to(root).parts:
+    if ".git" in (x.lower() for x in p.relative_to(root).parts):  # macOS: .GIT cũng là .git
         return None
     return p
 

@@ -280,6 +280,12 @@ class DB:
         keys = ", ".join(f"{k}=?" for k in fields)
         self.conn.execute(f"UPDATE tasks SET {keys} WHERE id=?", (*fields.values(), tid))
 
+    def claim_task(self, tid: int) -> bool:
+        """QUEUED → RUNNING nguyên tử: chỉ một tiến trình (TUI, web, `ateam run`) chiếm được task."""
+        cur = self.conn.execute("UPDATE tasks SET status=?, started=?, error=NULL WHERE id=? AND status=?",
+                                (RUNNING, time.time(), tid, QUEUED))
+        return cur.rowcount == 1
+
     def delete(self, task_ids: list[int], goal_ids: list[int]) -> None:
         """Xoá hẳn task / mục tiêu (dọn bảng việc). Bảng runs giữ nguyên để /usage vẫn đủ số liệu."""
         self.conn.executemany("DELETE FROM tasks WHERE id=?", [(i,) for i in task_ids])
