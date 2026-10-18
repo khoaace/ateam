@@ -16,6 +16,7 @@ import asyncio
 import json
 import re
 import shlex
+import time
 from pathlib import Path
 
 from aiohttp import WSMsgType, web
@@ -27,12 +28,14 @@ from .qr import QR
 from .web_auth import Remote, auth_middleware, security_headers
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, tr
 from .orchestrator import SYSTEM, Orchestrator
+from .logtail import read_tail
 from .web_code import CodeWeb
 from .web_git import GitWeb
 from .web_setup import SetupWeb
 
 STATIC = Path(__file__).with_name("webui")
 LOG_TAIL = 600       # số dòng cuối của log gửi khi mở 1 task
+LOG_FLUSH = 0.1      # gom dòng log rồi gửi một lần (agent in hàng trăm dòng/giây)
 IMAGE_MAX = 20 * 1024 ** 2  # ảnh dán vào ô nhập
 TASK_LIMIT = 400     # bảng việc gửi tối đa ngần này task gần nhất
 
@@ -285,12 +288,19 @@ def _first_line(s: str | None, n: int = 160) -> str:
     return (s or "").strip().splitlines()[0][:n] if (s or "").strip() else ""
 
 
-def task_json(t: Task) -> dict:
-    return {"id": t.id, "goal": t.goal_id, "parent": t.parent_id, "agent": t.agent, "title": t.title,
-            "prompt": t.prompt, "status": t.status, "deps": t.depends_on, "source": t.source,
-            "result": t.result, "error": t.error, "branch": t.branch, "created": t.created,
-            "started": t.started, "finished": t.finished, "model": t.model, "effort": t.effort,
-            "attempts": t.attempts, "question": t.question()}
+def task_json(t: Task, full: bool = True) -> dict:
+    """full=False (ảnh chụp bảng việc gửi mỗi khi đổi): bỏ prompt/kết quả — có thể dài vài chục KB mỗi task;
+    ngăn chi tiết lấy qua /api/task/{id}. Riêng task nháp giữ prompt (khung duyệt kế hoạch hiện nó)."""
+    d = {"id": t.id, "goal": t.goal_id, "parent": t.parent_id, "agent": t.agent, "title": t.title,
+         "prompt": t.prompt, "status": t.status, "deps": t.depends_on, "source": t.source,
+         "result": t.result, "error": t.error, "branch": t.branch, "created": t.created,
+         "started": t.started, "finished": t.finished, "model": t.model, "effort": t.effort,
+         "attempts": t.attempts, "question": t.question()}
+    if not full:
+        del d["result"]
+        if t.status != "draft":
+            del d["prompt"]
+    return d
 
 
 def goal_json(g: Goal, busy: bool) -> dict:
@@ -302,11 +312,7 @@ def goal_json(g: Goal, busy: bool) -> dict:
 
 
 def tail_file(path: Path, n: int = LOG_TAIL) -> list[str]:
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    return text.splitlines()[-n:]
+    return read_tail(path, n)
 
 
 def guard_middleware(port: int):
@@ -337,6 +343,10 @@ class WebApp:
         self.clients: set[web.WebSocketResponse] = set()
         self.discovering = False  # đang hỏi danh sách model từ các CLI (wizard hiện "⏳")
         self._last_state = ""
+        self._last_live = ""
+        self._cache: dict[tuple, tuple] = {}
+        self._out: list[dict] = []    # dòng log / output lệnh chờ gửi (gom theo LOG_FLUSH)
+        self._flushing = False
         self.notices = notify.Watcher()  # báo trình duyệt khi task lỗi / chờ duyệt (như TUI)
         self._bg: set[asyncio.Task] = set()
 
@@ -351,6 +361,7 @@ class WebApp:
             web.get("/api/remote", self.api_remote),
             web.get("/ws", self.ws),
             web.get("/api/log/{tid}", self.api_log),
+            web.get("/api/task/{tid}", self.api_task),
             web.get("/api/agent/{name}", self.api_agent_tail),
             web.get("/api/job/{jid}", self.api_job),
             web.get("/api/scripts", self.api_scripts),
@@ -445,14 +456,34 @@ class WebApp:
 
     # ------------------------------------------------------------------ sự kiện → trình duyệt
     def on_orch_event(self, kind: str, data: dict) -> None:
-        if kind == "log":  # line: dòng cho log của task; raw: dòng gốc cho ô agent (tab Đội)
-            line = data.get("line", "")
-            self.broadcast({"t": "log", "task": data.get("task_id"), "agent": data.get("agent"),
-                            "line": line, "raw": data.get("raw", line)})
+        if kind == "log":  # line: dòng cho log của task; raw (nếu khác): dòng gốc cho ô agent (tab Đội)
+            item = {"k": "log", "task": data.get("task_id"), "agent": data.get("agent"), "line": data.get("line", "")}
+            if data.get("raw") not in (None, item["line"]):
+                item["raw"] = data["raw"]
+            self._queue(item)
 
     def on_shell_event(self, kind: str, job, line: str) -> None:
         if kind == "line":
-            self.broadcast({"t": "job", "id": job.id, "line": line})
+            self._queue({"k": "job", "id": job.id, "line": line})
+
+    def _queue(self, item: dict) -> None:
+        """Gom dòng output, LOG_FLUSH giây gửi một tin {"t":"lines"} — thay vì một tin (và một tác vụ gửi cho
+        mỗi trình duyệt) cho từng dòng."""
+        if not self.clients:
+            return
+        self._out.append(item)
+        if not self._flushing:
+            self._flushing = True
+            try:
+                asyncio.get_running_loop().call_later(LOG_FLUSH, self._flush)
+            except RuntimeError:  # không có vòng lặp (test gọi thẳng)
+                self._flushing = False
+
+    def _flush(self) -> None:
+        self._flushing = False
+        items, self._out = self._out, []
+        if items:
+            self.broadcast({"t": "lines", "items": items})
 
     def broadcast(self, msg: dict) -> None:
         if not self.clients:
@@ -485,44 +516,59 @@ class WebApp:
             pass
 
     async def _push_loop(self) -> None:
-        """Ảnh chụp bảng việc mỗi 0,5 giây — chỉ gửi khi khác lần trước (task/agent khác cũng ghi vào DB)."""
+        """Ảnh chụp bảng việc mỗi 0,5 giây — chỉ gửi khi khác lần trước (task/agent khác cũng ghi vào DB).
+        Dòng cuối của agent đang chạy đổi liên tục nên đi riêng trong tin "live" nhỏ, để ảnh chụp lớn chỉ gửi
+        khi bảng việc thật sự đổi."""
         while True:
             await asyncio.sleep(0.5)
             try:
-                self.push_notices(self.notices.diff(self.db.tasks(), self.db.goals()))
+                tasks, goals = self.db.tasks(), self.db.goals()  # một lần đọc DB cho cả vòng
+                self.push_notices(self.notices.diff(tasks, goals))
             except Exception:
-                pass
+                continue
             if not self.clients:
                 continue
             try:
-                state = json.dumps(self.snapshot(), ensure_ascii=False)
+                state = json.dumps(self.snapshot(tasks, goals), ensure_ascii=False)
+                live = json.dumps(self.live(), ensure_ascii=False)
             except Exception as e:  # DB đang bị ghi dở… — lần sau đọc lại
                 self.orch.log(f"⚠ web: {e}")
                 continue
+            out = []
             if state != self._last_state:
                 self._last_state = state
-                for ws in list(self.clients):
-                    if not ws.closed:
-                        await self._send(ws, state)
+                out.append(state)
+            if live != self._last_live:
+                self._last_live = live
+                out.append(live)
+            for data in out:  # gửi song song: một trình duyệt chậm (điện thoại qua tunnel) không giữ chân cả nhóm
+                await asyncio.gather(*(self._send(ws, data) for ws in list(self.clients) if not ws.closed))
+
+    def live(self) -> dict:
+        """Dòng cuối của từng task đang chạy (thẻ Kanban)."""
+        return {"t": "live", "last": {str(act["task_id"]): act.get("last_line") or ""
+                                      for name in self.cfg.active_agents()
+                                      for act in self.orch.current_activities(name) if act.get("task_id")}}
 
     # ------------------------------------------------------------------ ảnh chụp trạng thái
-    def snapshot(self) -> dict:
+    def snapshot(self, tasks_all: list[Task] | None = None, goals_all: list[Goal] | None = None) -> dict:
         o, cfg = self.orch, self.cfg
-        goals_all = self.db.goals()
+        goals_all = self.db.goals() if goals_all is None else goals_all
+        tasks_all = self.db.tasks() if tasks_all is None else tasks_all
         keep = {g.id for g in goals_all[-8:]} | {g.id for g in goals_all if g.status not in GOAL_ENDED}
         goals = [goal_json(g, g.status in ("planning", "reviewing") or g.id in o.lead_busy)
                  for g in goals_all if g.id in keep]
-        tasks = self.db.tasks()[-TASK_LIMIT:]
+        tasks = tasks_all[-TASK_LIMIT:]
         agents = []
         for name, a in cfg.active_agents().items():
-            acts = [{k: act.get(k) for k in ("task_id", "title", "label", "started", "lines", "last_line")}
+            acts = [{k: act.get(k) for k in ("task_id", "title", "label", "started")}
                     for act in o.current_activities(name)]
             agents.append({"name": name, "lead": name == cfg.lead, "installed": a.installed(),
                            "label": a.label(), "role": a.role, "model": a.model, "effort": a.effort,
                            "cooldown": o.cooldown_label(name) if o.in_cooldown(name) else "",
                            "activities": acts})
         grill = None
-        g = o.grill_active()
+        g = o.grill_active(goals_all)
         if g:
             busy = g.id in o.lead_busy
             q = None if busy else o.grill_question(g)
@@ -531,16 +577,17 @@ class WebApp:
                      "n": len(qa), "answered": sum(1 for x in qa if x.get("a") is not None),
                      "error": "" if busy else str((g.grill or {}).get("error") or "")}
         ask = None
-        at = o.ask_active() if not grill else None
+        at = o.ask_active(tasks_all) if not grill else None
         if at:
             ask = {"task": at.id, "agent": at.agent, "title": at.title, "question": at.question(),
-                   "n": len((at.ask or {}).get("qa") or []), "more": len(self.db.tasks(status=ASKING)) - 1}
+                   "n": len((at.ask or {}).get("qa") or []),
+                   "more": sum(1 for t in tasks_all if t.status == ASKING) - 1}
         jobs = [{"id": j.id, "cmd": j.cmd, "status": j.status, "started": j.started, "finished": j.finished,
                  "rc": j.rc, "ports": j.ports} for j in self.shell.jobs.values()]
-        return {"t": "state", "goals": goals, "tasks": [task_json(t) for t in tasks], "agents": agents,
+        return {"t": "state", "goals": goals, "tasks": [task_json(t, full=False) for t in tasks], "agents": agents,
                 "grill": grill, "ask": ask, "jobs": jobs, "paused": o.paused, "worktree": o.use_worktree,
                 "lead": cfg.lead, "commit_agent": cfg.commit_agent, "workflow": cfg.default_workflow, "compacting": o.compacting,
-                "continue": reports.continue_candidates(self.db), "busy": len(o.runs), "todos": todos.load(self.root)}
+                "continue": reports.continue_candidates(self.db, tasks_all, goals_all), "busy": len(o.runs), "todos": todos.load(self.root)}
 
     def hello(self) -> dict:
         from .tui import COMMANDS, HELP  # danh sách lệnh + trợ giúp dùng chung với TUI
@@ -590,6 +637,12 @@ class WebApp:
         path = self.orch.logs / "system.log" if tid == SYSTEM else self.orch.log_path(tid)
         return web.json_response({"task": tid, "lines": tail_file(path)})
 
+    async def api_task(self, request: web.Request) -> web.Response:
+        """Prompt + kết quả đầy đủ của một task (ảnh chụp bảng việc không mang theo)."""
+        t = self.db.task(int(request.match_info["tid"]))
+        return web.json_response({"id": t.id, "prompt": t.prompt, "result": t.result, "error": t.error}
+                                 if t else {"id": None})
+
     async def api_agent_tail(self, request: web.Request) -> web.Response:
         """Phần cuối log của task gần nhất của agent (ô agent ở tab Đội lúc mới mở trang)."""
         name = request.match_info["name"]
@@ -627,11 +680,24 @@ class WebApp:
         return web.json_response(mentions.search(self.index.entries, request.query.get("q", ""),
                                                  int(request.query.get("n", 12))))
 
+    def _cached(self, key: tuple, fn):
+        """Kết quả tính từ cả lịch sử (dashboard, lịch sử mục tiêu — trình duyệt hỏi mỗi 5 giây): chỉ tính lại khi
+        DB đổi hoặc sang phút mới."""
+        sig = (key, self.db.change_sig(), int(time.time() // 60))
+        hit = self._cache.get(key)
+        if hit and hit[0] == sig:
+            return hit[1]
+        val = fn()
+        self._cache[key] = (sig, val)
+        return val
+
     async def api_dashboard(self, _r: web.Request) -> web.Response:
-        return web.json_response(reports.dashboard(self.db))  # cùng số liệu với tab 📊 Thống kê của TUI
+        # cùng số liệu với tab 📊 Thống kê của TUI
+        return web.json_response(self._cached(("dash",), lambda: reports.dashboard(self.db)))
 
     async def api_goals(self, r: web.Request) -> web.Response:
-        return web.json_response(reports.goal_history(self.db, int(r.query.get("limit", "50") or 50)))
+        n = int(r.query.get("limit", "50") or 50)
+        return web.json_response(self._cached(("goals", n), lambda: reports.goal_history(self.db, n)))
 
     async def api_continue(self, request: web.Request) -> web.Response:
         ok, text = reports.continue_hint(self.db, self.orch, request.query.get("ref", ""))

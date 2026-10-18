@@ -7,6 +7,7 @@ const S = {
   view: "board", goalFilter: null, openTask: null, drawerTab: "log", openJob: null,
   expanded: new Set(), editing: null, rejecting: false,
   logs: [], agentLogs: {}, jobLines: {}, scripts: null, scriptsAt: 0,
+  live: {}, full: {},  // live: dòng cuối của task đang chạy (tin "live"); full: prompt/kết quả đã tải của task
   suggest: { items: [], i: 0, kind: "", nav: false },
 };
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -55,8 +56,8 @@ function connect() {
     try { m = JSON.parse(ev.data); } catch (e) { return; }
     if (m.t === "hello") onHello(m);
     else if (m.t === "state") { S.state = m; render(); }
-    else if (m.t === "log") onLog(m);
-    else if (m.t === "job") onJobLine(m);
+    else if (m.t === "lines") onLines(m.items);
+    else if (m.t === "live") { S.live = m.last || {}; if (S.state && S.view === "board") renderKanban(); }
     else if (m.t === "toast") onToast(m);
     else if (m.t === "notice") onNotice(m);
     else if (m.t === "prefs") applyPrefs(m);
@@ -267,17 +268,25 @@ function appendLines(box, lines, max = 4000, md = true) {
   while (box.childElementCount > max) box.firstElementChild.remove();
   if (stick) box.scrollTop = box.scrollHeight;
 }
-function onLog(m) {
-  if (S.openTask != null && m.task === S.openTask && S.drawerTab === "log") {
-    S.logs.push(m.line);
-    appendLines($("#dr-log"), [m.line]);
+function onLines(items) {  // server gom dòng log / output lệnh ~0,1 giây một lần: chèn DOM một lần mỗi hộp
+  const task = [], agents = {}, jobs = [];
+  for (const m of items) {
+    if (m.k === "job") { if (m.id === S.openJob) jobs.push(m.line); continue; }
+    if (S.openTask != null && m.task === S.openTask && S.drawerTab === "log") task.push(m.line);
+    if (m.agent) (agents[m.agent] || (agents[m.agent] = [])).push(m.raw != null ? m.raw : m.line);
   }
-  if (m.agent) {
-    const arr = S.agentLogs[m.agent] || (S.agentLogs[m.agent] = []);
-    arr.push(m.raw);
+  if (task.length) {
+    S.logs.push(...task);
+    if (S.logs.length > 4000) S.logs.splice(0, S.logs.length - 4000);
+    appendLines($("#dr-log"), task);
+  }
+  for (const name in agents) {
+    const arr = S.agentLogs[name] || (S.agentLogs[name] = []);
+    arr.push(...agents[name]);
     if (arr.length > 300) arr.splice(0, arr.length - 300);
-    appendLines($(`[data-mini="${CSS.escape(m.agent)}"]`), [m.raw], 300);
+    appendLines($(`[data-mini="${CSS.escape(name)}"]`), agents[name], 300);
   }
+  if (jobs.length) appendLines($("#tw-body"), jobs, 5000, false);
 }
 async function loadLog(tid) {
   const box = $("#dr-log");
@@ -476,14 +485,20 @@ function startEdit(tid) {
 function renderGoals() {
   const box = $("#goals"), goals = S.state.goals;
   if (!goals.length) {
+    delete box.dataset.sig;
     box.innerHTML = `<div class="empty">
       <div class="empty-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></svg></div>
       <div class="big">${esc(t("no_goals"))}</div><div>${esc(t("no_goals_hint"))}</div></div>`;
     return;
   }
   if (S.goalFilter != null && !goals.some((g) => g.id === S.goalFilter)) S.goalFilter = null;
+  const byGoal = {};
+  for (const x of S.state.tasks) if (x.goal != null && x.status !== "draft") (byGoal[x.goal] || (byGoal[x.goal] = [])).push(x);
+  const sig = JSON.stringify([goals, S.goalFilter, Object.entries(byGoal).map(([k, ts]) => [k, ts.map((x) => x.status)])]);
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
   const cards = goals.slice().reverse().map((g) => {
-    const ts = S.state.tasks.filter((x) => x.goal === g.id && x.status !== "draft");
+    const ts = byGoal[g.id] || [];
     const n = ts.length || 1;
     const d = ts.filter((x) => x.status === "done").length, r = ts.filter((x) => x.status === "running").length;
     const b = ts.filter((x) => ["failed", "blocked", "cancelled"].includes(x.status)).length;
@@ -567,8 +582,6 @@ function renderKanban() {
   const box = $("#kanban");
   let tasks = S.state.tasks;
   if (S.goalFilter != null) tasks = tasks.filter((x) => x.goal === S.goalFilter);
-  const lastLine = {};
-  for (const a of S.state.agents) for (const act of a.activities) if (act.task_id) lastLine[act.task_id] = act.last_line;
   const cols = COLUMNS.filter((c) => !c.optional || tasks.some((x) => c.st.includes(x.status)));
   if (box.childElementCount !== cols.length || box.dataset.cols !== cols.map((c) => c.key).join()) {
     box.dataset.cols = cols.map((c) => c.key).join();
@@ -581,8 +594,41 @@ function renderKanban() {
     list.sort((a, b) => (c.key === "done" || c.key === "bad") ? (b.finished || 0) - (a.finished || 0) : a.id - b.id);
     const body = $(`[data-col="${c.key}"]`, box);
     body.previousElementSibling.querySelector("[data-n]").textContent = list.length;
-    body.innerHTML = list.length ? list.map((x) => cardHtml(x, lastLine[x.id])).join("") : `<div class="col-empty">${esc(t("empty_col"))}</div>`;
+    patchList(body, list, (x) => {
+      const last = x.status === "running" ? S.live[x.id] || "" : "";
+      return [JSON.stringify([x.status, x.title, x.error, x.agent, x.model, x.effort, x.deps, x.goal, x.started,
+        x.finished, last, S.openTask === x.id]), () => cardHtml(x, last)];
+    }, `<div class="col-empty">${esc(t("empty_col"))}</div>`);
   }
+}
+/* vẽ danh sách theo khoá: chỉ dựng lại phần tử có chữ ký đổi, giữ nguyên phần còn lại (không mất hover/chọn chữ,
+   không vẽ lại 400 thẻ mỗi lần một task đổi trạng thái). item(x) → [chữ ký, () => html]; x.id là khoá. */
+function patchList(box, list, item, emptyHtml) {
+  if (!list.length) {
+    if (!box._empty) { box.innerHTML = emptyHtml; box._empty = true; box._sig = new Map(); }
+    return;
+  }
+  if (box._empty || !box._sig) { box.innerHTML = ""; box._empty = false; box._sig = new Map(); }
+  const old = new Map(), sigs = new Map();
+  for (const el of box.children) old.set(el.dataset.key, el);
+  let ref = box.firstElementChild;
+  for (const x of list) {
+    const k = String(x.id), [sig, html] = item(x);
+    let el = old.get(k);
+    old.delete(k);
+    if (!el || box._sig.get(k) !== sig) {
+      if (el) { if (el === ref) ref = ref.nextElementSibling; el.remove(); }
+      const tpl = document.createElement("template");
+      tpl.innerHTML = html().trim();
+      el = tpl.content.firstElementChild;
+      el.dataset.key = k;
+    }
+    sigs.set(k, sig);
+    if (el === ref) ref = ref.nextElementSibling;
+    else box.insertBefore(el, ref);
+  }
+  for (const el of old.values()) el.remove();
+  box._sig = sigs;
 }
 function cardHtml(x, last) {
   const meta = [x.model, x.effort].filter(Boolean).join(" · ");
@@ -687,7 +733,6 @@ async function loadJob(id) {
     renderTerm();
   } catch (e) { /* bỏ qua */ }
 }
-function onJobLine(m) { if (m.id === S.openJob) appendLines($("#tw-body"), [m.line], 5000, false); }
 async function loadScripts() {
   S.scriptsAt = now();
   try { S.scripts = await (await fetch("/api/scripts")).json(); } catch (e) { S.scripts = []; }
@@ -712,7 +757,8 @@ function renderDrawer(full) {
   const tid = S.openTask, dr = $("#drawer");
   const x = tid ? S.state && S.state.tasks.find((y) => y.id === tid) : null;
   if (tid && !x) { if (S.state) closeDrawer(); return; }
-  const sig = x ? JSON.stringify([x.status, x.agent, x.title, x.started, x.finished, x.result, x.error, S.drawerTab, S.rejecting]) : "sys" + S.drawerTab;
+  const fx = x && S.drawerTab !== "log" ? fullTask(x) : null;  // prompt + kết quả: ảnh chụp bảng việc không mang theo, tải qua /api/task
+  const sig = x ? JSON.stringify([x.status, x.agent, x.title, x.started, x.finished, x.error, !!fx, S.drawerTab, S.rejecting]) : "sys" + S.drawerTab;
   if (!full && dr.dataset.sig === sig) return;
   const keepLog = !full && $("#dr-log") && S.drawerTab === "log";
   const logNode = keepLog ? $("#dr-log") : null;
@@ -738,12 +784,26 @@ function renderDrawer(full) {
   const tabs = x ? `<div class="tabs">${["log", "prompt", "result"].map((k) => `<button class="tab${S.drawerTab === k ? " on" : ""}" data-action="dr-tab" data-tab="${k}">${esc(t("tab_" + k))}</button>`).join("")}</div>` : "";
   let body;
   if (!x || S.drawerTab === "log") body = `<div class="dr-body dark"><div class="log" id="dr-log"></div></div>`;
-  else if (S.drawerTab === "prompt") body = `<div class="dr-body"><div class="prompt-box md" style="max-height:none">${mdHtml(x.prompt)}</div></div>`;
+  else if (!fx) body = `<div class="dr-body"><div class="muted">…</div></div>`;
+  else if (S.drawerTab === "prompt") body = `<div class="dr-body"><div class="prompt-box md" style="max-height:none">${mdHtml(fx.prompt)}</div></div>`;
   else body = `<div class="dr-body">${x.error ? `<div class="sec-title">${esc(t("error"))}</div><div class="error-box">${esc(x.error)}</div>` : ""}
-      <div class="result-box md">${x.result ? mdHtml(x.result) : `<span class="muted">${esc(t("no_result"))}</span>`}</div></div>`;
+      <div class="result-box md">${fx.result ? mdHtml(fx.result) : `<span class="muted">${esc(t("no_result"))}</span>`}</div></div>`;
   dr.innerHTML = `<div class="dr-head">${head}</div>${tabs}${body}`;
   if (logNode) $("#dr-log").replaceWith(logNode);  // giữ log đang hiện (và vị trí cuộn), chỉ vẽ lại phần đầu
   if (S.rejecting) $("#reject-fb").focus();
+}
+function fullTask(x) {
+  // tải lại khi task đổi trạng thái / chạy xong (kết quả mới); đang tải thì trả null, vẽ lại khi về
+  const key = JSON.stringify([x.status, x.finished, x.attempts]), f = S.full[x.id];
+  if (f && f.key === key) return f.data;
+  if (!f || f.key !== key) {
+    S.full[x.id] = { key, data: f && f.data };
+    fetch(`/api/task/${x.id}`).then((r) => r.json()).then((d) => {
+      if (S.full[x.id] && S.full[x.id].key === key) S.full[x.id].data = d;
+      if (S.openTask === x.id && S.drawerTab !== "log") renderDrawer(true);
+    }).catch(() => { delete S.full[x.id]; });
+  }
+  return f && f.data;
 }
 function taskActions(x) {
   const b = [];

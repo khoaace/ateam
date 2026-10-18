@@ -138,9 +138,8 @@ class GitWeb:
         return web.json_response(out)
 
     async def api_log(self, r: web.Request) -> web.Response:
-        st = await self.repo.status()
-        if not st.is_repo or not st.oid:
-            return web.json_response([])
+        # không cần `git status` trước (trình duyệt gọi cùng lúc với /api/git/status mỗi 3 giây):
+        # chưa phải repo / chưa có commit thì `git log` lỗi và repo.log trả []
         return web.json_response([asdict(c) for c in await self.repo.log(int(r.query.get("n", 80)))])
 
     async def api_branches(self, _r: web.Request) -> web.Response:

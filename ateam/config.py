@@ -200,6 +200,22 @@ CATALOG: dict[str, dict] = {
 # Giữ phiên giữa các lượt (/retry, vòng sửa verify, /continue, trả lời <<<ASK>>>): cờ đặt id phiên cho lượt
 # mới, cờ tiếp tục phiên, regex bắt id trong output (khi CLI không cho tự đặt id). Ghi đè bằng khoá cùng tên
 # trong [agents.<tên>]; [] = tắt. agy/opencode: chưa có cách lấy id chắc chắn → chạy như cũ (xem ROADMAP).
+_WHICH: dict[tuple, tuple[float, str | None]] = {}
+WHICH_TTL = 10.0
+
+
+def which(binary: str) -> str | None:
+    """shutil.which có nhớ tạm: bảng việc hỏi "đã cài chưa" cho từng agent nhiều lần mỗi giây (mỗi lần quét
+    mọi thư mục trong PATH). Cài CLI mới thì tối đa WHICH_TTL giây sau mới thấy."""
+    key, now = (binary, os.environ.get("PATH", "")), time.time()
+    hit = _WHICH.get(key)
+    if hit and now - hit[0] < WHICH_TTL:
+        return hit[1]
+    path = shutil.which(binary)
+    _WHICH[key] = (now, path)
+    return path
+
+
 SESSION_PRESETS: dict[str, dict] = {
     "claude": {"session_args": ["--session-id", "{session}"], "resume_args": ["--resume", "{session}"]},
     "grok": {"session_args": ["--session-id", "{session}"], "resume_args": ["--resume", "{session}"]},
@@ -362,7 +378,7 @@ class AgentConfig:
         return self.command[0] if self.command else ""
 
     def installed(self) -> bool:
-        return bool(self.binary) and shutil.which(self.binary) is not None
+        return bool(self.binary) and which(self.binary) is not None
 
     def label(self, model: str | None = None, effort: str | None = None) -> str:
         m, e = self.split_effort((model if model is not None else self.model) or "",

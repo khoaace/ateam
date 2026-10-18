@@ -18,6 +18,7 @@ from pathlib import Path
 MAX_FILE = 2 * 1024 * 1024  # file lớn hơn: bỏ qua
 MAX_MATCHES = 3000          # dừng khi đủ chừng này kết quả (báo truncated)
 PREVIEW = 140               # độ dài dòng xem trước quanh chỗ khớp
+NEWLINE_RE = re.compile("\n")
 
 
 def compile_query(query: str, regex: bool = False, case: bool = False, word: bool = False) -> re.Pattern:
@@ -134,7 +135,7 @@ def search(root: Path, files: list[str], query: str, *, regex: bool = False, cas
             if m.end() == m.start():
                 continue  # regex khớp rỗng (vd ^): bỏ
             if not starts:
-                starts = [0] + [i + 1 for i, ch in enumerate(text) if ch == "\n"]
+                starts = [0] + [m.end() for m in NEWLINE_RE.finditer(text)]
             ln = bisect.bisect_right(starts, m.start()) - 1
             ls = starts[ln]
             le = text.find("\n", ls)

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.19.3 — 18/10/2026
+
+Nhanh và nhẹ hơn khi bảng việc lớn / agent in nhiều:
+
+- **Web**: ảnh chụp bảng việc không còn mang prompt và kết quả của mọi task (có khi vài MB, gửi 2 lần/giây khi
+  agent đang chạy) — ngăn chi tiết tải khi mở tab Prompt/Kết quả; dòng cuối của task đang chạy đi riêng trong một tin
+  nhỏ. Dòng log gom 0,1 giây một lần thay vì một tin cho mỗi dòng; gửi song song cho các trình duyệt (điện thoại qua
+  tunnel chậm không làm chậm máy khác).
+- **Kanban web chỉ vẽ lại thẻ thay đổi** (không mất hover / chữ đang chọn); thẻ mục tiêu bỏ qua khi không đổi.
+- **TUI**: ô agent ở tab Đội chưa mở không còn dồn log không giới hạn rồi đứng hình khi mở (và hết lỗi dòng bị
+  lặp đôi sau khi đổi kích thước); bớt đọc DB lặp lại mỗi lượt vẽ; tab Thống kê chỉ dựng lại khi số liệu đổi.
+- Bộ lập lịch bớt truy vấn mỗi 0,7 giây; SQLite có index cho các lọc thường dùng và không fsync từng lệnh;
+  kiểm tra "đã cài CLI chưa" có nhớ tạm; tab Git web bớt một lần `git status` mỗi 3 giây; mở app chỉ đọc phần cuối
+  log cũ; `system.log` tự xoay vòng khi quá 5 MB; tìm toàn dự án tính đầu dòng nhanh hơn.
+
 ## 0.19.2 — 18/10/2026
 
 Sửa các lỗi tiềm ẩn có thể làm mất việc hoặc chạy trùng task:

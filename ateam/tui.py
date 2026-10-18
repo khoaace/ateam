@@ -42,6 +42,7 @@ from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, T
                      save_project_setting, workflow_to_dict)
 from .db import ACTIVE, ASKING, DB, GOAL_ENDED
 from .orchestrator import SYSTEM, Orchestrator
+from .logtail import LOG_TAIL_BYTES, read_log_tail  # noqa: F401 (test import từ tui)
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, tr
 
 # Màu trạng thái lấy từ theme đang dùng (apply_palette, gọi khi khởi động và khi đổi theme). Mặc định
@@ -472,24 +473,6 @@ def set_static(widget: Static, content) -> None:
 
 
 LOG_SHOW_LINES = 300  # số dòng cuối hiện khi mở log 1 task (cuộn lên xem thêm: /log hoặc file .ateam/logs)
-LOG_TAIL_BYTES = 192 * 1024  # mở log 1 task: chỉ đọc chừng này byte cuối (file vài MB đọc + tô màu rất chậm)
-
-
-def read_log_tail(path: Path, start: int = 0, limit: int = LOG_TAIL_BYTES) -> str:
-    """Phần cuối file log từ byte `start` (bỏ dòng bị cắt dở ở đầu nếu phải bỏ bớt)."""
-    with open(path, "rb") as f:
-        size = f.seek(0, 2)
-        if start > size:  # file bị ghi lại từ đầu (task chạy lại)
-            start = 0
-        begin = max(start, size - limit)
-        f.seek(begin)
-        data = f.read()
-    if begin > start:
-        nl = data.find(b"\n")
-        data = data[nl + 1:] if nl >= 0 else b""
-    return data.decode("utf-8", errors="replace")
-
-
 def styled_lines(text: str, styler: "LogStyler") -> list[Text]:
     """Tô cả file từ đầu (để biết đang ở khối nào), rồi bên gọi lấy phần cuối."""
     return [t for t in map(styler.style, text.splitlines()) if t is not None]
@@ -828,6 +811,10 @@ class ReflowLog(RichLog):
     def write(self, content, *args, **kw):
         if not self._reflowing:
             self._items.append(content)
+            if not self._size_known:
+                # ô chưa từng hiện (tab Đội chưa mở): RichLog sẽ hoãn vào hàng đợi không giới hạn rồi phát lại qua
+                # write() (thành dòng đôi trong _items). Chỉ giữ ở _items (có giới hạn), vẽ một lần khi có kích thước.
+                return self
         return super().write(content, *args, **kw)
 
     def clear(self):
@@ -835,9 +822,12 @@ class ReflowLog(RichLog):
         return super().clear()
 
     def on_resize(self, event) -> None:
+        first = not self._size_known
         super().on_resize(event)  # RichLog: ghi các dòng hoãn lại lúc chưa biết kích thước
         width = self.scrollable_content_region.width
-        if self._width and width != self._width and self._items:
+        if first and self._size_known and self._items:
+            self._reflow()  # các dòng ghi lúc ô còn ẩn
+        elif self._width and width != self._width and self._items:
             self.set_timer(0.15, self._reflow, name="reflow")
         self._width = width
 
@@ -2436,7 +2426,7 @@ class Timeline(Static):
     def build(self, app: "TeamApp") -> Text:
         now = time.time()
         agents = [n for n, a in app.cfg.agents.items() if a.enabled]
-        tasks = [t for t in app.db.tasks() if t.started and t.started > now - 3 * 3600]
+        tasks = [t for t in app.snap_tasks() if t.started and t.started > now - 3 * 3600]
         spans = [s for s in app.orch.lead_spans if s[0] > now - 3 * 3600]
         out = Text()
         out.append("⏱ Timeline", "bold")
@@ -3134,7 +3124,7 @@ class GrillBar(Vertical):
 
     def update_ask(self, app: "TeamApp") -> bool:
         """Câu hỏi của agent giữa task (<<<ASK>>>). True khi vừa có câu hỏi mới."""
-        t = app.orch.ask_active()
+        t = app.orch.ask_active(app.snap_tasks())
         q = t.question() if t else None
         if not q:
             self.task_id, self.question, self._sig = None, None, ()
@@ -3150,7 +3140,7 @@ class GrillBar(Vertical):
         head = Text()
         head.append(tr("❓ {agent} hỏi · task #{tid} ", agent=t.agent, tid=t.id), "bold")
         head.append(t.title[:160])
-        others = len(app.db.tasks(status=ASKING)) - 1
+        others = sum(1 for x in app.snap_tasks() if x.status == ASKING) - 1
         if others > 0:
             head.append(tr(" · còn {others} task khác đang hỏi", others=others), "dim")
         self.query_one("#grill-head", Static).update(head)
@@ -3162,7 +3152,7 @@ class GrillBar(Vertical):
 
     def update_grill(self, app: "TeamApp") -> bool:
         """Vẽ lại theo DB. Trả về True khi vừa có câu hỏi MỚI (để app báo và đưa con trỏ về ô nhập)."""
-        g = app.orch.grill_active()
+        g = app.orch.grill_active(app.snap_goals())
         if not g:
             self.goal_id = None
             return self.update_ask(app)
@@ -3186,7 +3176,7 @@ class GrillBar(Vertical):
         head.append(f"🎯 #{g.id} ", "bold")
         head.append(g.text.splitlines()[0][:160] if g.text else "")
         head.append(tr("   · đã trả lời {n_answered} câu", n_answered=n_answered), "dim")
-        others = sum(1 for x in app.db.goals() if x.status == "grilling") - 1
+        others = sum(1 for x in app.snap_goals() if x.status == "grilling") - 1
         if others > 0:
             head.append(tr(" · còn {others} mục tiêu khác đang hỏi đáp (hiện sau khi xong mục tiêu "
                            "này)", others=others), "dim")
@@ -3234,7 +3224,7 @@ class PlanBar(Vertical):
 
     def update_plan(self, app: "TeamApp") -> bool:
         """Vẽ lại theo DB. Trả về True nếu vừa có kế hoạch MỚI cần duyệt (để app chuyển focus)."""
-        waiting = [g for g in app.db.goals() if g.status == "awaiting"]
+        waiting = [g for g in app.snap_goals() if g.status == "awaiting"]
         if not waiting:
             self.goal_id, self._sig = None, ()
             self.display = False
@@ -4356,8 +4346,8 @@ class TeamApp(App):
             p = self.orch.log_path(t.id)
             label, style = STATUS.get(t.status, (t.status, ""))
             pane.body.write(Text(f"── #{t.id} {t.title} [{label}] ──", style))
-            if p.exists():
-                for line in styled_lines(p.read_text(encoding="utf-8", errors="replace"), pane.styler)[-40:]:
+            if p.exists():  # chỉ đọc phần cuối: log cũ có thể vài MB, mỗi agent một file lúc mở app
+                for line in styled_lines(read_log_tail(p, limit=32 * 1024), pane.styler)[-40:]:
                     pane.body.write(line)
 
     def pane(self, agent: str) -> AgentPane | None:
@@ -5393,6 +5383,11 @@ class TeamApp(App):
         if not force and time.time() - getattr(self, "_dash_at", 0) < 2:
             return
         self._dash_at = time.time()
+        # không đổi gì (cùng phút — "hôm nay"/"x phút trước" vẫn đúng) thì không dựng lại hai bảng
+        sig = (self.db.change_sig(), int(time.time() // 60))
+        if not force and sig == getattr(self, "_dash_sig", None):
+            return
+        self._dash_sig = sig
         d = reports.dashboard(self.db)
         self._dash_hist = reports.goal_history(self.db)
         t = Text()
@@ -5719,7 +5714,10 @@ class TeamApp(App):
     def _refresh_panes(self) -> None:
         now = time.time()
         tasks = self.snap_tasks()
-        usage = self.db.usage(today_start())
+        # tổng hợp cả bảng runs: đọc lại tối đa 5 giây một lần (ô agent vẽ lại mỗi 0,5 giây)
+        if time.time() - getattr(self, "_usage_at", 0) > 5:
+            self._usage_at, self._usage = time.time(), self.db.usage(today_start())
+        usage = self._usage
         for pane in self.query(AgentPane):
             name = pane.agent
             a = self.cfg.agents[name]

@@ -311,11 +311,16 @@ cho timeline. TUI chỉ đọc hai cấu trúc này, không sửa.
 ### Hiệu năng vẽ (TUI)
 
 - `refresh_view` (mỗi 0,5 giây và sau `changed`) đọc DB **một lần** (`self._snap`: tasks, goals) cho mọi
-  `_refresh_*`; chỉ vẽ tab đang mở (bảng việc / Đội / Terminal; tab Git tự đọc lại git mỗi 3 giây), chuyển tab thì vẽ ngay
+  `_refresh_*` (cả `GrillBar`, `PlanBar`, `Timeline` qua `snap_tasks()/snap_goals()`; `db.usage` 5 giây một lần;
+  dashboard chỉ dựng lại khi `DB.change_sig()` đổi); chỉ vẽ tab đang mở (bảng việc / Đội / Terminal; tab Git tự đọc lại git mỗi 3 giây), chuyển tab thì vẽ ngay
   (`on_tabbed_content_tab_activated`). `set_static()` chỉ gọi `Static.update` khi nội dung đổi.
 - Lướt bảng: `RowHighlighted` đổi `view_task` + ô chi tiết ngay, còn nạp log hẹn 120 ms (chỉ dòng dừng lại).
   `show_task` đọc ~192 KB cuối file (`read_log_tail`) và hiện `LOG_SHOW_LINES` dòng cuối; `#detail` cao cố định
   để đổi task không làm tính lại bố cục cả màn hình.
+- `ReflowLog` (ô agent tab Đội) khi chưa từng hiện chỉ giữ dòng trong `_items` (có giới hạn) thay vì hàng đợi hoãn
+  không giới hạn của RichLog; vẽ một lần khi có kích thước.
+- Bộ lập lịch: `tick()` đọc `DB.task_index()` (id → trạng thái, agent) một lần cho mọi phụ thuộc; `AgentConfig.installed()`
+  dùng `config.which` nhớ 10 giây; `system.log` quá 5 MB thì đổi thành `system.log.1`.
 - `animation_level = "none"`: không có hiệu ứng gạch chân tab trượt / cuộn mượt.
 - `ReflowLog` (thay `RichLog`): giữ nội dung đã ghi, đổi bề rộng thì vẽ lại — RichLog vẽ dòng theo bề rộng lúc
   ghi, nên log ghi khi cột hẹp (1–2 ký tự) thành chữ dọc mãi. Dưới `NARROW_WIDTH` (110) cột, `#board` thêm
@@ -364,11 +369,16 @@ nhập + gợi ý tham số, modal, theme), `diff.js`, `git.js`, `code.js`, `set
 
 - `GET /ws` (WebSocket): server gửi `hello` (chuỗi giao diện `ui_strings()`, mọi lệnh của `tui.COMMANDS`, dữ liệu gợi ý
   — agent + model/effort hợp lệ, workflow, màu nhấn, tuỳ chọn), gửi lại khi cấu hình đổi (/setup, /custom, /models
-  làm mới); `state` — ảnh chụp bảng việc (`snapshot()`), dựng lại mỗi 0,5 giây, chỉ gửi khi khác lần trước; `log`,
-  `job`, `prefs`, `discovered`; `toast` trả lời thao tác (`ref` để trình duyệt chờ kết quả, `open` để mở tab/khung/
+  làm mới); `state` — ảnh chụp bảng việc (`snapshot()`), dựng lại mỗi 0,5 giây, chỉ gửi khi khác lần trước — task
+  không mang `prompt`/`result` (trừ prompt của task nháp), ngăn chi tiết lấy qua `/api/task/<id>`; `live` — dòng cuối
+  của task đang chạy (đổi liên tục nên tách khỏi `state`, để ảnh chụp lớn chỉ gửi khi bảng việc thật sự đổi);
+  `lines` — dòng log task (`k: "log"`) và output lệnh `!` (`k: "job"`) gom `LOG_FLUSH` (0,1 giây) một lần; `prefs`,
+  `discovered`; `toast` trả lời thao tác (`ref` để trình duyệt chờ kết quả, `open` để mở tab/khung/
   file). Trình duyệt gửi `{"op": …}` — xem `WebApp.handle`; ô nhập (`submit`) và lệnh `/…` cùng luật với TUI
   (`WebApp.command`, test đối chiếu mọi lệnh trong `tui.COMMANDS`).
-- Đọc: `/api/log/<task>`, `/api/agent/<tên>`, `/api/job/<id>`, `/api/scripts`, `/api/files?q=`, `/api/continue?ref=`;
+- Trình duyệt vẽ Kanban bằng `patchList` (app.js): mỗi thẻ có chữ ký, chỉ dựng lại thẻ đổi — giữ hover/chọn chữ.
+  `/api/dashboard`, `/api/goals` nhớ kết quả theo `DB.change_sig()` + phút hiện tại.
+- Đọc: `/api/log/<task>`, `/api/task/<task>`, `/api/agent/<tên>`, `/api/job/<id>`, `/api/scripts`, `/api/files?q=`, `/api/continue?ref=`;
   Git (`web_git.py`, bọc `gitops.GitRepo`): `/api/git/status|log|branches|stashes|diff`, `/api/diff/<task>`
   (`orch.diff_files`) — diff gửi dạng `diffset_json` (dòng + token pygments + `word_spans` + `split_rows`); Code
   (`web_code.py`, `editor.read_source/save_source`): `/api/tree?dir=` (từ `FileIndex`), `/api/file`, `/api/file/stat`

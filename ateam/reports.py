@@ -100,11 +100,11 @@ def models_text(cfg: Config, only: str | None = None) -> str:
                                             "sách vẫn đặt được: /model <agent> <tên>."))
 
 
-def continue_candidates(db: DB) -> list[dict]:
+def continue_candidates(db: DB, tasks: list | None = None, goals: list | None = None) -> list[dict]:
     """Gợi ý /continue: mục tiêu đã kết thúc (mới nhất trước, tối đa 10) rồi thread /task đã xong (tối đa 10).
-    Mỗi mục: {ref, kind: goal|task, status, title, summary, agent}."""
+    Mỗi mục: {ref, kind: goal|task, status, title, summary, agent}. tasks/goals: danh sách đã đọc sẵn."""
     out: list[dict] = []
-    for g in reversed(db.goals()):
+    for g in reversed(db.goals() if goals is None else goals):
         if g.status not in GOAL_ENDED:
             continue
         out.append({"ref": f"m{g.id}", "kind": "goal", "status": g.status,
@@ -112,7 +112,7 @@ def continue_candidates(db: DB) -> list[dict]:
                     "summary": (g.summary or "").splitlines()[0] if g.summary else "", "agent": ""})
         if len(out) >= 10:
             break
-    tasks = db.tasks()
+    tasks = db.tasks() if tasks is None else tasks
     has_next = {t.parent_id for t in tasks if t.source == "followup" and t.goal_id is None}
     n = 0
     for task in reversed(tasks):

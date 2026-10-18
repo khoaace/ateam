@@ -184,11 +184,20 @@ def test_web_ui_end_to_end(env, project, monkeypatch):
             tid = next(t.id for t in wa.db.tasks() if t.status == "done")
             log = await (await client.get(f"/api/log/{tid}")).json()
             assert log["lines"], "log của task phải đọc được qua /api/log"
+            # ảnh chụp bảng việc không mang prompt/kết quả (có thể rất dài); ngăn chi tiết lấy qua /api/task
+            draft = next(t for t in st["tasks"] if t["status"] == "draft")
+            assert "prompt" in draft  # task nháp giữ prompt: khung duyệt kế hoạch hiện nó
+            snap = wa.snapshot()
+            assert all("result" not in t for t in snap["tasks"])
+            assert all("prompt" not in t for t in snap["tasks"] if t["status"] != "draft")
+            full = await (await client.get(f"/api/task/{tid}")).json()
+            assert full["id"] == tid and full["prompt"] and full["result"]
 
             await ws.send_json({"op": "submit", "text": "!echo xin-chao-web"})
             opened = await until(lambda m: m["t"] == "toast" and "open" in m)
             jid = opened["open"]["job"]
-            await until(lambda m: m["t"] == "job" and m["id"] == jid and "xin-chao-web" in m["line"])
+            await until(lambda m: m["t"] == "lines" and any(  # dòng output gom theo lô
+                x["k"] == "job" and x["id"] == jid and "xin-chao-web" in x["line"] for x in m["items"]))
 
             await ws.send_json({"op": "submit", "text": "/khonglenhnay"})
             warn = await until(lambda m: m["t"] == "toast" and m["text"])

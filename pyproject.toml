@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ateam"
-version = "0.19.2"
+version = "0.19.3"
 description = "Điều phối Claude Code, Codex, Antigravity, Grok (OpenCode)... làm việc như một đội"
 readme = "README.md"
 requires-python = ">=3.9"

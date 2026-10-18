@@ -193,6 +193,7 @@ class DB:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA busy_timeout=15000")
+        self.conn.execute("PRAGMA synchronous=NORMAL")  # an toàn với WAL, không fsync mỗi lệnh UPDATE
         self.conn.executescript(SCHEMA)
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(tasks)")}
         for col, typ in (("model", "TEXT"), ("effort", "TEXT"), ("base", "TEXT"),
@@ -208,6 +209,13 @@ class DB:
         for col in ("workflow", "followups", "grill", "lead_session", "lead_session_agent"):
             if col not in gcols:  # nâng cấp DB cũ
                 self.conn.execute(f"ALTER TABLE goals ADD COLUMN {col} TEXT")
+        # sau migration (DB cũ thiếu cột thì chưa tạo index được): lọc thường gặp của bảng việc, /usage, ghi chú
+        self.conn.executescript("""
+            CREATE INDEX IF NOT EXISTS tasks_status ON tasks(status);
+            CREATE INDEX IF NOT EXISTS tasks_goal ON tasks(goal_id, status);
+            CREATE INDEX IF NOT EXISTS runs_started ON runs(started);
+            CREATE INDEX IF NOT EXISTS notes_author ON notes(author, id);
+        """)
 
     # ---------- goals ----------
     def add_goal(self, text: str, workflow: str | None = None) -> int:
@@ -279,6 +287,18 @@ class DB:
             fields["ask"] = json.dumps(fields["ask"], ensure_ascii=False)
         keys = ", ".join(f"{k}=?" for k in fields)
         self.conn.execute(f"UPDATE tasks SET {keys} WHERE id=?", (*fields.values(), tid))
+
+    def change_sig(self) -> tuple:
+        """Dấu thay đổi rẻ của bảng việc + thống kê: số liệu dashboard chỉ cần tính lại khi nó khác."""
+        return tuple(self.conn.execute(
+            "SELECT (SELECT MAX(id) FROM runs), (SELECT MAX(finished) FROM runs),"
+            " (SELECT SUM(COALESCE(in_tok, 0) + COALESCE(out_tok, 0)) FROM runs),"
+            " (SELECT COUNT(*) FROM tasks), (SELECT MAX(finished) FROM tasks),"
+            " (SELECT group_concat(status) FROM goals)").fetchone())
+
+    def task_index(self) -> dict[int, tuple[str, str]]:
+        """{id: (status, agent)} của mọi task — một truy vấn nhẹ cho bộ lập lịch (không đọc prompt/kết quả)."""
+        return {r["id"]: (r["status"], r["agent"]) for r in self.conn.execute("SELECT id, status, agent FROM tasks")}
 
     def claim_task(self, tid: int) -> bool:
         """QUEUED → RUNNING nguyên tử: chỉ một tiến trình (TUI, web, `ateam run`) chiếm được task."""

@@ -19,8 +19,11 @@ from . import prompts as P
 from .config import EFFORT_REJECTED_RE, AgentConfig, Config
 from .db import (ACTIVE, ASKING, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
                  FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Goal, Task)
+from .logtail import read_tail
 from .runner import Run
 from .i18n import tr
+
+SYSTEM_LOG_MAX = 5 * 1024 ** 2
 
 GRILL_MAX = 15  # /grill: số câu hỏi tối đa, tới đây trưởng nhóm phải chốt đặc tả
 
@@ -87,8 +90,11 @@ class Orchestrator:
     def log(self, msg: str) -> None:
         stamp = time.strftime("%H:%M:%S")
         line = f"[{stamp}] {msg}"
-        with open(self.logs / "system.log", "a", encoding="utf-8") as f:
+        path = self.logs / "system.log"
+        with open(path, "a", encoding="utf-8") as f:
             f.write(line + "\n")
+            if f.tell() > SYSTEM_LOG_MAX:  # không để system.log lớn mãi: giữ một bản cũ system.log.1
+                os.replace(path, path.with_name("system.log.1"))
         self.emit("log", task_id=SYSTEM, line=line)
 
     def log_path(self, tid: int) -> Path:
@@ -385,9 +391,9 @@ class Orchestrator:
         qa = (g.grill or {}).get("qa") or []
         return qa[-1] if qa and qa[-1].get("a") is None else None
 
-    def grill_active(self) -> Goal | None:
-        """Mục tiêu đang hỏi đáp mới nhất (khung hỏi đáp ở TUI hiện mục tiêu này)."""
-        goals = [g for g in self.db.goals() if g.status == "grilling"]
+    def grill_active(self, goals: list[Goal] | None = None) -> Goal | None:
+        """Mục tiêu đang hỏi đáp mới nhất (khung hỏi đáp ở TUI hiện mục tiêu này). goals: danh sách đã đọc sẵn."""
+        goals = [g for g in (self.db.goals() if goals is None else goals) if g.status == "grilling"]
         return goals[-1] if goals else None
 
     def _grill_spawn(self, gid: int, finish: bool = False) -> None:
@@ -866,9 +872,11 @@ class Orchestrator:
         return tr("Đã xếp lại task #{tid}", tid=tid)
 
     # ------------------------------------------------------------------ <<<ASK>>>: agent hỏi người dùng
-    def ask_active(self) -> Task | None:
-        """Task đang chờ người dùng trả lời câu hỏi (cũ nhất trước) — hiện ở khung hỏi đáp như /grill."""
-        asking = [t for t in self.db.tasks(status=ASKING) if t.question()]
+    def ask_active(self, tasks: list[Task] | None = None) -> Task | None:
+        """Task đang chờ người dùng trả lời câu hỏi (cũ nhất trước) — hiện ở khung hỏi đáp như /grill.
+        tasks: danh sách đã đọc sẵn."""
+        src = self.db.tasks(status=ASKING) if tasks is None else [t for t in tasks if t.status == ASKING]
+        asking = [t for t in src if t.question()]
         return min(asking, key=lambda t: t.id) if asking else None
 
     def answer_task(self, tid: int, answer: str | None) -> str:
@@ -915,11 +923,7 @@ class Orchestrator:
         since = self.db.last_compact()
         goals = "\n".join(f"#{g.id} [{g.status}] {g.full_text()}" + (f" — {g.summary}" if g.summary else "")
                           for g in self.db.goals()[-12:] if (g.created or 0) >= since)
-        log = ""
-        p = self.logs / "system.log"
-        if p.exists():
-            lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
-            log = "\n".join(lines[-60:])
+        log = "\n".join(read_tail(self.logs / "system.log", 60))
         return self.notes_text(), goals, log
 
     async def compact(self, focus: str = "") -> tuple[bool, str]:
@@ -1006,9 +1010,12 @@ class Orchestrator:
         return tr("Trưởng nhóm đang review mục tiêu #{gid}…", gid=gid)
 
     # ------------------------------------------------------------------ lịch chạy
-    def running_count(self, agent: str | None = None) -> int:
+    def running_count(self, agent: str | None = None, index: dict | None = None) -> int:
+        """index: DB.task_index() đã đọc sẵn trong lượt tick."""
         if agent is None:
             return len(self.runs)
+        if index is not None:
+            return sum(1 for tid in self.runs if tid in index and index[tid][1] == agent)
         return sum(1 for tid in self.runs if (t := self.db.task(tid)) and t.agent == agent)
 
     def is_idle(self) -> bool:
@@ -1027,15 +1034,16 @@ class Orchestrator:
     def tick(self) -> None:
         agents = self.cfg.active_agents()
         changed = False
-        for t in self.db.tasks(status=QUEUED):
+        queued = self.db.tasks(status=QUEUED)
+        index = self.db.task_index() if queued else {}  # trạng thái mọi task, một truy vấn cho cả lượt
+        for t in queued:
             if t.id in self.runs:
                 continue
             if t.agent not in agents:
                 self.db.update_task(t.id, status=FAILED, error=tr("Không có agent '{agent}'", agent=t.agent))
                 changed = True
                 continue
-            dep_status = [(d, (self.db.task(d).status if self.db.task(d) else "missing"))
-                          for d in t.depends_on]
+            dep_status = [(d, index[d][0] if d in index else "missing") for d in t.depends_on]
             bad = [d for d, s in dep_status if s in FINISHED_BAD or s in (CONFLICT, "missing")]
             if bad:
                 self.db.update_task(t.id, status=BLOCKED,
@@ -1056,7 +1064,7 @@ class Orchestrator:
                 t = self.db.task(t.id)
                 changed = True
             a = agents[t.agent]
-            if self.running_count(t.agent) >= a.max_concurrent:
+            if self.running_count(t.agent, index) >= a.max_concurrent:
                 continue
             if not a.installed():
                 self.db.update_task(t.id, status=FAILED,
@@ -1068,6 +1076,7 @@ class Orchestrator:
             if not self.db.claim_task(t.id):
                 changed = True
                 continue
+            index[t.id] = (RUNNING, t.agent)
             self.runs[t.id] = None  # type: ignore[assignment]
             self._spawn(self._run_task(t.id))
             changed = True
