@@ -348,6 +348,14 @@ select.agent-select:focus { border-color: var(--accent); }
 .lead-tag { font-size: 10px; font-weight: 650; letter-spacing: .04em; color: var(--review); border: 1px solid color-mix(in srgb, var(--review) 45%, var(--border)); padding: 0 5px; border-radius: var(--radius); }
 .agent-label { font-size: 11px; color: var(--muted); font-family: var(--mono); }
 .agent-head .badge { margin-left: auto; }
+.agent-opts { display: flex; flex-direction: column; gap: 5px; padding: 8px 12px 0; }
+.opt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.opt-k { font: 11px var(--mono); color: var(--muted); width: 46px; flex: none; }
+.chip { font: 11px/1.4 var(--mono); padding: 1px 7px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip:hover { background: var(--surface-2); }
+.chip.on { background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); font-weight: 650; cursor: default; }
+.chip.ghost { color: var(--muted); }
+.opt-none { font-size: 11px; color: var(--muted); }
 .acts { padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
 .act { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--radius); background: transparent; border: 1px solid var(--border); cursor: pointer; font-size: 12px; }
 .act:hover { background: var(--surface-2); }

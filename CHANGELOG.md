@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.4 — 18/10/2026
+
+- **Chọn model / effort nhanh ngay trên ô agent** (tab Đội): web có hai hàng chip `model` và `effort` trên mỗi thẻ —
+  bấm là đổi ngay (`↺` về mặc định, `…` mở danh sách đủ); TUI bấm thẳng vào tên model / mức effort trong tiêu đề ô
+  (bấm `… +N` mở bảng chọn). Chip effort chỉ hiện mức model đang dùng hỗ trợ.
+
 ## 0.20.3 — 18/10/2026
 
 Effort của từng agent được kiểm lại trên CLI thật (claude 2.1.302, codex 0.162.1, agy 1.4.2, grok 1.0.62,

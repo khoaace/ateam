@@ -3020,4 +3020,6 @@ EN: dict[str, str] = {
         'CLI exited (code {rc}) — close this window',
     "⚙ {agent}: model {model} không có effort '{want}' → dùng {got}":
         "⚙ {agent}: model {model} has no '{want}' effort → using {got}",
+    'model này không chỉnh effort (CLI tự chọn)':
+        'this model has no effort setting (the CLI decides)',
 }

@@ -777,12 +777,18 @@ class AgentPane(Vertical):
         return self.query_one(".pane-log", RichLog)
 
     def on_click(self, event) -> None:
+        if event.style.meta.get("@click"):  # bấm vào chip model/effort: đã đổi ngay (choice_line)
+            return
         if event.widget is self.head:  # bấm vào tiêu đề ô -> chọn model rồi effort
             self.app.open_picker(self.agent, "model", then_effort=True)
 
 
-def choice_line(label: str, items: list[str], current: str, limit: int = 0) -> Text:
-    """'model: [opus] sonnet haiku … +3' — mục đang dùng được tô đậm."""
+def choice_line(label: str, items: list[str], current: str, limit: int = 0, agent: str = "") -> Text:
+    """'model: [opus] sonnet haiku … +3' — mục đang dùng được tô đậm. Có `agent`: bấm vào một mục là đổi ngay
+    (`app.set_agent_opt`), bấm "… +3" mở bảng chọn đủ."""
+    def click(action: str) -> Style | None:
+        return Style(meta={"@click": action}) if agent else None
+
     t = Text(f"{label}: ", "dim")
     if not items:
         t.append(tr("(để CLI tự chọn)") if label == "model" else tr("(không có)"), "dim")
@@ -793,9 +799,12 @@ def choice_line(label: str, items: list[str], current: str, limit: int = 0) -> T
     for i, it in enumerate(shown):
         if i:
             t.append(" ")
-        t.append(it, "bold reverse cyan" if it == current else "cyan")
+        style = Style.parse("bold reverse cyan" if it == current else "cyan")
+        act = click(f"app.set_agent_opt({agent!r}, {label!r}, {it!r})")
+        t.append(it, style + act if act else style)
     if len(items) > len(shown):
-        t.append(f" … +{len(items) - len(shown)}", "dim")
+        act = click(f"app.pick_agent_opt({agent!r}, {label!r})")
+        t.append(f" … +{len(items) - len(shown)}", Style.parse("dim") + act if act else "dim")
     return t
 
 
@@ -5768,9 +5777,9 @@ class TeamApp(App):
             if u:
                 t.append(tr("   hôm nay {v} lượt · {v2}", v=u['runs'], v2=fmt_dur(u['secs'])), "dim")  # token: /usage
             t.append("\n")
-            t.append_text(choice_line("model", a.model_choices(), a.model, PANE_MODELS))
+            t.append_text(choice_line("model", a.model_choices(), a.model, PANE_MODELS, agent=name))
             t.append("\n")
-            t.append_text(choice_line("effort", a.efforts_for(), a.current_effort()))
+            t.append_text(choice_line("effort", a.efforts_for(), a.current_effort(), agent=name))
             if not a.installed():
                 t.append(tr("\n✗ chưa cài lệnh '{binary}'", binary=a.binary), "red")
             elif self.orch.in_cooldown(name) and not acts:
@@ -6317,6 +6326,16 @@ class TeamApp(App):
 
     def models_text(self, only: str | None = None) -> str:
         return reports.models_text(self.cfg, only)
+
+    def action_set_agent_opt(self, agent: str, key: str, value: str) -> None:
+        """Bấm chip model/effort trên ô agent (tab Đội): đổi ngay, không mở bảng chọn."""
+        a = self.cfg.agents.get(agent)
+        if a and value != (a.model if key == "model" else a.current_effort()):
+            self.notify(self.orch.set_agent_option(agent, key, value))
+            self.refresh_view()
+
+    def action_pick_agent_opt(self, agent: str, key: str) -> None:
+        self.open_picker(agent, key)
 
     def open_picker(self, agent: str, key: str, then_effort: bool = False) -> None:
         a: AgentConfig | None = self.cfg.agents.get(agent)

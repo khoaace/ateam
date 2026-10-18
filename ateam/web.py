@@ -111,6 +111,7 @@ def ui_strings() -> dict[str, str]:
         "tab_log": tr("Log"), "tab_prompt": tr("Nội dung"), "tab_result": tr("Kết quả"),
         "chat_ph": tr("💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: CLI thật · /focus: phóng to)"),
         "chat_send": tr("Gửi"), "focus_agent": tr("⛶ Phóng to / thu lại (Esc)"),
+        "effort_none": tr("model này không chỉnh effort (CLI tự chọn)"),
         "open_term": tr("Mở CLI thật của agent (tiếp tục phiên chat) trong terminal"),
         "pty_exit": tr("CLI đã thoát (mã {rc}) — đóng cửa sổ này"),
         "no_log": tr("Chưa có log."), "no_result": tr("Chưa có kết quả."), "error": tr("Lỗi"),
@@ -837,8 +838,11 @@ class WebApp:
         if op == "assign":
             return o.assign(int(d["task"]), str(d.get("agent") or "")), "info"
         if op == "agent_option":  # bảng chọn model/effort (như open_picker của TUI)
-            v = d.get("value")
-            return o.set_agent_option(str(d["agent"]), str(d["key"]), None if v in (None, "") else str(v)), "ok"
+            v, name = d.get("value"), str(d["agent"])
+            msg = o.set_agent_option(name, str(d["key"]), None if v in (None, "") else str(v))
+            a = self.cfg.agents.get(name)  # model mới có thể có mức effort khác: trình duyệt dùng ngay để hỏi tiếp
+            return msg, "ok", ({"agent": {"name": name, "model": a.model, "effort": a.current_effort(),
+                                          "efforts": a.efforts_for()}} if a else {})
         if op == "pause":
             o.paused = bool(d.get("on"))
             o.log(tr("⏸ Tạm dừng: không bắt đầu task mới (task đang chạy vẫn tiếp tục).") if o.paused

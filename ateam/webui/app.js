@@ -662,7 +662,7 @@ function renderTeam() {
   if (box.dataset.sig !== sig) {
     box.dataset.sig = sig;
     box.innerHTML = S.state.agents.map((a) => `<div class="agent-card" data-agent="${esc(a.name)}">
-      <div class="agent-head" data-head></div><div class="acts" data-acts></div>
+      <div class="agent-head" data-head></div><div class="agent-opts" data-opts></div><div class="acts" data-acts></div>
       <div class="mini-log log" data-mini="${esc(a.name)}"></div>
       <form class="chat-row" data-chat="${esc(a.name)}">
         <input class="field one chat-in" autocomplete="off" placeholder="${esc(t("chat_ph", { agent: a.name }))}">
@@ -690,6 +690,8 @@ function renderTeam() {
     $("[data-head]", card).innerHTML = `<span class="av lg" style="--h:${hue(a.name)}">${esc(a.name[0])}</span>
       <div style="min-width:0;cursor:pointer" data-action="agent-pick" data-agent="${esc(a.name)}" title="${esc(t("pick_hint"))}"><div class="agent-name">${esc(a.name)}${a.lead ? `<span class="lead-tag">★ ${esc(t("lead"))}</span>` : ""}</div>
       <div class="agent-label">${esc(a.label)}</div></div>${st}`;
+    const opts = optsHtml(a);
+    if (card._opts !== opts) { card._opts = opts; $("[data-opts]", card).innerHTML = opts; }
     $("[data-acts]", card).innerHTML = a.activities.map((act) => `
       <div class="act" ${act.task_id ? `data-action="open-task" data-task="${act.task_id}"` : ""}>
         <span class="spin" style="--c:var(--running)"></span>
@@ -697,6 +699,18 @@ function renderTeam() {
         <span class="lbl">${esc(act.label)}</span>${elapsedHtml(act.started)}
       </div>`).join("");
   }
+}
+
+/* chip chọn nhanh model / effort trên thẻ agent (bấm là đổi ngay, như ô agent của TUI) */
+function optsHtml(a) {
+  const chip = (key, v, label, on) => `<button class="chip${on ? " on" : ""}" type="button" data-action="agent-opt" data-agent="${esc(a.name)}" data-key="${key}" data-v="${esc(v)}"${on ? ' aria-pressed="true"' : ""}>${esc(label)}</button>`;
+  const models = [a.model, ...a.models.filter((m) => m !== a.model)].filter(Boolean).slice(0, 4);
+  const more = a.models.length > models.length;
+  return `<div class="opt-row"><span class="opt-k">model</span>${models.map((m) => chip("model", m, m, m === a.model)).join("")}
+      ${more || !models.length ? `<button class="chip ghost" type="button" data-action="agent-pick" data-agent="${esc(a.name)}" title="${esc(t("pick_hint"))}">${models.length ? "…" : esc(t("default_value"))}</button>` : ""}</div>
+    <div class="opt-row"><span class="opt-k">effort</span>${a.efforts.length
+      ? a.efforts.map((e) => chip("effort", e, e, e === a.effort)).join("") + (a.effort ? chip("effort", "", "↺", false) : "")
+      : `<span class="opt-none">${esc(t("effort_none"))}</span>`}</div>`;
 }
 
 document.addEventListener("submit", (e) => {  // ô 💬 trên thẻ agent
@@ -1037,8 +1051,8 @@ function pickerModal(p) {
     <input class="field one" id="pick-custom" placeholder="${esc(t("pick_custom"))}"></div>`, { box: "sm" });
   const choose = async (v) => {
     closeModal(m);
-    await request("agent_option", { agent: p.agent, key: p.key, value: v });
-    const a = S.meta.agents.find((x) => x.name === p.agent);
+    const r = await request("agent_option", { agent: p.agent, key: p.key, value: v });
+    const a = r.agent;  // mức effort theo model vừa chọn
     if (p.then_effort && p.key === "model" && a && a.efforts.length) pickerModal({ agent: p.agent, key: "effort", items: a.efforts, current: a.effort });
   };
   m.addEventListener("click", (e) => { const b = e.target.closest(".pick"); if (b) choose(b.dataset.v); });
@@ -1585,6 +1599,7 @@ const ACTIONS = {
   "diff": (el) => DiffView.task(+el.dataset.task),
   "agent-term": (el) => agentTerminal(el.dataset.agent),
   "agent-focus": (el) => focusAgent(el.dataset.agent),
+  "agent-opt": (el) => { if (!el.classList.contains("on")) request("agent_option", { agent: el.dataset.agent, key: el.dataset.key, value: el.dataset.v }); },
   "agent-pick": (el) => { const a = S.meta.agents.find((x) => x.name === el.dataset.agent); if (a) pickerModal({ agent: a.name, key: "model", items: a.models, current: a.model, then_effort: true }); },
   "open-job": (el) => openJob(+el.dataset.job),
   "job": (el) => send("job", { id: +el.dataset.job, action: el.dataset.act }),
