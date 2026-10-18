@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.20.0 — 18/10/2026
+
+- **💬 Chat trực tiếp với từng agent** như gõ trong terminal của CLI đó: ô *Nhắn …* dưới mỗi ô agent ở tab Đội (TUI và
+  web) hoặc `/chat <agent> [tin]`. Mỗi tin nối tiếp đúng phiên CLI của tin trước (`--resume`), chạy ở thư mục dự án,
+  không chạy lệnh kiểm tra / worktree / giao việc chéo, không làm rối Bảng việc. `/new` bắt đầu cuộc mới.
+- **⌨ Mở CLI thật của agent** (`/term` trong ô chat, nút ⌨ trên web): tiếp tục chính phiên chat trong giao diện tương
+  tác của CLI — TUI tạm nhường terminal (thoát CLI là quay lại, task khác vẫn chạy); web mở cửa sổ terminal xterm.js
+  (đổi cỡ theo cửa sổ, hàng phím Esc/Tab/Ctrl+C/↑↓ cho điện thoại).
+- Web: ô agent ở tab Đội hiện phần cuối việc gần nhất ngay khi mở trang (trước đây trống tới khi có output mới).
+
 ## 0.19.3 — 18/10/2026
 
 Nhanh và nhẹ hơn khi bảng việc lớn / agent in nhiều:

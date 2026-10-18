@@ -39,6 +39,9 @@ nhưng chưa có báo cáo chạy thật. Cần xác nhận:
 - [ ] Giữ phiên: `claude -p --session-id <uuid>` rồi `--resume <uuid>` trong worktree tạo lại cùng đường dẫn;
       `codex exec resume --skip-git-repo-check -c sandbox_mode="workspace-write" <id> "…"` vẫn sửa được file
       (sandbox qua `-c`); thông báo "mất phiên" thật của codex/grok khớp `SESSION_LOST_RE`; `grok -p --session-id`.
+- [ ] Chat (💬): `claude -p --resume`, `codex exec resume`, `grok --resume` nối đúng phiên qua nhiều lượt; "Mở trong
+      terminal" (`INTERACTIVE_RESUME`): `claude --resume <id>`, `codex resume <id>`, `grok --resume <id>` mở đúng phiên
+      vừa chat headless ở cùng thư mục; Ctrl+C / đổi cỡ cửa sổ trong xterm.js chạy đúng với TUI của từng CLI.
 - [ ] Agent thật có tuân thủ `<<<ASK>>>` (chỉ hỏi khi thật mơ hồ, JSON đúng mẫu) không.
 - [ ] `ateam web --tunnel` với cloudflared thật: dòng URL trong stderr khớp `TUNNEL_RE`; WebSocket qua tunnel;
       cookie `Secure` khi `X-Forwarded-Proto: https`; mã QR in ra terminal quét được bằng camera iPhone/Android.
@@ -67,6 +70,14 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
    chèn vào `plan_prompt`.
 9. **Checkpoint / `/undo`** — git tag trước mỗi mục tiêu; `/undo <mục tiêu>` reset về tag (cần xác
    nhận vì xoá thay đổi).
+10. **Chuyển giao phiên giữa agent** — "nhờ codex review phiên chat với claude": tóm tắt thread chat (`thread_of`) thành
+    prompt cho agent khác, mở chat mới với agent đó. Gợi ý: `/handoff <từ> <tới> [yêu cầu]`.
+11. **Ngân sách chi phí theo mục tiêu** — `budget = 5.0` (USD) ở cấu hình hoặc `/goal --budget`; cộng `runs.cost` theo
+    `goal_id`, vượt thì tạm dừng mục tiêu và hỏi người dùng.
+12. **Bảng lệnh (Ctrl+P)** cho cả TUI và web — tìm mờ trên `COMMANDS` + thao tác của tab đang mở.
+
+Ghi chú cho mục 3: khung chat (💬) hưởng lợi nhiều nhất — `claude -p` ở chế độ chữ chỉ in khi xong lượt, nên câu trả lời
+chat chưa hiện dần.
 
 ## Hạn chế đã biết
 

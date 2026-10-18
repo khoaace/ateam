@@ -13,7 +13,9 @@ Chỉ nghe 127.0.0.1 và kiểm tra Host/Origin (chặn trang web lạ hoặc DN
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import os
 import re
 import shlex
 import time
@@ -28,6 +30,7 @@ from .qr import QR
 from .web_auth import Remote, auth_middleware, security_headers
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, tr
 from .orchestrator import SYSTEM, Orchestrator
+from .pty_session import PtySession
 from .logtail import read_tail
 from .web_code import CodeWeb
 from .web_git import GitWeb
@@ -106,6 +109,9 @@ def ui_strings() -> dict[str, str]:
         "reject": tr("Từ chối"), "reject_ph": tr("Góp ý (để trống = chỉ từ chối, có góp ý = giao làm lại)"),
         "continue_task": tr("Hỏi tiếp"), "close": tr("Đóng"),
         "tab_log": tr("Log"), "tab_prompt": tr("Nội dung"), "tab_result": tr("Kết quả"),
+        "chat_ph": tr("💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: CLI thật)"), "chat_send": tr("Gửi"),
+        "open_term": tr("Mở CLI thật của agent (tiếp tục phiên chat) trong terminal"),
+        "pty_exit": tr("CLI đã thoát (mã {rc}) — đóng cửa sổ này"),
         "no_log": tr("Chưa có log."), "no_result": tr("Chưa có kết quả."), "error": tr("Lỗi"),
         "md_note": tr("Ghi chú"), "md_summary": tr("Tóm tắt"), "md_delegate": tr("Giao việc"),
         "started": tr("Bắt đầu"), "duration": tr("Thời gian"),
@@ -345,6 +351,8 @@ class WebApp:
         self._last_state = ""
         self._last_live = ""
         self._cache: dict[tuple, tuple] = {}
+        self.ptys: dict[int, tuple[PtySession, web.WebSocketResponse]] = {}  # "Mở trong terminal" (xterm.js)
+        self._pty_seq = 0
         self._out: list[dict] = []    # dòng log / output lệnh chờ gửi (gom theo LOG_FLUSH)
         self._flushing = False
         self.notices = notify.Watcher()  # báo trình duyệt khi task lỗi / chờ duyệt (như TUI)
@@ -403,6 +411,8 @@ class WebApp:
 
     async def _shutdown(self, _app) -> None:
         await self.remote.stop_tunnel()
+        for sess, _ws in list(self.ptys.values()):
+            sess.kill_now()
         runs = [j.run for j in self.shell.jobs.values() if j.run and j.alive]
         runs += [r for r in self.orch.runs.values() if r is not None]
         self.shell.stop_all()  # không để lại dev server mồ côi
@@ -717,7 +727,8 @@ class WebApp:
                 data: dict = {}
                 try:
                     data = json.loads(msg.data)
-                    reply = await self.handle(data)
+                    op = str(data.get("op") or "")
+                    reply = await self.pty_op(ws, data) if op.startswith("pty_") else await self.handle(data)
                 except Exception as e:  # thao tác lỗi không làm rớt kết nối
                     reply = (tr("Lỗi: {e}", e=e), "error")
                 # (thông báo, mức) hoặc (thông báo, mức, {"open": …, …} cho trình duyệt mở khung/tab)
@@ -729,7 +740,56 @@ class WebApp:
                     await ws.send_str(json.dumps(out, ensure_ascii=False))
         finally:
             self.clients.discard(ws)
+            for pid, (sess, owner) in list(self.ptys.items()):  # tab đóng: đóng luôn terminal của nó
+                if owner is ws:
+                    sess.close()
+                    self.ptys.pop(pid, None)
         return ws
+
+    async def pty_op(self, ws: web.WebSocketResponse, d: dict) -> tuple | None:
+        """Terminal tương tác trong trình duyệt: pty_open {agent, rows, cols} → mở CLI thật của agent tiếp tục phiên
+        chat; pty_in {id, data}; pty_resize {id, rows, cols}; pty_close {id}. Output: tin {"t":"pty", id, data(base64)}
+        chỉ gửi cho tab đã mở."""
+        if self.remote.readonly:
+            return tr("Chế độ chỉ xem (--readonly) — không làm được thao tác này"), "warn"
+        op = d.get("op")
+        if op == "pty_open":
+            agent = str(d.get("agent") or "")
+            a = self.cfg.active_agents().get(agent)
+            argv = a.interactive_argv(self.orch.terminal_session(agent)) if a else None
+            if not argv:
+                return tr("Không biết cách mở {agent} ở chế độ tương tác (agent tuỳ chỉnh) — tự mở trong terminal khác",
+                          agent=agent), "warn"
+            self._pty_seq += 1
+            pid = self._pty_seq
+
+            def on_data(b: bytes, pid=pid) -> None:
+                self._spawn(self._send(ws, json.dumps({"t": "pty", "id": pid, "data": base64.b64encode(b).decode()})))
+
+            def on_exit(rc: int, pid=pid) -> None:
+                self.ptys.pop(pid, None)
+                self._spawn(self._send(ws, json.dumps({"t": "pty_exit", "id": pid, "rc": rc})))
+
+            sess = PtySession(argv, str(self.root), dict(os.environ), on_data=on_data, on_exit=on_exit,
+                              rows=int(d.get("rows") or 30), cols=int(d.get("cols") or 100))
+            try:
+                await sess.start()
+            except OSError as e:
+                return tr("Không chạy được {cmd}: {e}", cmd=" ".join(argv), e=e), "error"
+            self.ptys[pid] = (sess, ws)
+            return "", "", {"open": {"pty": pid, "title": f"{agent} · {shlex.join(argv)}"}}
+        entry = self.ptys.get(int(d.get("id") or 0))
+        if not entry or entry[1] is not ws:
+            return None
+        sess = entry[0]
+        if op == "pty_in":
+            sess.write(str(d.get("data") or "").encode())
+        elif op == "pty_resize":
+            sess.resize(int(d.get("rows") or 30), int(d.get("cols") or 100))
+        elif op == "pty_close":
+            sess.close()
+            self.ptys.pop(int(d["id"]), None)
+        return None
 
     async def handle(self, d: dict) -> tuple | None:
         """Một thao tác từ trình duyệt. Trả (thông báo, mức: info|ok|warn|error[, thêm]) hoặc None."""
@@ -760,6 +820,8 @@ class WebApp:
                 return o.answer_task(tid, str(d.get("text") or "")), "info"
             if act == "skip":
                 return o.answer_task(tid, None), "info"
+        if op == "chat":
+            return self.chat(str(d.get("agent") or ""), str(d.get("text") or ""))
         if op == "retry":
             return o.retry(int(d["task"])), "info"
         if op == "cancel":
@@ -918,9 +980,33 @@ class WebApp:
         except (ValueError, IndexError):  # thiếu/sai tham số -> chỉ cách dùng
             return command_usage(cmd), "warn"
 
+    def chat(self, agent: str, text: str) -> tuple | None:
+        """Tin nhắn ô 💬 (thẻ agent, tab Đội) hoặc /chat: như TeamApp.send_chat."""
+        text = text.strip()
+        new = text == "/new" or text.startswith("/new ")
+        if new:
+            text = text[4:].strip()
+            if agent in self.cfg.active_agents():
+                self._queue({"k": "log", "task": None, "agent": agent, "line": tr("── cuộc trò chuyện mới ──")})
+            if not text:
+                self.orch.chat_reset(agent)
+                return None
+        res = self.orch.chat(agent, text, new=new)
+        if isinstance(res, str):
+            return res, "warn"
+        # mọi tab đang mở cùng thấy tin vừa gửi trong ô agent
+        self._queue({"k": "log", "task": res, "agent": agent, "line": tr("› bạn: {text}", text=text)})
+        return None
+
     async def _command(self, cmd, rest, o, cfg, agents, num, parse_code_target) -> tuple | None:
         if cmd == "help":
             return "", "", {"open": {"modal": "help"}}
+        if cmd == "chat":
+            agent, _, msg = rest.partition(" ")
+            if agent not in agents:
+                return tr("Dùng: /chat <agent> <tin nhắn>  — agent: {v}", v=", ".join(agents)), "warn"
+            reply = self.chat(agent, msg) if msg.strip() else None
+            return reply or ("", "", {"open": {"view": "team", "chat": agent}})
         if cmd == "task":
             spec, _, prompt = rest.partition(" ")
             m = re.fullmatch(r"([^:@]+)(?::([^@]+))?(?:@(.+))?", spec)

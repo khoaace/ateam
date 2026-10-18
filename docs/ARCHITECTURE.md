@@ -227,6 +227,27 @@ với code nói về "rate limit"), tìm mẫu trong 30 dòng cuối. `reset_tim
 `|<epoch>` (Claude), `try again in N minutes`, `resets at 3pm`; không có thì `cooldown_minutes`.
 Cooldown lưu ở `~/.config/ateam/state.json` (`cooldown`), dùng chung mọi dự án.
 
+## Chat trực tiếp với agent
+
+`Orchestrator.chat(agent, text, new=False)` tạo task `source="chat"` (`CHAT`), `parent_id` = lượt chat trước của
+agent đó (`chat_last`); lượt trước có phiên cùng agent thì đặt `session` + `resume=text` như `/continue t<id>`, nên
+`_run_agent` chạy `--resume` chỉ với tin mới (mất phiên → `thread_prompt` với `thread_of`, đi ngược chuỗi `followup`
+và `chat`). Mỗi agent một lượt chat một lúc. Khác task thường: `tick()` không chờ `paused`/`max_parallel`/
+`max_concurrent`, không đổi sang agent dự phòng (đang hết hạn mức → FAILED kèm lời nhắn); `_run_task` chạy ở thư
+mục gốc (không worktree), không verify, không `<<<ASK>>>`, không DELEGATE, kết quả = `extract_summary(…, 12000)`.
+Bảng việc (TUI `_refresh_table`, web `boardTasks()`), `finished_ids` (/clear) và gợi ý /continue bỏ qua task chat.
+`chat_reset(agent)` / `/new`: tin kế tiếp không nối phiên cũ.
+
+"Mở trong terminal": `AgentConfig.interactive_argv(session)` (`INTERACTIVE_RESUME` ở `config.py`: `claude --resume`,
+`codex resume`, `grok --resume`; CLI khác mở trơn; agent tuỳ chỉnh → None), phiên lấy từ
+`Orchestrator.terminal_session` (lượt chat gần nhất — CLI tìm phiên theo thư mục, nên không lấy phiên của worktree).
+TUI: `App.suspend()` + `asyncio.create_subprocess_exec` (vòng lặp vẫn chạy, Textual chỉ ngừng đọc phím/vẽ; SIGINT
+tạm gắn handler rỗng để Ctrl+C lọt ra không giết ateam). Web: `pty_session.PtySession` — pty có kích thước, pty là
+terminal điều khiển (`TIOCSCTTY` sau `setsid`) để đổi kích thước phát SIGWINCH, byte thô hai chiều; op WebSocket
+`pty_open|pty_in|pty_resize|pty_close` (chặn ở `--readonly`), output tin `pty` (base64) chỉ gửi tab đã mở, `pty_exit`
+khi thoát; tab đóng / server tắt thì đóng hết. Trình duyệt: `xterm.js` + addon fit ở `webui/vendor/` (chép từ
+`scripts/editor`, `npm run term`), nạp khi mở lần đầu.
+
 ## Lệnh terminal (`!lệnh`)
 
 `shell.ShellManager` (một instance trong `TeamApp`, tách khỏi Orchestrator — lệnh của người dùng không phải

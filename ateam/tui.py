@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import time
 import unicodedata
 from collections import deque
@@ -19,7 +20,7 @@ from pathlib import Path
 from rich.style import Style
 from rich.text import Text
 from textual import events, on
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.geometry import Size
@@ -41,7 +42,7 @@ from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, T
                      save_commit_agent, save_custom_item, save_state,
                      save_project_setting, workflow_to_dict)
 from .db import ACTIVE, ASKING, DB, GOAL_ENDED
-from .orchestrator import SYSTEM, Orchestrator
+from .orchestrator import CHAT, SYSTEM, Orchestrator
 from .logtail import LOG_TAIL_BYTES, read_log_tail  # noqa: F401 (test import từ tui)
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, tr
 
@@ -240,6 +241,7 @@ WELCOME = tr("""\
 # lệnh cho bảng gợi ý khi gõ "/" (tên, tham số, mô tả ngắn) — giữ khớp với TeamApp.run_command
 COMMANDS = [
     ("task", tr("<agent> <nội dung>"), tr("giao tay cho 1 agent, gửi nguyên văn")),
+    ("chat", tr("<agent> [tin nhắn]"), tr("chat trực tiếp với 1 agent như trong terminal (giữ phiên, ô 💬 ở tab Đội)")),
     ("go", tr("[mục tiêu]"), tr("duyệt kế hoạch nháp và chạy")),
     ("drop", tr("[mục tiêu]"), tr("bỏ kế hoạch nháp (huỷ mọi task nháp của nó)")),
     ("goal", tr("<mục tiêu>"), tr("trưởng nhóm lập kế hoạch (bỏ qua workflow mặc định)")),
@@ -746,6 +748,15 @@ class AgentPane(Vertical):
         # sinh thanh cuộn ngang, chữ bị cắt và vuốt trackpad làm log trôi sang ngang
         yield ReflowLog(classes="pane-log", wrap=True, markup=False, highlight=False,
                       max_lines=3000, min_width=1)
+        yield Input(placeholder=tr("💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: mở CLI thật)",
+                                   agent=self.agent), classes="pane-chat")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        text = event.value.strip()
+        event.input.value = ""
+        if text:
+            self.app.send_chat(self.agent, text)
 
     @property
     def head(self) -> Static:
@@ -4094,6 +4105,8 @@ class TeamApp(App):
     .agentpane.failed { border: round $error; }
     .pane-head { height: auto; padding: 0 1; background: $boost; }
     .pane-log { height: 1fr; padding: 0 1; overflow-x: hidden; }
+    .pane-chat { height: 1; margin: 0; padding: 0 1; border: none; background: $boost; }
+    .pane-chat:focus { border: none; background: $accent 25%; }
     #timeline { height: auto; max-height: 14; padding: 0 1; border-top: solid $primary-darken-2; }
     #cmd { dock: bottom; margin: 0 0 2 0; }
     /* Footer, thanh trạng thái, ô nhập cùng dock dưới: chồng nhau nên đẩy bằng margin */
@@ -5628,7 +5641,7 @@ class TeamApp(App):
     def _refresh_table(self) -> None:
         table = self.query_one("#tasks", DataTable)
         now = time.time()
-        tasks = self.snap_tasks()
+        tasks = [t for t in self.snap_tasks() if t.source != CHAT]  # lượt chat hiện ở ô agent (tab Đội)
         empty = self.query_one("#tasks-empty", Static)
         table.display, empty.display = bool(tasks), not tasks
         alive = {t.id for t in tasks}
@@ -6379,6 +6392,60 @@ class TeamApp(App):
             self.notify(tr("'{effort}' không có trong danh sách của {agent}: {v} — vẫn dùng, nhưng "
                            "CLI có thể báo lỗi", effort=effort, agent=agent, v=', '.join(a.efforts)), severity="warning")
 
+    def open_agent_terminal(self, agent: str) -> None:
+        self.run_worker(self._agent_terminal(agent), exclusive=True, group="agent-term")
+
+    async def _agent_terminal(self, agent: str) -> None:
+        """Nhường terminal cho CLI thật của agent (tiếp tục phiên chat), thoát CLI thì quay lại ateam. Vòng lặp vẫn
+        chạy (task khác vẫn chạy, chỉ không vẽ màn hình) nên dùng tiến trình con async, không subprocess.run."""
+        a = self.cfg.agents.get(agent)
+        argv = a.interactive_argv(self.orch.terminal_session(agent)) if a else None
+        if not argv:
+            self.notify(tr("Không biết cách mở {agent} ở chế độ tương tác (agent tuỳ chỉnh) — tự mở trong terminal khác",
+                           agent=agent), severity="warning")
+            return
+        cmd = " ".join(shlex.quote(x) for x in argv)
+        loop = asyncio.get_running_loop()
+        try:
+            with self.suspend():
+                print(tr("\n── {agent}: {cmd} — thoát CLI để quay lại ateam ──\n", agent=agent, cmd=cmd), flush=True)
+                # Ctrl+C lọt ra ngoài CLI (lúc nó chưa vào raw mode) không được giết luôn ateam; handler (không phải
+                # SIG_IGN) để tiến trình con vẫn nhận Ctrl+C bình thường sau exec
+                loop.add_signal_handler(signal.SIGINT, lambda: None)
+                try:
+                    proc = await asyncio.create_subprocess_exec(*argv, cwd=str(self.root))
+                    await proc.wait()
+                finally:
+                    loop.remove_signal_handler(signal.SIGINT)
+        except SuspendNotSupported:
+            self.copy_to_clipboard(cmd)
+            self.notify(tr("Giao diện này không nhường terminal được — chạy trong terminal khác (đã chép): {cmd}",
+                           cmd=cmd), timeout=12)
+        except OSError as e:
+            self.notify(tr("Không chạy được {cmd}: {e}", cmd=cmd, e=e), severity="error")
+        self.refresh_view()
+
+    def send_chat(self, agent: str, text: str) -> None:
+        """Ô 💬 của ô agent (tab Đội) và /chat: mỗi tin là một lượt chạy tiếp phiên CLI của agent."""
+        pane = self.pane(agent)
+        if text in ("/term", "/terminal"):
+            self.open_agent_terminal(agent)
+            return
+        new = text == "/new" or text.startswith("/new ")
+        if new:
+            text = text[4:].strip()
+            if pane:
+                pane.body.write(Text(tr("── cuộc trò chuyện mới ──"), "dim"))
+            if not text:
+                self.orch.chat_reset(agent)
+                return
+        res = self.orch.chat(agent, text, new=new)
+        if isinstance(res, str):
+            self.notify(res, severity="warning")
+            return
+        if pane:
+            pane.body.write(Text(tr("› bạn: {text}", text=text), "bold"))
+
     def run_command(self, text: str) -> None:
         cmd, _, rest = text[1:].partition(" ")
         cmd, rest = cmd.lower(), rest.strip()
@@ -6403,6 +6470,18 @@ class TeamApp(App):
             agent, model, effort = m.group(1), m.group(2), m.group(3)
             self._check_effort(agent, effort)
             o.add_task(agent, prompt.strip(), model=model, effort=effort)
+        elif cmd == "chat":
+            agent, _, msg = rest.partition(" ")
+            if agent not in agents:
+                self.notify(tr("Dùng: /chat <agent> <tin nhắn>  — agent: {v}", v=", ".join(agents)), severity="warning")
+                return
+            self.query_one("#tabs", TabbedContent).active = "tab-team"
+            if msg.strip():
+                self.send_chat(agent, msg.strip())
+            else:
+                p = self.pane(agent)
+                if p:
+                    p.query_one(".pane-chat", Input).focus()
         elif cmd in ("model", "effort"):
             parts = rest.split(maxsplit=1)
             if not parts or parts[0] not in self.cfg.agents:

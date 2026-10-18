@@ -7,7 +7,7 @@ const S = {
   view: "board", goalFilter: null, openTask: null, drawerTab: "log", openJob: null,
   expanded: new Set(), editing: null, rejecting: false,
   logs: [], agentLogs: {}, jobLines: {}, scripts: null, scriptsAt: 0,
-  live: {}, full: {},  // live: dòng cuối của task đang chạy (tin "live"); full: prompt/kết quả đã tải của task
+  live: {}, full: {}, ptys: {},  // live: dòng cuối của task đang chạy (tin "live"); full: prompt/kết quả đã tải của task
   suggest: { items: [], i: 0, kind: "", nav: false },
 };
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -57,6 +57,8 @@ function connect() {
     if (m.t === "hello") onHello(m);
     else if (m.t === "state") { S.state = m; render(); }
     else if (m.t === "lines") onLines(m.items);
+    else if (m.t === "pty") ptyData(m);
+    else if (m.t === "pty_exit") ptyExit(m);
     else if (m.t === "live") { S.live = m.last || {}; if (S.state && S.view === "board") renderKanban(); }
     else if (m.t === "toast") onToast(m);
     else if (m.t === "notice") onNotice(m);
@@ -125,6 +127,8 @@ function onToast(m) {
   if (o.search != null) { setView("code"); CodeView.search(o.search); }
   if (o.task != null) openTask(o.task);
   if (o.view) setView(o.view);
+  if (o.chat) setTimeout(() => focusChat(o.chat), 50);
+  if (o.pty != null) ptyModal(o.pty, o.title || "");  // /chat <agent>: tới ô 💬 của agent đó
   if (o.git_ai && window.GitView) GitView.aiMessage();
   if (o.modal === "help") helpModal();
   if (o.modal === "theme") themeModal();
@@ -314,7 +318,7 @@ async function loadAgentTail(name) {
 const STATUS_LABEL = (s) => t(s);
 function counts() {
   const c = { running: 0, queued: 0, review: 0, failed: 0, draft: 0 };
-  for (const x of S.state.tasks) {
+  for (const x of boardTasks()) {
     if (x.status === "running") c.running++;
     else if (x.status === "queued") c.queued++;
     else if (x.status === "review" || x.status === "conflict" || x.status === "asking") c.review++;
@@ -578,9 +582,10 @@ const COLUMNS = [
   { key: "done", st: ["done"], c: "var(--done)" },
   { key: "bad", st: ["failed", "blocked", "cancelled"], c: "var(--failed)" },
 ];
+const boardTasks = () => S.state.tasks.filter((x) => x.source !== "chat");  // lượt chat hiện ở thẻ agent (tab Đội)
 function renderKanban() {
   const box = $("#kanban");
-  let tasks = S.state.tasks;
+  let tasks = boardTasks();
   if (S.goalFilter != null) tasks = tasks.filter((x) => x.goal === S.goalFilter);
   const cols = COLUMNS.filter((c) => !c.optional || tasks.some((x) => c.st.includes(x.status)));
   if (box.childElementCount !== cols.length || box.dataset.cols !== cols.map((c) => c.key).join()) {
@@ -651,11 +656,16 @@ function renderTeam() {
     box.dataset.sig = sig;
     box.innerHTML = S.state.agents.map((a) => `<div class="agent-card" data-agent="${esc(a.name)}">
       <div class="agent-head" data-head></div><div class="acts" data-acts></div>
-      <div class="mini-log log" data-mini="${esc(a.name)}"></div></div>`).join("");
+      <div class="mini-log log" data-mini="${esc(a.name)}"></div>
+      <form class="chat-row" data-chat="${esc(a.name)}">
+        <input class="field one chat-in" autocomplete="off" placeholder="${esc(t("chat_ph", { agent: a.name }))}">
+        <button class="btn sm" type="submit">${esc(t("chat_send"))}</button>
+        <button class="btn sm ghost" type="button" data-action="agent-term" data-agent="${esc(a.name)}" title="${esc(t("open_term"))}" aria-label="${esc(t("open_term"))}">⌨</button>
+      </form></div>`).join("");
     for (const a of S.state.agents) {
       const mini = $(`[data-mini="${CSS.escape(a.name)}"]`);
-      appendLines(mini, S.agentLogs[a.name] || [], 300);
-      mini.scrollTop = mini.scrollHeight;
+      if (S.agentLogs[a.name]) { appendLines(mini, S.agentLogs[a.name], 300); mini.scrollTop = mini.scrollHeight; }
+      else loadAgentTail(a.name);  // mới mở trang: phần cuối việc gần nhất của agent
     }
   }
   for (const a of S.state.agents) {
@@ -677,6 +687,75 @@ function renderTeam() {
         <span class="lbl">${esc(act.label)}</span>${elapsedHtml(act.started)}
       </div>`).join("");
   }
+}
+
+document.addEventListener("submit", (e) => {  // ô 💬 trên thẻ agent
+  const f = e.target.closest("form[data-chat]");
+  if (!f) return;
+  e.preventDefault();
+  const inp = $(".chat-in", f), text = inp.value.trim();
+  if (!text) return;
+  if (text === "/term" || text === "/terminal") { inp.value = ""; agentTerminal(f.dataset.chat); return; }
+  if (send("chat", { agent: f.dataset.chat, text })) inp.value = "";
+});
+
+/* ⌨ "Mở trong terminal": CLI thật của agent (tiếp tục phiên chat) trong xterm.js — nạp khi dùng lần đầu */
+function loadScript(src) {
+  return new Promise((ok, fail) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = fail; document.head.appendChild(s); });
+}
+let termLib = null;
+function loadTerm() {
+  if (!termLib) {
+    const l = document.createElement("link");
+    l.rel = "stylesheet"; l.href = "/static/vendor/xterm.css";
+    document.head.appendChild(l);
+    termLib = loadScript("/static/vendor/xterm.js").then(() => loadScript("/static/vendor/xterm-fit.js"));
+  }
+  return termLib;
+}
+async function agentTerminal(agent) {
+  try { await loadTerm(); } catch (e) { toast(t("disconnected"), "error"); return; }
+  send("pty_open", { agent, rows: 30, cols: 100 });
+}
+const PTY_KEYS = [["Esc", "\x1b"], ["Tab", "\t"], ["⇧Tab", "\x1b[Z"], ["Ctrl+C", "\x03"], ["↑", "\x1b[A"], ["↓", "\x1b[B"], ["Enter", "\r"]];
+function ptyModal(id, title) {
+  const m = openModal(`${modalHead("⌨ " + esc(title))}<div class="pty-box"></div>
+    <div class="pty-keys">${PTY_KEYS.map(([k], i) => `<button class="btn sm ghost" data-k="${i}">${esc(k)}</button>`).join("")}</div>`,
+    { box: "lg", cls: "pty", sticky: true, onClose: () => { send("pty_close", { id }); delete S.ptys[id]; } });
+  const box = $(".pty-box", m), cs = getComputedStyle(document.documentElement);
+  const term = new Terminal({ cursorBlink: true, fontSize: 13, scrollback: 5000,
+    fontFamily: cs.getPropertyValue("--mono").trim() || "monospace",
+    theme: { background: cs.getPropertyValue("--term-bg").trim() || "#0b0d10", foreground: cs.getPropertyValue("--term-fg").trim() || "#e6e6e6" } });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(box);
+  S.ptys[id] = term;
+  term.onData((data) => send("pty_in", { id, data }));
+  term.onResize(({ rows, cols }) => send("pty_resize", { id, rows, cols }));
+  const refit = () => { try { fit.fit(); } catch (e) { /* đang đóng */ } };
+  new ResizeObserver(refit).observe(box);
+  refit();
+  send("pty_resize", { id, rows: term.rows, cols: term.cols });
+  m.addEventListener("click", (e) => {  // phím khó gõ trên điện thoại
+    const b = e.target.closest("[data-k]");
+    if (b) { send("pty_in", { id, data: PTY_KEYS[+b.dataset.k][1] }); term.focus(); }
+  });
+  term.focus();
+}
+function ptyData(m) {
+  const term = S.ptys[m.id];
+  if (!term) return;
+  const bin = atob(m.data), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  term.write(bytes);
+}
+function ptyExit(m) {
+  const term = S.ptys[m.id];
+  if (term) term.write(`\r\n\x1b[2m[${esc(t("pty_exit", { rc: m.rc }))}]\x1b[0m\r\n`);
+}
+function focusChat(agent) {
+  const f = $(`form[data-chat="${CSS.escape(agent)}"]`);
+  if (f) { f.scrollIntoView({ block: "nearest" }); $(".chat-in", f).focus(); }
 }
 
 /* terminal */
@@ -1477,6 +1556,7 @@ const ACTIONS = {
   "reject-send": (el) => { send("reject", { task: +el.dataset.task, feedback: $("#reject-fb").value }); S.rejecting = false; renderDrawer(true); },
   "reject-cancel": () => { S.rejecting = false; renderDrawer(true); },
   "diff": (el) => DiffView.task(+el.dataset.task),
+  "agent-term": (el) => agentTerminal(el.dataset.agent),
   "agent-pick": (el) => { const a = S.meta.agents.find((x) => x.name === el.dataset.agent); if (a) pickerModal({ agent: a.name, key: "model", items: a.models, current: a.model, then_effort: true }); },
   "open-job": (el) => openJob(+el.dataset.job),
   "job": (el) => send("job", { id: +el.dataset.job, action: el.dataset.act }),
@@ -1496,6 +1576,7 @@ document.addEventListener("change", (e) => {
   if (el.dataset.action === "plan-assign") send("assign", { task: +el.dataset.task, agent: el.value });
 });
 document.addEventListener("keydown", (e) => {
+  if (e.target.closest && e.target.closest(".xterm")) return;  // phím gõ trong terminal là của CLI (Esc, Ctrl+K…)
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (S.view === "code") setView("board"); input.focus(); return; }
   if (e.key === "F2") {
     e.preventDefault();

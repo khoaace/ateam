@@ -239,6 +239,19 @@ và log trực tiếp (mỗi lần chạy có vạch ▶ bắt đầu / ■ kế
 một hàng, mỗi task một đoạn màu (tím = đang chạy, xanh = xong, đỏ = lỗi, vàng = trưởng nhóm đang lập
 kế hoạch/review). Ctrl+T để quay lại Bảng việc.
 
+### Chat trực tiếp với một agent (💬)
+
+Mỗi ô agent có dòng **💬 Nhắn …** (web: ô chat dưới thẻ agent; hoặc `/chat <agent> [tin]` từ ô nhập chính). Mỗi tin
+là một lượt chạy *tiếp đúng phiên CLI* của tin trước (`--resume` với claude/codex/grok; CLI không giữ phiên được thì
+ateam gửi kèm các lượt trước) — như gõ trong terminal của CLI đó. Lượt chat chạy ở thư mục dự án, không chạy lệnh kiểm
+tra, không worktree, không giao việc chéo và không hiện trên Bảng việc; trả lời hiện ngay trong ô agent.
+
+- `/new` (trong ô chat): bắt đầu cuộc trò chuyện mới (phiên CLI mới).
+- `/term` hoặc nút **⌨** (web): mở **CLI thật** của agent ở chế độ tương tác, tiếp tục phiên chat — TUI tạm nhường
+  cả terminal (thoát CLI để quay lại ateam, các task khác vẫn chạy); web mở cửa sổ terminal (xterm.js) có hàng phím
+  Esc · Tab · Ctrl+C · ↑↓ cho điện thoại. Ở đây dùng được mọi thứ của CLI (slash command, hỏi quyền…), nhưng ateam
+  không đọc được kết quả của phần này.
+
 ## Model & effort từng agent
 
 Trong app (được lưu lại cho lần sau, ở `~/.config/ateam/state.json`):

@@ -200,6 +200,15 @@ CATALOG: dict[str, dict] = {
 # Giữ phiên giữa các lượt (/retry, vòng sửa verify, /continue, trả lời <<<ASK>>>): cờ đặt id phiên cho lượt
 # mới, cờ tiếp tục phiên, regex bắt id trong output (khi CLI không cho tự đặt id). Ghi đè bằng khoá cùng tên
 # trong [agents.<tên>]; [] = tắt. agy/opencode: chưa có cách lấy id chắc chắn → chạy như cũ (xem ROADMAP).
+# Mở CLI thật (giao diện tương tác) và tiếp tục phiên {session} mà ateam đã chạy headless — "Mở trong terminal".
+# CLI không có ở đây (hoặc agent tuỳ chỉnh bọc qua bash…) thì không mở được.
+INTERACTIVE_RESUME: dict[str, list[str]] = {
+    "claude": ["--resume", "{session}"],
+    "codex": ["resume", "{session}"],
+    "grok": ["--resume", "{session}"],
+    "agy": [], "opencode": [], "gemini": [], "aider": [],
+}
+
 _WHICH: dict[tuple, tuple[float, str | None]] = {}
 WHICH_TTL = 10.0
 
@@ -376,6 +385,14 @@ class AgentConfig:
     @property
     def binary(self) -> str:
         return self.command[0] if self.command else ""
+
+    def interactive_argv(self, session: str | None = None) -> list[str] | None:
+        """Lệnh mở CLI của agent ở chế độ tương tác (như gõ trong terminal), tiếp tục phiên `session` nếu CLI hỗ
+        trợ. None: không biết cách mở (agent tuỳ chỉnh)."""
+        tpl = INTERACTIVE_RESUME.get(Path(self.binary).name)
+        if tpl is None:
+            return None
+        return [self.binary] + ([a.replace("{session}", session) for a in tpl] if session and tpl else [])
 
     def installed(self) -> bool:
         return bool(self.binary) and which(self.binary) is not None

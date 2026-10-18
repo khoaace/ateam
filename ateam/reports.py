@@ -116,7 +116,7 @@ def continue_candidates(db: DB, tasks: list | None = None, goals: list | None = 
     has_next = {t.parent_id for t in tasks if t.source == "followup" and t.goal_id is None}
     n = 0
     for task in reversed(tasks):
-        if task.goal_id is not None or task.status in ACTIVE or task.id in has_next:
+        if task.goal_id is not None or task.status in ACTIVE or task.id in has_next or task.source == "chat":
             continue
         out.append({"ref": f"t{task.id}", "kind": "task", "status": task.status, "title": task.title,
                     "summary": "", "agent": task.agent})

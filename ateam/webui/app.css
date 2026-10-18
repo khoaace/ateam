@@ -352,7 +352,12 @@ select.agent-select:focus { border-color: var(--accent); }
 .act:hover { background: var(--surface-2); }
 .act .title { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act .lbl { font-size: 11px; color: var(--muted); }
-.mini-log { margin: 0 10px 10px; height: 210px; overflow: auto; border-radius: var(--radius); border: 1px solid var(--border); background: var(--term-bg); color: var(--term-fg); padding: 8px 10px; font: 12px/1.55 var(--mono); }
+.chat-row { display: flex; gap: 6px; margin: 0 10px 10px; }
+.chat-row .chat-in { flex: 1; min-width: 0; }
+.modal.pty .modal-box { height: min(80vh, 760px); }
+.pty-box { flex: 1; min-height: 0; padding: 6px 8px; background: var(--term-bg); }
+.pty-keys { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border); }
+.mini-log { margin: 0 10px 8px; height: 210px; overflow: auto; border-radius: var(--radius); border: 1px solid var(--border); background: var(--term-bg); color: var(--term-fg); padding: 8px 10px; font: 12px/1.55 var(--mono); }
 
 /* ---------------------------------------------------------------- log */
 .log { font: 12px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--term-fg); }

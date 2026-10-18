@@ -2972,4 +2972,40 @@ EN: dict[str, str] = {
         '⚠ #{id}: could not reopen branch {branch} ({v}) — starting over from HEAD',
     'Thư mục chính đang merge dở — hoàn tất hoặc huỷ merge đó rồi /merge {id}':
         'The main folder has a merge in progress — finish or abort it, then /merge {id}',
+    "Không có agent '{agent}' — agent: {v}":
+        "No agent '{agent}' — agents: {v}",
+    'Gõ nội dung tin nhắn cho {agent}':
+        'Type a message for {agent}',
+    '{agent} đang trả lời tin trước — đợi xong (hoặc /cancel {tid})':
+        '{agent} is still answering the previous message — wait for it (or /cancel {tid})',
+    '{agent} đang hết hạn mức (đến {v})':
+        '{agent} is out of quota (until {v})',
+    '<agent> [tin nhắn]':
+        '<agent> [message]',
+    'chat trực tiếp với 1 agent như trong terminal (giữ phiên, ô 💬 ở tab Đội)':
+        'chat directly with one agent like in its terminal (keeps the session, 💬 box on the Team tab)',
+    'Không biết cách mở {agent} ở chế độ tương tác (agent tuỳ chỉnh) — tự mở trong terminal khác':
+        "Don't know how to open {agent} interactively (custom agent) — open it in another terminal yourself",
+    '💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: mở CLI thật)':
+        '💬 Message {agent}… (Enter sends · /new: new chat · /term: open the real CLI)',
+    '\n── {agent}: {cmd} — thoát CLI để quay lại ateam ──\n':
+        '\n── {agent}: {cmd} — exit the CLI to return to ateam ──\n',
+    'Giao diện này không nhường terminal được — chạy trong terminal khác (đã chép): {cmd}':
+        "This interface can't hand over the terminal — run it in another terminal (copied): {cmd}",
+    'Không chạy được {cmd}: {e}':
+        'Could not run {cmd}: {e}',
+    '› bạn: {text}':
+        '› you: {text}',
+    '── cuộc trò chuyện mới ──':
+        '── new conversation ──',
+    'Dùng: /chat <agent> <tin nhắn>  — agent: {v}':
+        'Usage: /chat <agent> <message>  — agents: {v}',
+    'Gửi':
+        'Send',
+    '💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: CLI thật)':
+        '💬 Message {agent}… (Enter sends · /new: new chat · /term: real CLI)',
+    'Mở CLI thật của agent (tiếp tục phiên chat) trong terminal':
+        "Open the agent's real CLI (continuing the chat session) in a terminal",
+    'CLI đã thoát (mã {rc}) — đóng cửa sổ này':
+        'CLI exited (code {rc}) — close this window',
 }

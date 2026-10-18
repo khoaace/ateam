@@ -28,7 +28,9 @@ SYSTEM_LOG_MAX = 5 * 1024 ** 2
 GRILL_MAX = 15  # /grill: số câu hỏi tối đa, tới đây trưởng nhóm phải chốt đặc tả
 
 SYSTEM = 0  # id "task" của log hệ thống
+CHAT = "chat"  # nguồn task của lượt chat trực tiếp với agent (Orchestrator.chat): không hiện ở bảng việc
 MAX_ASKS = 3  # số câu <<<ASK>>> tối đa một task được hỏi người dùng
+CHAT_REPLY_MAX = 12000  # độ dài câu trả lời chat giữ lại (thread / chuyển phiên)
 # --resume thất bại vì CLI không còn phiên đó (đã xoá, khác thư mục…) -> chạy lại với prompt đầy đủ
 SESSION_LOST_RE = re.compile(r"no conversation found|session[^\n]{0,60}not (?:be )?found|no (?:saved )?session"
                              r"|could not find[^\n]{0,30}(?:session|conversation|rollout|thread)"
@@ -72,6 +74,7 @@ class Orchestrator:
         self._bg: set[asyncio.Task] = set()
         self._usage_jobs: set[asyncio.Task] = set()  # đọc token sau mỗi lượt (run_until_idle chờ xong)
         self._cancel_req: set[int] = set()
+        self._chat_new: set[str] = set()  # agent mà tin chat kế tiếp bắt đầu cuộc mới
         self._wt_base: dict[int, str] = {}
         # hoạt động hiện tại của từng agent (cho tab Đội)
         self.activity: dict[str, dict] = {}
@@ -610,7 +613,7 @@ class Orchestrator:
         while p and p.id not in seen and len(turns) < limit:
             seen.add(p.id)
             turns.append((p.prompt, p.result or p.error or ""))
-            p = self.db.task(p.parent_id) if p.source == "followup" and p.parent_id else None
+            p = self.db.task(p.parent_id) if p.source in ("followup", CHAT) and p.parent_id else None
         return turns[::-1]
 
     def _insert_plan(self, gid: int, plan: list[dict], source: str,
@@ -678,7 +681,7 @@ class Orchestrator:
         ended = {gid for gid, g in goals.items() if g.status in GOAL_ENDED}
         tasks = self.db.tasks() if tasks is None else tasks
         drop = {t.id for t in tasks if t.status in (DONE,) + FINISHED_BAD
-                and (t.goal_id is None or t.goal_id in ended)}
+                and (t.goal_id is None or t.goal_id in ended) and t.source != CHAT}  # chat không ở bảng việc
         needed = {d for t in tasks if t.id not in drop for d in t.depends_on}
         drop -= needed  # task còn lại phụ thuộc vào nó: xoá đi thì task đó thành "bị chặn"
         left = {t.goal_id for t in tasks if t.id not in drop}
@@ -710,6 +713,48 @@ class Orchestrator:
                     extra=(' [' + extra + ']') if extra else '', title=title))
         self.emit("changed")
         return tid
+
+    def chat(self, agent: str, text: str, new: bool = False) -> int | str:
+        """Nhắn thẳng cho một agent như dùng CLI của nó trong terminal: mỗi tin là một lượt chạy tiếp đúng phiên CLI
+        của lượt chat trước (--resume), ở thư mục gốc, không verify/worktree/giao việc chéo. Trả id task của lượt,
+        hoặc chuỗi lỗi."""
+        a = self.cfg.active_agents().get(agent)
+        if not a:
+            return tr("Không có agent '{agent}' — agent: {v}", agent=agent, v=", ".join(self.cfg.active_agents()))
+        text = text.strip()
+        if not text:
+            return tr("Gõ nội dung tin nhắn cho {agent}", agent=agent)
+        last = self.chat_last(agent)
+        if last and last.status in (QUEUED, RUNNING):
+            return tr("{agent} đang trả lời tin trước — đợi xong (hoặc /cancel {tid})", agent=agent, tid=last.id)
+        if new or agent in self._chat_new:  # /new: cuộc trò chuyện mới, phiên CLI mới
+            self._chat_new.discard(agent)
+            last = None
+        title = text.splitlines()[0][:60] + ("…" if len(text) > 60 else "")
+        tid = self.db.add_task(agent, title, text, status=QUEUED, source=CHAT,
+                               parent_id=last.id if last else None)
+        if last and last.session and last.session_agent == agent:  # tiếp tục phiên: chỉ gửi tin mới
+            self.db.update_task(tid, session=last.session, session_agent=agent, resume=text)
+        self.emit("changed")
+        return tid
+
+    def chat_reset(self, agent: str) -> None:
+        """Tin chat kế tiếp với agent bắt đầu cuộc mới (không nối phiên cũ)."""
+        self._chat_new.add(agent)
+
+    def terminal_session(self, agent: str) -> str | None:
+        """Phiên CLI để "Mở trong terminal": của lượt chat gần nhất (chạy ở thư mục gốc — CLI tìm phiên theo thư mục),
+        không có thì của task gần nhất chạy ở thư mục gốc (chế độ shared)."""
+        tasks = [t for t in self.db.tasks() if t.agent == agent and t.session and t.session_agent == agent
+                 and (t.source == CHAT or not t.branch)]
+        chats = [t for t in tasks if t.source == CHAT]
+        pick = (chats or tasks)[-1:] if (chats or tasks) else []
+        return pick[0].session if pick else None
+
+    def chat_last(self, agent: str) -> Task | None:
+        """Lượt chat gần nhất với agent (để nối phiên)."""
+        rows = [t for t in self.db.tasks() if t.source == CHAT and t.agent == agent]
+        return rows[-1] if rows else None
 
     def assign(self, tid: int, agent: str) -> str:
         t = self.db.task(tid)
@@ -1053,7 +1098,14 @@ class Orchestrator:
                 continue
             if any(s != DONE for _, s in dep_status):
                 continue
-            if self.paused or len(self.runs) >= self.cfg.max_parallel:
+            chat = t.source == CHAT  # người dùng đang chờ trả lời: không xếp sau hàng đợi chung, không đổi agent
+            if not chat and (self.paused or len(self.runs) >= self.cfg.max_parallel):
+                continue
+            if chat and self.in_cooldown(t.agent):
+                self.db.update_task(t.id, status=FAILED, finished=time.time(),
+                                    error=tr("{agent} đang hết hạn mức (đến {v})", agent=t.agent,
+                                             v=self.cooldown_label(t.agent)))
+                changed = True
                 continue
             if self.in_cooldown(t.agent):
                 fb = self.pick_fallback(t.agent)
@@ -1064,7 +1116,7 @@ class Orchestrator:
                 t = self.db.task(t.id)
                 changed = True
             a = agents[t.agent]
-            if self.running_count(t.agent, index) >= a.max_concurrent:
+            if not chat and self.running_count(t.agent, index) >= a.max_concurrent:
                 continue
             if not a.installed():
                 self.db.update_task(t.id, status=FAILED,
@@ -1316,16 +1368,19 @@ class Orchestrator:
             log_file = open(self.log_path(tid), "w", encoding="utf-8")
             if t.resume:
                 self.db.update_task(tid, resume=None)
-            if self.use_worktree:
+            chat = t.source == CHAT
+            if chat:
+                can_ask = False  # như gõ trong CLI: agent hỏi lại thì người dùng nhắn tiếp
+            elif self.use_worktree:
                 workdir = await self._wt_prepare(t)
             deps = []
             for d in t.depends_on:
                 dt = self.db.task(d)
                 if dt:
                     deps.append((dt.id, dt.agent, dt.title, dt.result or ""))
-            if t.source == "user":  # /task: gửi nguyên văn người dùng gõ, không bọc vai trò/luật
+            if t.source == "user" or (chat and not t.parent_id):  # /task, chat: gửi nguyên văn, không bọc vai trò/luật
                 full = t.prompt + P.qa_text(qa)
-            elif t.source == "followup" and t.goal_id is None:  # hỏi tiếp thread /task
+            elif (t.source == "followup" and t.goal_id is None) or chat:  # hỏi tiếp thread /task hoặc chat
                 full = P.thread_prompt(self.thread_of(t), t.prompt) + P.qa_text(qa)
             else:
                 full = P.task_prompt(
@@ -1334,7 +1389,7 @@ class Orchestrator:
                     cwd=str(workdir), can_delegate=t.depth < self.cfg.max_delegation_depth,
                     qa=qa, can_ask=can_ask)
             prompt = t.resume if sess else full
-            gate = bool(v.command) and agent.verify
+            gate = bool(v.command) and agent.verify and not chat
             before = await self._fingerprint(workdir) if gate and v.only_when_changed else None
             self.log(f"▶ #{tid} {t.agent}: {t.title}")
 
@@ -1345,8 +1400,11 @@ class Orchestrator:
             status, error = self._status_of(res, rc, agent)
             if res == "ratelimit":
                 self._set_cooldown(t.agent, run.output)
-                new_agent = self.pick_fallback(t.agent)
-                status, error = QUEUED, None
+                if chat:  # chat là với đúng agent này: báo lỗi, không lặng lẽ chuyển người khác
+                    status, error = FAILED, tr("{name} hết hạn mức", name=t.agent)
+                else:
+                    new_agent = self.pick_fallback(t.agent)
+                    status, error = QUEUED, None
             asked = P.parse_ask(run.output) if status == DONE and can_ask else None
 
             # ---- cổng kiểm tra: chạy test, fail thì giao sửa
@@ -1400,7 +1458,8 @@ class Orchestrator:
                     break
                 status, error = self._status_of(res, rc, fa)
 
-            summary = P.extract_summary(outputs[0]) if outputs else None
+            summary = (P.extract_summary(outputs[0], CHAT_REPLY_MAX) if chat else P.extract_summary(outputs[0])) \
+                if outputs else None
             if len(outputs) > 1 and status == DONE:
                 summary = (summary or "") + tr("\n(Đã sửa để qua kiểm tra: {v})", v=P.extract_summary(outputs[-1])[:600])
             for out in outputs:
@@ -1411,9 +1470,9 @@ class Orchestrator:
                 if self.use_worktree:
                     await self._wt_park(t, workdir)
                     parked = True
-            elif self.use_worktree:
+            elif self.use_worktree and not chat:
                 status, error = await self._wt_finish(t, workdir, status, error)
-            if status == DONE and not asked:
+            if status == DONE and not asked and not chat:
                 self._delegations(t, "\n".join(outputs))
         except Exception as e:
             status, error = FAILED, tr("Lỗi nội bộ: {e!r}", e=e)

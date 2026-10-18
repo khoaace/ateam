@@ -110,3 +110,13 @@ của TUI sang JS.
 `.ateam/tui.lock`, phiên thứ hai thấy `BusyApp`; `/lang` không `execv` vì tiến trình mới sẽ mồ côi, giữ khoá).
 **Xem lại nếu**: cần truy cập từ máy khác (cần token + TLS); cần nhiều tiến trình cùng lập lịch (nhận task nguyên
 tử trong SQLite); cần đổi theme Textual trên web (hiện web chỉ dùng chung màu nhấn).
+
+## 14. Chat với agent = các lượt headless nối phiên; terminal thật chỉ là lối "tiếp quản"
+
+**Lý do**: người dùng muốn nói chuyện với một agent như trong CLI của nó. Nhúng CLI tương tác làm kênh chính thì ateam
+mất hết thứ nó dựa vào (SUMMARY, `<<<ASK>>>`, thống kê, phân loại lỗi/hết hạn mức) vì giao diện toàn màn hình không
+bóc được. Nên chat chính là chuỗi task `source="chat"` chạy headless và `--resume` đúng phiên (hạ tầng của `/continue`),
+còn nút ⌨ / `/term` mở CLI thật trên *cùng phiên* cho lúc cần slash command, hỏi quyền từng bước… — phần đó ateam
+không theo dõi. Câu trả lời của claude `-p` chỉ hiện khi xong lượt (chưa stream, xem ROADMAP).
+**Xem lại nếu**: đọc được output JSON stream của từng CLI (khi đó chat có thể hiện chữ dần và đếm token thật).
+

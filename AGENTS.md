@@ -16,6 +16,7 @@ một đội trên cùng một repo của người dùng:
   khối `<<<DELEGATE …>>>` trong output.
 - Tự chạy lệnh kiểm tra sau task (fail thì giao sửa), worktree + duyệt diff trước khi merge,
   phát hiện hết hạn mức và chuyển sang agent dự phòng.
+- Chat 💬 trực tiếp với từng agent (tab Đội, `/chat`): mỗi tin một lượt `--resume` đúng phiên CLI; ⌨ / `/term` mở CLI thật.
 - Tab 🌿 Git quản lý git của dự án (stage, commit — AI viết message (trưởng nhóm hoặc agent chọn), nhánh, pull/push, stash, lịch sử).
 
 Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị cho người dùng viết bằng tiếng Việt.**
@@ -26,11 +27,12 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | --- | --- |
 | `ateam/cli.py` | Lệnh `ateam` (argparse): `tui` (mặc định, khoá 1 phiên/dự án), `web` (giao diện web; `--tui`: TUI qua textual-serve), `setup`, `goal`, `continue`, `add`, `run`, `diff`, `merge`, `reject`, `verify`, `usage`, `cooldown`, `set`, `doctor`, … |
 | `ateam/tui.py` | Giao diện Textual: tab Bảng việc, tab Đội (AgentPane + Timeline), wizard thiết lập (`OnboardScreen`), popup chung (`BaseModal`, nút `Btn`), log co giãn (`ReflowLog`), xem lại kế hoạch (`PlanViewScreen`, `/plan`), tab ✅ To-do (`TodoPanel`, lưu ở `todos.py`), agent/workflow tuỳ chỉnh (`CustomPanel` dùng ở tab 🧩 Tuỳ chỉnh và popup `CustomScreen`, `AgentEditScreen`, `WorkflowEditScreen`, `DefaultFlowScreen`), tab 📊 Thống kê (`_refresh_dash`), thông báo (`show_notices`), lệnh `/…`, phím tắt |
-| `ateam/web.py`, `web_git.py`, `web_code.py`, `web_setup.py`, `ateam/webui/` | `ateam web`: server aiohttp (một `Orchestrator` cho mọi tab, WebSocket đẩy ảnh chụp trạng thái, lệnh `/…` như TUI, `ui_strings()` cho chữ hiển thị) + trang HTML/CSS/JS thuần: `app.js` (Kanban, kế hoạch, /grill, Đội, Terminal, gợi ý lệnh, thông báo), `git.js`, `dash.js` (Thống kê), `code.js` (CodeMirror + vim ở `webui/vendor/`, build bằng `scripts/editor/`), `diff.js`, `setup.js` (/setup, mục Tuỳ chỉnh, popup Luồng mặc định), `lofi.js` (nhạc lofi: radio YouTube/stream online), `todo.js` (tab To-do; lưu ở `ateam/todos.py`, ngoài repo) |
+| `ateam/web.py`, `web_git.py`, `web_code.py`, `web_setup.py`, `ateam/webui/` | `ateam web`: server aiohttp (một `Orchestrator` cho mọi tab, WebSocket đẩy ảnh chụp trạng thái, lệnh `/…` như TUI, `ui_strings()` cho chữ hiển thị) + trang HTML/CSS/JS thuần: `app.js` (Kanban, kế hoạch, /grill, Đội, Terminal, gợi ý lệnh, thông báo), `git.js`, `dash.js` (Thống kê), `code.js` (CodeMirror + vim ở `webui/vendor/`, build bằng `scripts/editor/`; xterm.js cũng ở `vendor/`), `diff.js`, `setup.js` (/setup, mục Tuỳ chỉnh, popup Luồng mặc định), `lofi.js` (nhạc lofi: radio YouTube/stream online), `todo.js` (tab To-do; lưu ở `ateam/todos.py`, ngoài repo) |
 | `ateam/web_auth.py`, `ateam/qr.py` | `ateam web` từ xa (`--host`, `--tunnel` Cloudflare, `--public-url`, `--readonly`): token `.ateam/web_token` → cookie, chặn Origin lạ, khoá khi sai nhiều, chạy cloudflared; mã QR thuần Python (terminal + SVG, nút 📱) |
 | `ateam/wizard.py`, `ateam/reports.py` | Logic dùng chung TUI ↔ web: wizard /setup, form /custom, popup Luồng mặc định (`wizard`); /usage, dashboard + lịch sử mục tiêu, /agents, /flow, /models, gợi ý /continue (`reports`) |
 | `ateam/orchestrator.py` | Lõi: lập kế hoạch, `tick()` lập lịch, `_run_task`, verify, worktree/merge, hạn mức, review |
 | `ateam/runner.py` | `Run`: chạy 1 tiến trình (pipe hoặc pty), stream từng dòng, timeout, huỷ theo process group |
+| `ateam/pty_session.py`, `ateam/logtail.py` | `PtySession`: tiến trình tương tác trong pty nối hai chiều với xterm.js ("Mở trong terminal" ở web, chat 💬); `read_tail`/`read_log_tail`: đọc phần cuối file log |
 | `ateam/config.py` | `DEFAULT_CONFIG` (TOML), dataclass `Config`/`AgentConfig`/`VerifyConfig`/`Workflow`, `AgentConfig.argv()`, state.json, custom.toml (agent/workflow tuỳ chỉnh, mẫu) |
 | `ateam/db.py` | Schema SQLite + migration cột, `Task`/`Goal`, thống kê `runs` |
 | `ateam/prompts.py` | Prompt gửi trưởng nhóm/thành viên (tiếng Anh) + bóc JSON, DELEGATE, NOTE, SUMMARY |
