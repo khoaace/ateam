@@ -51,11 +51,15 @@ def installed_providers() -> list[str]:
 
 
 def models_of(cfg: Config, provider: str) -> list[str]:
-    """Model gợi ý cho một nhà cung cấp: hỏi được từ CLI (agent có sẵn cùng lệnh) hoặc danh mục."""
-    a = cfg.agents.get(builtin_agent(provider))
-    if a is None or provider_of(a.command) != provider:
-        a = next((x for x in cfg.agents.values() if provider_of(x.command) == provider), None)
-    return a.model_choices() if a else list(CATALOG.get(provider, {}).get("models", []))
+    """Model gợi ý cho một nhà cung cấp: gộp model của mọi agent cùng lệnh (kể cả agent tuỳ chỉnh) — agent có
+    sẵn có thể đang tắt nên chưa từng hỏi CLI, trong khi một agent tuỳ chỉnh cùng CLI đã có đủ danh sách thật —
+    agent nhiều model nhất (đã hỏi CLI) đứng trước; không có agent nào thì lấy danh mục."""
+    same = sorted((a for a in cfg.agents.values() if provider_of(a.command) == provider),
+                  key=lambda a: -len(a.models))
+    out: list[str] = []
+    for a in same:
+        out += [m for m in a.model_choices() if m not in out]
+    return out or list(CATALOG.get(provider, {}).get("models", []))
 
 
 def efforts_of(provider: str) -> list[str]:
@@ -253,11 +257,8 @@ def agent_body(fields: dict[str, str], pty: bool = False, verify: bool = True, f
 
 
 def quick_models(cfg: Config, provider: str) -> list[str]:
-    """Model cho form agent nhanh: hỏi được từ CLI ở agent có sẵn cùng lệnh, không thì danh mục."""
-    same = [a for n, a in cfg.agents.items() if provider_of(a.command) == provider and n not in cfg.custom_agents]
-    if same:
-        return same[0].model_choices()
-    return list(CATALOG.get(provider, {}).get("models", []))
+    """Model cho form agent nhanh: như models_of."""
+    return models_of(cfg, provider)
 
 
 def quick_body(cfg: Config, provider: str, model: str = "", effort: str = "", role: str = "",

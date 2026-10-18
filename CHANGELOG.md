@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.1 — 18/10/2026
+
+- Form thêm agent / chọn vai trò nhanh: danh sách model gộp từ mọi agent cùng CLI, kể cả agent tuỳ chỉnh. Trước đây
+  chỉ lấy từ agent có sẵn (vd `opencode`) — agent đó đang tắt thì chưa từng hỏi `opencode models`, nên form chỉ hiện
+  2 model trong danh mục dù agent tuỳ chỉnh chạy opencode đã có đủ danh sách thật.
+
 ## 0.24.0 — 18/10/2026
 
 - **Trưởng nhóm hỏi lại khi lập kế hoạch**: gõ mục tiêu bình thường mà có điểm quan trọng chưa rõ (đổi cách làm,

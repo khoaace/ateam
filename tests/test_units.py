@@ -823,3 +823,21 @@ def test_grok_shell_denial_is_detected():
         assert DENIED_RE.search(line), line
     for ok in ("Ran `git --version`; output was `git version 2.53.0`.", "SUMMARY: thêm kiểm tra quyền (permission) cho API"):
         assert not DENIED_RE.search(ok), ok
+
+
+def test_form_models_from_any_agent_of_same_cli():
+    """Form thêm agent: agent "opencode" có sẵn đang tắt (chưa hỏi CLI, chỉ có danh mục) nhưng agent tuỳ chỉnh cùng
+    CLI đã có danh sách thật -> gợi ý đủ model thật, không chỉ 2 model trong danh mục."""
+    from types import SimpleNamespace
+    from ateam import wizard
+    from ateam.config import AgentConfig
+    real = [f"opencode/m{i}" for i in range(30)]
+    cfg = SimpleNamespace(agents={
+        "opencode": AgentConfig(name="opencode", command=["opencode", "run", "{prompt}"], models=["xai/grok-4.7"]),
+        "deepseek": AgentConfig(name="deepseek", command=["opencode", "run", "{prompt}"], models=real),
+        "claude": AgentConfig(name="claude", command=["claude", "-p", "{prompt}"], models=["opus"]),
+    }, custom_agents={"deepseek"})
+    for f in (wizard.quick_models, wizard.models_of):
+        got = f(cfg, "opencode")
+        assert got[:30] == real and "xai/grok-4.7" in got and "opus" not in got
+    assert wizard.quick_models(SimpleNamespace(agents={}, custom_agents=set()), "opencode")  # danh mục
