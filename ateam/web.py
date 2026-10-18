@@ -23,7 +23,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import __version__, clipboard, mentions, notify, reports, shell, theme, todos, update, wizard
+from . import __version__, clipboard, mentions, notify, palette, reports, shell, theme, todos, update, wizard
 from .config import Config, found_models, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import ASKING, DB, GOAL_ENDED, Goal, Task
 from .qr import QR
@@ -167,6 +167,26 @@ def ui_strings() -> dict[str, str]:
         "diff_keys": tr("n/p: file · [ ]: đoạn đổi · s: 1 cột / 2 cột · e: mở trong Code · Esc: đóng"),
         # --- tab Code
         "code_filter": tr("Tìm file… (Enter mở · ⌘P)"), "code_nofile": tr("Không có file"),
+        # command palette tab Code (palette.py; chữ dùng chung với TUI)
+        "pal_ph": tr("Tên file… · > lệnh · @ symbol · :dòng · /tìm trong file"),
+        "pal_foot": tr("↑↓ chọn · Enter mở · > lệnh · @ symbol · : dòng · / tìm trong file · Esc đóng"),
+        "pal_recent": tr("Mở gần đây"), "pal_hint": tr("Gõ tên file · > lệnh · @ symbol · :dòng · /tìm trong file"),
+        "pal_nocmd": tr("Không có lệnh nào khớp"), "pal_nosym": tr("Không thấy symbol (hàm, class, heading) nào"),
+        "pal_line": tr("Tới dòng {v}"), "pal_line_hint": tr("Gõ số dòng (1–{n})"),
+        "pal_find_hint": tr("Gõ chữ cần tìm trong file"), "pal_nofind": tr("Không thấy \"{v}\" trong file"),
+        "pal_nofile": tr("Không có file nào khớp — > để xem lệnh"),
+        "pal_noopen": tr("Chưa mở file nào — gõ tên file để mở"),
+        "pal_new": tr("📄 File mới"), "pal_path": tr("đường/dẫn/file.ext"),
+        "pal_rename": tr("✎ Đổi tên / chuyển {v}", v="{v}"), "pal_delete": tr("Xoá file"),
+        "pal_delete_q": tr("Đưa {v} vào Thùng rác?", v="{v}"), "pal_delete_yes": tr("Xoá"),
+        "pal_choose_agent": tr("Chọn agent"), "pal_ask": tr("Hỏi {agent} về {v}", agent="{agent}", v="{v}"),
+        "pal_task": tr("Giao task cho {agent} về {v}", agent="{agent}", v="{v}"),
+        "pal_ask_ph": tr("vd: giải thích đoạn này / viết test cho hàm này"),
+        "pal_asked": tr("Đã hỏi {agent} — xem trả lời ở tab 👥 Đội", agent="{agent}"),
+        "pal_assigned": tr("Đã giao cho {agent}: {v}", agent="{agent}", v="{v}"),
+        "pal_copied": tr("Đã chép {v}", v="{v}"), "pal_save_first": tr("Lưu file trước khi đổi tên"),
+        "pal_line1": tr("(dòng {a})", a="{a}"), "pal_lines": tr("(dòng {a}–{b})", a="{a}", b="{b}"),
+        "pal_wrap_on": tr("Xuống dòng mềm: bật"), "pal_wrap_off": tr("Xuống dòng mềm: tắt"),
         "code_hint": tr("Chọn file ở cây bên trái, hoặc /code @file:dòng"),
         "code_vim_hint": tr("vim: i sửa · Esc · :w lưu · :q đóng · :bn/:bp đổi file · /vim off để tắt"),
         "code_novim_hint": tr("Ctrl/⌘+S lưu · /vim on để bật phím vim"), "code_plain": tr("văn bản"),
@@ -616,6 +636,7 @@ class WebApp:
                             "lead": n == self.cfg.lead, "label": a.label()}
                            for n, a in self.cfg.active_agents().items()],
                 "all_agents": list(self.cfg.agents),
+                "code_commands": palette.commands_json(),
                 "workflows": [{"name": n, "summary": w.summary(), "description": w.description}
                               for n, w in self.cfg.workflows.items()],
                 "accents": [{"key": k, "label": theme.accent_label(k), "color": c} for k, c in theme.ACCENTS.items()],
@@ -874,6 +895,8 @@ class WebApp:
             return await self.code.replace(d)
         if op == "save":
             return self.code.save(d)
+        if op in ("file_new", "file_rename", "file_delete", "open_vscode"):
+            return await self.code.file_op(op, d)
         if op == "setup_save":
             return await self.setup.save_setup(d)
         if op == "roles_save":

@@ -81,7 +81,12 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
     prompt cho agent khác, mở chat mới với agent đó. Gợi ý: `/handoff <từ> <tới> [yêu cầu]`.
 11. **Ngân sách chi phí theo mục tiêu** — `budget = 5.0` (USD) ở cấu hình hoặc `/goal --budget`; cộng `runs.cost` theo
     `goal_id`, vượt thì tạm dừng mục tiêu và hỏi người dùng.
-12. **Bảng lệnh (Ctrl+P)** cho cả TUI và web — tìm mờ trên `COMMANDS` + thao tác của tab đang mở.
+12. ~~**Bảng lệnh (Ctrl+P)**~~ — đã làm cho tab Code (`palette.py`). Còn: đưa cả lệnh `/…` (`COMMANDS`) và thao tác
+    của tab khác vào palette.
+13. **Tab Code kiểu VS Code, phần còn thiếu** — đi tới định nghĩa / tìm chỗ dùng (LSP: pyright, typescript-language-
+    server nếu có sẵn trên máy), dấu thay đổi git ở lề và git blame dòng, chia đôi màn hình hai file, format bằng
+    công cụ của dự án (prettier / ruff format nếu có), Ctrl+Tab đổi file theo thứ tự dùng gần nhất, outline cố
+    định bên phải.
 
 Ghi chú cho mục 3: khung chat (💬) hưởng lợi nhiều nhất — `claude -p` ở chế độ chữ chỉ in khi xong lượt, nên câu trả lời
 chat chưa hiện dần.

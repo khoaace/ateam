@@ -31,8 +31,8 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import (clipboard, diffview, editor, gitops, mentions, notify, reports, search, shell, theme, todos,
-               update, wizard)
+from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, reports, search, shell, theme,
+               todos, update, wizard)
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
 from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TIERS,
                      WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan,
@@ -211,6 +211,11 @@ Git (tab 🌿 Git — Ctrl+T xoay tới, hoặc /git):
                                     đổi nhánh, pull, stash bị chặn khi agent đang chạy task
 
 Xem & sửa code (tab 📝 Code — Ctrl+T xoay tới, hoặc /code):
+  Ctrl+P                            command palette: mở nhanh file (file gần đây trước); gõ > lệnh,
+                                    @ symbol (hàm, class, heading), :số tới dòng, /chữ tìm trong file.
+                                    F8 = lệnh, F9 = symbol (web: ⌘⇧P, ⌘⇧O). Lệnh: lưu tất cả, file mới,
+                                    đổi tên, xoá vào Thùng rác, xuống dòng mềm, xem diff git, mở VS Code,
+                                    hỏi / giao task cho agent về file hoặc đoạn đang chọn
   /code [@file[:dòng]]              mở file trong editor (trống: mở tab, gõ để lọc file bên trái);
                                     /edit @file cũng được
                                     phím e ở tab Git (file đang chọn) / màn hình diff (đúng đoạn đang xem)
@@ -3538,6 +3543,113 @@ class ConfirmScreen(BaseModal):
         self.close()
 
 
+class PromptScreen(BaseModal):
+    """Hỏi một dòng chữ (tên file mới, câu hỏi cho agent…). Trả về chữ đã gõ (đã strip, khác rỗng) hoặc None."""
+
+    DEFAULT_CSS = """
+    PromptScreen { align: center middle; }
+    #prompt-box { width: 90; max-width: 100%; height: auto; border: round $primary 70%; background: $surface;
+                  padding: 0 1; }
+    #prompt-hint { height: auto; color: $text-muted; margin-top: 1; }
+    """
+
+    def __init__(self, title: str, value: str = "", placeholder: str = "", hint: str = ""):
+        super().__init__()
+        self.title_text, self.value, self.placeholder, self.hint = title, value, placeholder, hint
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="prompt-box"):
+            yield self.title_bar(self.title_text)
+            yield TextInput(self.value, placeholder=self.placeholder, id="prompt-in")
+            yield Static(self.hint or tr("Enter xong · Esc huỷ"), id="prompt-hint")
+
+    def on_mount(self) -> None:
+        self.query_one("#prompt-in", TextInput).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        text = event.value.strip()
+        if text:
+            self.dismiss(text)
+
+
+class PaletteScreen(BaseModal):
+    """Command palette của tab 📝 Code, như VS Code: gõ để mở nhanh file (file mở gần đây đứng đầu), `>` lệnh,
+    `@` symbol trong file, `:số` tới dòng, `/chữ` tìm trong file. Danh sách do `app.palette_items(chữ)` dựng;
+    trả về giá trị của mục được chọn (vd ("file", đường dẫn), ("cmd", id), ("line", dòng)) hoặc None."""
+
+    DEFAULT_CSS = """
+    PaletteScreen { align: center top; }
+    #pal-box { width: 100; max-width: 100%; height: auto; max-height: 80%; margin-top: 2;
+               border: round $primary 70%; background: $surface; padding: 0 1; }
+    #pal-list { height: auto; max-height: 24; border: none; padding: 0; }
+    #pal-foot { height: 1; color: $text-muted; }
+    """
+    BINDINGS = [Binding("up", "move(-1)", show=False, priority=True),
+                Binding("down", "move(1)", show=False, priority=True),
+                Binding("pageup", "move(-10)", show=False, priority=True),
+                Binding("pagedown", "move(10)", show=False, priority=True)]
+
+    def __init__(self, query: str = ""):
+        super().__init__()
+        self.query_text = query
+        self.values: list = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="pal-box"):
+            yield TextInput(self.query_text, placeholder=tr("Tên file… · > lệnh · @ symbol · :dòng · /tìm trong file"),
+                            id="pal-q")
+            yield OptionList(id="pal-list")
+            yield Static(tr("↑↓ chọn · Enter mở · > lệnh · @ symbol · : dòng · / tìm trong file · Esc đóng"),
+                         id="pal-foot")
+
+    def on_mount(self) -> None:
+        q = self.query_one("#pal-q", TextInput)
+        q.focus()
+        q.cursor_position = len(q.value)
+        self.refill(q.value)
+
+    def refill(self, text: str) -> None:
+        items = self.app.palette_items(text)
+        self.values = [v for _label, v in items]
+        lst = self.query_one("#pal-list", OptionList)
+        lst.clear_options()
+        lst.add_options([Option(label, disabled=v is None) for label, v in items])
+        first = next((i for i, v in enumerate(self.values) if v is not None), None)
+        if first is not None:
+            lst.highlighted = first
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        event.stop()
+        self.refill(event.value)
+
+    def action_move(self, delta: int) -> None:
+        """↑↓ / PageUp PageDown từ ô gõ: dời mục đang chọn, bỏ qua dòng tiêu đề (giá trị None)."""
+        lst = self.query_one("#pal-list", OptionList)
+        i, step = (lst.highlighted if lst.highlighted is not None else -1), (1 if delta > 0 else -1)
+        for _ in range(abs(delta)):
+            j = i + step
+            while 0 <= j < len(self.values) and self.values[j] is None:
+                j += step
+            if not 0 <= j < len(self.values):
+                break
+            i = j
+        if 0 <= i < len(self.values):
+            lst.highlighted = i
+
+    def choose(self, index: int | None) -> None:
+        if index is not None and 0 <= index < len(self.values) and self.values[index] is not None:
+            self.dismiss(self.values[index])
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        self.choose(self.query_one("#pal-list", OptionList).highlighted)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        self.choose(event.option_index)
+
+
 class GitFileList(OptionList):
     """Danh sách file thay đổi ở tab Git. Space stage/bỏ stage, a stage tất cả, u bỏ stage tất cả,
     x bỏ thay đổi, Enter/d xem diff."""
@@ -3842,8 +3954,15 @@ class CodeEditor(TextArea):
         super()._set_document(text, language)
         # WrappedDocument.height của Textual cộng dồn trên mọi dòng mỗi lần vẽ 1 dòng (O(n) / dòng): file
         # 60 000 dòng mất hàng giây mỗi khung hình. Không xuống dòng mềm thì chiều cao = số dòng.
-        self.wrapped_document.__class__ = _NoWrapDocument
+        if not self.soft_wrap:
+            self.wrapped_document.__class__ = _NoWrapDocument
         self._max_width = None
+
+    def set_wrap(self, on: bool) -> None:
+        """Bật/tắt xuống dòng mềm (palette, `:set wrap`): bật thì dùng lại WrappedDocument gốc (chậm hơn với
+        file rất dài nhưng đúng chiều cao khi dòng gãy)."""
+        self.wrapped_document.__class__ = _WrappedDocument if on else _NoWrapDocument
+        self.soft_wrap = on
 
     def _refresh_size(self) -> None:
         # Textual đo lại độ rộng mọi dòng sau mỗi lần sửa (O(n)): giữ độ rộng lớn nhất, chỉ đo các dòng vừa
@@ -4175,6 +4294,11 @@ class TeamApp(App):
         Binding("ctrl+l", "syslog", tr("Log hệ thống"), priority=True),
         Binding("f3", "search", tr("Tìm trong dự án"), priority=True),
         Binding("f7", "focus_agent", tr("Phóng to agent"), show=False, priority=True),
+        # Command palette (tab 📝 Code) như VS Code; terminal thường không phân biệt Ctrl+Shift+P với Ctrl+P
+        # nên lệnh / symbol có thêm F8 / F9
+        Binding("ctrl+p", "palette('')", tr("Mở nhanh file"), show=False, priority=True),
+        Binding("f8,ctrl+shift+p", "palette('>')", tr("Lệnh"), show=False, priority=True),
+        Binding("f9,ctrl+shift+o", "palette('@')", tr("Symbol"), show=False, priority=True),
         *[Binding(f"alt+{i + 1}", f"goto_tab({i})", show=False, priority=True) for i in range(8)],
     ]
 
@@ -4554,6 +4678,8 @@ class TeamApp(App):
     CODE_YIELD = {"diff", "cancel_task", "retry", "approve", "continue", "merge", "syslog"}
 
     def check_action(self, action: str, parameters: tuple) -> bool | None:
+        if action == "palette" and isinstance(self.screen, ModalScreen):
+            return False  # đang mở popup khác (kể cả chính palette): để phím cho popup đó
         if action == "retry" and isinstance(self.screen, SearchScreen):
             return False  # Ctrl+R trong popup 🔍 = thay tất cả
         if action in self.CODE_YIELD:
@@ -4709,6 +4835,9 @@ class TeamApp(App):
         if not sf.mtime and not sf.text:
             ed.message = tr("File mới — :w để tạo")
         ed.focus()
+        if sf.mtime:
+            palette.touch_recent(self.root, self.code_rel(key))
+        self._code_syms = (key, None)  # symbol cho thanh "đang ở đâu": tính lại khi cần
         self.refresh_code_files()
         self._refresh_code_head()
 
@@ -4751,6 +4880,273 @@ class TeamApp(App):
         i = (self.code_order.index(self.code_cur) + delta) % len(self.code_order)
         self.open_code(self.code_rel(self.code_order[i]))
 
+    # ---------------------------------------------------------------- command palette (tab 📝 Code)
+    def action_palette(self, query: str = "") -> None:
+        """Ctrl+P mở nhanh file · F8 (Ctrl+Shift+P) lệnh · F9 (Ctrl+Shift+O) symbol trong file đang mở."""
+        ed = self.code_editor()
+        sf = ed.buffer
+        self._pal_syms = palette.symbols(sf.path, ed.text) if sf is not None and query.startswith("@") else None
+        self.push_screen(PaletteScreen(query), self._palette_done)
+
+    def palette_items(self, text: str) -> list[tuple[Text, object]]:
+        """Các dòng của palette theo chữ đang gõ: (nhãn, giá trị) — giá trị None = dòng tiêu đề / gợi ý."""
+        ed = self.code_editor()
+        sf = ed.buffer
+        dim = "dim"
+
+        def head(msg: str) -> tuple[Text, None]:
+            return Text(msg, dim), None
+
+        if text.startswith(">"):
+            out = []
+            for cid, label, key, _web in palette.fuzzy(palette.CODE_COMMANDS, text[1:],
+                                                         key=lambda c: c[1] + " " + palette.KEYWORDS.get(c[0], "")):
+                if cid in palette.NEEDS_FILE and sf is None:
+                    continue
+                t = Text(label)
+                if key:
+                    t.append(f"   {key}", dim)
+                out.append((t, ("cmd", cid)))
+            return out or [head(tr("Không có lệnh nào khớp"))]
+        if sf is None and text[:1] in ("@", ":", "/"):
+            return [head(tr("Chưa mở file nào — gõ tên file để mở"))]
+        if text.startswith("@"):
+            if getattr(self, "_pal_syms", None) is None:
+                self._pal_syms = palette.symbols(sf.path, ed.text)
+            icons = {"class": "◆", "type": "◇", "function": "ƒ", "method": "ƒ", "heading": "#"}
+            out = []
+            for sym in palette.fuzzy(self._pal_syms, text[1:], key=lambda x: x["name"]):
+                t = Text("  " * sym["depth"] + icons.get(sym["kind"], "•") + " ", dim)
+                t.append(sym["name"])
+                t.append(f"  :{sym['line']}", dim)
+                out.append((t, ("line", sym["line"], 0)))
+            return out or [head(tr("Không thấy symbol (hàm, class, heading) nào"))]
+        if text.startswith(":"):
+            arg = text[1:].strip()
+            n = ed.document.line_count
+            if arg.isdigit() and 1 <= int(arg) <= n:
+                return [(Text(tr("Tới dòng {v}", v=arg)), ("line", int(arg), 0))]
+            return [head(tr("Gõ số dòng (1–{n})", n=n))]
+        if text.startswith("/"):
+            q = text[1:]
+            if not q:
+                return [head(tr("Gõ chữ cần tìm trong file"))]
+            ql, out = q.lower(), []
+            for i, line in enumerate(ed.document.lines, 1):
+                col = line.lower().find(ql)
+                if col >= 0:
+                    t = Text(f"{i:>5}  ", dim)
+                    t.append(line.strip()[:120])
+                    out.append((t, ("line", i, col)))
+                    if len(out) >= 300:
+                        break
+            return out or [head(tr("Không thấy \"{v}\" trong file", v=q))]
+        # mở nhanh file: file gần đây trước, rồi khớp mờ trong cả dự án
+        idx = self.query_one("#cmd", CommandInput).index
+        if idx.stale():
+            self.run_worker(idx.refresh(), group="mention-index")
+        files = [e for e in idx.entries if not e.endswith("/")]
+        known = set(files)
+        recent = [f for f in palette.recent_files(self.root) if f in known or (self.root / f).is_file()]
+        out = []
+        if not text.strip():
+            if recent:
+                out.append(head(tr("Mở gần đây")))
+                out += [(Text(f), ("file", f)) for f in recent]
+            out.append(head(tr("Gõ tên file · > lệnh · @ symbol · :dòng · /tìm trong file")))
+            return out
+        hits = palette.fuzzy(recent, text, limit=8)
+        out += [(Text("🕘 " + f), ("file", f)) for f in hits]
+        seen = set(hits)
+        out += [(Text(f), ("file", f)) for f in mentions.search(files, text, limit=80) if f not in seen]
+        return out or [head(tr("Không có file nào khớp — > để xem lệnh"))]
+
+    def _palette_done(self, value) -> None:
+        if not value:
+            return
+        kind = value[0]
+        if kind == "file":
+            self.open_code(value[1])
+        elif kind == "line":
+            ed = self.code_editor()
+            row = max(0, min(value[1] - 1, ed.document.line_count - 1))
+            self.query_one("#tabs", TabbedContent).active = "tab-code"
+            ed.move_cursor((row, value[2] if len(value) > 2 else 0), center=True)
+            ed.focus()
+        elif kind == "cmd":
+            self.code_command(value[1])
+
+    def code_selection_ref(self) -> str:
+        """"@đường/dẫn" kèm dòng đang chọn (hoặc dòng con trỏ) — để hỏi / giao việc cho agent."""
+        ed = self.code_editor()
+        rel = self.code_rel(str(ed.buffer.path))
+        a, b = sorted((ed.selection.start[0], ed.selection.end[0]))
+        if ed.selection.start == ed.selection.end:
+            return f"@{rel}"
+        return f"@{rel} " + (tr("(dòng {a})", a=a + 1) if a == b else tr("(dòng {a}–{b})", a=a + 1, b=b + 1))
+
+    def code_command(self, cid: str) -> None:
+        """Chạy một lệnh của palette (`palette.CODE_COMMANDS`)."""
+        ed = self.code_editor()
+        sf = ed.buffer
+        rel = self.code_rel(str(sf.path)) if sf is not None else ""
+        if cid in palette.NEEDS_FILE and sf is None:
+            self.notify(tr("Chưa mở file nào"), severity="warning")
+            return
+        simple = {"save": "w", "close": "q", "next": "bn", "prev": "bp", "toggle_files": "files"}
+        if cid in simple:
+            self.code_ex(simple[cid])
+        elif cid in ("quick_open", "goto_symbol", "goto_line", "find"):
+            self.action_palette({"quick_open": "", "goto_symbol": "@", "goto_line": ":", "find": "/"}[cid])
+        elif cid == "search_project":
+            self.action_search()
+        elif cid == "save_all":
+            self.run_worker(self.code_save_all(), group="code-save")
+        elif cid == "toggle_wrap":
+            ed.set_wrap(not ed.soft_wrap)
+            ed.message = tr("Xuống dòng mềm: bật") if ed.soft_wrap else tr("Xuống dòng mềm: tắt")
+            self._refresh_code_head()
+        elif cid == "toggle_numbers":
+            ed.show_line_numbers = not ed.show_line_numbers
+        elif cid == "toggle_vim":
+            self.run_command("/vim " + ("off" if ed.vim_on else "on"))
+        elif cid == "copy_path":
+            ref = f"{rel}:{ed.cursor_location[0] + 1}"
+            self.copy_to_clipboard(ref)
+            self.notify(tr("Đã chép {v}", v=ref))
+        elif cid == "open_vscode":
+            self.run_worker(self._open_vscode(sf.path, ed.cursor_location[0] + 1), group="vscode")
+        elif cid == "git_diff":
+            self.run_worker(self._code_git_diff(rel), group="code-diff")
+        elif cid == "new_file":
+            base = (str(Path(rel).parent) + "/") if rel and Path(rel).parent != Path(".") else ""
+            self.push_screen(PromptScreen(tr("📄 File mới"), base, tr("đường/dẫn/file.ext")), self._code_new_file)
+        elif cid == "rename_file":
+            self.push_screen(PromptScreen(tr("✎ Đổi tên / chuyển {v}", v=rel), rel), self._code_rename_file)
+        elif cid == "delete_file":
+            def done(ok) -> None:
+                if ok:
+                    self.run_worker(self._code_delete_file(rel), group="code-open")
+            self.push_screen(ConfirmScreen(tr("Xoá file"), tr("Đưa {v} vào Thùng rác?", v=rel), yes=tr("Xoá")), done)
+        elif cid in ("ask_agent", "task_agent"):
+            self._code_ask_agent(cid == "task_agent")
+
+    async def code_save_all(self) -> None:
+        """Lưu file đang mở và mọi buffer chưa lưu khác (bỏ qua file chỉ đọc / đổi trên đĩa — báo lại)."""
+        self._stash_code()
+        cur = self.code_cur
+        problems = []
+        for key in list(self.code_order):
+            b = self.code_bufs.get(key) or {}
+            if key == cur or not b.get("dirty") or b.get("text") is None:
+                continue
+            err = await asyncio.to_thread(editor.save_source, b["sf"], b["text"], False)
+            if err:
+                problems.append(f"{self.code_rel(key)}: {err}")
+            else:
+                b["sf"].text = b["text"]
+                b.update(dirty=False, text=None)
+        if self.code_editor().dirty:
+            await self.code_save()
+        self.refresh_code_files()
+        if problems:
+            self.notify("\n".join(problems), severity="warning", timeout=10)
+
+    async def _open_vscode(self, path: Path, line: int) -> None:
+        if not shutil.which("code"):
+            self.notify(tr("Không thấy lệnh 'code' — trong VS Code: Shell Command: Install 'code' command"),
+                        severity="warning")
+            return
+        proc = await asyncio.create_subprocess_exec("code", "-g", f"{path}:{line}", stdin=asyncio.subprocess.DEVNULL,
+                                                    stdout=asyncio.subprocess.DEVNULL,
+                                                    stderr=asyncio.subprocess.DEVNULL)
+        self.notify(tr("Đang mở {path} trong VS Code…", path=self.code_rel(str(path))), timeout=3)
+        await proc.wait()
+
+    async def _code_git_diff(self, rel: str) -> None:
+        ds = await self.git.changes_diffset(staged=False)
+        idx = next((i for i, f in enumerate(ds.files) if f.path == rel), None)
+        if idx is None:
+            ds = await self.git.changes_diffset(staged=True)
+            idx = next((i for i, f in enumerate(ds.files) if f.path == rel), None)
+        if idx is None:
+            self.notify(tr("{v}: không có thay đổi so với git", v=rel))
+            return
+        self.push_screen(DiffScreen(ds, has_code=bool(shutil.which("code")), start=idx))
+
+    def _code_new_file(self, rel: str | None) -> None:
+        if not rel:
+            return
+        err = palette.file_new(self.root, rel)
+        if err:
+            self.notify(err, severity="warning")
+            return
+        self.query_one("#cmd", CommandInput).index.loaded_at = 0  # Ctrl+P / @ thấy file mới ngay
+        self.open_code(rel)
+
+    def _code_rename_file(self, new: str | None) -> None:
+        ed = self.code_editor()
+        if not new or ed.buffer is None:
+            return
+        old_key = str(ed.buffer.path)
+        old = self.code_rel(old_key)
+        if new == old:
+            return
+        if ed.dirty:
+            self.notify(tr("Lưu file trước khi đổi tên"), severity="warning")
+            return
+        err = palette.file_rename(self.root, old, new)
+        if err:
+            self.notify(err, severity="warning")
+            return
+        self.code_order.remove(old_key)
+        self.code_bufs.pop(old_key, None)
+        self.code_cur = None
+        self.query_one("#cmd", CommandInput).index.loaded_at = 0
+        self.notify(tr("Đã đổi {v} → {v2}", v=old, v2=new))
+        self.open_code(new, ed.cursor_location[0] + 1)
+
+    async def _code_delete_file(self, rel: str) -> None:
+        err = await palette.file_trash(self.root, rel)
+        if err:
+            self.notify(err, severity="warning")
+            return
+        key = str(Path(os.path.normpath(str(self.root / rel))))
+        if self.code_cur == key:
+            self.code_close(force=True)
+        elif key in self.code_bufs:
+            self.code_order.remove(key)
+            self.code_bufs.pop(key, None)
+        self.notify(tr("Đã đưa {v} vào Thùng rác", v=rel))
+        self.refresh_code_files()
+
+    def _code_ask_agent(self, as_task: bool) -> None:
+        """Hỏi (chat 💬) hoặc giao task cho một agent về file / đoạn đang chọn: chọn agent rồi gõ yêu cầu."""
+        ref = self.code_selection_ref()
+        agents = list(self.cfg.active_agents())
+
+        def ask(agent) -> None:
+            if agent is None:
+                return
+            agent = self.cfg.lead if agent == RESET else agent
+
+            def send(text: str | None) -> None:
+                if not text:
+                    return
+                msg = f"{ref}: {text}"
+                if as_task:
+                    self.orch.add_task(agent, msg)
+                    self.notify(tr("Đã giao cho {agent}: {v}", agent=agent, v=msg[:80]))
+                else:
+                    self.send_chat(agent, msg)
+                    self.notify(tr("Đã hỏi {agent} — xem trả lời ở tab 👥 Đội", agent=agent))
+            title = (tr("Giao task cho {agent} về {v}", agent=agent, v=ref) if as_task
+                     else tr("Hỏi {agent} về {v}", agent=agent, v=ref))
+            self.push_screen(PromptScreen(title, placeholder=tr("vd: giải thích đoạn này / viết test cho hàm này")),
+                             send)
+        self.push_screen(ChoiceScreen(tr("Chọn agent"), agents, "", tr("★ trưởng nhóm ({lead})", lead=self.cfg.lead)),
+                         ask)
+
     def code_ex(self, cmd: str) -> None:
         """Lệnh `:` của editor (w, q, wq, e!, bn…)."""
         ed = self.code_editor()
@@ -4782,6 +5178,8 @@ class TeamApp(App):
                 self.query_one("#code-filter", Input).focus()
         elif name == "set" and arg in ("nu", "number", "nonu", "nonumber"):
             ed.show_line_numbers = arg in ("nu", "number")
+        elif name == "set" and arg in ("wrap", "nowrap"):
+            ed.set_wrap(arg == "wrap")
         elif name in ("noh", "nohlsearch"):
             pass
         else:
@@ -4819,6 +5217,7 @@ class TeamApp(App):
         if str(sf.path) in self.code_bufs:
             self.code_bufs[str(sf.path)].update(dirty=False, text=None)
         ed.message = tr("Đã lưu {path} · {n} dòng", path=self.code_rel(str(sf.path)), n=text.count("\n") + 1)
+        self._code_syms = (None, None)
         self.refresh_code_files()
         self._refresh_code_head()
         if close and ed.buffer is sf and not ed.dirty:
@@ -4876,6 +5275,9 @@ class TeamApp(App):
             if ed.dirty:
                 head.append(" ●", PAL.get("warn", "yellow"))
             r, c = ed.cursor_location
+            sym = palette.symbol_at(self.code_symbols(), r + 1)
+            if sym:
+                head.append(f" › {sym['name']}", PAL["info"])
             head.append(tr("  ·  {lang}  ·  dòng {r}/{n}, cột {c}", lang=editor.language_name(sf.path), r=r + 1,
                            n=ed.document.line_count, c=c + 1), "dim")
             if sf.newline != "\n":
@@ -4898,6 +5300,18 @@ class TeamApp(App):
                 status.append(ed.message or tr("Ctrl+S lưu · /vim on bật phím vim"), "dim")
         set_static(self.query_one("#code-head", Static), head)
         set_static(self.query_one("#code-status", Static), status)
+
+    def code_symbols(self) -> list[dict]:
+        """Symbol của file đang mở cho thanh "đang ở đâu" (› tên hàm): tính khi mở / lưu file, không theo từng
+        phím gõ (lexer cả file); file > 300KB thì bỏ."""
+        ed = self.code_editor()
+        key = str(ed.buffer.path) if ed.buffer is not None else None
+        cached = getattr(self, "_code_syms", (None, None))
+        if cached[0] != key or cached[1] is None:
+            text = ed.text
+            syms = palette.symbols(ed.buffer.path, text) if key and len(text) < 300_000 else []
+            self._code_syms = (key, syms)
+        return self._code_syms[1]
 
     def on_code_editor_status_changed(self, event: CodeEditor.StatusChanged) -> None:
         self._refresh_code_head()

@@ -365,6 +365,18 @@ trên đĩa, `:w!` ghi đè. Thoát app khi còn file chưa lưu sẽ được h
 Editor chỉ vẽ các dòng đang hiện; tô màu chạy nền sau khi bạn ngừng gõ ~0,2 giây, nên file lớn vẫn mượt. File
 trên 2 MB / 20 000 dòng không tô màu, trên 5 MB mở chỉ đọc, file nhị phân không mở.
 
+**Command palette** như VS Code (TUI và web):
+
+- **Ctrl+P** (web: ⌘P): mở nhanh file — gõ rải rác tên file (`apppy` → `src/app.py`), file mở gần đây đứng đầu
+  (dùng chung TUI ↔ web).
+- Gõ **`>`** (hoặc F8, web ⌘⇧P): lệnh — lưu tất cả, file mới, đổi tên / chuyển, xoá vào Thùng rác, xuống dòng mềm,
+  số dòng, phím vim, chép đường dẫn, xem diff git của file, mở trong VS Code, tìm & thay trong dự án. Gõ từ khoá
+  tiếng Anh như VS Code cũng được (`>wrap`, `>rename`).
+- **`@`** (F9, web ⌘⇧O): tới hàm / class / heading trong file; thanh trên editor hiện `› tên hàm` đang đứng.
+- **`:42`** tới dòng 42, **`/chữ`** liệt kê các dòng có chữ đó trong file.
+- **Hỏi agent về đoạn đang chọn** / **Giao task cho agent**: chọn agent, gõ câu hỏi — agent nhận `@file (dòng a–b)`
+  kèm câu hỏi (hỏi = chat 💬 ở tab Đội; giao task = hiện trên Bảng việc).
+
 ## Xem diff và duyệt merge (chế độ worktree)
 
 Đặt `merge = "review"`: task xong (và qua kiểm tra) dừng ở trạng thái **chờ duyệt**.

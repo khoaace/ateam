@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.21.0 — 18/10/2026
+
+- **Command palette ở tab 📝 Code** như VS Code, cả TUI và web:
+  - **Ctrl+P** (web ⌘P, ở mọi tab): mở nhanh file — lọc mờ (`apppy` → `src/app.py`), file mở gần đây đứng đầu (dùng
+    chung TUI ↔ web).
+  - **`>`** (F8, web ⌘⇧P): lệnh — lưu tất cả, file mới, đổi tên / chuyển, xoá vào Thùng rác, xuống dòng mềm, số dòng,
+    phím vim, chép đường dẫn kèm dòng, xem diff git của file, mở trong VS Code, tìm & thay trong dự án; gõ từ khoá
+    tiếng Anh (`>wrap`, `>rename`) cũng khớp.
+  - **`@`** (F9, web ⌘⇧O): tới hàm / class / heading; thanh editor hiện `› tên hàm` đang đứng.
+  - **`:42`** tới dòng, **`/chữ`** liệt kê dòng có chữ đó trong file.
+  - **Hỏi agent / giao task cho agent về file hoặc đoạn đang chọn**: agent nhận `@file (dòng a–b)` kèm câu hỏi.
+- TUI: `:set wrap` / `:set nowrap` bật/tắt xuống dòng mềm.
+
 ## 0.20.4 — 18/10/2026
 
 - **Chọn model / effort nhanh ngay trên ô agent** (tab Đội): web có hai hàng chip `model` và `effort` trên mỗi thẻ —

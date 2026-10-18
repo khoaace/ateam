@@ -9,7 +9,7 @@
 window.CodeView = (() => {
   const LIMIT = 10;
   const C = { view: null, bufs: new Map(), order: [], cur: null, open: new Set([""]), tree: {}, filter: "",
-    loading: null, comp: null, warned: {}, timer: null, mode: "normal" };
+    loading: null, comp: null, warned: {}, timer: null, mode: "normal", wrap: false };
   const el = () => $("#code");
 
   /* ---------------------------------------------------------------- nạp CodeMirror */
@@ -26,7 +26,7 @@ window.CodeView = (() => {
     return C.loading;
   }
   function comps() {
-    if (!C.comp) C.comp = { vim: new CM.Compartment(), theme: new CM.Compartment(), lang: new CM.Compartment(), ro: new CM.Compartment() };
+    if (!C.comp) C.comp = { vim: new CM.Compartment(), theme: new CM.Compartment(), lang: new CM.Compartment(), ro: new CM.Compartment(), wrap: new CM.Compartment() };
     return C.comp;
   }
   const vimOn = () => S.prefs.vim !== false;
@@ -42,6 +42,7 @@ window.CodeView = (() => {
       c.theme.of(isDark() ? CM.oneDark : []),
       c.lang.of(buf.lang ? buf.lang.support : []),
       c.ro.of(CM.EditorState.readOnly.of(!!buf.ro)),
+      c.wrap.of(C.wrap ? CM.EditorView.lineWrapping : []),
       CM.EditorView.updateListener.of((u) => {
         if (u.docChanged) { buf.dirty = u.state.doc.toString() !== buf.saved; renderTabs(); schedulePreview(); }
         if (u.docChanged || u.selectionSet) renderStatus();
@@ -178,7 +179,9 @@ window.CodeView = (() => {
     if (!b) { box.innerHTML = `<span>${esc(vimOn() ? t("code_vim_hint") : t("code_novim_hint"))}</span>`; return; }
     const st = C.view.state, pos = st.selection.main.head, line = st.doc.lineAt(pos);
     const mode = vimOn() ? `<span class="vmode m-${esc(C.mode)}">${esc(C.mode.toUpperCase())}</span>` : "";
+    const sym = symAt(b.syms, line.number);
     box.innerHTML = `${mode}<span class="mono">${esc(b.path)}</span>${b.dirty ? `<span class="dot-dirty">●</span>` : ""}
+      ${sym ? `<span class="mono crumb">› ${esc(sym.name)}</span>` : ""}
       <span style="flex:1"></span>${b.ro ? `<span class="chip warn">${esc(t("code_readonly", { v: b.note }))}</span>` : ""}
       ${b.newline === "\r\n" ? `<span class="chip">CRLF</span>` : ""}<span>${esc((b.lang && b.lang.name) || b.language || t("code_plain"))}</span>
       <span class="mono">${esc(t("code_pos", { r: line.number, n: st.doc.lines, c: pos - line.from + 1 }))}</span>
@@ -244,6 +247,18 @@ window.CodeView = (() => {
     C.view.focus();
     renderTabs(); renderStatus(); renderPreview();
     revealInTree(path);
+    if (!b.syms) loadSyms(b);
+  }
+  /* symbol (hàm, class, heading) của file: thanh "› đang ở đâu" và palette @ — tính lại khi mở / lưu */
+  async function loadSyms(b) {
+    try { b.syms = await (await fetch("/api/symbols?path=" + encodeURIComponent(b.path))).json(); } catch (e) { b.syms = []; }
+    if (b.path === C.cur) renderStatus();
+    return b.syms;
+  }
+  function symAt(syms, line) {
+    let best = null;
+    for (const s of syms || []) { if (s.line > line) break; best = s; }
+    return best;
   }
   function watchVim() {
     try {
@@ -254,7 +269,8 @@ window.CodeView = (() => {
   function refreshConfig() {  // vim / sáng-tối đổi sau khi buffer được tạo
     if (!C.view) return;
     const c = comps();
-    C.view.dispatch({ effects: [c.vim.reconfigure(vimOn() ? CM.vim() : []), c.theme.reconfigure(isDark() ? CM.oneDark : [])] });
+    C.view.dispatch({ effects: [c.vim.reconfigure(vimOn() ? CM.vim() : []), c.theme.reconfigure(isDark() ? CM.oneDark : []),
+      c.wrap.reconfigure(C.wrap ? CM.EditorView.lineWrapping : [])] });
     watchVim();
   }
 
@@ -318,7 +334,7 @@ window.CodeView = (() => {
     }
     if (sv.mtime) {
       b.saved = text; b.mtime = sv.mtime; b.dirty = false; C.warned[b.path] = 0;
-      renderTabs(); renderStatus();
+      renderTabs(); renderStatus(); loadSyms(b);
       return true;
     }
     return false;
@@ -327,11 +343,11 @@ window.CodeView = (() => {
     const b = C.bufs.get(path || C.cur);
     if (!b) return;
     if (b.path !== C.cur) {  // file mở ở tab khác (vd vừa thay thế): nạp lại khi chuyển tới
-      const r = await (await fetch("/api/file?path=" + encodeURIComponent(b.path))).json();
+      const r = await (await fetch("/api/file?quiet=1&path=" + encodeURIComponent(b.path))).json();
       if (!r.error) { b.saved = r.text; b.mtime = r.mtime; b.dirty = false; b.state = null; renderTabs(); }
       return;
     }
-    const r = await (await fetch("/api/file?path=" + encodeURIComponent(b.path))).json();
+    const r = await (await fetch("/api/file?quiet=1&path=" + encodeURIComponent(b.path))).json();
     if (r.error) { toast(r.error, "warn"); return; }
     const head = C.view.state.selection.main.head;
     b.saved = r.text; b.mtime = r.mtime; b.dirty = false; b.ro = r.read_only; b.note = r.note;
@@ -470,6 +486,201 @@ window.CodeView = (() => {
     runSearch();
   }
 
+  /* ---------------------------------------------------------------- command palette (như VS Code, palette.py) */
+  const P = { m: null, vals: [], sel: -1, recent: [], seq: 0 };
+  function fuzzyScore(text, q) {  // như palette.fuzzy_score
+    const s = text.toLowerCase(); q = q.toLowerCase().trim();
+    if (!q) return 0;
+    const at = s.indexOf(q);
+    if (at >= 0) {  // khớp ở đầu một từ ("ask" trong "ask agent") hơn khớp giữa từ ("ask" trong "task")
+      let w = -1;
+      for (let i = at; i >= 0; i = s.indexOf(q, i + 1)) if (i === 0 || !/[\p{L}\p{N}_]/u.test(s[i - 1])) { w = i; break; }
+      const pos = w >= 0 ? w : at;
+      return 1000 - pos - (s.length >> 2) + (w >= 0 ? 300 : 0) + (pos === 0 ? 200 : 0);
+    }
+    let pos = -1, gaps = 0;
+    for (const ch of q) { const n = s.indexOf(ch, pos + 1); if (n < 0) return null; gaps += n - pos - 1; pos = n; }
+    return 500 - gaps - (s.length >> 2);
+  }
+  function fuzzy(items, q, key, limit = 200) {
+    if (!q.trim()) return items.slice(0, limit);
+    return items.map((it, i) => [fuzzyScore(key(it), q), i, it]).filter((x) => x[0] != null)
+      .sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, limit).map((x) => x[2]);
+  }
+  async function palette(prefix = "") {
+    await show();
+    if (P.m && document.body.contains(P.m)) closeModal(P.m);
+    const m = P.m = openModal(`<div class="pal"><input class="field one pal-q" autocomplete="off" spellcheck="false" placeholder="${esc(t("pal_ph"))}">
+      <div class="pal-list" role="listbox"></div><div class="pal-foot">${esc(t("pal_foot"))}</div></div>`, { box: "md", cls: "palette" });
+    const q = $(".pal-q", m);
+    q.value = prefix;
+    try { P.recent = await (await fetch("/api/recent")).json(); } catch (e) { P.recent = []; }
+    q.addEventListener("input", () => refill(q.value));
+    q.addEventListener("keydown", (e) => {
+      const d = { ArrowDown: 1, ArrowUp: -1, PageDown: 10, PageUp: -10 }[e.key];
+      if (d) { e.preventDefault(); move(d); }
+      else if (e.key === "Enter") { e.preventDefault(); choose(P.sel); }
+    });
+    $(".pal-list", m).addEventListener("click", (e) => { const r = e.target.closest("[data-i]"); if (r) choose(+r.dataset.i); });
+    refill(prefix);
+    setTimeout(() => { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 40);
+  }
+  async function palItems(text) {
+    const b = C.cur && C.bufs.get(C.cur), head = (s) => ({ head: s });
+    if (text.startsWith(">")) {
+      const out = fuzzy((S.meta.code_commands || []).filter((c) => !c.file || b), text.slice(1), (c) => c.label + " " + c.kw)
+        .map((c) => ({ html: `${esc(c.label)}${c.key ? `<span class="pal-key">${esc(c.key)}</span>` : ""}`, val: ["cmd", c.id] }));
+      return out.length ? out : [head(t("pal_nocmd"))];
+    }
+    if (!b && /^[@:/]/.test(text)) return [head(t("pal_noopen"))];
+    if (text.startsWith("@")) {
+      const syms = b.syms || await loadSyms(b);
+      const icon = { class: "◆", type: "◇", function: "ƒ", method: "ƒ", heading: "#" };
+      const out = fuzzy(syms, text.slice(1), (s) => s.name).map((s) => ({
+        html: `<span class="pal-dim">${"&nbsp;&nbsp;".repeat(s.depth)}${icon[s.kind] || "•"}</span> ${esc(s.name)}<span class="pal-key">:${s.line}</span>`,
+        val: ["line", s.line, 0] }));
+      return out.length ? out : [head(t("pal_nosym"))];
+    }
+    const doc = C.view && C.view.state.doc;
+    if (text.startsWith(":")) {
+      const n = parseInt(text.slice(1).trim(), 10);
+      return n >= 1 && n <= doc.lines ? [{ html: esc(t("pal_line", { v: n })), val: ["line", n, 0] }] : [head(t("pal_line_hint", { n: doc.lines }))];
+    }
+    if (text.startsWith("/")) {
+      const q = text.slice(1).toLowerCase(), out = [];
+      if (!q) return [head(t("pal_find_hint"))];
+      for (let i = 1; i <= doc.lines && out.length < 300; i++) {
+        const ln = doc.line(i).text, col = ln.toLowerCase().indexOf(q);
+        if (col >= 0) out.push({ html: `<span class="pal-dim">${String(i).padStart(5, " ")}</span>  ${esc(ln.trim().slice(0, 140))}`, val: ["line", i, col] });
+      }
+      return out.length ? out : [head(t("pal_nofind", { v: text.slice(1) }))];
+    }
+    if (!text.trim()) {
+      return (P.recent.length ? [head(t("pal_recent"))].concat(P.recent.map((f) => ({ html: esc(f), val: ["file", f] }))) : [])
+        .concat([head(t("pal_hint"))]);
+    }
+    const hits = fuzzy(P.recent, text, (f) => f, 8);
+    let files = [];
+    try { files = await (await fetch(`/api/files?n=80&q=${encodeURIComponent(text.trim())}`)).json(); } catch (e) { /* mất kết nối */ }
+    const out = hits.map((f) => ({ html: "🕘 " + esc(f), val: ["file", f] }))
+      .concat(files.filter((f) => !f.endsWith("/") && !hits.includes(f)).map((f) => ({ html: esc(f), val: ["file", f] })));
+    return out.length ? out : [head(t("pal_nofile"))];
+  }
+  async function refill(text) {
+    const seq = ++P.seq, items = await palItems(text);
+    if (seq !== P.seq || !P.m) return;
+    P.vals = items.map((x) => x.val || null);
+    P.sel = P.vals.findIndex((v) => v);
+    $(".pal-list", P.m).innerHTML = items.map((x, i) => x.head ? `<div class="pal-head">${esc(x.head)}</div>`
+      : `<div class="pal-item${i === P.sel ? " on" : ""}" data-i="${i}" role="option">${x.html}</div>`).join("");
+  }
+  function move(d) {
+    let i = P.sel;
+    const step = d > 0 ? 1 : -1;
+    for (let k = 0; k < Math.abs(d); k++) {
+      let j = i + step;
+      while (j >= 0 && j < P.vals.length && !P.vals[j]) j += step;
+      if (j < 0 || j >= P.vals.length) break;
+      i = j;
+    }
+    if (i < 0 || !P.vals[i]) return;
+    P.sel = i;
+    $$(".pal-item", P.m).forEach((r) => r.classList.toggle("on", +r.dataset.i === i));
+    const on = $(".pal-item.on", P.m);
+    if (on) on.scrollIntoView({ block: "nearest" });
+  }
+  function choose(i) {
+    const v = P.vals[i];
+    if (!v) return;
+    closeModal(P.m); P.m = null;
+    if (v[0] === "file") open(v[1]);
+    else if (v[0] === "line") activate(C.cur, v[1], v[2]);
+    else if (v[0] === "cmd") runCmd(v[1]);
+  }
+  function selRef() {  // "@đường/dẫn (dòng a–b)" của đoạn đang chọn — để hỏi / giao việc cho agent
+    const st = C.view.state, s = st.selection.main;
+    if (s.empty) return "@" + C.cur;
+    const a = st.doc.lineAt(s.from).number, b = st.doc.lineAt(s.to).number;
+    return `@${C.cur} ` + (a === b ? t("pal_line1", { a }) : t("pal_lines", { a, b }));
+  }
+  function pickAgent() {
+    return new Promise((resolve) => {
+      let done = false;
+      const names = (S.state ? S.state.agents : []).map((a) => a.name);
+      const m = openModal(`${modalHead(esc(t("pal_choose_agent")))}<div class="modal-pad"><div class="picks">${names.map((n) =>
+        `<button class="pick" data-v="${esc(n)}">${esc(n)}</button>`).join("")}</div></div>`,
+        { box: "sm", onClose: () => { if (!done) { done = true; resolve(null); } } });
+      m.addEventListener("click", (e) => { const b = e.target.closest(".pick"); if (b) { done = true; resolve(b.dataset.v); m.remove(); } });
+    });
+  }
+  async function saveAll() {
+    stash();
+    for (const b of C.bufs.values()) {
+      if (b.path === C.cur || !b.state) continue;
+      const text = b.state.doc.toString();
+      if (text === b.saved) continue;
+      const r = await request("save", { path: b.path, text, mtime: b.mtime });
+      if ((r.save || {}).mtime) { b.saved = text; b.mtime = r.save.mtime; b.dirty = false; }
+    }
+    if (C.cur) await save();
+    renderTabs();
+  }
+  async function runCmd(id) {
+    const b = C.cur && C.bufs.get(C.cur);
+    const line = b && C.view ? C.view.state.doc.lineAt(C.view.state.selection.main.head).number : 1;
+    const go = { quick_open: "", goto_symbol: "@", goto_line: ":", find: "/" };
+    if (id in go) return palette(go[id]);
+    switch (id) {
+      case "search_project": return sidePane("search", b ? C.view.state.sliceDoc(C.view.state.selection.main.from, C.view.state.selection.main.to) : "");
+      case "save": return save();
+      case "save_all": return saveAll();
+      case "close": return close(C.cur);
+      case "next": return cycle(1);
+      case "prev": return cycle(-1);
+      case "toggle_files": return el().classList.toggle("no-side");
+      case "toggle_vim": return request("prefs", { vim: !vimOn() });
+      case "toggle_wrap":
+        C.wrap = !C.wrap; refreshConfig(); toast(t(C.wrap ? "pal_wrap_on" : "pal_wrap_off"), "info"); return;
+      case "copy_path": {
+        const v = `${C.cur}:${line}`;
+        try { await navigator.clipboard.writeText(v); toast(t("pal_copied", { v }), "info"); } catch (e) { toast(v, "info"); }
+        return;
+      }
+      case "git_diff": return DiffView.git({ kind: "file", path: C.cur });
+      case "open_vscode": return send("open_vscode", { path: C.cur, line });
+      case "new_file": {
+        const dir = b && C.cur.includes("/") ? C.cur.slice(0, C.cur.lastIndexOf("/") + 1) : "";
+        const p = await inputBox(t("pal_new"), t("pal_path"), dir);
+        if (p && (await request("file_new", { path: p })).ok) { C.tree = {}; await open(p); }
+        return;
+      }
+      case "rename_file": {
+        if (b.dirty) { toast(t("pal_save_first"), "warn"); return; }
+        const to = await inputBox(t("pal_rename", { v: C.cur }), t("pal_path"), C.cur);
+        if (!to || to === C.cur) return;
+        const old = C.cur;
+        if ((await request("file_rename", { path: old, to })).ok) { await close(old, true); C.tree = {}; await open(to, line); }
+        return;
+      }
+      case "delete_file": {
+        const p = C.cur;
+        if (!await confirmBox(t("pal_delete"), t("pal_delete_q", { v: p }), t("pal_delete_yes"))) return;
+        if ((await request("file_delete", { path: p })).ok) { await close(p, true); C.tree = {}; renderTree(); }
+        return;
+      }
+      case "ask_agent": case "task_agent": {
+        const ref = selRef(), agent = await pickAgent();
+        if (!agent) return;
+        const q = await inputBox(t(id === "ask_agent" ? "pal_ask" : "pal_task", { agent, v: ref }), t("pal_ask_ph"));
+        if (!q) return;
+        const msg = `${ref}: ${q}`;
+        if (id === "ask_agent") { if (send("chat", { agent, text: msg })) toast(t("pal_asked", { agent }), "info"); }
+        else if (send("submit", { text: `/task ${agent} ${msg}` })) toast(t("pal_assigned", { agent, v: msg.slice(0, 80) }), "info");
+        return;
+      }
+    }
+  }
+
   async function show() {
     layout();
     if (!C.timer) C.timer = setInterval(checkDisk, 2000);
@@ -504,14 +715,24 @@ window.CodeView = (() => {
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "v" && isMd(C.cur && C.bufs.get(C.cur))) {
       e.preventDefault(); setMd(MD_MODES[(MD_MODES.indexOf(C.md) + 1) % MD_MODES.length]);
     }
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "p") { e.preventDefault(); $("#code-filter").focus(); $("#code-filter").select(); }
   });
+  document.addEventListener("keydown", (e) => {  // ⌘P mở nhanh file · ⌘⇧P lệnh · ⌘⇧O symbol — ở mọi tab, như VS Code
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k !== "p" && !(k === "o" && e.shiftKey)) return;
+    if (e.target.closest && e.target.closest(".xterm")) return;
+    const top = topModal();
+    if (top && top !== P.m) return;  // popup khác đang mở
+    e.preventDefault(); e.stopPropagation();
+    if (S.view !== "code") setView("code");
+    palette(k === "o" ? "@" : e.shiftKey ? ">" : "");
+  }, true);
   window.addEventListener("beforeunload", (e) => {
     if ([...C.bufs.values()].some((b) => b.dirty || (b.path === C.cur && C.view && C.view.state.doc.toString() !== b.saved))) { e.preventDefault(); e.returnValue = ""; }
   });
 
   return {
-    show, open, search: (q) => show().then(() => sidePane("search", q || "")),
+    show, open, palette, search: (q) => show().then(() => sidePane("search", q || "")),
     prefsChanged() { if (window.CM && C.view) { refreshConfig(); renderStatus(); } },
     unsaved: () => [...C.bufs.values()].filter((b) => b.dirty).map((b) => b.path),
   };

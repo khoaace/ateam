@@ -305,6 +305,13 @@ stash/revert có cờ `-c user.*` dự phòng như `Orchestrator.git_ident`. M�
   file đang mở mỗi 2 s.
 - Buffer: `TeamApp.code_bufs` (tối đa 10, bỏ buffer cũ nhất đã lưu), giữ con trỏ và nội dung chưa lưu khi đổi
   file (lịch sử undo mất khi đổi buffer).
+- Command palette (`palette.py`, dùng chung TUI ↔ web): `CODE_COMMANDS` (id, nhãn, phím) + `KEYWORDS` tiếng Anh
+  để lọc mờ (`fuzzy`, ưu tiên khớp đầu từ); `symbols()` bóc hàm/class/heading bằng token pygments (`Name.Function`,
+  `Name.Class`), JS/TS và ngôn ngữ lexer không gắn tên thì bằng regex; file gần đây ở `.ateam/state.json`
+  (`recent_files`, ghi khi mở file ở TUI hoặc `GET /api/file` không có `quiet`); `file_new`/`file_rename`/
+  `file_trash` (qua `safe_path`, Thùng rác của Finder trên macOS, `ATEAM_TRASH_DIR` cho test). TUI: `PaletteScreen`
+  hỏi `TeamApp.palette_items(chữ)`, chạy lệnh bằng `code_command(id)`. Web: `CodeView.palette()` trong `code.js`,
+  API `/api/symbols`, `/api/recent`, op `file_new|file_rename|file_delete|open_vscode`, diff `kind=file`.
 
 ## Xem diff
 

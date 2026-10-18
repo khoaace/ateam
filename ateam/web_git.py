@@ -149,7 +149,7 @@ class GitWeb:
         return web.json_response([asdict(s) for s in await self.repo.stashes()])
 
     async def api_diff(self, r: web.Request) -> web.Response:
-        """?kind=staged|unstaged|conflict&path=… hoặc ?commit=<sha>."""
+        """?kind=staged|unstaged|conflict|file&path=… hoặc ?commit=<sha>."""
         q = r.query
         if q.get("commit"):
             commits = [c for c in await self.repo.log(200) if c.sha.startswith(q["commit"])]
@@ -164,6 +164,13 @@ class GitWeb:
         if kind == "conflict":
             ds = diffview.DiffSet(0, tr("Xung đột · {path}", path=path),
                                   diffview.parse_unified(await self.repo.diff_text("HEAD", "--", path)), "HEAD", None)
+        elif kind == "file":  # palette tab Code: thay đổi của đúng file này (chưa stage, không có thì đã stage)
+            for staged in (False, True):
+                ds = await self.repo.changes_diffset(staged=staged)
+                if any(f.path == path for f in ds.files):
+                    break
+            else:
+                return web.json_response({"error": tr("{v}: không có thay đổi so với git", v=path)})
         else:
             ds = await self.repo.changes_diffset(staged=kind == "staged")
         if not ds.files:

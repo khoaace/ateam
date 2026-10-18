@@ -12,25 +12,12 @@ from typing import TYPE_CHECKING
 
 from aiohttp import web
 
-from . import editor, search
+from . import editor, palette, search
 from .i18n import tr
+from .palette import safe_path
 
 if TYPE_CHECKING:
     from .web import WebApp
-
-
-def safe_path(root: Path, rel: str) -> Path | None:
-    """Đường dẫn trong dự án, hoặc None nếu ra ngoài / vào .git."""
-    rel = (rel or "").strip().lstrip("@").strip('"').strip("'")
-    if not rel or "\0" in rel:
-        return None
-    root = root.resolve()
-    p = (root / rel).resolve()
-    if p != root and root not in p.parents:
-        return None
-    if ".git" in (x.lower() for x in p.relative_to(root).parts):  # macOS: .GIT cũng là .git
-        return None
-    return p
 
 
 def children(entries: list[str], d: str) -> list[dict]:
@@ -56,7 +43,8 @@ class CodeWeb:
 
     def routes(self) -> list:
         return [web.get("/api/tree", self.api_tree), web.get("/api/file", self.api_file),
-                web.get("/api/file/stat", self.api_stat)]
+                web.get("/api/file/stat", self.api_stat), web.get("/api/symbols", self.api_symbols),
+                web.get("/api/recent", self.api_recent)]
 
     async def api_tree(self, r: web.Request) -> web.Response:
         idx = self.app.index
@@ -74,10 +62,51 @@ class CodeWeb:
         sf = editor.read_source(p)
         if sf.error:
             return web.json_response({"error": sf.error})
+        rel = p.relative_to(self.app.root.resolve()).as_posix()
+        if sf.mtime and not r.query.get("quiet"):  # mở file (không phải nạp lại): vào danh sách gần đây
+            palette.touch_recent(self.app.root, rel)
         return web.json_response({
-            "path": p.relative_to(self.app.root.resolve()).as_posix(), "text": sf.text, "mtime": sf.mtime,
+            "path": rel, "text": sf.text, "mtime": sf.mtime,
             "newline": sf.newline, "read_only": sf.read_only, "note": sf.note, "size": sf.size,
             "new": not sf.mtime, "language": editor.language_name(p) if sf.mtime else ""})
+
+    async def api_symbols(self, r: web.Request) -> web.Response:
+        """Hàm / class / heading của file (palette `@`, thanh "đang ở đâu")."""
+        p = safe_path(self.app.root, r.query.get("path", ""))
+        if p is None or not p.is_file():
+            return web.json_response([])
+        sf = await asyncio.to_thread(editor.read_source, p)
+        return web.json_response([] if sf.error else await asyncio.to_thread(palette.symbols, p, sf.text))
+
+    async def api_recent(self, r: web.Request) -> web.Response:
+        root = self.app.root
+        return web.json_response([f for f in palette.recent_files(root) if (root / f).is_file()])
+
+    async def file_op(self, op: str, d: dict) -> tuple | None:
+        """Thao tác file của palette: file_new {path}, file_rename {path, to}, file_delete {path}, open_vscode
+        {path, line}."""
+        root, path = self.app.root, str(d.get("path") or "")
+        if op == "file_new":
+            err = palette.file_new(root, path)
+        elif op == "file_rename":
+            err = palette.file_rename(root, path, str(d.get("to") or ""))
+        elif op == "file_delete":
+            err = await palette.file_trash(root, path)
+        else:  # open_vscode: chỉ khi dùng trên chính máy này (từ xa thì VS Code mở ở máy chủ, vô nghĩa)
+            p = safe_path(root, path)
+            if self.app.remote.enabled or p is None:
+                return tr("Chỉ mở VS Code được khi dùng ateam web trên chính máy này"), "warn"
+            import shutil
+            if not shutil.which("code"):
+                return tr("Không thấy lệnh 'code' — trong VS Code: Shell Command: Install 'code' command"), "warn"
+            await asyncio.create_subprocess_exec("code", "-g", f"{p}:{int(d.get('line') or 1)}",
+                                                 stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
+                                                 stderr=asyncio.subprocess.DEVNULL)
+            return None
+        if err:
+            return err, "warn"
+        self.app.index.loaded_at = 0  # cây file / Ctrl+P thấy ngay file mới / tên mới
+        return "", "ok", {"ok": True}
 
     async def api_stat(self, r: web.Request) -> web.Response:
         p = safe_path(self.app.root, r.query.get("path", ""))
