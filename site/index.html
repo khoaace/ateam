@@ -448,7 +448,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
   <section class="hero">
     <div class="wrap hero-grid">
       <div>
-        <a class="pill" href="#web"><b>Mới</b> v{{VERSION}} · <code>ateam web</code> — cả đội trong trình duyệt →</a>
+        <a class="pill" href="#moi"><b>Mới</b> v{{VERSION}} · rule cho cả đội, chat riêng từng agent, command palette →</a>
         <h1>Cả một <span class="grad">đội AI agent</span>, làm việc trong terminal của bạn.</h1>
         <p class="lede">Gõ một mục tiêu. <strong>Trưởng nhóm</strong> chia việc, <strong>Claude Code, Codex, Antigravity, Grok, OpenCode</strong> làm song song trên cùng repo, tự chạy test, đổi người khi hết hạn mức — rồi chờ <strong>bạn duyệt diff</strong> trước khi merge.</p>
         <div class="actions">
@@ -727,6 +727,23 @@ ateam web --open</pre><button class="copy" type="button" data-copy="web-run">Sao
     </div>
   </section>
 
+  <!-- ============================== MỚI ============================== -->
+  <section class="block" id="moi">
+    <div class="wrap">
+      <p class="eyebrow">Mới</p>
+      <h2>Mới trong các bản gần đây.</h2>
+      <p class="intro">Có cả trong terminal lẫn <code>ateam web</code>.</p>
+      <div class="features">
+        <div class="card reveal" style="--c: var(--claude)"><div class="ic">📏</div><h3>Rule cho cả đội</h3><p><code>/rules</code>: những điều mọi agent phải tuân theo trong dự án, như <code>AGENTS.md</code> của Codex hay rule của Antigravity — ateam gửi kèm mọi prompt nên agent nào cũng nhận, kể cả agent tuỳ chỉnh. Bật/tắt từng rule, chỉ áp cho vài agent hoặc vai trò.</p></div>
+        <div class="card reveal" style="--c: var(--opencode)"><div class="ic">❓</div><h3>Trưởng nhóm hỏi lại khi chưa rõ</h3><p>Không cần gõ <code>/grill</code>: lúc lập kế hoạch mà có điểm quan trọng chưa rõ, trưởng nhóm hỏi bạn kèm phương án gợi ý thay vì đoán, rồi mới chia việc.</p></div>
+        <div class="card reveal" style="--c: var(--codex)"><div class="ic">💬</div><h3>Chat riêng với từng agent</h3><p>Ô 💬 ở mỗi agent: chat như trong CLI, giữ đúng phiên. <kbd>F7</kbd> phóng to một agent cả màn hình; ⌨ mở CLI thật tiếp tục phiên đó.</p></div>
+        <div class="card reveal" style="--c: var(--accent-2)"><div class="ic">⌘</div><h3>Command palette kiểu VS Code</h3><p><kbd>Ctrl</kbd>+<kbd>P</kbd> mở nhanh file, <code>&gt;</code> lệnh, <code>@</code> tới hàm/class, <code>:42</code> tới dòng. Tạo / đổi tên / xoá file, hỏi agent về đoạn code đang chọn.</p></div>
+        <div class="card reveal" style="--c: var(--agy)"><div class="ic">🎚</div><h3>Đổi model & effort một chạm</h3><p>Chip model và effort ngay trên ô mỗi agent. Effort theo đúng từng model — đã kiểm trên CLI thật của claude, codex, agy, grok, opencode; mức không có thì tự lấy mức gần nhất.</p></div>
+        <div class="card reveal" style="--c: var(--grok)"><div class="ic">📂</div><h3>Mở dự án khác</h3><p><code>/open</code>: chọn từ dự án gần đây hoặc gõ đường dẫn (Tab gợi ý thư mục), ateam chuyển cả đội sang dự án đó — web giữ nguyên địa chỉ.</p></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============================== TÍNH NĂNG ============================== -->
   <section class="block" id="tinh-nang">
     <div class="wrap">
@@ -796,6 +813,9 @@ ateam web --open</pre><button class="copy" type="button" data-copy="web-run">Sao
               <tr><td><em>một câu bình thường</em></td><td>Giao mục tiêu cho trưởng nhóm</td></tr>
               <tr><td><code>/grill Thêm đăng nhập</code></td><td>Trưởng nhóm hỏi kỹ từng câu rồi mới lập kế hoạch</td></tr>
               <tr><td><code>/task codex@xhigh …</code></td><td>Giao tay một task, kèm effort riêng</td></tr>
+              <tr><td><code>/chat codex</code> · <code>/focus</code></td><td>Chat riêng với một agent · phóng to agent đó</td></tr>
+              <tr><td><code>/rules</code></td><td>Rule của dự án mà mọi agent phải tuân theo</td></tr>
+              <tr><td><code>/open ~/code/app</code></td><td>Chuyển sang dự án khác</td></tr>
               <tr><td><code>/code @src/app.py:42</code></td><td>Mở file trong tab 📝 Code (phím vim, <code>:w</code> lưu)</td></tr>
               <tr><td><code>/verify pytest -q</code></td><td>Lệnh kiểm tra sau mỗi task</td></tr>
               <tr><td><code>/diff 3</code> · <code>/merge 3</code></td><td>Xem thay đổi · merge task chờ duyệt</td></tr>
@@ -814,6 +834,8 @@ ateam web --open</pre><button class="copy" type="button" data-copy="web-run">Sao
             <thead><tr><th>Phím</th><th>Tác dụng</th></tr></thead>
             <tbody>
               <tr><td><kbd>Ctrl</kbd>+<kbd>T</kbd></td><td>Đổi tab</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>Command palette (tab Code)</td></tr>
+              <tr><td><kbd>F7</kbd></td><td>Phóng to agent đang chat</td></tr>
               <tr><td><kbd>F2</kbd> / <kbd>Ctrl</kbd>+<kbd>G</kbd></td><td>Duyệt & chạy kế hoạch</td></tr>
               <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>Xem diff task đang chọn</td></tr>
               <tr><td><kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Merge task</td></tr>
@@ -866,6 +888,7 @@ ateam web --open</pre><button class="copy" type="button" data-copy="web-run">Sao
         <details class="reveal"><summary>Có tốn thêm tiền hay cần API key không?</summary><div class="ans"><p>Không. ateam gọi đúng các CLI bạn đã cài và đăng nhập (Claude Code, Codex, Antigravity, Grok, OpenCode…), nên dùng gói đăng ký sẵn có của từng CLI. ateam không gửi dữ liệu đi đâu khác.</p></div></details>
         <details class="reveal"><summary>Hỗ trợ những CLI nào?</summary><div class="ans"><p>Có sẵn: <code>claude</code>, <code>codex</code>, <code>agy</code> (Antigravity), <code>grok</code>, <code>opencode</code>. Ngoài ra bất kỳ CLI nào có chế độ headless (nhận prompt, in kết quả ra stdout) — Gemini CLI, Cursor CLI, Aider… — thêm trong màn hình <code>/custom</code>, có mẫu và xem trước lệnh.</p></div></details>
         <details class="reveal"><summary>Agent sửa code của tôi có an toàn không?</summary><div class="ans"><p>Bật <code>isolation = "worktree"</code> và <code>merge = "review"</code>: mỗi task làm trên một nhánh git riêng, không đụng thư mục làm việc của bạn; chỉ khi bạn duyệt diff và bấm merge thì thay đổi mới vào nhánh của bạn. Quyền chạy lệnh shell / dùng mạng của agent tắt mặc định, bật ở bước <em>An toàn</em> của <code>/setup</code>.</p></div></details>
+        <details class="reveal"><summary>Muốn mọi agent làm theo quy ước của dự án thì sao?</summary><div class="ans"><p>Thêm rule bằng <code>/rules</code> (vd "commit message tiếng Việt", "không sửa file trong <code>dist/</code>"): ateam gửi kèm ở đầu mọi prompt, nên claude, codex, agy, grok, opencode hay agent tuỳ chỉnh đều nhận. Rule lưu riêng trên máy bạn, không vào repo. <code>AGENTS.md</code> / <code>CLAUDE.md</code> có sẵn trong repo vẫn được các CLI tự đọc như bình thường.</p></div></details>
         <details class="reveal"><summary>Dữ liệu nằm ở đâu?</summary><div class="ans"><p>Bảng việc, log, ảnh dán vào nằm trong <code>.ateam/</code> của dự án (tự thêm vào <code>.gitignore</code>). Cấu hình chung ở <code>~/.config/ateam/</code>. Mọi thứ chạy trên máy bạn.</p></div></details>
         <details class="reveal"><summary>Khi một agent hết hạn mức thì sao?</summary><div class="ans"><p>ateam nhận ra thông báo rate limit của từng CLI, đoán giờ hồi, cho agent đó nghỉ và chuyển task sang agent dự phòng (<code>fallback</code>) — kể cả vai trưởng nhóm. Xem tình hình bằng <code>/usage</code>; tự cho nghỉ bằng <code>/cooldown</code>.</p></div></details>
         <details class="reveal"><summary>Giao diện web có an toàn không? Mở từ máy khác được không?</summary><div class="ans"><p>Mặc định <code>ateam web</code> chỉ nghe <code>127.0.0.1</code> và từ chối yêu cầu có Host/Origin lạ; file ngoài thư mục dự án không mở được. Mở từ điện thoại: <code>ateam web --tunnel</code> (Cloudflare Tunnel, https) hoặc <code>--host 0.0.0.0</code> trong LAN — khi đó mọi truy cập cần token (quét mã QR in ở terminal), có <code>--readonly</code> để chỉ xem.</p></div></details>
