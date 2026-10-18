@@ -1612,6 +1612,10 @@ def test_tui_quick_roles(env, project, monkeypatch):
     from ateam.db import DB
     from ateam.tui import OnboardScreen, TeamApp
 
+    async def no_discovery(self) -> None:  # CI chậm: hỏi model xong giữa chừng làm đổi mức effort hợp lệ của form
+        return None
+    monkeypatch.setattr(TeamApp, "_discover_missing_models", no_discovery)
+
     async def main():
         ensure_global_config()
         save_project_setting(project, "verify_command", "make test")
