@@ -96,6 +96,13 @@ def test_tui_chat_box(env, project, monkeypatch):
             assert not app.query_one("#tasks").row_count  # không hiện ở bảng việc
             assert any("bạn: lam gi vay" in ln.text for ln in pane.body.lines)
             assert isinstance(pane, AgentPane)
+            app.query_one("#cmd").focus()
+            await pilot.press("alt+3")  # Alt+số: tới thẳng tab
+            await pilot.pause(0.1)
+            assert app.query_one("#tabs").active == "tab-term"
+            await pilot.press("alt+1")
+            await pilot.pause(0.1)
+            assert app.query_one("#tabs").active == "tab-board"
             await pilot.press("ctrl+q")
     asyncio.run(main())
 

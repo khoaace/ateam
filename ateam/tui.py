@@ -129,6 +129,8 @@ Giao việc:
                                     lập task bổ sung dựa trên việc đã làm / agent nhận kèm các lượt trước.
                                     F6 (Ctrl+O) với task đang chọn, hoặc bấm "↪ Tiếp tục" ở khung mục tiêu
   /note <nội dung>                  ghi chú chung cho cả đội
+  /chat <agent> [tin]               chat trực tiếp với 1 agent, giữ phiên CLI (ô 💬 ở tab Đội; /new: cuộc
+                                    mới · /term: mở CLI thật của agent tiếp tục phiên đó)
 
 Lệnh, file, ảnh trong ô nhập:
   gõ / ở đầu ô nhập                 hiện danh sách lệnh kèm mô tả, gõ tiếp để lọc
@@ -183,6 +185,7 @@ Khác:
   /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
   /team  /board  /term  /git  /code chuyển tab Đội / Bảng việc / Terminal / Git / Code (Ctrl+T xoay vòng)
+  Alt+1 … Alt+8                     tới thẳng tab theo thứ tự (Mac: bật "Use Option as Meta" trong terminal)
 
 Lệnh terminal (tab 💻 Terminal):
   !<lệnh>                           chạy lệnh trong thư mục dự án, vd !yarn dev, !make test
@@ -4151,6 +4154,7 @@ class TeamApp(App):
         Binding("ctrl+y", "merge", "Merge", priority=True),
         Binding("ctrl+l", "syslog", tr("Log hệ thống"), priority=True),
         Binding("f3", "search", tr("Tìm trong dự án"), priority=True),
+        *[Binding(f"alt+{i + 1}", f"goto_tab({i})", show=False, priority=True) for i in range(8)],
     ]
 
     def __init__(self, root: Path, cfg: Config, db: DB, setup: bool = False):
@@ -6032,11 +6036,19 @@ class TeamApp(App):
             return
         self.push_screen(PlanViewScreen(g, self.db.tasks(goal_id=g.id)))
 
+    TAB_ORDER = ["tab-board", "tab-team", "tab-term", "tab-git", "tab-code", "tab-todo", "tab-custom", "tab-dash"]
+
     def action_toggle_tab(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
-        order = ["tab-board", "tab-team", "tab-term", "tab-git", "tab-code", "tab-todo", "tab-custom", "tab-dash"]
+        order = self.TAB_ORDER
         tabs.active = order[(order.index(tabs.active) + 1) % len(order)] if tabs.active in order else order[0]
         self.refresh_view()
+
+    def action_goto_tab(self, i: int) -> None:
+        """Alt+1…8: tới thẳng tab theo thứ tự trên thanh tab."""
+        if 0 <= i < len(self.TAB_ORDER):
+            self.query_one("#tabs", TabbedContent).active = self.TAB_ORDER[i]
+            self.refresh_view()
 
     def action_approve(self) -> None:
         bar = self.query_one("#plan", PlanBar)

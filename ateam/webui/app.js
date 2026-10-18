@@ -93,7 +93,13 @@ function onHello(m) {
   $("#proj").title = m.root;
   $("#ver").textContent = "ateam " + m.version;
   $$("[data-t]").forEach((el) => { el.textContent = t(el.dataset.t); });
+  // màn hình hẹp chỉ còn icon: nút vẫn có tên cho trình đọc màn hình và tooltip (kèm phím Alt+số)
+  $$(".nav-item").forEach((b) => {
+    const lbl = $("[data-t]", b), i = $$("#nav .nav-item").indexOf(b);
+    if (lbl) { b.setAttribute("aria-label", lbl.textContent); b.title = lbl.textContent + (i >= 0 ? `  (Alt+${i + 1})` : ""); }
+  });
   $("#btn-theme").title = t("theme");
+  $("#btn-theme").setAttribute("aria-label", t("theme"));
   $("#kbd-hint").textContent = t("shortcuts");
   applyPrefs(m.prefs);
   document.body.classList.toggle("readonly", !!m.readonly);
@@ -1577,6 +1583,11 @@ document.addEventListener("change", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.target.closest && e.target.closest(".xterm")) return;  // phím gõ trong terminal là của CLI (Esc, Ctrl+K…)
+  if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {  // Alt+1…8: tới thẳng tab (như TUI)
+    const b = $$("#nav .nav-item")[+e.code.slice(5) - 1];
+    if (b) { e.preventDefault(); setView(b.dataset.view); }
+    return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (S.view === "code") setView("board"); input.focus(); return; }
   if (e.key === "F2") {
     e.preventDefault();

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.1 — 18/10/2026
+
+- **Alt+1 … Alt+8** tới thẳng tab theo thứ tự (TUI và web; Mac: bật "Use Option as Meta" trong terminal). Thanh bên web
+  hiện phím trong tooltip.
+- Web dễ dùng bằng bàn phím / trình đọc màn hình hơn: nút ở thanh bên có nhãn kể cả khi màn hình hẹp chỉ còn icon; viền
+  focus rõ cho mọi nút/thẻ bấm được.
+- Trợ giúp (F1) có `/chat` và phím Alt+số.
+
 ## 0.20.0 — 18/10/2026
 
 - **💬 Chat trực tiếp với từng agent** như gõ trong terminal của CLI đó: ô *Nhắn …* dưới mỗi ô agent ở tab Đội (TUI và

@@ -177,7 +177,8 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 }
 .btn:hover { background: var(--surface-2); border-color: var(--text-2); }
 .btn:active { background: var(--surface-3); }
-.btn:focus-visible, .icon-btn:focus-visible, .nav-item:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.btn:focus-visible, .icon-btn:focus-visible, .nav-item:focus-visible, [data-action]:focus-visible, .tab:focus-visible,
+select:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .btn.sm { height: 26px; padding: 0 8px; font-size: 12px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover { filter: brightness(1.08); }
