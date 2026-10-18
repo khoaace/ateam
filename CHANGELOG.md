@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.23.0 — 18/10/2026
+
+- **Rule của dự án** (`/rules`, cả TUI và web — nút 📏 trên thanh trên): điều mọi agent phải tuân theo, như `AGENTS.md`
+  của Codex hay `.agents/rules` của Antigravity. ateam gửi kèm ở đầu mỗi prompt — task, `/task`, chat, lập kế hoạch,
+  review, `/grill`, commit message — nên agent nào cũng nhận, kể cả agent tuỳ chỉnh. Bật/tắt từng rule, chỉ áp dụng
+  cho vài agent hoặc vai trò (vd chỉ trưởng nhóm), đổi thứ tự; `/rules <nội dung>` thêm nhanh. Lưu riêng máy này, ngoài
+  repo. Chat đang tiếp tục phiên chỉ nhận lại rule khi bộ rule vừa đổi.
+- Popup rule liệt kê các file rule CLI tự đọc có sẵn trong repo (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`,
+  `.agents/rules`, `.claude/rules`, `.grok/rules`) kèm agent nào đọc — bấm để mở ở tab Code. Đã kiểm trên CLI thật:
+  Claude Code 2.1.302 cũng tự đọc `AGENTS.md`.
+
 ## 0.22.0 — 18/10/2026
 
 - **Mở folder / dự án khác** (`/open`, cả TUI và web), như *Open Folder / Open Recent* của VS Code: popup dự án

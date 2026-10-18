@@ -102,6 +102,8 @@ function onHello(m) {
     if (lbl) { b.setAttribute("aria-label", lbl.textContent); b.title = lbl.textContent + (i >= 0 ? `  (Alt+${i + 1})` : ""); }
   });
   $("#btn-theme").title = t("theme");
+  $("#btn-rules").title = t("rules_title");
+  $("#btn-rules").setAttribute("aria-label", t("rules_title"));
   $("#btn-theme").setAttribute("aria-label", t("theme"));
   $("#kbd-hint").textContent = t("shortcuts");
   applyPrefs(m.prefs);
@@ -145,6 +147,7 @@ function onToast(m) {
   if (o.modal === "setup" && window.Setup) Setup.open(false);
   if (o.modal === "roles" && window.Setup) Setup.rolesModal();
   if (o.modal === "custom" && window.Setup) Setup.custom();
+  if (o.modal === "rules") RulesView.open();
   if (o.modal === "flow" && window.Setup) Setup.flowModal({ onSaved: () => { if (S.view === "custom") Setup.showCustom(); } });
   if ((o.modal === "branches" || o.modal === "stash") && window.GitView) GitView[o.modal]();
   if (o.text) textModal(o.text.title, o.text.body);
@@ -1620,6 +1623,7 @@ const ACTIONS = {
   "syslog": () => openTask(0),
   "phone": () => phoneModal(),
   "open-project": () => projectModal(),
+  "rules": () => RulesView.open(),
   "lofi": () => Lofi.open(),
   "roles": () => Setup.rolesModal(),
   "goal-plan": (el, e) => { e.stopPropagation(); planModal(+el.dataset.goal); },

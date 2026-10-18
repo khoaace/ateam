@@ -313,6 +313,18 @@ stash/revert có cờ `-c user.*` dự phòng như `Orchestrator.git_ident`. M�
   hỏi `TeamApp.palette_items(chữ)`, chạy lệnh bằng `code_command(id)`. Web: `CodeView.palette()` trong `code.js`,
   API `/api/symbols`, `/api/recent`, op `file_new|file_rename|file_delete|open_vscode`, diff `kind=file`.
 
+## Rule của dự án (`/rules`)
+
+`rules.py`: lưu ngoài repo (`config.GLOBAL_DIR/rules/`, cùng tên file với to-do), `apply(action)` thêm/sửa/bật-tắt/
+xoá/đổi thứ tự, `applies(rule, agent, role, lead)` chọn người nhận, `block()` khối "PROJECT RULES" tiếng Anh bọc
+nội dung người dùng viết. Điểm gắn duy nhất: `Orchestrator.argv_for` → `with_rules` đặt khối rule trước *mọi* prompt
+(task, `/task` và chat gửi nguyên văn, lượt trưởng nhóm qua `_lead_once` với `plan=True` → `lead`), trước khi
+`mentions.render` đổi `@file`. Lượt `--resume`: phiên đã có rule — `_rules_sent[session]` nhớ digest đã gửi, chỉ gửi lại
+(kèm "updated") khi bộ rule đổi; phiên mở từ lần chạy app trước coi như đã có. `native_files()` liệt kê `AGENTS.md`,
+`CLAUDE.md`… (`NATIVE`, kiểm trên CLI thật) chỉ để xem — không gửi kèm. TUI: `RulesScreen`, `RuleEditScreen`
+(`TextAreaVN`: ô nhiều dòng gõ tiếng Việt như `TextInput`). Web: `rules.js`, op `rules` / `rules_list` (đọc được ở
+`--readonly`).
+
 ## Mở folder / dự án khác (`/open`)
 
 Mọi thứ (Orchestrator, DB, khoá phiên, cấu hình, `FileIndex`, `ShellManager`…) gắn với một `root`, nên đổi dự án là

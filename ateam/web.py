@@ -23,7 +23,8 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import __version__, clipboard, mentions, notify, palette, projects, reports, shell, theme, todos, update, wizard
+from . import (__version__, clipboard, mentions, notify, palette, projects, reports, rules, shell, theme, todos,
+               update, wizard)
 from .config import Config, found_models, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import ASKING, DB, GOAL_ENDED, Goal, Task
 from .qr import QR
@@ -187,6 +188,18 @@ def ui_strings() -> dict[str, str]:
         "proj_busy_yes": tr("Dừng & mở"),
         "proj_unsaved_q": tr("Tab 📝 Code còn file chưa lưu: {v}\nBỏ các thay đổi và mở dự án khác?"),
         "proj_unsaved_yes": tr("Bỏ thay đổi & mở"),
+        "rules_title": tr("📏 Rule của dự án"),
+        "rules_hint": tr("Mọi agent phải tuân theo: ateam gửi kèm rule ở đầu mỗi prompt (task, chat, lập kế hoạch, "
+                         "review, commit message). Lưu riêng máy này: {v}"),
+        "rules_add": tr("+ Thêm rule"), "rules_empty": tr("Chưa có rule nào"),
+        "rules_native": tr("File rule có sẵn trong repo — CLI tự đọc, ateam không gửi kèm"),
+        "rules_reads": tr("{v} tự đọc"), "rules_all": tr("mọi agent"), "rules_open": tr("Mở"),
+        "rules_edit": tr("✎ Sửa rule"), "rules_new": tr("+ Thêm rule"),
+        "rules_f_title": tr("Tiêu đề (không bắt buộc)"), "rules_f_title_ph": tr("vd: Commit message tiếng Việt"),
+        "rules_f_text": tr("Nội dung — agent nhận nguyên văn"),
+        "rules_f_targets": tr("Áp dụng cho (không chọn gì = mọi agent)"), "rules_f_on": tr("Bật"),
+        "rules_save": tr("Lưu"), "rules_del": tr("Xoá rule"), "rules_del_q": tr("Xoá rule \"{v}\"?"),
+        "rules_up": tr("Lên"), "rules_down": tr("Xuống"), "rules_toggle": tr("Bật/tắt"),
         "pal_new": tr("📄 File mới"), "pal_path": tr("đường/dẫn/file.ext"),
         "pal_rename": tr("✎ Đổi tên / chuyển {v}", v="{v}"), "pal_delete": tr("Xoá file"),
         "pal_delete_q": tr("Đưa {v} vào Thùng rác?", v="{v}"), "pal_delete_yes": tr("Xoá"),
@@ -361,7 +374,7 @@ def guard_middleware(port: int):
 
 
 # --readonly: thao tác không đổi gì vẫn cho phép
-READONLY_OPS = ("custom_preview", "goal_plan", "code_search")
+READONLY_OPS = ("custom_preview", "goal_plan", "code_search", "rules_list")
 
 
 def text_box(title: str, body: str) -> dict:
@@ -480,6 +493,11 @@ class WebApp:
         self.next_root = path
         asyncio.get_running_loop().call_later(0.3, self.stop_server)  # trả lời trình duyệt xong mới dừng
         return tr("↪ Đang mở {v}…", v=projects.shorten(path)), "info", {"switching": True}
+
+    def rules_state(self) -> dict:
+        return {"rules": rules.load(self.root), "native": rules.native_files(self.root),
+                "targets": [{"v": v, "label": label} for v, label in rules.target_choices(self.cfg)],
+                "file": projects.shorten(rules.path_for(self.root))}
 
     def stop_server(self) -> None:
         raise web.GracefulExit()  # như Ctrl+C: run_app chạy _shutdown (dừng agent, lệnh terminal) rồi trả về
@@ -853,6 +871,9 @@ class WebApp:
             return tr("Chế độ chỉ xem (--readonly) — không làm được thao tác này"), "warn"
         if op == "submit":
             return await self.submit(str(d.get("text") or ""))
+        if op in ("rules", "rules_list"):  # popup 📏 Rule của dự án
+            err = rules.apply(self.root, str(d.get("action") or ""), d) if op == "rules" else ""
+            return err, "warn" if err else "", self.rules_state()
         if op == "projects":  # gợi ý cho popup Mở folder
             if self.remote.enabled:
                 return "", "", {"items": []}
@@ -1073,6 +1094,11 @@ class WebApp:
                 return tr("Dùng: /chat <agent> <tin nhắn>  — agent: {v}", v=", ".join(agents)), "warn"
             reply = self.chat(agent, msg) if msg.strip() else None
             return reply or ("", "", {"open": {"view": "team", "chat": agent}})
+        if cmd == "rules":
+            err = rules.apply(self.root, "add", {"text": rest}) if rest else ""
+            if err:
+                return err, "warn"
+            return (tr("📏 Đã thêm rule — mọi agent nhận từ lượt sau") if rest else ""), "ok", {"open": {"modal": "rules"}}
         if cmd == "open":
             if self.remote.enabled:
                 return tr("Đang mở web từ xa — chỉ đổi được dự án khi chạy trên máy này"), "warn"

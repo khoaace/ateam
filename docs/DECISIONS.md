@@ -120,3 +120,12 @@ còn nút ⌨ / `/term` mở CLI thật trên *cùng phiên* cho lúc cần slas
 không theo dõi. Câu trả lời của claude `-p` chỉ hiện khi xong lượt (chưa stream, xem ROADMAP).
 **Xem lại nếu**: đọc được output JSON stream của từng CLI (khi đó chat có thể hiện chữ dần và đếm token thật).
 
+## 15. Rule của dự án gửi kèm prompt, không ghi vào AGENTS.md / CLAUDE.md
+
+**Lý do**: mỗi CLI tự đọc một kiểu file (claude `CLAUDE.md` + `AGENTS.md`, agy `GEMINI.md` + `.agents/rules`, grok
+`.grok/rules`…), agent tuỳ chỉnh có thể không đọc file nào, và ghi vào file trong repo của người dùng thì đụng file họ
+tự viết / lẫn vào commit. Gửi kèm prompt (ở `argv_for`) thì agent nào cũng nhận, chọn được người nhận theo agent/vai
+trò, lưu ngoài repo. Đổi lại tốn thêm token mỗi lượt mới (lượt `--resume` không gửi lại) và rule chỉ có tác dụng khi
+chạy qua ateam. Người dùng chọn cách này (18/10/2026).
+**Xem lại nếu**: người dùng muốn rule có tác dụng cả khi mở CLI ngoài ateam (khi đó ghi một khối do ateam quản lý vào
+`AGENTS.md`), hoặc muốn chia sẻ rule qua git.

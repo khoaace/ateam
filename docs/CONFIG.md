@@ -27,6 +27,10 @@ Tab ✅ To-do của web lưu ở `~/.config/ateam/todos/<tên thư mục>-<10 k�
 `{id, text, done, created}`, `ateam/todos.py`) — cố ý **ngoài** dự án để không phải `.gitignore`; đổi tên/chuyển thư
 mục dự án thì danh sách cũ nằm lại ở file theo đường dẫn cũ.
 
+Rule của dự án (`/rules`, `ateam/rules.py`) lưu cùng kiểu, ở `~/.config/ateam/rules/<cùng tên file>.json`: mảng
+`{id, title, text, enabled, targets, created}`; `targets` rỗng = mọi agent, `"agent:<tên>"` / `"role:<vai trò>"`
+(`role:lead` = trưởng nhóm, gồm mọi lượt lập kế hoạch / review / viết commit message của ai làm thay).
+
 `XDG_CONFIG_HOME` đổi được vị trí thư mục `~/.config`.
 
 ## Khoá cấp cao

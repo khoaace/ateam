@@ -377,6 +377,21 @@ trên 2 MB / 20 000 dòng không tô màu, trên 5 MB mở chỉ đọc, file nh
 - **Hỏi agent về đoạn đang chọn** / **Giao task cho agent**: chọn agent, gõ câu hỏi — agent nhận `@file (dòng a–b)`
   kèm câu hỏi (hỏi = chat 💬 ở tab Đội; giao task = hiện trên Bảng việc).
 
+## Rule của dự án
+
+`/rules` (web: nút 📏 trên thanh trên) quản lý các rule mà **mọi agent phải tuân theo** trong dự án này — như
+`AGENTS.md` của Codex hay `.agents/rules` của Antigravity, nhưng ateam tự gửi kèm ở đầu mỗi prompt (task, `/task`,
+chat 💬, lập kế hoạch, review, `/grill`, viết commit message), nên agent nào cũng nhận, kể cả agent tuỳ chỉnh:
+
+- Thêm / sửa / xoá, đổi thứ tự; **bật/tắt** từng rule mà không phải xoá. `/rules <nội dung>` thêm nhanh một rule.
+- **Áp dụng cho**: để trống = mọi agent; hoặc chọn vài agent (vd chỉ `codex`) và/hoặc vai trò (vd *Trưởng nhóm* —
+  gồm mọi lượt lập kế hoạch, review).
+- Lưu **riêng máy này**, ngoài repo (`~/.config/ateam/rules/…`), không lẫn vào commit.
+- Chat đang tiếp tục phiên CLI: ateam chỉ gửi lại rule khi bạn vừa đổi bộ rule.
+- Popup liệt kê luôn các file rule **có sẵn trong repo** mà CLI tự đọc (`AGENTS.md` — claude, codex, agy, grok,
+  opencode; `CLAUDE.md`; `GEMINI.md`; `.agents/rules/*.md`; `.claude/rules/*.md`; `.grok/rules/*`) — bấm để mở ở tab
+  Code. ateam không gửi kèm các file này (CLI đã tự đọc).
+
 ## Mở folder / dự án khác
 
 `/open` (hoặc bấm tên dự án góc trên bên trái ở web, hay `>Mở folder` trong palette tab Code) mở popup như

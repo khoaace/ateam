@@ -31,8 +31,8 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, projects, reports, search, shell,
-               theme, todos, update, wizard)
+from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, projects, reports, rules, search,
+               shell, theme, todos, update, wizard)
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
 from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TIERS,
                      WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan,
@@ -169,6 +169,8 @@ Model & effort của từng agent (được lưu lại cho lần sau):
   /theme [tên] [màu nhấn]           chọn theme màu (xem trước trực tiếp), vd /theme nord tím
   /lang en|vi                       đổi ngôn ngữ giao diện (app tự mở lại)
   /open [thư mục]                   mở folder / dự án khác: dự án gần đây, hoặc gõ đường dẫn (Tab gợi ý)
+  /rules [rule mới]                 rule của dự án mọi agent phải tuân theo (ateam gửi kèm mọi prompt): thêm,
+                                    sửa, bật/tắt, chỉ cho vài agent / vai trò; xem AGENTS.md, CLAUDE.md có sẵn
 
 Agent & workflow tuỳ chỉnh:
   /custom                           thêm/sửa/xoá agent riêng (CLI bất kỳ) và workflow (chuỗi bước dựng sẵn)
@@ -263,6 +265,7 @@ COMMANDS = [
     ("term", "", tr("mở tab Terminal (lệnh đang chạy)")),
     ("theme", tr("[tên] [màu nhấn]"), tr("chọn theme màu (xem trước trực tiếp)")),
     ("lang", "<en|vi>", tr("đổi ngôn ngữ giao diện (app tự mở lại)")),
+    ("rules", tr("[rule mới]"), tr("rule của dự án mà mọi agent phải tuân theo; kèm nội dung thì thêm luôn")),
     ("open", tr("[thư mục]"), tr("mở folder / dự án khác (dự án gần đây, gõ đường dẫn — Tab gợi ý)")),
     ("code", tr("[@file[:dòng]]"), tr("mở tab 📝 Code: xem & sửa file với phím vim")),
     ("vim", tr("<on|off|file>"), tr("bật/tắt phím vim trong tab 📝 Code")),
@@ -3573,6 +3576,243 @@ class PromptScreen(BaseModal):
         text = event.value.strip()
         if text:
             self.dismiss(text)
+
+
+class TextAreaVN(TextArea):
+    """Ô soạn nhiều dòng gõ tiếng Việt không lỗi dấu — cùng cách xử lý với TextInput: nuốt ký tự mồi U+202F của
+    OpenKey cùng Backspace theo sau, Backspace xoá trọn chữ cùng dấu (xử lý ngay trong `_on_key`), gộp dòng đang
+    sửa về dạng dựng sẵn (NFC)."""
+
+    IME_PLACEHOLDER = TextInput.IME_PLACEHOLDER
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._ime_placeholders = 0
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.character == self.IME_PLACEHOLDER:
+            self._ime_placeholders += 1
+            event.stop()
+            event.prevent_default()
+            return
+        if event.key == "backspace":
+            event.stop()
+            event.prevent_default()
+            self.action_delete_left()
+            return
+        self._ime_placeholders = 0
+        await super()._on_key(event)
+
+    def action_delete_left(self) -> None:
+        if self._ime_placeholders:
+            self._ime_placeholders -= 1
+            return
+        row, col = self.cursor_location
+        line = self.document.get_line(row)
+        if self.selection.is_empty and col > 0:
+            start = col - 1
+            while start > 0 and unicodedata.combining(line[start]):
+                start -= 1
+            self.delete((row, start), (row, col))
+        else:
+            super().action_delete_left()
+
+    def compose_nfc(self) -> None:
+        row, col = self.cursor_location
+        line = self.document.get_line(row)
+        nfc = unicodedata.normalize("NFC", line)
+        if nfc != line:
+            self.replace(nfc, (row, 0), (row, len(line)), maintain_selection_offset=False)
+            self.move_cursor((row, len(unicodedata.normalize("NFC", line[:col]))))
+
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        self.compose_nfc()
+
+
+class RuleEditScreen(BaseModal):
+    """Thêm / sửa một rule của dự án (/rules). Trả {title, text, targets, enabled} hoặc None (Esc)."""
+
+    BINDINGS = [Binding("ctrl+s", "save", tr("Lưu"), priority=True)]
+    DEFAULT_CSS = """
+    RuleEditScreen { align: center middle; }
+    #rule-box { width: 110; max-width: 100%; height: auto; max-height: 95%; border: round $primary 70%;
+                background: $surface; padding: 0 1; }
+    #rule-text { height: 12; }
+    #rule-targets { height: auto; max-height: 9; }
+    #rule-box .f-section { height: 1; margin-top: 1; color: $text-muted; text-style: bold; }
+    #rule-buttons { height: auto; align: right middle; }
+    #rule-buttons Button { margin-left: 2; }
+    """
+
+    def __init__(self, cfg: Config, rule: dict | None = None):
+        super().__init__()
+        self.cfg, self.rule = cfg, dict(rule or {})
+
+    def compose(self) -> ComposeResult:
+        chosen = set(self.rule.get("targets") or [])
+        with Vertical(id="rule-box"):
+            yield self.title_bar(tr("✎ Sửa rule") if self.rule else tr("+ Thêm rule"))
+            yield Static(tr("Tiêu đề (không bắt buộc)"), classes="f-section")
+            yield TextInput(self.rule.get("title", ""), placeholder=tr("vd: Commit message tiếng Việt"),
+                            id="rule-title")
+            yield Static(tr("Nội dung — agent nhận nguyên văn"), classes="f-section")
+            yield TextAreaVN(self.rule.get("text", ""), id="rule-text", soft_wrap=True, show_line_numbers=False)
+            yield Static(tr("Áp dụng cho (không chọn gì = mọi agent)"), classes="f-section")
+            yield SelectionList(*[(label, v, v in chosen) for v, label in rules.target_choices(self.cfg)],
+                                id="rule-targets")
+            yield Checkbox(tr("Bật"), self.rule.get("enabled", True) is not False, id="rule-on")
+            with Horizontal(id="rule-buttons"):
+                yield Btn(tr("Huỷ"), id="rule-cancel")
+                yield Btn(tr("Lưu (Ctrl+S)"), id="rule-save", variant="primary")
+
+    def on_mount(self) -> None:
+        self.query_one("#rule-text" if self.rule else "#rule-title").focus()
+        self.call_after_refresh(self.mark_clean)
+
+    def form_values(self) -> tuple:
+        return super().form_values() + (self.query_one("#rule-text", TextArea).text,
+                                         tuple(self.query_one("#rule-targets", SelectionList).selected))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        if event.button.id == "rule-save":
+            self.action_save()
+        elif event.button.id == "rule-cancel":
+            self.close()
+
+    def action_save(self) -> None:
+        text = self.query_one("#rule-text", TextArea).text.strip()
+        if not text:
+            self.notify(tr("Rule chưa có nội dung"), severity="warning")
+            return
+        self.dismiss({"title": self.query_one("#rule-title", Input).value.strip(), "text": text,
+                      "targets": list(self.query_one("#rule-targets", SelectionList).selected),
+                      "enabled": self.query_one("#rule-on", Checkbox).value})
+
+
+class RulesScreen(BaseModal):
+    """/rules: rule của dự án — ateam gửi kèm mọi prompt cho agent (rules.py). a thêm · Enter sửa · Space bật/tắt ·
+    d xoá · Shift+↑↓ đổi thứ tự. Mục "File có sẵn" (AGENTS.md, CLAUDE.md…): Enter mở ở tab 📝 Code."""
+
+    BINDINGS = [Binding("a", "add", tr("Thêm"), show=False), Binding("e", "edit", show=False),
+                Binding("space", "toggle", show=False), Binding("d", "delete", show=False),
+                Binding("shift+up", "move(-1)", show=False), Binding("shift+down", "move(1)", show=False)]
+    DEFAULT_CSS = """
+    RulesScreen { align: center middle; }
+    #rules-box { width: 110; max-width: 100%; height: auto; max-height: 90%; border: round $primary 70%;
+                 background: $surface; padding: 0 1; }
+    #rules-list { height: auto; max-height: 26; margin-top: 1; }
+    #rules-buttons { height: auto; align: right middle; }
+    #rules-buttons Button { margin-left: 2; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="rules-box"):
+            yield self.title_bar(tr("📏 Rule của dự án"))
+            yield Static(Text(tr("Mọi agent phải tuân theo: ateam gửi kèm rule ở đầu mỗi prompt (task, chat, lập kế "
+                                 "hoạch, review, commit message). Lưu riêng máy này: {v}",
+                                 v=projects.shorten(rules.path_for(self.app.root))), "dim"))
+            yield OptionList(id="rules-list")
+            yield Static(Text(tr("a thêm · Enter sửa · Space bật/tắt · d xoá · Shift+↑↓ đổi thứ tự · Esc đóng"), "dim"))
+            with Horizontal(id="rules-buttons"):
+                yield Btn(tr("+ Thêm rule (a)"), id="rules-add", variant="primary")
+                yield Btn(tr("Đóng"), id="rules-close")
+
+    def on_mount(self) -> None:
+        self.refill()
+        self.query_one("#rules-list", OptionList).focus()
+
+    def refill(self, keep: str | None = None) -> None:
+        lst = self.query_one("#rules-list", OptionList)
+        cur = keep or (lst.get_option_at_index(lst.highlighted).id if lst.highlighted is not None else None)
+        lst.clear_options()
+        items = rules.load(self.app.root)
+        for r in items:
+            t = Text()
+            t.append("✓ " if r.get("enabled", True) else "○ ", "green" if r.get("enabled", True) else "dim")
+            t.append(rules.name_of(r), "" if r.get("enabled", True) else "dim")
+            t.append(f"  → {rules.targets_label(r)}", "dim")
+            lst.add_option(Option(t, id=f"r{r['id']}"))
+        if not items:
+            lst.add_option(Option(Text(tr("Chưa có rule nào — bấm a để thêm"), "dim"), disabled=True))
+        native = rules.native_files(self.app.root)
+        if native:
+            lst.add_option(Option(Text(tr("File rule có sẵn trong repo — CLI tự đọc, ateam không gửi kèm "
+                                          "(Enter mở ở tab Code)"), "bold dim"), disabled=True))
+            for f in native:
+                t = Text("📄 " + f["path"])
+                t.append("  " + tr("{v} tự đọc", v=f["readers"]), "dim")
+                lst.add_option(Option(t, id="f" + f["path"]))
+        ids = [lst.get_option_at_index(i).id for i in range(lst.option_count)]
+        if cur and cur in ids:  # dòng tiêu đề / "chưa có rule" có id None
+            lst.highlighted = ids.index(cur)
+        else:
+            lst.highlighted = next((i for i, x in enumerate(ids) if x), None)
+
+    def current(self) -> str:
+        lst = self.query_one("#rules-list", OptionList)
+        return (lst.get_option_at_index(lst.highlighted).id or "") if lst.highlighted is not None else ""
+
+    def rule(self) -> dict | None:
+        oid = self.current()
+        if not oid.startswith("r"):
+            return None
+        return next((r for r in rules.load(self.app.root) if r["id"] == int(oid[1:])), None)
+
+    def run_op(self, action: str, data: dict, keep: str | None = None) -> None:
+        err = rules.apply(self.app.root, action, data)
+        if err:
+            self.notify(err, severity="warning")
+        self.refill(keep)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        oid = event.option.id or ""
+        if oid.startswith("f"):
+            self.dismiss(None)
+            self.app.open_code(oid[1:])
+        elif oid.startswith("r"):
+            self.action_edit()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "rules-add":
+            event.stop()
+            self.action_add()
+        elif event.button.id == "rules-close":
+            event.stop()
+            self.close()
+
+    def action_add(self) -> None:
+        def done(d) -> None:
+            if d:
+                n = len(rules.load(self.app.root))
+                self.run_op("add", d)
+                items = rules.load(self.app.root)
+                if len(items) > n:
+                    self.refill(f"r{items[-1]['id']}")
+        self.app.push_screen(RuleEditScreen(self.app.cfg), done)
+
+    def action_edit(self) -> None:
+        r = self.rule()
+        if r:
+            self.app.push_screen(RuleEditScreen(self.app.cfg, r),
+                                 lambda d: d and self.run_op("update", dict(d, id=r["id"])))
+
+    def action_toggle(self) -> None:
+        r = self.rule()
+        if r:
+            self.run_op("toggle", {"id": r["id"]})
+
+    def action_move(self, by: int) -> None:
+        r = self.rule()
+        if r:
+            self.run_op("move", {"id": r["id"], "by": by}, keep=f"r{r['id']}")
+
+    def action_delete(self) -> None:
+        r = self.rule()
+        if r:
+            self.app.push_screen(ConfirmScreen(tr("Xoá rule"), tr("Xoá rule \"{v}\"?", v=rules.name_of(r)), yes=tr("Xoá")),
+                                 lambda ok: ok and self.run_op("delete", {"id": r["id"]}))
 
 
 class PaletteScreen(BaseModal):
@@ -7036,6 +7276,12 @@ class TeamApp(App):
                 p = self.pane(agent)
                 if p:
                     p.query_one(".pane-chat", Input).focus()
+        elif cmd == "rules":
+            if rest:
+                err = rules.apply(self.root, "add", {"text": rest})
+                self.notify(err or tr("📏 Đã thêm rule — mọi agent nhận từ lượt sau"), severity="warning" if err else "information")
+            else:
+                self.push_screen(RulesScreen())
         elif cmd == "open":
             if rest:
                 self.open_project(rest)

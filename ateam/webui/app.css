@@ -962,3 +962,15 @@ body.readonly .card-actions { display: none !important; }
   .modal-box { width: calc(100vw - 16px) !important; max-height: calc(100vh - 16px); }
   .composer-box { margin-left: 8px; margin-right: 8px; }
 }
+
+/* 📏 Rule của dự án (rules.js) */
+.rule-list { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.rule-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: var(--radius); background: var(--surface-2); }
+.rule-row.off .rule-name { color: var(--muted); text-decoration: line-through; }
+.rule-main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; background: none; border: 0; padding: 2px 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.rule-main > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rule-empty { padding: 10px 2px; }
+.rule-form textarea.field { width: 100%; min-height: 140px; resize: vertical; font: 13px/1.5 var(--mono); }
+.chips-pick { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.rule-row .icon-btn.sm { width: 26px; height: 26px; font-size: 13px; flex: none; }
+.rule-form .sec-title { margin-top: 12px; }

@@ -16,6 +16,7 @@ from . import limits
 from . import mentions
 from . import usage_logs
 from . import prompts as P
+from . import rules
 from .config import EFFORT_REJECTED_RE, AgentConfig, Config
 from .db import (ACTIVE, ASKING, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
                  FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Goal, Task)
@@ -74,6 +75,7 @@ class Orchestrator:
         self._bg: set[asyncio.Task] = set()
         self._usage_jobs: set[asyncio.Task] = set()  # đọc token sau mỗi lượt (run_until_idle chờ xong)
         self._cancel_req: set[int] = set()
+        self._rules_sent: dict[str, str] = {}  # phiên CLI -> digest bộ rule đã gửi trong phiên đó
         self._chat_new: set[str] = set()  # agent mà tin chat kế tiếp bắt đầu cuộc mới
         self._wt_base: dict[int, str] = {}
         # hoạt động hiện tại của từng agent (cho tab Đội)
@@ -146,7 +148,8 @@ class Orchestrator:
     def argv_for(self, a: AgentConfig, prompt: str, workdir: Path, *, model: str | None = None,
                  effort: str | None = None, plan: bool = False, session: str | None = None,
                  resume: bool = False) -> list[str]:
-        """Lệnh chạy agent, đã đổi @đường-dẫn sang cú pháp của CLI đó (xem mentions.py)."""
+        """Lệnh chạy agent, đã đổi @đường-dẫn sang cú pháp của CLI đó (xem mentions.py) và kèm rule của dự án."""
+        prompt = self.with_rules(a, prompt, lead=plan, session=session, resume=resume)
         want = (effort or a.effort or "").strip()
         got = a.resolve_effort((model or a.model or ""), want)
         if want and got != want:
@@ -157,6 +160,23 @@ class Orchestrator:
                                         image_args=a.image_args)
         return mentions.insert_args(a.argv(prompt, model=model, effort=effort, plan=plan, session=session,
                                            resume=resume), prompt, extra)
+
+    def with_rules(self, a: AgentConfig, prompt: str, *, lead: bool = False, session: str | None = None,
+                   resume: bool = False) -> str:
+        """Đặt rule của dự án (/rules, rules.py) trước prompt. Lượt tiếp tục phiên CLI (--resume) thì phiên đã có
+        rule — chỉ gửi lại khi bộ rule đổi từ lần gửi trước trong phiên đó."""
+        items = rules.active_for(self.root, a.name, a.role or "", lead or a.name == self.cfg.lead)
+        d = rules.digest(items)
+        if resume and session:
+            sent = self._rules_sent.setdefault(session, d)  # phiên từ lần mở app trước: coi như đã có
+            if sent == d:
+                return prompt
+            self._rules_sent[session] = d
+            return (rules.block(items, updated=True) if items else
+                    "PROJECT RULES: the user removed all project rules — ignore the earlier ones.\n\n---\n\n") + prompt
+        if session:
+            self._rules_sent[session] = d
+        return rules.block(items) + prompt
 
     @staticmethod
     def new_session(a: AgentConfig) -> str | None:
