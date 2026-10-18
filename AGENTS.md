@@ -39,6 +39,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/shell.py` | Lệnh terminal của người dùng (`!lệnh`, tab 💻 Terminal): `ShellManager` chạy qua `Run` (pty, huỷ process group), gợi ý script package.json/Makefile, bắt port |
 | `ateam/gitops.py` | Tab 🌿 Git + `/git`, `/commit`, `/push`…: `GitRepo` (status porcelain v2, stage/unstage/bỏ thay đổi, commit/amend, nhánh, merge, fetch/pull/push, stash, revert, bỏ commit cuối) — async, không hỏi mật khẩu; màn hình ở `tui.py` (`GitFileList`, `GitLogList`, `GitBranchScreen`, `GitStashScreen`, `ConfirmScreen`) |
 | `ateam/editor.py` | Tab 📝 Code: đọc/ghi file an toàn, tô màu pygments theo byte, `VimState` (phím vim → thao tác); widget `CodeEditor` ở `tui.py` |
+| `ateam/projects.py` | `/open`: mở folder / dự án khác (dự án gần đây, gợi ý thư mục, kiểm tra đích); TUI/web chạy lại với `-C` |
 | `ateam/palette.py` | Command palette tab Code (TUI + web): bảng lệnh, file gần đây, symbol (hàm/class/heading), lọc mờ, tạo/đổi tên/xoá file vào Thùng rác |
 | `ateam/diffview.py` | Màn hình diff kiểu VS Code: bóc `git diff`, ghép dòng hai cột, tô cú pháp (pygments qua rich) và chữ đổi trong dòng; `DiffScreen` ở `tui.py` dùng |
 | `ateam/mentions.py` | `@file`: gợi ý file/thư mục cho TUI, đổi `@đường/dẫn` sang cú pháp từng CLI (`SYNTAX`) |

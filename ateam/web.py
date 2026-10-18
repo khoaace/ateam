@@ -23,7 +23,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import __version__, clipboard, mentions, notify, palette, reports, shell, theme, todos, update, wizard
+from . import __version__, clipboard, mentions, notify, palette, projects, reports, shell, theme, todos, update, wizard
 from .config import Config, found_models, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import ASKING, DB, GOAL_ENDED, Goal, Task
 from .qr import QR
@@ -176,6 +176,17 @@ def ui_strings() -> dict[str, str]:
         "pal_find_hint": tr("Gõ chữ cần tìm trong file"), "pal_nofind": tr("Không thấy \"{v}\" trong file"),
         "pal_nofile": tr("Không có file nào khớp — > để xem lệnh"),
         "pal_noopen": tr("Chưa mở file nào — gõ tên file để mở"),
+        "proj_ph": tr("Tên dự án gần đây, hoặc đường dẫn: ~/code/app, ../app-khac"),
+        "proj_foot": tr("↑↓ chọn · Tab đi vào thư mục · Enter mở · Esc đóng"),
+        "proj_recent": tr("Dự án gần đây"), "proj_current": tr("(đang mở)"),
+        "proj_none": tr("Không có thư mục nào khớp"), "proj_hint": tr("Gõ đường dẫn thư mục, vd ~/code/app"),
+        "proj_open": tr("Mở folder / dự án khác"),
+        "proj_busy": tr("Đang có agent chạy"),
+        "proj_busy_q": tr("{n} lượt agent đang chạy sẽ bị dừng (task dở thành lỗi — quay lại dự án này thì "
+                          "/retry).\nMở {v}?"),
+        "proj_busy_yes": tr("Dừng & mở"),
+        "proj_unsaved_q": tr("Tab 📝 Code còn file chưa lưu: {v}\nBỏ các thay đổi và mở dự án khác?"),
+        "proj_unsaved_yes": tr("Bỏ thay đổi & mở"),
         "pal_new": tr("📄 File mới"), "pal_path": tr("đường/dẫn/file.ext"),
         "pal_rename": tr("✎ Đổi tên / chuyển {v}", v="{v}"), "pal_delete": tr("Xoá file"),
         "pal_delete_q": tr("Đưa {v} vào Thùng rác?", v="{v}"), "pal_delete_yes": tr("Xoá"),
@@ -379,6 +390,7 @@ class WebApp:
         self._flushing = False
         self.notices = notify.Watcher()  # báo trình duyệt khi task lỗi / chờ duyệt (như TUI)
         self._bg: set[asyncio.Task] = set()
+        self.next_root: Path | None = None  # /open: serve() trả về để cli.cmd_web chạy lại ở dự án này
 
     # ------------------------------------------------------------------ dựng app
     def make_app(self) -> web.Application:
@@ -452,6 +464,25 @@ class WebApp:
             await ws.close()
         for t in list(self._bg):
             t.cancel()
+
+    # ------------------------------------------------------------------ mở folder / dự án khác (/open)
+    def open_project(self, d: dict) -> tuple:
+        """Dừng server rồi cli.cmd_web chạy lại với -C <thư mục>, cùng cổng; trình duyệt thấy dự án khác trong
+        hello (root) thì tự nạp lại trang. Web từ xa không đổi được: token chỉ cấp quyền cho một dự án."""
+        if self.remote.enabled:
+            return tr("Đang mở web từ xa — chỉ đổi được dự án khi chạy trên máy này"), "warn"
+        path, err = projects.check_target(str(d.get("path") or ""), self.root)
+        if path is None:
+            return err, "warn"
+        busy = len(self.orch.runs) + len(self.orch.lead_busy)
+        if busy and not d.get("force"):
+            return "", "", {"busy": busy, "path": projects.shorten(path)}
+        self.next_root = path
+        asyncio.get_running_loop().call_later(0.3, self.stop_server)  # trả lời trình duyệt xong mới dừng
+        return tr("↪ Đang mở {v}…", v=projects.shorten(path)), "info", {"switching": True}
+
+    def stop_server(self) -> None:
+        raise web.GracefulExit()  # như Ctrl+C: run_app chạy _shutdown (dừng agent, lệnh terminal) rồi trả về
 
     def _spawn(self, coro) -> asyncio.Task:
         t = asyncio.get_running_loop().create_task(coro)
@@ -822,6 +853,12 @@ class WebApp:
             return tr("Chế độ chỉ xem (--readonly) — không làm được thao tác này"), "warn"
         if op == "submit":
             return await self.submit(str(d.get("text") or ""))
+        if op == "projects":  # gợi ý cho popup Mở folder
+            if self.remote.enabled:
+                return "", "", {"items": []}
+            return "", "", {"items": projects.candidates(str(d.get("q") or ""), self.root)}
+        if op == "open_project":
+            return self.open_project(d)
         if op == "approve":
             n = o.approve(d.get("goal"))
             return (tr("▶ Đã duyệt {n} task", n=n), "ok") if n else (tr("Không có task nháp nào cần duyệt"), "warn")
@@ -1036,6 +1073,10 @@ class WebApp:
                 return tr("Dùng: /chat <agent> <tin nhắn>  — agent: {v}", v=", ".join(agents)), "warn"
             reply = self.chat(agent, msg) if msg.strip() else None
             return reply or ("", "", {"open": {"view": "team", "chat": agent}})
+        if cmd == "open":
+            if self.remote.enabled:
+                return tr("Đang mở web từ xa — chỉ đổi được dự án khi chạy trên máy này"), "warn"
+            return "", "", {"open": {"project": rest}}  # trình duyệt hỏi file chưa lưu / agent đang chạy
         if cmd == "focus":  # phóng to 1 thẻ agent: chỉ là cách xem, trình duyệt tự làm
             if rest and rest not in agents:
                 return tr("Dùng: /focus [agent]  — agent: {v}", v=", ".join(agents)), "warn"
@@ -1270,7 +1311,8 @@ def print_remote(remote: Remote, only: str = "") -> None:
             print(QR(url).to_text())
 
 
-def serve(root: Path, cfg: Config, db: DB, port: int, remote: Remote | None = None) -> None:
-    """Chạy server tới khi Ctrl+C."""
+def serve(root: Path, cfg: Config, db: DB, port: int, remote: Remote | None = None) -> Path | None:
+    """Chạy server tới khi Ctrl+C (trả None) hoặc /open (trả thư mục dự án cần mở)."""
     wa = WebApp(root, cfg, db, port, remote)
     web.run_app(wa.make_app(), host=wa.remote.host, port=port, print=None, access_log=None)
+    return wa.next_root

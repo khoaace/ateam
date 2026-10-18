@@ -85,12 +85,15 @@ function setConn(ok) {
   $("#conn-text").textContent = ok ? t("connected") : t("disconnected");
 }
 function onHello(m) {
+  // /open: server đã chạy lại ở dự án khác -> nạp lại trang (mọi view, buffer đều thuộc dự án cũ)
+  if (S.meta.root && m.root !== S.meta.root) { S.switching = true; location.reload(); return; }
   const first = !S.meta.version;
   S.T = m.T; S.commands = m.commands; S.meta = m;
   S.agentNames = m.agents.map((a) => a.name);
   document.documentElement.lang = m.lang;
   $("#proj").textContent = m.project;
-  $("#proj").title = m.root;
+  $("#proj").title = m.remote ? m.root : m.root + " — " + t("proj_open");
+  $("#proj").disabled = !!m.remote;
   $("#ver").textContent = "ateam " + m.version;
   $$("[data-t]").forEach((el) => { el.textContent = t(el.dataset.t); });
   // màn hình hẹp chỉ còn icon: nút vẫn có tên cho trình đọc màn hình và tooltip (kèm phím Alt+số)
@@ -146,6 +149,7 @@ function onToast(m) {
   if ((o.modal === "branches" || o.modal === "stash") && window.GitView) GitView[o.modal]();
   if (o.text) textModal(o.text.title, o.text.body);
   if (o.picker) pickerModal(o.picker);
+  if (o.project != null) o.project ? openProject(o.project) : projectModal();
   if (o.prefill) prefill(o.prefill);
   if (o.theme) setThemeMode(o.theme);
   if (o.code && window.CodeView) { setView("code"); CodeView.open(o.code.path, o.code.line); }
@@ -1059,6 +1063,68 @@ function pickerModal(p) {
   $("#pick-custom", m).addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.value.trim()) choose(e.target.value.trim()); });
 }
 
+/* mở folder / dự án khác (/open, bấm tên dự án): dự án gần đây hoặc gõ đường dẫn — Tab đi vào thư mục con.
+   Server dừng rồi chạy lại ở dự án mới (cùng cổng); hello có root khác thì trang tự nạp lại. */
+function projectModal(q = "") {
+  const P = { vals: [], labels: [], sel: -1, seq: 0 };
+  const m = openModal(`<div class="pal"><input class="field one pal-q" autocomplete="off" spellcheck="false" placeholder="${esc(t("proj_ph"))}">
+    <div class="pal-list" role="listbox"></div><div class="pal-foot">${esc(t("proj_foot"))}</div></div>`, { box: "md", cls: "palette" });
+  const inp = $(".pal-q", m), list = $(".pal-list", m);
+  const paint = () => $$(".pal-item", list).forEach((r) => r.classList.toggle("on", +r.dataset.i === P.sel));
+  const refill = async () => {
+    const seq = ++P.seq, r = await request("projects", { q: inp.value });
+    if (seq !== P.seq) return;
+    const items = r.items || [];
+    P.vals = items.map((it) => it.kind === "current" ? null : it.path);
+    P.labels = items.map((it) => it.label);
+    P.sel = P.vals.findIndex((v) => v);
+    const head = !inp.value.trim() && items.length ? `<div class="pal-head">${esc(t("proj_recent"))}</div>` : "";
+    list.innerHTML = head + (items.map((it, i) => `<div class="pal-item${it.kind === "current" ? " off" : ""}" data-i="${i}" role="option">${it.kind === "recent" ? "🕘" : "📁"} ${esc(it.name)}<span class="pal-where"><bdi>${esc(it.where)}</bdi></span>${it.kind === "current" ? ` <span class="pal-dim">${esc(t("proj_current"))}</span>` : ""}</div>`).join("")
+      || `<div class="pal-head">${esc(t(inp.value.trim() ? "proj_none" : "proj_hint"))}</div>`);
+    paint();
+  };
+  const move = (d) => {
+    let i = P.sel;
+    for (let k = 0; k < Math.abs(d); k++) {
+      let j = i + Math.sign(d);
+      while (j >= 0 && j < P.vals.length && !P.vals[j]) j += Math.sign(d);
+      if (j < 0 || j >= P.vals.length) break;
+      i = j;
+    }
+    P.sel = i; paint();
+    const on = $(".pal-item.on", list);
+    if (on) on.scrollIntoView({ block: "nearest" });
+  };
+  const choose = (i) => {
+    const v = P.vals[i] || (inp.value.trim() && P.sel < 0 ? inp.value.trim() : "");
+    if (v) { closeModal(m); openProject(v); }
+  };
+  inp.value = q;
+  inp.addEventListener("input", refill);
+  inp.addEventListener("keydown", (e) => {
+    const d = { ArrowDown: 1, ArrowUp: -1, PageDown: 10, PageUp: -10 }[e.key];
+    if (d) { e.preventDefault(); move(d); }
+    else if (e.key === "Enter") { e.preventDefault(); choose(P.sel); }
+    else if (e.key === "Tab" && P.vals[P.sel]) {
+      e.preventDefault();
+      inp.value = P.labels[P.sel] + "/";
+      refill();
+    }
+  });
+  list.addEventListener("click", (e) => { const r = e.target.closest(".pal-item[data-i]"); if (r) choose(+r.dataset.i); });
+  refill();
+}
+async function openProject(path) {
+  const unsaved = window.CodeView ? CodeView.unsaved() : [];
+  if (unsaved.length && !await confirmBox(t("proj_open"), t("proj_unsaved_q", { v: unsaved.join(", ") }), t("proj_unsaved_yes"))) return;
+  let r = await request("open_project", { path });
+  if (r.busy) {
+    if (!await confirmBox(t("proj_busy"), t("proj_busy_q", { n: r.busy, v: r.path }), t("proj_busy_yes"))) return;
+    r = await request("open_project", { path, force: true });
+  }
+  if (r.switching) S.switching = true;
+}
+
 /* ------------------------------------------------------------------ giao diện sáng/tối + màu nhấn */
 function themeMode() { try { return localStorage.getItem("ateam-theme") || "system"; } catch (e) { return "system"; } }
 function setThemeMode(mode) {
@@ -1553,6 +1619,7 @@ const ACTIONS = {
   "theme": () => themeModal(),
   "syslog": () => openTask(0),
   "phone": () => phoneModal(),
+  "open-project": () => projectModal(),
   "lofi": () => Lofi.open(),
   "roles": () => Setup.rolesModal(),
   "goal-plan": (el, e) => { e.stopPropagation(); planModal(+el.dataset.goal); },

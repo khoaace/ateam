@@ -41,9 +41,11 @@ CODE_COMMANDS: list[tuple[str, str, str, str]] = [
     ("toggle_numbers", tr("Bật/tắt số dòng"), "", ""),
     ("toggle_vim", tr("Bật/tắt phím vim"), "", ""),
     ("toggle_files", tr("Ẩn/hiện danh sách file"), ":files", ":files"),
+    ("open_folder", tr("Mở folder / dự án khác…"), "/open", "/open"),
 ]
 # từ khoá tiếng Anh để gõ kiểu VS Code (vd ">wrap", ">rename") vẫn khớp nhãn tiếng Việt
-KEYWORDS: dict[str, str] = {'quick_open': 'open file', 'goto_symbol': 'symbol outline', 'goto_line': 'goto line', 'find': 'find search', 'search_project': 'search replace', 'ask_agent': 'ask chat agent', 'task_agent': 'task agent', 'save': 'save write', 'save_all': 'save all', 'close': 'close', 'next': 'next buffer', 'prev': 'previous buffer', 'new_file': 'new file create', 'rename_file': 'rename move', 'delete_file': 'delete remove trash', 'copy_path': 'copy path', 'git_diff': 'git diff changes', 'open_vscode': 'vscode code editor', 'toggle_wrap': 'word wrap', 'toggle_numbers': 'line numbers', 'toggle_vim': 'vim', 'toggle_files': 'sidebar files explorer'}
+KEYWORDS: dict[str, str] = {'quick_open': 'open file', 'goto_symbol': 'symbol outline', 'goto_line': 'goto line', 'find': 'find search', 'search_project': 'search replace', 'ask_agent': 'ask chat agent', 'task_agent': 'task agent', 'save': 'save write', 'save_all': 'save all', 'close': 'close', 'next': 'next buffer', 'prev': 'previous buffer', 'new_file': 'new file create', 'rename_file': 'rename move', 'delete_file': 'delete remove trash', 'copy_path': 'copy path', 'git_diff': 'git diff changes', 'open_vscode': 'vscode code editor', 'toggle_wrap': 'word wrap', 'toggle_numbers': 'line numbers', 'toggle_vim': 'vim', 'toggle_files': 'sidebar files explorer',
+            'open_folder': 'open folder project recent workspace switch'}
 # lệnh cần file đang mở
 NEEDS_FILE = {"goto_symbol", "goto_line", "find", "save", "save_all", "close", "next", "prev", "rename_file",
               "delete_file", "copy_path", "git_diff", "open_vscode"}

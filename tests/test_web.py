@@ -67,6 +67,7 @@ def test_lang_restart_skips_execv_under_web(tmp_path, monkeypatch):
     monkeypatch.setattr(ateam.tui, "TeamApp", FakeApp)
     monkeypatch.setattr(cli, "ensure_global_config", lambda: [])
     monkeypatch.setattr(cli, "needs_setup", lambda: False)
+    monkeypatch.setattr("ateam.projects.touch_project", lambda root: None)  # không ghi state.json thật
     monkeypatch.setattr(cli.os, "execv", lambda *a: execs.append(a))
     monkeypatch.setenv("TEXTUAL_DRIVER", "textual.drivers.web_driver:WebDriver")
     assert cli.main(["-C", str(tmp_path), "tui"]) == 0

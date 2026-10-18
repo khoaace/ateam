@@ -377,6 +377,21 @@ trên 2 MB / 20 000 dòng không tô màu, trên 5 MB mở chỉ đọc, file nh
 - **Hỏi agent về đoạn đang chọn** / **Giao task cho agent**: chọn agent, gõ câu hỏi — agent nhận `@file (dòng a–b)`
   kèm câu hỏi (hỏi = chat 💬 ở tab Đội; giao task = hiện trên Bảng việc).
 
+## Mở folder / dự án khác
+
+`/open` (hoặc bấm tên dự án góc trên bên trái ở web, hay `>Mở folder` trong palette tab Code) mở popup như
+*File › Open Recent* của VS Code:
+
+- Để trống: các dự án mở gần đây; gõ chữ để lọc theo tên thư mục.
+- Gõ đường dẫn (`~/code/app`, `/Users/…`, `../app-khac` — tương đối là tính từ thư mục chứa dự án đang mở): hiện các
+  thư mục con khớp; **Tab** đi vào thư mục đang chọn, **Enter** mở. `/open ~/code/app` mở thẳng.
+
+ateam mở lại ở thư mục mới — bảng việc, cấu hình dự án, Git, Code, Terminal đều là của dự án đó (thư mục chưa
+có `.ateam/` thì được tạo như lần đầu chạy `ateam` ở đó). Web giữ nguyên địa chỉ, trang tự nạp lại. Đang có agent
+chạy thì được hỏi trước (task dở thành lỗi, quay lại thì `/retry`); tab Code còn file chưa lưu cũng được hỏi.
+Không đổi được khi mở web từ xa (`--host`, `--tunnel`, `--public-url`: token chỉ cấp cho một dự án) và trong
+`ateam web --tui`.
+
 ## Xem diff và duyệt merge (chế độ worktree)
 
 Đặt `merge = "review"`: task xong (và qua kiểm tra) dừng ở trạng thái **chờ duyệt**.

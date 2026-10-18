@@ -31,8 +31,8 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, reports, search, shell, theme,
-               todos, update, wizard)
+from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, projects, reports, search, shell,
+               theme, todos, update, wizard)
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
 from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TIERS,
                      WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan,
@@ -168,6 +168,7 @@ Model & effort của từng agent (được lưu lại cho lần sau):
   /roles                            sửa nhanh vai trò · CLI · model · effort (không đi lại cả /setup)
   /theme [tên] [màu nhấn]           chọn theme màu (xem trước trực tiếp), vd /theme nord tím
   /lang en|vi                       đổi ngôn ngữ giao diện (app tự mở lại)
+  /open [thư mục]                   mở folder / dự án khác: dự án gần đây, hoặc gõ đường dẫn (Tab gợi ý)
 
 Agent & workflow tuỳ chỉnh:
   /custom                           thêm/sửa/xoá agent riêng (CLI bất kỳ) và workflow (chuỗi bước dựng sẵn)
@@ -262,6 +263,7 @@ COMMANDS = [
     ("term", "", tr("mở tab Terminal (lệnh đang chạy)")),
     ("theme", tr("[tên] [màu nhấn]"), tr("chọn theme màu (xem trước trực tiếp)")),
     ("lang", "<en|vi>", tr("đổi ngôn ngữ giao diện (app tự mở lại)")),
+    ("open", tr("[thư mục]"), tr("mở folder / dự án khác (dự án gần đây, gõ đường dẫn — Tab gợi ý)")),
     ("code", tr("[@file[:dòng]]"), tr("mở tab 📝 Code: xem & sửa file với phím vim")),
     ("vim", tr("<on|off|file>"), tr("bật/tắt phím vim trong tab 📝 Code")),
     ("git", tr("[lệnh git]"), tr("mở tab Git; kèm lệnh thì chạy git <lệnh> ở tab Terminal")),
@@ -3576,7 +3578,9 @@ class PromptScreen(BaseModal):
 class PaletteScreen(BaseModal):
     """Command palette của tab 📝 Code, như VS Code: gõ để mở nhanh file (file mở gần đây đứng đầu), `>` lệnh,
     `@` symbol trong file, `:số` tới dòng, `/chữ` tìm trong file. Danh sách do `app.palette_items(chữ)` dựng;
-    trả về giá trị của mục được chọn (vd ("file", đường dẫn), ("cmd", id), ("line", dòng)) hoặc None."""
+    trả về giá trị của mục được chọn (vd ("file", đường dẫn), ("cmd", id), ("line", dòng)) hoặc None.
+    `items`/`placeholder`/`foot`: dùng lại cho popup khác (Mở folder, /open); `complete`: Tab điền mục đang chọn
+    vào ô gõ (đi vào thư mục con)."""
 
     DEFAULT_CSS = """
     PaletteScreen { align: center top; }
@@ -3588,20 +3592,22 @@ class PaletteScreen(BaseModal):
     BINDINGS = [Binding("up", "move(-1)", show=False, priority=True),
                 Binding("down", "move(1)", show=False, priority=True),
                 Binding("pageup", "move(-10)", show=False, priority=True),
-                Binding("pagedown", "move(10)", show=False, priority=True)]
+                Binding("pagedown", "move(10)", show=False, priority=True),
+                Binding("tab", "complete", show=False, priority=True)]
 
-    def __init__(self, query: str = ""):
+    def __init__(self, query: str = "", items=None, placeholder: str = "", foot: str = "", complete=None):
         super().__init__()
         self.query_text = query
+        self.items, self.complete = items, complete
+        self.placeholder = placeholder or tr("Tên file… · > lệnh · @ symbol · :dòng · /tìm trong file")
+        self.foot = foot or tr("↑↓ chọn · Enter mở · > lệnh · @ symbol · : dòng · / tìm trong file · Esc đóng")
         self.values: list = []
 
     def compose(self) -> ComposeResult:
         with Vertical(id="pal-box"):
-            yield TextInput(self.query_text, placeholder=tr("Tên file… · > lệnh · @ symbol · :dòng · /tìm trong file"),
-                            id="pal-q")
+            yield TextInput(self.query_text, placeholder=self.placeholder, id="pal-q")
             yield OptionList(id="pal-list")
-            yield Static(tr("↑↓ chọn · Enter mở · > lệnh · @ symbol · : dòng · / tìm trong file · Esc đóng"),
-                         id="pal-foot")
+            yield Static(self.foot, id="pal-foot")
 
     def on_mount(self) -> None:
         q = self.query_one("#pal-q", TextInput)
@@ -3610,7 +3616,7 @@ class PaletteScreen(BaseModal):
         self.refill(q.value)
 
     def refill(self, text: str) -> None:
-        items = self.app.palette_items(text)
+        items = (self.items or self.app.palette_items)(text)
         self.values = [v for _label, v in items]
         lst = self.query_one("#pal-list", OptionList)
         lst.clear_options()
@@ -3640,6 +3646,15 @@ class PaletteScreen(BaseModal):
     def choose(self, index: int | None) -> None:
         if index is not None and 0 <= index < len(self.values) and self.values[index] is not None:
             self.dismiss(self.values[index])
+
+    def action_complete(self) -> None:
+        i = self.query_one("#pal-list", OptionList).highlighted
+        if self.complete is None:
+            self.focus_next()
+        elif i is not None and 0 <= i < len(self.values) and self.values[i] is not None:
+            q = self.query_one("#pal-q", TextInput)
+            q.value = self.complete(self.values[i])
+            q.cursor_position = len(q.value)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.stop()
@@ -4328,7 +4343,8 @@ class TeamApp(App):
         self._loop_task: asyncio.Task | None = None
         self._frame = 0
         self._booted = False
-        self.restart_requested = False  # /lang: cli.cmd_tui mở lại app sau khi thoát
+        self.restart_requested = False  # /lang, /open: cli.cmd_tui mở lại app sau khi thoát
+        self.restart_root: Path | None = None  # /open: mở lại ở thư mục này
         self.code_bufs: dict[str, dict] = {}  # tab 📝 Code: đường dẫn tuyệt đối -> buffer
         self.search_state: dict = {}  # popup 🔍 Tìm & thay (F3): giữ từ khoá, tuỳ chọn giữa các lần mở
         self.code_order: list[str] = []
@@ -4976,6 +4992,55 @@ class TeamApp(App):
         elif kind == "cmd":
             self.code_command(value[1])
 
+    # ---------------------------------------------------------------- mở folder / dự án khác (/open)
+    def action_open_project(self, query: str = "") -> None:
+        """Popup chọn dự án: dự án gần đây, hoặc gõ đường dẫn (Tab đi vào thư mục con)."""
+        self.push_screen(PaletteScreen(query, items=self.project_items,
+                                       placeholder=tr("Tên dự án gần đây, hoặc đường dẫn: ~/code/app, ../app-khac"),
+                                       foot=tr("↑↓ chọn · Tab đi vào thư mục · Enter mở · Esc đóng"),
+                                       complete=lambda v: projects.shorten(v[1]) + "/"),
+                         lambda v: v and self.open_project(v[1]))
+
+    def project_items(self, text: str) -> list[tuple[Text, object]]:
+        out: list[tuple[Text, object]] = []
+        items = projects.candidates(text, self.root)
+        if not text.strip() and items:
+            out.append((Text(tr("Dự án gần đây"), "dim"), None))
+        for it in items:
+            t = Text(("🕘 " if it["kind"] == "recent" else "📁 ") + it["name"])
+            t.append("  " + it["where"], "dim")
+            if it["kind"] == "current":
+                t.append("  " + tr("(đang mở)"), "dim")
+            out.append((t, None if it["kind"] == "current" else ("project", it["path"])))
+        if not out or all(v is None for _t, v in out):
+            out.append((Text(tr("Gõ đường dẫn thư mục, vd ~/code/app") if not text.strip()
+                             else tr("Không có thư mục nào khớp"), "dim"), None))
+        return out
+
+    def open_project(self, text: str) -> None:
+        """Mở lại app ở thư mục khác (cli.cmd_tui chạy lại với -C): agent đang chạy thì hỏi trước."""
+        if "WebDriver" in os.environ.get("TEXTUAL_DRIVER", ""):
+            self.notify(tr("Trong trình duyệt (ateam web --tui) không đổi được dự án — chạy lại: "
+                           "ateam web --tui -C {v}", v=text), severity="warning", timeout=10)
+            return
+        path, err = projects.check_target(text, self.root)
+        if path is None:
+            self.notify(err, severity="warning")
+            return
+
+        def go(ok) -> None:
+            if ok:
+                self.restart_root, self.restart_requested = path, True
+                self.call_later(self.action_quit)
+        busy = len(self.orch.runs) + len(self.orch.lead_busy)
+        if busy:
+            self.push_screen(ConfirmScreen(tr("Đang có agent chạy"),
+                                           tr("{n} lượt agent đang chạy sẽ bị dừng (task dở thành lỗi — quay lại "
+                                              "dự án này thì /retry).\nMở {v}?", n=busy, v=projects.shorten(path)),
+                                           yes=tr("Dừng & mở")), go)
+        else:
+            go(True)
+
     def code_selection_ref(self) -> str:
         """"@đường/dẫn" kèm dòng đang chọn (hoặc dòng con trỏ) — để hỏi / giao việc cho agent."""
         ed = self.code_editor()
@@ -5030,6 +5095,8 @@ class TeamApp(App):
             self.push_screen(ConfirmScreen(tr("Xoá file"), tr("Đưa {v} vào Thùng rác?", v=rel), yes=tr("Xoá")), done)
         elif cid in ("ask_agent", "task_agent"):
             self._code_ask_agent(cid == "task_agent")
+        elif cid == "open_folder":
+            self.action_open_project()
 
     async def code_save_all(self) -> None:
         """Lưu file đang mở và mọi buffer chưa lưu khác (bỏ qua file chỉ đọc / đổi trên đĩa — báo lại)."""
@@ -6969,6 +7036,11 @@ class TeamApp(App):
                 p = self.pane(agent)
                 if p:
                     p.query_one(".pane-chat", Input).focus()
+        elif cmd == "open":
+            if rest:
+                self.open_project(rest)
+            else:
+                self.action_open_project()
         elif cmd == "focus":
             if rest and rest not in agents:
                 self.notify(tr("Dùng: /focus [agent]  — agent: {v}", v=", ".join(agents)), severity="warning")

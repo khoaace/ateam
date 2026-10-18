@@ -29,6 +29,22 @@ def find_root(arg: str | None) -> Path:
     return Path.cwd().resolve()
 
 
+def with_root(argv: list[str], root: Path) -> list[str]:
+    """argv (bỏ tên chương trình) để mở lại ateam ở thư mục khác (/open): thay -C/--dir cũ."""
+    out, skip = [], False
+    for a in argv:
+        if skip:
+            skip = False
+            continue
+        if a in ("-C", "--dir"):
+            skip = True
+            continue
+        if a.startswith("--dir=") or (a.startswith("-C") and len(a) > 2):
+            continue
+        out.append(a)
+    return ["-C", str(root), *out]
+
+
 def open_db(root: Path) -> DB:
     env = os.environ.get("ATEAM_DB")
     return DB(Path(env) if env else root / ".ateam" / "team.db")
@@ -81,7 +97,9 @@ def cmd_tui(args) -> int:
         from .tui import BusyApp
         BusyApp().run()
         return 1
+    from .projects import touch_project
     from .tui import TeamApp
+    touch_project(root)
     # Lần đầu mở app (hoặc `ateam setup`): màn hình chọn agent/model/effort, hỏi sẵn model của CLI
     app = TeamApp(root, cfg, open_db(root), setup=args.cmd == "setup" or needs_setup())
     app.run()
@@ -100,6 +118,8 @@ def cmd_tui(args) -> int:
             argv.append(a)
         if args.cmd == "setup":
             argv = [a for a in argv if a != "setup"]
+        if getattr(app, "restart_root", None):  # /open: mở dự án khác
+            argv = with_root(argv, app.restart_root)
         os.execv(sys.executable, [sys.executable, "-m", "ateam", *argv])
     return 0
 
@@ -150,7 +170,13 @@ def cmd_web(args) -> int:
     if args.open:
         import webbrowser
         webbrowser.open(url)
-    web.serve(root, cfg, open_db(root), args.port, remote)
+    from .projects import touch_project
+    touch_project(root)
+    nxt = web.serve(root, cfg, open_db(root), args.port, remote)
+    if nxt:  # /open trên web: server đã dừng (khoá phiên nhả khi execv) -> chạy lại ở dự án mới, cùng cổng
+        argv = [a for a in sys.argv[1:] if a not in ("--open", "--new-token")]
+        print(tr("↪ Mở dự án {v}", v=nxt), flush=True)  # execv bỏ bộ đệm stdout chưa ghi
+        os.execv(sys.executable, [sys.executable, "-m", "ateam", *with_root(argv, nxt)])
     return 0
 
 

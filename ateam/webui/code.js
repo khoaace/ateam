@@ -639,6 +639,7 @@ window.CodeView = (() => {
       case "prev": return cycle(-1);
       case "toggle_files": return el().classList.toggle("no-side");
       case "toggle_vim": return request("prefs", { vim: !vimOn() });
+      case "open_folder": return projectModal();
       case "toggle_wrap":
         C.wrap = !C.wrap; refreshConfig(); toast(t(C.wrap ? "pal_wrap_on" : "pal_wrap_off"), "info"); return;
       case "copy_path": {
@@ -728,6 +729,7 @@ window.CodeView = (() => {
     palette(k === "o" ? "@" : e.shiftKey ? ">" : "");
   }, true);
   window.addEventListener("beforeunload", (e) => {
+    if (S.switching) return;  // đổi dự án (/open): đã hỏi bỏ thay đổi
     if ([...C.bufs.values()].some((b) => b.dirty || (b.path === C.cur && C.view && C.view.state.doc.toString() !== b.saved))) { e.preventDefault(); e.returnValue = ""; }
   });
 

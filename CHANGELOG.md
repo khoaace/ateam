@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.22.0 — 18/10/2026
+
+- **Mở folder / dự án khác** (`/open`, cả TUI và web), như *Open Folder / Open Recent* của VS Code: popup dự án
+  mở gần đây (lọc theo tên), hoặc gõ đường dẫn với gợi ý thư mục con (Tab đi vào thư mục, Enter mở);
+  `/open ~/code/app` mở thẳng. ateam mở lại ở dự án mới — web giữ nguyên địa chỉ, trang tự nạp lại. Web: bấm tên
+  dự án góc trên bên trái; palette tab Code có lệnh `>Mở folder`. Hỏi trước khi có agent đang chạy hoặc file chưa
+  lưu; không đổi được khi mở web từ xa (token chỉ cấp cho một dự án).
+
 ## 0.21.0 — 18/10/2026
 
 - **Command palette ở tab 📝 Code** như VS Code, cả TUI và web:

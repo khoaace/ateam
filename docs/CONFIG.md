@@ -15,7 +15,8 @@ Nguồn cấu hình, ưu tiên tăng dần:
    `ateam set`, wizard `/setup`), `lead` (vai trò Trưởng nhóm ở `/setup`), `default_workflow` (workflow chạy khi gõ
    mục tiêu trong TUI — wizard đặt `tinh-nang` khi chọn kiểu "theo quy trình cố định"; workflow đã bị xoá thì bỏ
    qua), `lang` (`vi`/`en`, `/lang`, `ateam lang`), `theme` / `accent` (theme Textual và màu nhấn, `/theme`), `vim` (`false` = tắt phím vim ở tab 📝 Code, `/vim off`), `commit_agent` (agent viết commit message ở tab 🌿 Git, chọn cạnh nút ✨; vắng = trưởng nhóm), `notify` (`app` = chỉ toast/chuông trong app, `off` = tắt; vắng = cả thông báo hệ thống/trình duyệt — `/notify`), `approve_plan` / `auto_review` (kiểu làm việc ở `/setup`; chỉ ghi khi khác `true`), `onboarded` (đã qua
-   wizard lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`), và
+   wizard lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`),
+   `recent_projects` (dự án mở gần đây, tối đa 20, cho `/open`; ghi mỗi lần mở TUI / `ateam web`), và
    `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify` hoặc bước *Lệnh kiểm tra*), `isolation` /
    `merge` (bước *An toàn & duyệt code*, riêng từng dự án).
    Agent wizard tự tạo thêm (cùng CLI, model khác, vd `claude-review`) nằm trong `custom.toml` với `wizard = true`;

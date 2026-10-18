@@ -313,6 +313,20 @@ stash/revert có cờ `-c user.*` dự phòng như `Orchestrator.git_ident`. M�
   hỏi `TeamApp.palette_items(chữ)`, chạy lệnh bằng `code_command(id)`. Web: `CodeView.palette()` trong `code.js`,
   API `/api/symbols`, `/api/recent`, op `file_new|file_rename|file_delete|open_vscode`, diff `kind=file`.
 
+## Mở folder / dự án khác (`/open`)
+
+Mọi thứ (Orchestrator, DB, khoá phiên, cấu hình, `FileIndex`, `ShellManager`…) gắn với một `root`, nên đổi dự án là
+**chạy lại tiến trình** với `-C <thư mục>` (`cli.with_root`), không đổi tại chỗ. `projects.py`: `recent_projects`
+(`state.json` chung, `touch_project` khi mở TUI / web), `candidates(chữ)` (lọc dự án gần đây theo tên, hoặc thư
+mục con khi gõ đường dẫn), `check_target` (tồn tại, là thư mục, ghi được, khác dự án đang mở, không bị phiên
+khác khoá).
+- TUI: `open_project` đặt `restart_root` + `restart_requested` rồi `action_quit` (hỏi file chưa lưu, huỷ lượt
+  chạy) → `cli.cmd_tui` `execv` như `/lang`. Dưới `ateam web --tui` (WebDriver) không `execv` được → chỉ báo.
+- Web: op `open_project` (agent đang chạy → trả `busy`, trình duyệt hỏi rồi gửi `force`) đặt `next_root` rồi
+  `stop_server` (`GracefulExit`, như Ctrl+C: `_shutdown` dừng agent/lệnh terminal) → `serve()` trả `next_root`
+  → `cli.cmd_web` `execv` cùng cổng (bỏ `--open`). File mở bằng `open()` không kế thừa qua `execv` nên khoá phiên
+  cũ tự nhả. Trình duyệt kết nối lại, thấy `hello.root` khác thì `location.reload()`. Chặn khi `remote.enabled`.
+
 ## Xem diff
 
 `Orchestrator.diff_files(tid)` chạy `git -c core.quotePath=false diff -M --no-color` (worktree: `base..head`

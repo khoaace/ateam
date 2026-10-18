@@ -127,7 +127,10 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 .logo { display: none; }
 .brand-name { font-weight: 650; font-size: 14px; letter-spacing: .02em; }
 .brand-name::before { content: "❯ "; color: var(--accent); }
-.brand-proj { color: var(--muted); font-size: 11px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-proj { color: var(--muted); font-size: 11px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: block; background: none; border: 0; padding: 0; font-family: inherit; text-align: left; cursor: pointer; }
+.brand-proj:hover:not(:disabled) { color: var(--text); text-decoration: underline; }
+.brand-proj:disabled { cursor: default; }
 .brand-proj::before { content: "~/"; }
 .nav { display: flex; flex-direction: column; gap: 1px; }
 .nav-item {
@@ -374,6 +377,8 @@ select.agent-select:focus { border-color: var(--accent); }
 .pal-item { display: flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: var(--radius); font: 12.5px/1.5 var(--mono); cursor: pointer; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 .pal-item:hover { background: var(--surface-2); }
 .pal-item.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.pal-item.off { cursor: default; opacity: .6; }
+.pal-where { color: var(--muted); margin-left: 10px; overflow: hidden; text-overflow: ellipsis; direction: rtl; flex: 1; text-align: left; }
 .pal-head { padding: 6px 8px 2px; font-size: 11px; color: var(--muted); }
 .pal-key { margin-left: auto; padding-left: 16px; color: var(--muted); font-size: 11px; }
 .pal-dim { color: var(--muted); }
