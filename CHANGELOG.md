@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.23.1 — 18/10/2026
+
+- Tab 📝 Code: nút **＋ File mới** ngay ở cột danh sách file (TUI và web) — trước đây chỉ tạo được qua command palette
+  (`>File mới`). Gõ đường dẫn có thư mục (`src/moi.py`) thì thư mục được tạo luôn. TUI: thêm `:new [đường/dẫn]`.
+
 ## 0.23.0 — 18/10/2026
 
 - **Rule của dự án** (`/rules`, cả TUI và web — nút 📏 trên thanh trên): điều mọi agent phải tuân theo, như `AGENTS.md`

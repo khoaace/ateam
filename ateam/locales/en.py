@@ -3260,4 +3260,6 @@ EN: dict[str, str] = {
         'Delete rule',
     'Lưu':
         'Save',
+    '＋ File mới':
+        '＋ New file',
 }

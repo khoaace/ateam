@@ -177,3 +177,26 @@ def test_web_palette_api(env, project, monkeypatch):
     wa.remote.readonly = True
     assert asyncio.run(wa.handle({"op": "file_delete", "path": "src/new.py"}))[1] == "warn"
     assert (project / "src/new.py").exists()
+
+
+def test_tui_new_file_button_and_ex(env, project, monkeypatch):
+    """Nút ＋ File mới ở cột file (tab Code) và `:new đường/dẫn` — không cần biết palette."""
+    tui, app = _app(env, project, monkeypatch)
+
+    async def main():
+        async with app.run_test(size=(150, 45)) as pilot:
+            await pilot.pause(0.3)
+            app.query_one("#tabs").active = "tab-code"
+            await pilot.pause(0.2)
+            await pilot.click("#code-new")
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, tui.PromptScreen)
+            app.screen.query_one("#prompt-in").value = "src/moi.py"
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            assert (project / "src/moi.py").is_file() and (app.code_cur or "").endswith("src/moi.py")
+            app.code_ex("new notes/ghi-chu.md")
+            await pilot.pause(0.3)
+            assert (project / "notes/ghi-chu.md").is_file() and (app.code_cur or "").endswith("notes/ghi-chu.md")
+            await pilot.press("ctrl+q")
+    asyncio.run(main())

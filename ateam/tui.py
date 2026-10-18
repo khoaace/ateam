@@ -4481,6 +4481,7 @@ class TeamApp(App):
     #code.narrow #code-side { width: 24; }
     #code.hide-side #code-side { display: none; }
     #code-filter { margin: 0; }
+    #code-new { width: 100%; height: 1; min-width: 0; }
     #code-files { height: 1fr; border: none; }
     #code-main { width: 1fr; }
     #code-head { height: 1; padding: 0 1; background: $boost; overflow: hidden hidden; }
@@ -4684,6 +4685,7 @@ class TeamApp(App):
                 with Horizontal(id="code"):
                     with Vertical(id="code-side"):
                         yield TextInput(id="code-filter", placeholder=tr("Tìm file… (Enter mở)"))
+                        yield Btn(tr("＋ File mới"), id="code-new")
                         yield CodeFileList(id="code-files")
                     with Vertical(id="code-main"):
                         yield Static(id="code-head")
@@ -5459,7 +5461,7 @@ class TeamApp(App):
         ed = self.code_editor()
         name, _, arg = cmd.strip().partition(" ")
         arg = arg.strip()
-        if ed.buffer is None and name not in ("e", "edit", "files", "Ex", "Lex"):
+        if ed.buffer is None and name not in ("e", "edit", "files", "Ex", "Lex", "new", "enew"):
             ed.message = tr("Chưa mở file nào")
         elif name in ("w", "w!", "write", "update"):
             self.run_worker(self.code_save(force=name.endswith("!")), group="code-save")
@@ -5471,6 +5473,11 @@ class TeamApp(App):
             self.code_close(force=True)
         elif name in ("e!", "edit!"):
             self.run_worker(self.code_reload(), group="code-open")
+        elif name in ("new", "enew"):  # :new [đường/dẫn] — trống thì hỏi tên (như nút ＋ File mới)
+            if arg:
+                self._code_new_file(arg)
+            else:
+                self.code_command("new_file")
         elif name in ("e", "edit") and arg:
             target, line = parse_code_target(arg)
             self.open_code(target, line)
@@ -6593,6 +6600,10 @@ class TeamApp(App):
         if bid.startswith("git-"):
             event.stop()
             self.git_button(bid)
+            return
+        if bid == "code-new":
+            event.stop()
+            self.code_command("new_file")
             return
         if bid.startswith("grill-"):
             event.stop()

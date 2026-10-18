@@ -374,6 +374,8 @@ trên 2 MB / 20 000 dòng không tô màu, trên 5 MB mở chỉ đọc, file nh
   tiếng Anh như VS Code cũng được (`>wrap`, `>rename`).
 - **`@`** (F9, web ⌘⇧O): tới hàm / class / heading trong file; thanh trên editor hiện `› tên hàm` đang đứng.
 - **`:42`** tới dòng 42, **`/chữ`** liệt kê các dòng có chữ đó trong file.
+- **＋ File mới**: nút ở cột danh sách file (hoặc `:new đường/dẫn` trên TUI, `>File mới` trong palette); gõ đường dẫn có
+  thư mục thì thư mục được tạo luôn.
 - **Hỏi agent về đoạn đang chọn** / **Giao task cho agent**: chọn agent, gõ câu hỏi — agent nhận `@file (dòng a–b)`
   kèm câu hỏi (hỏi = chat 💬 ở tab Đội; giao task = hiện trên Bảng việc).
 

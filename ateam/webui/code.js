@@ -83,7 +83,8 @@ window.CodeView = (() => {
           <button class="side-tab" data-side="search" title="${esc(t("sr_search"))} (⌘⇧F)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>${esc(t("sr_search"))}</button>
         </div>
         <div class="side-pane" id="side-files">
-          <input class="field one" id="code-filter" placeholder="${esc(t("code_filter"))}" autocomplete="off" spellcheck="false">
+          <div class="code-filter-row"><input class="field one" id="code-filter" placeholder="${esc(t("code_filter"))}" autocomplete="off" spellcheck="false">
+            <button class="icon-btn" id="code-new" title="${esc(t("pal_new"))}" aria-label="${esc(t("pal_new"))}">＋</button></div>
           <div class="tree" id="code-tree"></div>
         </div>
         <div class="side-pane hidden" id="side-search">${searchPane()}</div>
@@ -98,6 +99,7 @@ window.CodeView = (() => {
       </section>`;
     bindSearch();
     $("#code-filter").addEventListener("input", (e) => { C.filter = e.target.value; renderTree(); });
+    $("#code-new").addEventListener("click", () => runCmd("new_file"));
     $("#code-filter").addEventListener("keydown", (e) => {
       if (e.key === "Enter") { const f = $("#code-tree .tnode.file"); if (f) open(f.dataset.path); }
       if (e.key === "Escape" && C.filter) { e.target.value = C.filter = ""; renderTree(); e.stopPropagation(); }

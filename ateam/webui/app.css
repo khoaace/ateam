@@ -974,3 +974,6 @@ body.readonly .card-actions { display: none !important; }
 .chips-pick { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .rule-row .icon-btn.sm { width: 26px; height: 26px; font-size: 13px; flex: none; }
 .rule-form .sec-title { margin-top: 12px; }
+.code-filter-row { display: flex; align-items: center; gap: 6px; margin: 8px; }
+.code-side .code-filter-row .field { margin: 0; flex: 1; min-width: 0; }
+.code-filter-row .icon-btn { flex: none; font-size: 16px; }
