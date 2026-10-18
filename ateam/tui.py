@@ -131,6 +131,7 @@ Giao việc:
   /note <nội dung>                  ghi chú chung cho cả đội
   /chat <agent> [tin]               chat trực tiếp với 1 agent, giữ phiên CLI (ô 💬 ở tab Đội; /new: cuộc
                                     mới · /term: mở CLI thật của agent tiếp tục phiên đó)
+  F7   /focus [agent]               phóng to 1 agent (chat riêng, cả màn hình); F7 / Esc thu lại
 
 Lệnh, file, ảnh trong ô nhập:
   gõ / ở đầu ô nhập                 hiện danh sách lệnh kèm mô tả, gõ tiếp để lọc
@@ -245,6 +246,7 @@ WELCOME = tr("""\
 COMMANDS = [
     ("task", tr("<agent> <nội dung>"), tr("giao tay cho 1 agent, gửi nguyên văn")),
     ("chat", tr("<agent> [tin nhắn]"), tr("chat trực tiếp với 1 agent như trong terminal (giữ phiên, ô 💬 ở tab Đội)")),
+    ("focus", tr("[agent]"), tr("phóng to 1 agent cả màn hình để chat riêng (F7; gõ lại / Esc để thu)")),
     ("go", tr("[mục tiêu]"), tr("duyệt kế hoạch nháp và chạy")),
     ("drop", tr("[mục tiêu]"), tr("bỏ kế hoạch nháp (huỷ mọi task nháp của nó)")),
     ("goal", tr("<mục tiêu>"), tr("trưởng nhóm lập kế hoạch (bỏ qua workflow mặc định)")),
@@ -751,8 +753,8 @@ class AgentPane(Vertical):
         # sinh thanh cuộn ngang, chữ bị cắt và vuốt trackpad làm log trôi sang ngang
         yield ReflowLog(classes="pane-log", wrap=True, markup=False, highlight=False,
                       max_lines=3000, min_width=1)
-        yield Input(placeholder=tr("💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: mở CLI thật)",
-                                   agent=self.agent), classes="pane-chat")
+        yield TextInput(placeholder=tr("💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: mở CLI thật · F7: phóng to)",
+                                       agent=self.agent), classes="pane-chat")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.stop()
@@ -760,6 +762,11 @@ class AgentPane(Vertical):
         event.input.value = ""
         if text:
             self.app.send_chat(self.agent, text)
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "escape" and self.app.focus_agent == self.agent:  # Esc thu ô đang phóng to
+            event.stop()
+            self.app.set_focus_agent(None)
 
     @property
     def head(self) -> Static:
@@ -4110,6 +4117,10 @@ class TeamApp(App):
     .pane-log { height: 1fr; padding: 0 1; overflow-x: hidden; }
     .pane-chat { height: 1; margin: 0; padding: 0 1; border: none; background: $boost; }
     .pane-chat:focus { border: none; background: $accent 25%; }
+    /* F7 / /focus: chỉ còn 1 ô agent chiếm cả tab Đội */
+    #team-grid.focused { grid-size: 1; }
+    #team-grid.focused .agentpane.unfocused { display: none; }
+    #team.focused #timeline { display: none; }
     #timeline { height: auto; max-height: 14; padding: 0 1; border-top: solid $primary-darken-2; }
     #cmd { dock: bottom; margin: 0 0 2 0; }
     /* Footer, thanh trạng thái, ô nhập cùng dock dưới: chồng nhau nên đẩy bằng margin */
@@ -4154,12 +4165,14 @@ class TeamApp(App):
         Binding("ctrl+y", "merge", "Merge", priority=True),
         Binding("ctrl+l", "syslog", tr("Log hệ thống"), priority=True),
         Binding("f3", "search", tr("Tìm trong dự án"), priority=True),
+        Binding("f7", "focus_agent", tr("Phóng to agent"), show=False, priority=True),
         *[Binding(f"alt+{i + 1}", f"goto_tab({i})", show=False, priority=True) for i in range(8)],
     ]
 
     def __init__(self, root: Path, cfg: Config, db: DB, setup: bool = False):
         super().__init__()
         self.root, self.cfg, self.db = root, cfg, db
+        self.focus_agent: str | None = None  # agent đang phóng to ở tab Đội (F7, /focus)
         self.start_setup = setup
         # tắt hiệu ứng chuyển động (gạch chân tab trượt, cuộn mượt): mỗi lần đổi tab/cuộn phải vẽ lại nhiều
         # khung hình — trên terminal là giật, lag
@@ -6394,6 +6407,7 @@ class TeamApp(App):
 
     async def _rebuild_panes(self) -> None:
         grid = self.query_one("#team-grid", Vertical)
+        self.set_focus_agent(None)
         await grid.remove_children()
         await grid.mount_all([AgentPane(n) for n, a in self.cfg.agents.items() if a.enabled])
         self._preload_panes()
@@ -6437,11 +6451,39 @@ class TeamApp(App):
             self.notify(tr("Không chạy được {cmd}: {e}", cmd=cmd, e=e), severity="error")
         self.refresh_view()
 
+    def set_focus_agent(self, agent: str | None) -> None:
+        """Phóng to ô của `agent` cả tab Đội (ẩn các ô khác và Timeline), None = về lưới như cũ."""
+        self.focus_agent = agent if agent and self.pane(agent) else None
+        self.query_one("#team-grid", Vertical).set_class(self.focus_agent is not None, "focused")
+        self.query_one("#team", Vertical).set_class(self.focus_agent is not None, "focused")
+        for p in self.query(AgentPane):
+            p.set_class(self.focus_agent is not None and p.agent != self.focus_agent, "unfocused")
+        if self.focus_agent:
+            self.query_one("#tabs", TabbedContent).active = "tab-team"
+            self.pane(self.focus_agent).query_one(".pane-chat", Input).focus()
+
+    def action_focus_agent(self, agent: str | None = None) -> None:
+        """F7: phóng to ô agent đang chứa con trỏ (không có thì trưởng nhóm); đang phóng to thì thu lại."""
+        if self.focus_agent and (agent is None or agent == self.focus_agent):
+            self.set_focus_agent(None)
+            return
+        if agent is None:
+            node = self.focused
+            while node is not None and not isinstance(node, AgentPane):
+                node = node.parent
+            agent = node.agent if node is not None else self.cfg.lead
+            if not self.pane(agent):
+                agent = next((p.agent for p in self.query(AgentPane)), None)
+        self.set_focus_agent(agent)
+
     def send_chat(self, agent: str, text: str) -> None:
         """Ô 💬 của ô agent (tab Đội) và /chat: mỗi tin là một lượt chạy tiếp phiên CLI của agent."""
         pane = self.pane(agent)
         if text in ("/term", "/terminal"):
             self.open_agent_terminal(agent)
+            return
+        if text == "/focus":
+            self.action_focus_agent(agent)
             return
         new = text == "/new" or text.startswith("/new ")
         if new:
@@ -6494,6 +6536,11 @@ class TeamApp(App):
                 p = self.pane(agent)
                 if p:
                     p.query_one(".pane-chat", Input).focus()
+        elif cmd == "focus":
+            if rest and rest not in agents:
+                self.notify(tr("Dùng: /focus [agent]  — agent: {v}", v=", ".join(agents)), severity="warning")
+                return
+            self.action_focus_agent(rest or None)
         elif cmd in ("model", "effort"):
             parts = rest.split(maxsplit=1)
             if not parts or parts[0] not in self.cfg.agents:

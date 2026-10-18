@@ -134,6 +134,7 @@ function onToast(m) {
   if (o.task != null) openTask(o.task);
   if (o.view) setView(o.view);
   if (o.chat) setTimeout(() => focusChat(o.chat), 50);
+  if (o.focus != null) setTimeout(() => focusAgent(o.focus || S.focusAgent || (S.state.agents.find((a) => a.lead) || {}).name), 50);
   if (o.pty != null) ptyModal(o.pty, o.title || "");  // /chat <agent>: tới ô 💬 của agent đó
   if (o.git_ai && window.GitView) GitView.aiMessage();
   if (o.modal === "help") helpModal();
@@ -667,7 +668,10 @@ function renderTeam() {
         <input class="field one chat-in" autocomplete="off" placeholder="${esc(t("chat_ph", { agent: a.name }))}">
         <button class="btn sm" type="submit">${esc(t("chat_send"))}</button>
         <button class="btn sm ghost" type="button" data-action="agent-term" data-agent="${esc(a.name)}" title="${esc(t("open_term"))}" aria-label="${esc(t("open_term"))}">⌨</button>
+        <button class="btn sm ghost" type="button" data-action="agent-focus" data-agent="${esc(a.name)}" title="${esc(t("focus_agent"))}" aria-label="${esc(t("focus_agent"))}">⛶</button>
       </form></div>`).join("");
+    if (S.focusAgent && !S.state.agents.some((a) => a.name === S.focusAgent)) S.focusAgent = null;
+    applyFocus();
     for (const a of S.state.agents) {
       const mini = $(`[data-mini="${CSS.escape(a.name)}"]`);
       if (S.agentLogs[a.name]) { appendLines(mini, S.agentLogs[a.name], 300); mini.scrollTop = mini.scrollHeight; }
@@ -702,6 +706,7 @@ document.addEventListener("submit", (e) => {  // ô 💬 trên thẻ agent
   const inp = $(".chat-in", f), text = inp.value.trim();
   if (!text) return;
   if (text === "/term" || text === "/terminal") { inp.value = ""; agentTerminal(f.dataset.chat); return; }
+  if (text === "/focus") { inp.value = ""; focusAgent(f.dataset.chat); return; }
   if (send("chat", { agent: f.dataset.chat, text })) inp.value = "";
 });
 
@@ -758,6 +763,22 @@ function ptyData(m) {
 function ptyExit(m) {
   const term = S.ptys[m.id];
   if (term) term.write(`\r\n\x1b[2m[${esc(t("pty_exit", { rc: m.rc }))}]\x1b[0m\r\n`);
+}
+/* ⛶ phóng to 1 thẻ agent cả tab Đội để chat riêng; bấm lại / Esc / agent khác = đổi */
+function applyFocus() {
+  const grid = $("#team");
+  grid.classList.toggle("focused", !!S.focusAgent);
+  for (const c of grid.querySelectorAll(".agent-card")) {
+    const on = c.dataset.agent === S.focusAgent;
+    c.classList.toggle("focus", on);
+    const mini = $(".mini-log", c);
+    if (on && mini) mini.scrollTop = mini.scrollHeight;
+  }
+}
+function focusAgent(agent) {
+  S.focusAgent = !agent || S.focusAgent === agent ? null : agent;
+  applyFocus();
+  if (S.focusAgent) focusChat(S.focusAgent);
 }
 function focusChat(agent) {
   const f = $(`form[data-chat="${CSS.escape(agent)}"]`);
@@ -1563,6 +1584,7 @@ const ACTIONS = {
   "reject-cancel": () => { S.rejecting = false; renderDrawer(true); },
   "diff": (el) => DiffView.task(+el.dataset.task),
   "agent-term": (el) => agentTerminal(el.dataset.agent),
+  "agent-focus": (el) => focusAgent(el.dataset.agent),
   "agent-pick": (el) => { const a = S.meta.agents.find((x) => x.name === el.dataset.agent); if (a) pickerModal({ agent: a.name, key: "model", items: a.models, current: a.model, then_effort: true }); },
   "open-job": (el) => openJob(+el.dataset.job),
   "job": (el) => send("job", { id: +el.dataset.job, action: el.dataset.act }),
@@ -1603,6 +1625,12 @@ document.addEventListener("keydown", (e) => {
     if (e.target.closest && e.target.closest(".cm-editor")) return;  // Esc trong editor là của vim
     if (topModal()) { e.preventDefault(); closeModal(); }
     else if (S.openTask != null) closeDrawer();
+    else if (S.focusAgent && S.view === "team") focusAgent(null);
+  }
+  if (e.key === "F7" && S.view === "team") {  // như TUI: phóng to thẻ đang gõ (hoặc trưởng nhóm) / thu lại
+    e.preventDefault();
+    const card = e.target.closest && e.target.closest(".agent-card");
+    focusAgent(S.focusAgent ? null : card ? card.dataset.agent : (S.state.agents.find((a) => a.lead) || {}).name);
   }
 });
 

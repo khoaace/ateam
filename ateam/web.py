@@ -109,7 +109,8 @@ def ui_strings() -> dict[str, str]:
         "reject": tr("Từ chối"), "reject_ph": tr("Góp ý (để trống = chỉ từ chối, có góp ý = giao làm lại)"),
         "continue_task": tr("Hỏi tiếp"), "close": tr("Đóng"),
         "tab_log": tr("Log"), "tab_prompt": tr("Nội dung"), "tab_result": tr("Kết quả"),
-        "chat_ph": tr("💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: CLI thật)"), "chat_send": tr("Gửi"),
+        "chat_ph": tr("💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: CLI thật · /focus: phóng to)"),
+        "chat_send": tr("Gửi"), "focus_agent": tr("⛶ Phóng to / thu lại (Esc)"),
         "open_term": tr("Mở CLI thật của agent (tiếp tục phiên chat) trong terminal"),
         "pty_exit": tr("CLI đã thoát (mã {rc}) — đóng cửa sổ này"),
         "no_log": tr("Chưa có log."), "no_result": tr("Chưa có kết quả."), "error": tr("Lỗi"),
@@ -1007,6 +1008,10 @@ class WebApp:
                 return tr("Dùng: /chat <agent> <tin nhắn>  — agent: {v}", v=", ".join(agents)), "warn"
             reply = self.chat(agent, msg) if msg.strip() else None
             return reply or ("", "", {"open": {"view": "team", "chat": agent}})
+        if cmd == "focus":  # phóng to 1 thẻ agent: chỉ là cách xem, trình duyệt tự làm
+            if rest and rest not in agents:
+                return tr("Dùng: /focus [agent]  — agent: {v}", v=", ".join(agents)), "warn"
+            return "", "", {"open": {"view": "team", "focus": rest}}
         if cmd == "task":
             spec, _, prompt = rest.partition(" ")
             m = re.fullmatch(r"([^:@]+)(?::([^@]+))?(?:@(.+))?", spec)

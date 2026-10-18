@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.2 — 18/10/2026
+
+- Sửa: gõ tiếng Việt trong ô 💬 chat của từng agent (TUI) bị lỗi dấu / mất chữ — ô chat giờ dùng chung cách xử lý bộ gõ
+  với ô nhập chính (ghép dấu NFC, Backspace của OpenKey/EVKey).
+- **⛶ Phóng to 1 agent** để chat riêng cả màn hình: F7 (hoặc `/focus [agent]`, `/focus` trong ô chat, nút ⛶ trên web)
+  chỉ giữ lại ô của agent đó; F7 / Esc / gõ lại để thu về lưới.
+
 ## 0.20.1 — 18/10/2026
 
 - **Alt+1 … Alt+8** tới thẳng tab theo thứ tự (TUI và web; Mac: bật "Use Option as Meta" trong terminal). Thanh bên web

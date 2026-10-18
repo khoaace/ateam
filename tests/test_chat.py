@@ -73,7 +73,7 @@ def test_tui_chat_box(env, project, monkeypatch):
     importlib.reload(importlib.import_module("ateam.config"))
     from ateam.config import ensure_global_config, load_config
     from ateam.db import DB
-    from ateam.tui import AgentPane, TeamApp
+    from ateam.tui import AgentPane, TeamApp, TextInput
 
     async def main():
         ensure_global_config()
@@ -96,6 +96,26 @@ def test_tui_chat_box(env, project, monkeypatch):
             assert not app.query_one("#tasks").row_count  # không hiện ở bảng việc
             assert any("bạn: lam gi vay" in ln.text for ln in pane.body.lines)
             assert isinstance(pane, AgentPane)
+            # ô chat là TextInput: bộ gõ gửi dấu tách rời (e + ^ + .) vẫn ghép thành chữ dựng sẵn
+            chat = pane.query_one(".pane-chat")
+            assert isinstance(chat, TextInput)
+            chat.insert_text_at_cursor("tie\u0302\u0301ng vie\u0302\u0323t")
+            assert chat.value == "tiếng việt"
+            chat.value = ""
+            # F7: chỉ còn ô của agent đang gõ, các ô khác và Timeline ẩn; Esc thu lại
+            await pilot.press("f7")
+            await pilot.pause(0.1)
+            assert app.focus_agent == "codex"
+            assert app.pane("claude").has_class("unfocused") and not pane.has_class("unfocused")
+            assert pane.region.width > 120 and app.query_one("#timeline").region.height == 0
+            await pilot.press("escape")
+            await pilot.pause(0.1)
+            assert app.focus_agent is None and not app.pane("claude").has_class("unfocused")
+            app.run_command("/focus claude")
+            await pilot.pause(0.1)
+            assert app.focus_agent == "claude" and app.focused is app.pane("claude").query_one(".pane-chat")
+            app.run_command("/focus")
+            assert app.focus_agent is None
             app.query_one("#cmd").focus()
             await pilot.press("alt+3")  # Alt+số: tới thẳng tab
             await pilot.pause(0.1)
@@ -179,3 +199,20 @@ def test_web_pty_open_runs_agent_cli(env, project, monkeypatch):
         finally:
             await c.close()
     asyncio.run(main())
+
+
+def test_web_focus_command(env, project, monkeypatch):
+    import pytest
+    pytest.importorskip("aiohttp")
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    importlib.reload(importlib.import_module("ateam.config"))
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.web import WebApp
+    ensure_global_config()
+    wa = WebApp(project, load_config(project), DB(project / ".ateam/team.db"), 8124)
+    r = asyncio.run(wa.handle({"op": "submit", "text": "/focus codex"}))
+    assert r[2]["open"] == {"view": "team", "focus": "codex"}
+    assert asyncio.run(wa.handle({"op": "submit", "text": "/focus"}))[2]["open"]["focus"] == ""
+    assert asyncio.run(wa.handle({"op": "submit", "text": "/focus khong-co"}))[1] == "warn"

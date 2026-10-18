@@ -251,6 +251,8 @@ tra, không worktree, không giao việc chéo và không hiện trên Bảng vi
   cả terminal (thoát CLI để quay lại ateam, các task khác vẫn chạy); web mở cửa sổ terminal (xterm.js) có hàng phím
   Esc · Tab · Ctrl+C · ↑↓ cho điện thoại. Ở đây dùng được mọi thứ của CLI (slash command, hỏi quyền…), nhưng ateam
   không đọc được kết quả của phần này.
+- **F7**, `/focus [agent]`, `/focus` trong ô chat hoặc nút **⛶** (web): phóng to một agent cả tab Đội để chat riêng;
+  F7 / Esc / gõ lại để thu về lưới.
 
 ## Model & effort từng agent
 

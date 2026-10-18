@@ -355,6 +355,9 @@ select.agent-select:focus { border-color: var(--accent); }
 .act .lbl { font-size: 11px; color: var(--muted); }
 .chat-row { display: flex; gap: 6px; margin: 0 10px 10px; }
 .chat-row .chat-in { flex: 1; min-width: 0; }
+.team-grid.focused { grid-template-columns: 1fr; }
+.team-grid.focused .agent-card:not(.focus) { display: none; }
+.team-grid.focused .agent-card.focus .mini-log { height: calc(100vh - 260px); min-height: 240px; }
 .modal.pty .modal-box { height: min(80vh, 760px); }
 .pty-box { flex: 1; min-height: 0; padding: 6px 8px; background: var(--term-bg); }
 .pty-keys { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border); }
