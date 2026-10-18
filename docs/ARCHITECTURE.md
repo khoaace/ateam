@@ -96,6 +96,12 @@ prompt lập kế hoạch/review (qua `full_text()`). TUI: `GrillBar` (`#grill`)
 `grilling` mới nhất; khi đang chờ trả lời, câu gõ ở ô nhập (không bắt đầu bằng `/` `!`) là câu trả lời, gõ số
 = chọn phương án. Mở lại app khi trưởng nhóm đang nghĩ: `setup()` ghi `error`, người dùng bấm "↻ Hỏi tiếp".
 
+**Hỏi lại khi lập kế hoạch**: `plan_prompt(can_ask=True)` (mục tiêu mới, chưa có `spec`, không `auto_answer`) cho
+trưởng nhóm trả `{"question", …}` (`QUESTION_SCHEMA`, như `/grill`) thay cho mảng task khi có điểm quan trọng chưa
+rõ. `_plan` thấy câu hỏi → `grill = {"qa": [câu đó], "from_plan": true}`, trạng thái `planning` → `grilling` (notify
+báo "❓ Trưởng nhóm hỏi bạn"), rồi đi đúng luồng `/grill`: trả lời → `_grill_step` hỏi tiếp hoặc chốt `spec` → `_plan`
+lại, lần này có `spec` nên không được hỏi nữa.
+
 **Tiếp tục** (`/continue`, F6, nút "↪ Tiếp tục", `ateam continue`): `continue_goal` mở lại mục tiêu đã
 kết thúc (`GOAL_ENDED`) → `planning` với `round = 1` (giới hạn `max_rounds` tính lại), yêu cầu mới thêm vào
 cột `followups` (JSON list; `Goal.full_text()` ghép `FOLLOW-UP n:` để gửi agent). `_plan(followup=…)` dùng

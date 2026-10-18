@@ -375,15 +375,27 @@ class Orchestrator:
         try:
             goal = self.db.goal(gid)
             self.log(tr("🧠 {lead} đang lập kế hoạch cho mục tiêu #{gid}…", lead=self.cfg.lead, gid=gid))
+            # trưởng nhóm được hỏi lại khi có điểm quan trọng chưa rõ — trừ khi đã hỏi đáp (/grill, đã có đặc tả)
+            # hoặc không ai trả lời (ateam goal -y)
+            can_ask = not followup and not goal.spec and not self.auto_answer
             if followup:
                 prompt = P.followup_plan_prompt(self.cfg, goal.base_text(), followup[1], followup[2],
                                                 followup[0], str(self.root), self.notes_text(),
                                                 earlier=(goal.followups or [])[:-1])
             else:
-                prompt = P.plan_prompt(self.cfg, goal.base_text(), str(self.root), self.notes_text())
+                prompt = P.plan_prompt(self.cfg, goal.base_text(), str(self.root), self.notes_text(),
+                                       can_ask=can_ask)
             out = await self._call_lead(prompt, tr("Lập kế hoạch mục tiêu #{gid}", gid=gid), goal_id=gid,
                                         keep_session=True)
             plan = P.extract_json(out or "", list, keys=("prompt", "agent", "title"))
+            q = self._grill_q(P.extract_json(out or "", dict, keys=("question",)) or {}) if can_ask and not plan \
+                else None
+            if q:  # chuyển sang hỏi đáp như /grill: trả lời xong (hoặc "chốt luôn") thì lập kế hoạch lại
+                self.db.set_grill(gid, {"qa": [q], "spec": "", "error": "", "from_plan": True})
+                self.db.update_goal(gid, status="grilling")
+                self.log(tr("❓ Trưởng nhóm cần làm rõ trước khi lập kế hoạch #{gid}: {question}", gid=gid,
+                            question=q["q"]))
+                return
             if not plan:
                 self.db.update_goal(gid, status="failed", summary=tr("Trưởng nhóm không trả về kế hoạch JSON hợp lệ"))
                 self.log(tr("✗ Không đọc được kế hoạch cho mục tiêu #{gid} (xem "
@@ -449,14 +461,11 @@ class Orchestrator:
             if not g or g.status != "grilling":  # người dùng huỷ trong lúc chờ
                 return
             res = P.extract_json(out or "", dict, keys=("question", "done", "spec")) or {}
-            question = str(res.get("question") or "").strip()
-            if question and not finish and not res.get("done"):
-                opts = [str(x).strip() for x in res.get("options") or [] if str(x).strip()][:6]
-                data["qa"] = answered + [{"q": question, "why": str(res.get("why") or "").strip(),
-                                         "options": opts, "rec": str(res.get("recommended") or "").strip(),
-                                         "a": None}]
+            q = self._grill_q(res)
+            if q and not finish and not res.get("done"):
+                data["qa"] = answered + [q]
                 self.db.set_grill(gid, data)
-                self.log(tr("❓ #{gid} câu {v}: {question}", gid=gid, v=len(data['qa']), question=question))
+                self.log(tr("❓ #{gid} câu {v}: {question}", gid=gid, v=len(data['qa']), question=q["q"]))
                 return
             spec = str(res.get("spec") or "").strip()
             if not spec and (res.get("done") or finish) and answered:
@@ -481,6 +490,16 @@ class Orchestrator:
             else:
                 self.lead_busy.discard(gid)
             self.emit("changed")
+
+    @staticmethod
+    def _grill_q(res: dict) -> dict | None:
+        """Câu hỏi trưởng nhóm trả về (JSON question/why/options/recommended) -> mục chờ trả lời của hỏi đáp."""
+        question = str(res.get("question") or "").strip()
+        if not question:
+            return None
+        return {"q": question, "why": str(res.get("why") or "").strip(),
+                "options": [str(x).strip() for x in res.get("options") or [] if str(x).strip()][:6],
+                "rec": str(res.get("recommended") or "").strip(), "a": None}
 
     def _grill_goal(self, gid: int | None) -> Goal | str:
         g = self.db.goal(gid) if gid is not None else self.grill_active()

@@ -58,6 +58,11 @@ class Watcher:
             if g.status == "awaiting" and old_g.get(g.id) != "awaiting":
                 out.append(Notice("plan", tr("📝 Kế hoạch chờ duyệt"),
                                   tr("Mục tiêu #{gid}: {text}", gid=g.id, text=_short(g.text)), goal_id=g.id))
+            elif g.status == "grilling" and old_g.get(g.id) == "planning":  # hỏi lại khi đang lập kế hoạch
+                qa = (g.grill or {}).get("qa") or []
+                out.append(Notice("ask", tr("❓ Trưởng nhóm hỏi bạn"),
+                                  tr("Mục tiêu #{gid}: {text}", gid=g.id, text=_short(qa[-1]["q"] if qa else g.text, 140)),
+                                  goal_id=g.id))
             elif g.status == "done" and old_g.get(g.id) not in (None, "done"):
                 out.append(Notice("done", tr("🏁 Mục tiêu hoàn thành"),
                                   tr("Mục tiêu #{gid}: {text}", gid=g.id, text=_short(g.text)), goal_id=g.id))

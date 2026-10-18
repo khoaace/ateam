@@ -65,6 +65,9 @@ elif [[ "$P" == *"reusable ateam WORKFLOW"* ]]; then
 elif [[ "$P" == *"NEW FOLLOW-UP REQUEST"* ]]; then
   # Tiếp tục mục tiêu đã xong: 1 task bổ sung
   echo '[{"id":1,"agent":"codex","title":"Tạo d.txt","prompt":"tạo file d.txt","depends_on":[]}]'
+elif [[ "$P" == *"To ask the user first"* && "$P" == *"CAN_HOI"* ]]; then
+  # Lập kế hoạch mà mục tiêu chưa rõ: hỏi lại người dùng trước (như /grill)
+  echo '{"question": "Đăng nhập bằng gì?", "why": "đổi cách làm", "options": ["Email", "Google"], "recommended": "Email"}'
 elif [[ "$P" == *"Reply with ONLY a JSON array"* ]]; then
   # Lập kế hoạch: 3 task, task 3 phụ thuộc 1 và 2; effort "bogus" phải bị bỏ qua
   echo "Đang xem dự án..."

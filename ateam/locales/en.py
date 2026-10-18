@@ -3262,4 +3262,8 @@ EN: dict[str, str] = {
         'Save',
     '＋ File mới':
         '＋ New file',
+    '❓ Trưởng nhóm hỏi bạn':
+        '❓ The lead has a question',
+    '❓ Trưởng nhóm cần làm rõ trước khi lập kế hoạch #{gid}: {question}':
+        '❓ The lead needs a clarification before planning #{gid}: {question}',
 }

@@ -31,7 +31,20 @@ def effort_hint(cfg: Config) -> str:
             'needs more or less reasoning than usual; omit it otherwise.')
 
 
-def plan_prompt(cfg: Config, goal: str, cwd: str, notes: str) -> str:
+QUESTION_SCHEMA = ('{"question": "...", "why": "why this matters, one line", "options": ["...", "..."], '
+                   '"recommended": "..."}')
+
+
+def plan_prompt(cfg: Config, goal: str, cwd: str, notes: str, can_ask: bool = False) -> str:
+    """can_ask: được hỏi lại người dùng (một câu, như /grill) thay vì lập kế hoạch khi có điểm quan trọng chưa rõ."""
+    ask = f"""
+
+If — and only if — something ESSENTIAL is unclear (it changes what to build or how, exploring the codebase
+cannot answer it, and guessing would risk building the wrong thing), do not plan yet: ask the user ONE
+question first. For minor details, choose a sensible default and state it in the task prompt instead.
+Give 2-4 short concrete options and your recommended answer, in the same language as the goal.
+To ask the user first, reply with ONLY this JSON object instead of the array:
+{QUESTION_SCHEMA}""" if can_ask else ""
     return f"""You are the TEAM LEAD of a team of AI coding agents working in: {cwd}
 
 Team members (name: strengths):
@@ -50,7 +63,7 @@ same files. Write titles and prompts in the same language as the goal.
 You may inspect the project to plan, but DO NOT modify any files now.{effort_hint(cfg)}
 
 Reply with ONLY a JSON array, no other text:
-{TASK_SCHEMA}"""
+{TASK_SCHEMA}{ask}"""
 
 
 def followup_plan_prompt(cfg: Config, goal: str, history: str, prev_summary: str, followup: str,
@@ -274,7 +287,7 @@ INTERVIEW SO FAR:
 {task}
 
 Reply with ONLY a JSON object, no other text. Either the next question:
-{{"question": "...", "why": "why this matters, one line", "options": ["...", "..."], "recommended": "..."}}
+{QUESTION_SCHEMA}
 or, when you have enough information (or the user stopped):
 {{"done": true, "spec": "concise requirements: scope, decisions agreed with the user, out of scope, acceptance criteria"}}"""
 

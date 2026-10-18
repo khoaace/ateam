@@ -136,6 +136,11 @@ Chỉ đổi khi đường dẫn có thật trong dự án, nên `a@b.com`, `@pr
 
 ### Để trưởng nhóm hỏi kỹ trước khi làm — `/grill`
 
+Kể cả khi gõ mục tiêu bình thường (không `/grill`), lúc lập kế hoạch mà trưởng nhóm thấy có điểm **quan trọng chưa
+rõ** (đổi hẳn cách làm, không tự tìm được trong code) thì nó **hỏi lại bạn trước** thay vì đoán — câu hỏi hiện ở
+cùng khung Hỏi đáp dưới đây (kèm thông báo ❓), trả lời xong (hoặc **✓ Đủ rồi**) thì nó mới lập kế hoạch. Chi tiết
+nhỏ thì nó tự chọn mặc định hợp lý và ghi rõ trong task. `ateam goal -y` (không ai trả lời) thì không hỏi.
+
 Yêu cầu còn mơ hồ? `/grill Thêm trang đăng nhập` (kiểu "grill me"): thay vì lập kế hoạch ngay, trưởng nhóm
 **hỏi bạn từng câu một** — phạm vi, luồng người dùng, dữ liệu, ca biên, giao diện, tiêu chí hoàn thành —
 mỗi câu kèm 2–4 phương án và phương án nó khuyên dùng. Câu hỏi nào tự tìm được trong code thì nó tự đọc code

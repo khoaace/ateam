@@ -128,3 +128,54 @@ def test_grill_hanging_indent():
     assert len(lines) == 2 and lines[1].startswith(" " * 6) and not lines[0].startswith(" ")
     assert all(len(ln) <= 30 - (0 if i else 6) for i, ln in enumerate(lines))
     assert hang("ngắn", 80, 6) == "ngắn"
+
+
+def test_plan_asks_user_when_unclear(env, project, monkeypatch, tmp_path):
+    """Lập kế hoạch mà có điểm quan trọng chưa rõ: trưởng nhóm hỏi lại (như /grill) rồi mới lập kế hoạch."""
+    import importlib
+
+    full = tmp_path / "full.log"
+    for k, v in dict(env, ATEAM_FAKE_FULL_LOG=str(full)).items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+    importlib.reload(importlib.import_module("ateam.config"))
+    from ateam import notify
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.orchestrator import Orchestrator
+    ensure_global_config()
+    o = Orchestrator(project, load_config(project), DB(project / ".ateam/team.db"))
+    w = notify.Watcher()
+
+    async def idle():
+        for _ in range(200):
+            await asyncio.sleep(0.05)
+            if not o.lead_busy:
+                return
+
+    async def main():
+        await o.setup()
+        w.diff(o.db.tasks(), o.db.goals())
+        gid = o.new_goal("CAN_HOI thêm đăng nhập")
+        w.diff(o.db.tasks(), o.db.goals())  # đang lập kế hoạch
+        await idle()
+        g = o.db.goal(gid)
+        assert g.status == "grilling" and o.grill_question(g)["q"] == "Đăng nhập bằng gì?"
+        assert g.grill["from_plan"] and o.grill_question(g)["options"] == ["Email", "Google"]
+        assert [n.kind for n in w.diff(o.db.tasks(), o.db.goals())] == ["ask"]  # báo người dùng
+        assert "Đã trả lời" in o.answer_grill(gid, "Email")
+        await idle()
+        assert o.grill_question(o.db.goal(gid))["q"] == "Câu hỏi số 2?"  # hỏi tiếp như /grill
+        o.answer_grill(gid, "B")
+        await idle()
+        g = o.db.goal(gid)
+        assert g.spec and g.status in ("awaiting", "running") and o.db.tasks(goal_id=gid)
+        # lập kế hoạch lần hai đã có đặc tả: không được hỏi lại nữa
+        plans = [x for x in full.read_text().split("<<claude>>") if "Reply with ONLY a JSON array" in x]
+        assert len(plans) == 2 and "To ask the user first" in plans[0] and "To ask the user first" not in plans[1]
+        # chạy không tương tác (ateam goal -y): không hỏi, lập kế hoạch luôn
+        o.auto_answer = True
+        gid2 = o.new_goal("CAN_HOI việc khác")
+        await idle()
+        assert o.db.goal(gid2).status in ("awaiting", "running")
+    asyncio.run(main())

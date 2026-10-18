@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.0 — 18/10/2026
+
+- **Trưởng nhóm hỏi lại khi lập kế hoạch**: gõ mục tiêu bình thường mà có điểm quan trọng chưa rõ (đổi cách làm,
+  không tự tìm được trong code), trưởng nhóm hỏi bạn trước thay vì đoán — câu hỏi kèm phương án gợi ý hiện ở khung
+  Hỏi đáp như `/grill` (TUI và web, có thông báo ❓); trả lời xong (hoặc "Đủ rồi") mới lập kế hoạch, kèm bản đặc tả
+  đã chốt. Chi tiết nhỏ thì vẫn tự chọn mặc định. `ateam goal -y` không hỏi.
+
 ## 0.23.1 — 18/10/2026
 
 - Tab 📝 Code: nút **＋ File mới** ngay ở cột danh sách file (TUI và web) — trước đây chỉ tạo được qua command palette
