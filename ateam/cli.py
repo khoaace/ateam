@@ -243,7 +243,7 @@ def cmd_doctor(args) -> int:
         if a.fallback:
             print(tr("     dự phòng khi hết hạn mức: {v}", v=', '.join(a.fallback)))
         print(f"     model/effort: {a.label()}"
-              + (tr("   (effort hợp lệ: {v})", v=', '.join(a.efforts)) if a.efforts else ""))
+              + (tr("   (effort hợp lệ: {v})", v=', '.join(a.efforts_for())) if a.efforts_for() else ""))
         if a.models:
             print(tr("     model gợi ý: {v}", v=', '.join(a.models[:8])) + (" …" if len(a.models) > 8 else ""))
         print(f"     {' '.join(a.argv('<prompt>'))}")
@@ -464,8 +464,8 @@ def cmd_set(args) -> int:
     if args.model is None and args.effort is None:
         print(f"{a.name}: {a.label()}")
         return 0
-    if args.effort not in (None, "-") and a.efforts and args.effort not in a.efforts:
-        print(tr("⚠ '{effort}' không nằm trong {efforts} — vẫn lưu, nhưng CLI có thể báo lỗi.", effort=args.effort, efforts=a.efforts))
+    if args.effort not in (None, "-") and a.efforts_for() and args.effort not in a.efforts_for():
+        print(tr("⚠ '{effort}' không nằm trong {efforts} — vẫn lưu, nhưng CLI có thể báo lỗi.", effort=args.effort, efforts=a.efforts_for()))
     if args.model is not None:
         save_agent_setting(a.name, "model", args.model)
     if args.effort is not None:

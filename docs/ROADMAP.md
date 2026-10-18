@@ -19,8 +19,15 @@ nhưng chưa có báo cáo chạy thật. Cần xác nhận:
 - [ ] `codex exec … -m X -c model_reasoning_effort="Y"`: giá trị TOML có ngoặc kép được chấp nhận.
 - [ ] `agy --mode accept-edits --print-timeout 0 --effort Y -p …` qua pty: có output, sửa được file,
       không treo (từng có báo lỗi agy treo khi không có tty).
-- [ ] `opencode run --model xai/grok-build-0.1 --variant Y …`: `--variant` có hiệu lực với model Grok
-      không; nếu không, để `effort` trống cho grok.
+- [x] Effort (đã thử 18/10/2026: claude 2.1.302, codex 0.162.1, agy 1.4.2, grok 1.0.62, opencode 1.19.3):
+      claude `--effort` low…max có cả xhigh; codex mức theo model (`codex debug models` →
+      `supported_reasoning_levels`); agy: model gemini mang effort trong tên (`-low/-medium/-high`, thêm `--effort`
+      vào tên có đuôi thì "conflicts with --effort"; tên gốc `gemini-4-argon --effort high` chạy), model
+      claude-*-thinking / claude-sonnet-4-6 báo "--effort is not supported"; opencode có lại `run --variant`
+      (`provider/model#variant` báo "Unexpected server error"), variant không hợp lệ thì bị lờ đi, mức theo model ở
+      `opencode models --verbose` → `variants`.
+- [ ] `agy --mode accept-edits --print-timeout 0 --effort Y` với model mặc định (không `--model`): đã chạy với
+      `--mode plan`, chưa thử sửa file.
 - [ ] Thông báo hết hạn mức thật của từng CLI khớp `LIMIT_RE` và đọc được giờ hồi
       (khi gặp: lấy `ateam log <task>`, thêm mẫu + test).
 - [ ] Cú pháp nhắc file (`mentions.SYNTAX`): Claude Code `-p` có đọc `@file` (và `@"có dấu cách"`)

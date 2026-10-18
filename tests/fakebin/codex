@@ -21,7 +21,10 @@ for a in "$@"; do
   fi
 done
 if [ "${1:-}" = "debug" ] && [ "${2:-}" = "models" ]; then  # như codex thật: JSON trên 1 dòng
-  echo '{"models":[{"slug":"gpt-6.1-sol","visibility":"list"},{"slug":"gpt-reserve","visibility":"hide"},{"slug":"gpt-6-luna","visibility":"list"},{"slug":"codex-auto-review","visibility":"hide"}]}'
+  # như codex thật: mỗi model kèm supported_reasoning_levels và chữ dài (bản thật ~500KB) — ateam không được cắt dòng
+  pad=$(python3 -c 'print("x" * 150000)')
+  L='[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"}'
+  echo '{"models":[{"slug":"gpt-6.1-sol","visibility":"list","supported_reasoning_levels":'"$L"',{"effort":"ultra"}],"model_messages":{"persistent_instructions":"'"$pad"'"}},{"slug":"gpt-reserve","visibility":"hide"},{"slug":"gpt-6-luna","visibility":"list","supported_reasoning_levels":'"$L"']},{"slug":"codex-auto-review","visibility":"hide"}]}'
   exit 0
 fi
 P="$fake_prompt"

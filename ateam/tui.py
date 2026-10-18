@@ -38,7 +38,7 @@ from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, T
                      WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan,
                      full_access_supported, plan_team, provider_of, provider_template, save_onboard,
                      tier_preset, agent_from_dict, agent_templates,
-                     clear_agent_state, load_config, load_custom, load_state, mark_setup_done,
+                     clear_agent_state, found_models, load_config, load_custom, load_state, mark_setup_done,
                      save_commit_agent, save_custom_item, save_state,
                      save_project_setting, workflow_to_dict)
 from .db import ACTIVE, ASKING, DB, GOAL_ENDED
@@ -5770,7 +5770,7 @@ class TeamApp(App):
             t.append("\n")
             t.append_text(choice_line("model", a.model_choices(), a.model, PANE_MODELS))
             t.append("\n")
-            t.append_text(choice_line("effort", a.efforts, a.effort))
+            t.append_text(choice_line("effort", a.efforts_for(), a.current_effort()))
             if not a.installed():
                 t.append(tr("\n✗ chưa cài lệnh '{binary}'", binary=a.binary), "red")
             elif self.orch.in_cooldown(name) and not acts:
@@ -6322,22 +6322,22 @@ class TeamApp(App):
         a: AgentConfig | None = self.cfg.agents.get(agent)
         if not a:
             return
-        items = a.model_choices() if key == "model" else list(a.efforts)
-        current = a.model if key == "model" else a.effort
+        items = a.model_choices() if key == "model" else list(a.efforts_for())
+        current = a.model if key == "model" else a.current_effort()
         title = tr("Chọn {key} cho {agent}  (đang dùng: {v})", key=key, agent=agent, v=current or tr('mặc định'))
 
         def done(value) -> None:
             if value is not None:
                 self.notify(self.orch.set_agent_option(agent, key, None if value == RESET else value))
                 self.refresh_view()
-            if then_effort and key == "model" and value is not None and a.efforts:
+            if then_effort and key == "model" and value is not None and a.efforts_for():
                 self.open_picker(agent, "effort")
 
         self.push_screen(ChoiceScreen(title, items, current, tr("mặc định trong config / CLI")), done)
 
     async def _discover_missing_models(self) -> None:
         """Hỏi (song song) các CLI có lệnh liệt kê model mà chưa từng hỏi (opencode models, agy models)."""
-        found = load_state().get("models_found", {})
+        found = found_models(load_state())
         await self.orch.discover_all([n for n in self.cfg.active_agents() if n not in found],
                                      on_done=lambda _n, msg: self.orch.log("⚙ " + msg))
 
@@ -6414,9 +6414,9 @@ class TeamApp(App):
 
     def _check_effort(self, agent: str, effort: str | None) -> None:
         a = self.cfg.agents[agent]
-        if effort and effort != "-" and a.efforts and effort not in a.efforts:
+        if effort and effort != "-" and a.efforts_for() and effort not in a.efforts_for():
             self.notify(tr("'{effort}' không có trong danh sách của {agent}: {v} — vẫn dùng, nhưng "
-                           "CLI có thể báo lỗi", effort=effort, agent=agent, v=', '.join(a.efforts)), severity="warning")
+                           "CLI có thể báo lỗi", effort=effort, agent=agent, v=', '.join(a.efforts_for())), severity="warning")
 
     def open_agent_terminal(self, agent: str) -> None:
         self.run_worker(self._agent_terminal(agent), exclusive=True, group="agent-term")

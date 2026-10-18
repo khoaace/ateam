@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.20.3 — 18/10/2026
+
+Effort của từng agent được kiểm lại trên CLI thật (claude 2.1.302, codex 0.162.1, agy 1.4.2, grok 1.0.62,
+opencode 1.19.3):
+
+- **Sửa lỗi opencode**: dạng `--model provider/model#variant` (bản 0.17) giờ bị opencode báo "Unexpected server
+  error" — chuyển sang cờ `--variant` (opencode đã có lại). Agent tuỳ chỉnh còn dạng cũ được tự đổi.
+- **Sửa lỗi danh sách model codex** bị bóc thành rác (`ta`, `g`, `he`…) từ bản 0.19.2: `codex debug models` in JSON
+  ~500KB trên một dòng mà ateam cắt dòng dài. Danh sách model đã lưu bởi bản cũ được bỏ và hỏi lại CLI.
+- **Effort theo từng model**: ateam hỏi mức effort hợp lệ của từng model (codex `supported_reasoning_levels`, opencode
+  `models --verbose`, agy theo tên `gemini-…-low/-medium/-high`); effort đang chọn không có ở model thì tự đổi sang
+  mức gần nhất (vd deepseek-v4.1-flash không có `medium` → `high`) và ghi log. Gợi ý effort, bảng chọn, kế hoạch của
+  trưởng nhóm đều theo model đang dùng.
+- **antigravity**: model gemini hiện effort nằm trong tên (`gemini-4-argon · medium`), chọn effort thì đổi sang biến
+  thể đúng; model claude-*-thinking không nhận effort (agy báo "--effort is not supported") nên ateam không gửi.
+- Claude Code: thêm mức `xhigh`. Cấu hình mặc định lên bản 9 (file cũ được sao lưu).
+
 ## 0.20.2 — 18/10/2026
 
 - Sửa: gõ tiếng Việt trong ô 💬 chat của từng agent (TUI) bị lỗi dấu / mất chữ — ô chat giờ dùng chung cách xử lý bộ gõ

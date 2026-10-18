@@ -24,10 +24,15 @@ STATE_FILE = GLOBAL_DIR / "state.json"
 CUSTOM_FILE = GLOBAL_DIR / "custom.toml"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 LEAD_ALIAS = "lead"  # agent của bước workflow = trưởng nhóm hiện tại
-CONFIG_VERSION = 8
+CONFIG_VERSION = 9
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
 # hậu tố effort trong tên model (vd agy: gemini-4-argon-medium) — model đã cố định effort
 EFFORT_SUFFIXES = ("minimal", "low", "medium", "high", "xhigh", "max")
+# thang effort từ thấp tới cao: effort không có ở model đang chọn thì đổi sang mức gần nhất trên thang này
+EFFORT_SCALE = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
+# state.json: phiên bản dữ liệu models_found. Bản 1 có thể chứa rác (ateam 0.19.2–0.20.2 cắt vụn JSON một dòng
+# của `codex debug models`) -> bỏ, app tự hỏi lại CLI
+MODELS_FOUND_V = 2
 # CLI từ chối cờ effort với model đang chọn (agy: "--effort is not supported for model …",
 # "--model … conflicts with --effort=high") -> chạy lại không có effort
 EFFORT_REJECTED_RE = re.compile(
@@ -41,7 +46,7 @@ DEFAULT_CONFIG = """\
 #  Model / effort đổi trong app (/model, /effort) được lưu ở ~/.config/ateam/state.json
 #  và ưu tiên hơn giá trị trong file này. Gõ /model <agent> - để quay về giá trị ở đây.
 # ============================================================
-config_version = 8
+config_version = 9
 
 lead = "claude"              # agent làm trưởng nhóm (lập kế hoạch + review)
 max_parallel = 3             # tổng số task chạy song song tối đa
@@ -80,8 +85,10 @@ lead_fallback = ["codex"]    # ai lập kế hoạch/review thay khi trưởng n
 #   effort        mức suy luận mặc định ("" = để CLI tự chọn)
 #   model_args    cờ thêm vào khi có model  ({model} được thay)
 #   effort_args   cờ thêm vào khi có effort ({effort} được thay). Có cả {model} thì đây là dạng gộp
-#                 model+effort (vd opencode --model x/y#high): thay cho model_args; không có model thì bỏ effort
-#   efforts       các mức effort hợp lệ (dùng để kiểm tra và gợi ý)
+#                 model+effort: thay cho model_args; không có model thì bỏ effort
+#   efforts       các mức effort hợp lệ (dùng để kiểm tra và gợi ý). Mức riêng từng model hỏi được từ CLI
+#                 (codex debug models, opencode models --verbose, tên model của agy) được ưu tiên; effort
+#                 không có ở model đang chọn thì tự đổi sang mức gần nhất
 #   models        model gợi ý trong /model và tab Đội (vắng = danh mục có sẵn của ateam)
 #   models_command  lệnh liệt kê model thật của CLI (vd ["opencode", "models"]);
 #                 models_filter: chỉ giữ model chứa chữ này (vắng = tên agent nếu có model khớp)
@@ -98,7 +105,7 @@ model = ""                   # vd: "opus", "sonnet", "haiku" hoặc id đầy đ
 effort = ""
 model_args = ["--model", "{model}"]
 effort_args = ["--effort", "{effort}"]
-efforts = ["low", "medium", "high", "max"]
+efforts = ["low", "medium", "high", "xhigh", "max"]
 fallback = ["codex"]
 role = "Trưởng nhóm. Lập kế hoạch, thiết kế kiến trúc, review code, các việc cần suy luận sâu."
 timeout = 1800
@@ -152,11 +159,10 @@ max_concurrent = 1
 # OpenCode — chạy được nhiều nhà cung cấp (xAI, OpenAI, Anthropic…). Danh sách model: opencode models
 command = ["opencode", "run", "{prompt}"]
 model = "xai/grok-build-0.1"
-effort = ""                  # OpenCode gọi là "variant"; tuỳ model có hỗ trợ hay không
+effort = ""                  # OpenCode gọi là "variant"; mức hợp lệ tuỳ model (opencode models --verbose)
 model_args = ["--model", "{model}"]
-# OpenCode bỏ --variant: variant ghi liền model dạng provider/model#variant (cần đặt model)
-effort_args = ["--model", "{model}#{effort}"]
-efforts = ["low", "medium", "high"]
+effort_args = ["--variant", "{effort}"]
+efforts = ["low", "medium", "high", "xhigh", "max"]
 fallback = ["codex"]
 role = "Code nhanh, việc nhỏ, viết test, script, tài liệu."
 timeout = 1800
@@ -170,7 +176,7 @@ CATALOG: dict[str, dict] = {
     "claude": {
         "models": ["opus", "sonnet", "haiku", "opusplan", "claude-opus-5-5", "claude-sonnet-5-5",
                    "claude-haiku-5-5", "claude-fable-5-1"],
-        "efforts": ["low", "medium", "high", "max"],
+        "efforts": ["low", "medium", "high", "xhigh", "max"],
         "usage_command": ["claude", "-p", "/usage"],  # % phiên / tuần đã dùng + giờ hồi (không gọi model)
     },
     "codex": {
@@ -192,8 +198,8 @@ CATALOG: dict[str, dict] = {
     },
     "opencode": {
         "models": ["xai/grok-build-0.1", "xai/grok-4.7"],
-        "efforts": ["low", "medium", "high"],
-        "models_command": ["opencode", "models"],
+        "efforts": ["low", "medium", "high", "xhigh", "max"],
+        "models_command": ["opencode", "models", "--verbose"],  # kèm "variants" (effort) của từng model
         "usage_command": ["opencode", "stats", "--days", "7"],  # token & chi phí 7 ngày qua
     },
 }
@@ -332,16 +338,68 @@ def parse_models_json(output: str) -> list[str] | None:
     return out
 
 
+VERBOSE_NAME_RE = re.compile(r"^([A-Za-z0-9][\w.:/@\[\]+-]*)[ \t]*\r?\n(?=\{)", re.M)
+
+
+def parse_models_verbose(output: str) -> list[tuple[str, dict]] | None:
+    """`opencode models --verbose`: mỗi model là một dòng tên rồi một object JSON nhiều dòng. None nếu không phải."""
+    dec, out, pos = json.JSONDecoder(), [], 0
+    for m in VERBOSE_NAME_RE.finditer(output):
+        if m.start() < pos:
+            continue
+        try:
+            data, pos = dec.raw_decode(output, m.end())
+        except ValueError:
+            continue
+        out.append((m.group(1), data if isinstance(data, dict) else {}))
+    return out or None
+
+
+def parse_model_efforts(output: str) -> dict[str, list[str]]:
+    """Mức effort riêng của từng model nếu lệnh liệt kê có in: `codex debug models` (supported_reasoning_levels),
+    `opencode models --verbose` (variants). {} nếu không biết."""
+    out: dict[str, list[str]] = {}
+    blocks = parse_models_verbose(output)
+    if blocks:
+        for name, data in blocks:
+            variants = data.get("variants")
+            out[name] = [str(v) for v in variants] if isinstance(variants, dict) else []
+        return out
+    start, end = output.find("{"), output.rfind("}")
+    try:
+        data = json.loads(output[start:end + 1]) if 0 <= start < end else None
+    except ValueError:
+        return out
+    for m in (data.get("models") if isinstance(data, dict) else None) or []:
+        levels = m.get("supported_reasoning_levels") if isinstance(m, dict) else None
+        name = m.get("slug") if isinstance(m, dict) else None
+        if isinstance(name, str) and isinstance(levels, list):
+            out[name] = [str(x.get("effort")) for x in levels if isinstance(x, dict) and x.get("effort")]
+    return out
+
+
+def nearest_effort(effort: str, allowed: list[str]) -> str:
+    """Mức trong `allowed` gần `effort` nhất trên EFFORT_SCALE (hoà thì lấy mức cao hơn); "" nếu không có mức nào."""
+    ranked = [e for e in allowed if e in EFFORT_SCALE]
+    if not ranked or effort not in EFFORT_SCALE:
+        return allowed[0] if allowed else ""
+    i = EFFORT_SCALE.index(effort)
+    return min(ranked, key=lambda e: (abs(EFFORT_SCALE.index(e) - i), -EFFORT_SCALE.index(e)))
+
+
 def parse_models(output: str, filt: str = "") -> list[str]:
-    """Bóc tên model từ output của lệnh liệt kê (JSON, hoặc mỗi dòng một model, lấy cột đầu)."""
+    """Bóc tên model từ output của lệnh liệt kê (JSON, khối --verbose, hoặc mỗi dòng một model, lấy cột đầu)."""
     found = parse_models_json(output)
+    if found is None:
+        blocks = parse_models_verbose(output)
+        found = [n for n, _d in blocks] if blocks else None
     if found is not None:
         return [m for m in found if not filt or filt.lower() in m.lower()]
     out: list[str] = []
     for line in output.splitlines():
         line = line.strip().lstrip("-*•").strip()
-        if not line or line.endswith(":") or line.startswith("#"):
-            continue
+        if not line or line.endswith(":") or line.startswith("#") or re.match(r"[\w ]+:\s", line):
+            continue  # tiêu đề / dòng "Default model: grok-4.7"
         tok = line.split()[0]
         if not MODEL_RE.match(tok) or tok.lower() in ("model", "models", "name", "id"):
             continue
@@ -370,6 +428,7 @@ class AgentConfig:
     efforts: list[str] = field(default_factory=list)
     no_effort: set = field(default_factory=set)  # model CLI đã từ chối cờ effort (ghi nhớ khi đang chạy)
     models: list[str] = field(default_factory=list)
+    model_efforts: dict = field(default_factory=dict)  # model -> mức effort hợp lệ, hỏi được từ CLI
     models_command: list[str] = field(default_factory=list)
     usage_command: list[str] = field(default_factory=list)  # lệnh in hạn mức/usage của CLI (/usage)
     models_filter: str = ""
@@ -398,10 +457,57 @@ class AgentConfig:
         return bool(self.binary) and which(self.binary) is not None
 
     def label(self, model: str | None = None, effort: str | None = None) -> str:
-        m, e = self.split_effort((model if model is not None else self.model) or "",
-                                 (effort if effort is not None else self.effort) or "")
-        m = m or tr("mặc định")
-        return f"{m}" + (f" · {e}" if e else "")
+        m = (model if model is not None else self.model) or ""
+        e = self.current_effort(m, (effort if effort is not None else self.effort) or "")
+        m = self.split_effort(m, e)[0]
+        if e and m.endswith("-" + e) and len(m) > len(e) + 1:  # agy: gemini-4-argon-high -> "gemini-4-argon · high"
+            m = m[:-len(e) - 1]
+        return f"{m or tr('mặc định')}" + (f" · {e}" if e else "")
+
+    def known_efforts(self, model: str | None = None) -> list[str] | None:
+        """Mức effort riêng của `model` (mặc định: model đang dùng) nếu biết; [] = model không nhận effort;
+        None = không biết (dùng danh sách chung `efforts`)."""
+        m = self.model if model is None else model
+        if m in self.model_efforts:
+            return list(self.model_efforts[m])
+        if Path(self.binary).name == "agy" and m:
+            # agy: effort nằm trong tên model (gemini-4-argon-low/-medium/-high); model không có biến thể
+            # (claude-*-thinking, claude-sonnet-4-6) báo "--effort is not supported" (đã thử agy 1.4.2)
+            stem, _, tail = m.rpartition("-")
+            if tail not in EFFORT_SUFFIXES:
+                stem = m
+            group = {x.rpartition("-")[2] for x in self.models
+                     if x.rpartition("-")[0] == stem and x.rpartition("-")[2] in EFFORT_SUFFIXES}
+            if group:
+                return sorted(group, key=EFFORT_SCALE.index)
+            if m in self.models:
+                return []
+        return None
+
+    def efforts_for(self, model: str | None = None) -> list[str]:
+        """Mức effort hợp lệ cho `model` (mặc định: model đang dùng) — để gợi ý, kiểm tra và chip chọn nhanh."""
+        known = self.known_efforts(model)
+        return list(self.efforts) if known is None else known
+
+    def resolve_effort(self, model: str, effort: str) -> str:
+        """Effort sẽ gửi cho `model`: giữ nếu hợp lệ, không thì mức gần nhất; "" nếu model không nhận effort."""
+        if not effort:
+            return ""
+        known = self.known_efforts(model)
+        allowed = list(self.efforts) if known is None else known
+        if effort in allowed or (known is None and (not allowed or effort not in EFFORT_SCALE)):
+            return effort
+        return nearest_effort(effort, allowed)
+
+    def current_effort(self, model: str | None = None, effort: str | None = None) -> str:
+        """Effort thật đang dùng — gồm cả effort nằm trong tên model của agy (gemini-4-argon-medium -> medium)."""
+        m = self.model if model is None else model
+        e = self.resolve_effort(m, self.effort if effort is None else effort)
+        if not e:
+            stem, _, tail = m.rpartition("-")
+            if stem and tail in EFFORT_SUFFIXES and tail in (self.known_efforts(m) or []):
+                e = tail
+        return e
 
     def model_choices(self) -> list[str]:
         """Model gợi ý; model đang dùng (nếu là tên ngoài danh sách) đứng đầu."""
@@ -437,7 +543,7 @@ class AgentConfig:
         """Dựng lệnh: thay {prompt}/{model}/{effort}, chèn cờ model/effort ngay trước prompt.
         session: id phiên — lượt mới thì đặt id (session_args), resume=True thì tiếp tục phiên đó."""
         model = (model if model else self.model) or ""
-        effort = (effort if effort else self.effort) or ""
+        effort = self.resolve_effort(model, (effort if effort else self.effort) or "")
         model, effort = self.split_effort(model, effort)
         base = apply_access(self.plan_command if plan and self.plan_command else self.command,
                             self.full_access)
@@ -675,11 +781,24 @@ def save_commit_agent(name: str) -> None:
     save_state(state)
 
 
-def save_found_models(agent: str, models: list[str]) -> None:
-    """Lưu danh sách model lấy được từ CLI (models_command) để lần sau mở app có ngay."""
+def save_found_models(agent: str, models: list[str], efforts: dict[str, list[str]] | None = None) -> None:
+    """Lưu danh sách model (kèm mức effort từng model nếu có) lấy được từ CLI để lần sau mở app có ngay."""
     state = load_state()
+    if state.get("models_found_v", 1) < MODELS_FOUND_V:
+        state.pop("models_found", None)
+        state.pop("model_efforts", None)
+        state["models_found_v"] = MODELS_FOUND_V
     state.setdefault("models_found", {})[agent] = models
+    if efforts:
+        state.setdefault("model_efforts", {})[agent] = efforts
+    else:
+        (state.get("model_efforts") or {}).pop(agent, None)
     save_state(state)
+
+
+def found_models(state: dict) -> dict[str, list[str]]:
+    """models_found đã lưu; bỏ dữ liệu bản cũ (có thể là rác — xem MODELS_FOUND_V) để app hỏi lại CLI."""
+    return (state.get("models_found") or {}) if state.get("models_found_v", 1) >= MODELS_FOUND_V else {}
 
 
 def load_project_state(root: Path) -> dict:
@@ -1153,7 +1272,8 @@ LEGACY_FLAGS: dict[str, dict[str, list[str]]] = {
 # effort_args đã bị bỏ -> dạng mới, theo tên lệnh. OpenCode bỏ `run --variant` ("Unrecognized flag:
 # --variant"): variant giờ ghi liền model, `--model provider/model#variant`.
 LEGACY_EFFORT_ARGS: dict[str, tuple[list[str], list[str]]] = {
-    "opencode": (["--variant", "{effort}"], ["--model", "{model}#{effort}"]),
+    # opencode 1.19 có lại --variant, còn "provider/model#variant" thì báo "Unexpected server error"
+    "opencode": (["--model", "{model}#{effort}"], ["--variant", "{effort}"]),
 }
 
 
@@ -1284,12 +1404,14 @@ def load_config(root: Path, with_state: bool = True) -> Config:
         sources.append(project)
     full_state = load_state() if with_state else {}
     state = full_state.get("agents", {})
-    found = full_state.get("models_found", {})
+    found = found_models(full_state)
+    found_eff = (full_state.get("model_efforts") or {}) if found else {}
 
     agents: dict[str, AgentConfig] = {}
     for name, a in (data.get("agents") or {}).items():
         if isinstance(a, dict):
             agents[name] = _agent_from(name, a, state.get(name, {}), found.get(name) or [])
+            agents[name].model_efforts = dict(found_eff.get(name) or {})
     workflows = {n: _workflow_from(n, w) for n, w in (data.get("workflows") or {}).items()
                  if isinstance(w, dict)}
     v = data.get("verify") or {}

@@ -206,8 +206,8 @@ def test_models_refresh_asks_cli(env, project):
     r = ateam(env, project, "models", "grok", "--refresh")  # grok models: "* grok-4.7 (default)"
     assert "grok: tìm thấy 3 model" in r.stdout and "Default" not in r.stdout, r.stdout
     assert "grok-4.7-build-fast" in r.stdout
-    r = ateam(env, project, "models", "opencode", "--refresh")  # OpenCode: mọi nhà cung cấp, không lọc
-    assert "tìm thấy 5 model" in r.stdout and "xai/grok-5-fast" in r.stdout, r.stdout
+    r = ateam(env, project, "models", "opencode", "--refresh")  # OpenCode --verbose: mọi nhà cung cấp, không lọc
+    assert "tìm thấy 6 model" in r.stdout and "xai/grok-5-fast" in r.stdout, r.stdout
     # agy chỉ in khi có terminal -> phải hỏi qua pty
     r = ateam(env, project, "models", "antigravity", "--refresh")
     assert "gemini-3-pro" in r.stdout and "Available" not in r.stdout, r.stdout
@@ -220,6 +220,18 @@ def test_models_refresh_asks_cli(env, project):
     r = ateam(env, project, "models", "codex", "--refresh")
     assert "tìm thấy 2 model" in r.stdout and "'gpt-5.5' không có trong danh sách" in r.stdout, r.stdout
     assert "gpt-6-luna" in r.stdout and "codex-auto-review" not in r.stdout
+    # JSON một dòng ~150KB không bị cắt vụn; mức effort riêng từng model được lưu (codex, opencode --verbose)
+    import json
+    st = json.loads((Path(env["XDG_CONFIG_HOME"]) / "ateam/state.json").read_text())
+    assert st["models_found"]["codex"] == ["gpt-6.1-sol", "gpt-6-luna"] and st["models_found_v"] == 2
+    assert st["model_efforts"]["codex"]["gpt-6-luna"][-1] == "max"
+    assert st["model_efforts"]["opencode"]["opencode/deepseek-v4.1-flash-free"] == ["low", "high", "max"]
+    # danh sách lưu bởi bản cũ (có thể là rác "ta, g, he…") bị bỏ để hỏi lại CLI
+    st["models_found_v"] = 1
+    st["models_found"]["codex"] = ["ta", "g", "he"]
+    (Path(env["XDG_CONFIG_HOME"]) / "ateam/state.json").write_text(json.dumps(st))
+    r = ateam(env, project, "models", "codex")
+    assert "gpt-6-luna" in r.stdout and " he " not in r.stdout and "·he" not in r.stdout, r.stdout
 
 
 def test_custom_agent_and_workflow_cli(env, project, tmp_path):

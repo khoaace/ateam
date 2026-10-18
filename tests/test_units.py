@@ -32,13 +32,23 @@ def test_argv_model_with_effort_suffix_drops_effort_flag():
                       models=["gemini-4-argon-medium", "gemini-4-argon-high", "claude-sonnet-4-6"])
     assert agy.argv("P", model="gemini-4-argon-medium", effort="high") == [
         "agy", "--model", "gemini-4-argon-high", "-p", "P"]
-    # không có biến thể đúng effort: giữ model, vẫn bỏ cờ effort
+    # không có biến thể đúng effort: mức gần nhất có biến thể (xhigh -> high)
     assert agy.argv("P", model="gemini-4-argon-medium", effort="xhigh") == [
-        "agy", "--model", "gemini-4-argon-medium", "-p", "P"]
-    # model không mang effort: giữ nguyên --effort
+        "agy", "--model", "gemini-4-argon-high", "-p", "P"]
+    assert agy.efforts_for("gemini-4-argon-medium") == ["medium", "high"]
+    # model không có biến thể (claude-*): agy 1.4.2 báo "--effort is not supported" -> không gửi effort
+    assert agy.efforts_for("claude-sonnet-4-6") == []
     assert agy.argv("P", model="claude-sonnet-4-6", effort="high") == [
-        "agy", "--model", "claude-sonnet-4-6", "--effort", "high", "-p", "P"]
-    assert agy.label("gemini-4-argon-medium", "high") == "gemini-4-argon-high"  # log ghi model chạy thật
+        "agy", "--model", "claude-sonnet-4-6", "-p", "P"]
+    # tên gốc không đuôi (gemini-4-argon) nhận --effort
+    assert agy.argv("P", model="gemini-4-argon", effort="high") == [
+        "agy", "--model", "gemini-4-argon", "--effort", "high", "-p", "P"]
+    # model lạ (chưa có trong danh sách): giữ nguyên --effort như cũ
+    assert agy.argv("P", model="gemini-9", effort="high")[-4:-2] == ["--effort", "high"]
+    # log/ô agent ghi model chạy thật, tách phần effort trong tên
+    assert agy.label("gemini-4-argon-medium", "high") == "gemini-4-argon · high"
+    agy.model = "gemini-4-argon-medium"
+    assert agy.current_effort() == "medium" and agy.label() == "gemini-4-argon · medium"
 
 
 def test_argv_placeholder_in_command_and_missing_prompt_placeholder():
@@ -47,22 +57,38 @@ def test_argv_placeholder_in_command_and_missing_prompt_placeholder():
     assert a.argv("P", model="m1") == ["tool", "--model", "m1", "run", "P"]
 
 
-def test_argv_opencode_variant_joins_model():
-    # OpenCode bỏ `run --variant` ("Unrecognized flag: --variant"): variant ghi liền model, model#variant
+def test_argv_opencode_variant_flag():
+    # opencode 1.19 có lại `run --variant`; "provider/model#variant" thì báo "Unexpected server error" (đã thử)
     from ateam.config import agent_from_dict, provider_template
     oc = agent_from_dict("opencode", provider_template("opencode"))
     assert oc.argv("P", model="xai/grok-4.7", effort="medium") == [
-        "opencode", "run", "--model", "xai/grok-4.7#medium", "P"]
+        "opencode", "run", "--model", "xai/grok-4.7", "--variant", "medium", "P"]
     assert oc.argv("P", model="xai/grok-4.7") == ["opencode", "run", "--model", "xai/grok-4.7", "P"]
     oc.model = ""
-    assert oc.argv("P", effort="high") == ["opencode", "run", "P"]  # không có model: bỏ variant
-    # cấu hình / agent tuỳ chỉnh cũ còn --variant được đổi khi đọc
-    old = agent_from_dict("opencode-research", {"command": ["opencode", "run", "{prompt}"],
-                                                "model_args": ["--model", "{model}"],
-                                                "effort_args": ["--variant", "{effort}"],
-                                                "model": "xai/grok-4.7", "effort": "high"})
-    assert old.argv("P") == ["opencode", "run", "--model", "xai/grok-4.7#high", "P"]
-    assert "--variant" not in old.argv("P")
+    assert oc.argv("P", effort="high") == ["opencode", "run", "--variant", "high", "P"]
+    # mức riêng từng model (opencode models --verbose): medium không có -> mức gần nhất (hoà lấy mức cao)
+    oc.model_efforts = {"opencode/deepseek-v4.1-flash-free": ["low", "high", "max"], "xai/grok-build-0.1": []}
+    assert oc.argv("P", model="opencode/deepseek-v4.1-flash-free", effort="medium")[-3:-1] == ["--variant", "high"]
+    assert "--variant" not in oc.argv("P", model="xai/grok-build-0.1", effort="high")  # model không có variant
+    # cấu hình / agent tuỳ chỉnh cũ còn dạng gộp model#variant được đổi khi đọc
+    old = agent_from_dict("deepseek", {"command": ["opencode", "run", "{prompt}"],
+                                       "model_args": ["--model", "{model}"],
+                                       "effort_args": ["--model", "{model}#{effort}"],
+                                       "model": "xai/grok-4.7", "effort": "high"})
+    assert old.argv("P") == ["opencode", "run", "--model", "xai/grok-4.7", "--variant", "high", "P"]
+
+
+def test_nearest_effort_and_codex_per_model():
+    from ateam.config import nearest_effort
+    assert nearest_effort("medium", ["low", "high", "max"]) == "high"
+    assert nearest_effort("ultra", ["low", "medium", "high", "xhigh", "max"]) == "max"
+    assert nearest_effort("high", []) == ""
+    codex = AgentConfig("codex", ["codex", "exec", "{prompt}"], effort_args=["-c", 'model_reasoning_effort="{effort}"'],
+                        efforts=["low", "medium", "high", "xhigh", "max", "ultra"], model="gpt-6-luna",
+                        model_efforts={"gpt-6-luna": ["low", "medium", "high", "xhigh", "max"]})
+    assert codex.efforts_for() == ["low", "medium", "high", "xhigh", "max"]
+    assert codex.argv("P", effort="ultra") == ["codex", "exec", "-c", 'model_reasoning_effort="max"', "P"]
+    assert "ultra" in codex.efforts_for("gpt-6.1-sol")  # model chưa biết: danh sách chung
 
 
 def test_extract_json_from_noisy_output():
@@ -183,13 +209,14 @@ def test_catalog_fills_models_and_efforts(tmp_path, monkeypatch):
             'config_version = 99\n[agents.claude]\ncommand = ["/usr/local/bin/claude", "-p", "{prompt}"]\n'
             '[agents.mine]\ncommand = ["mycli"]\nmodels = ["a", "b"]\nefforts = []\n'
             '[agents.grok]\ncommand = ["opencode", "run", "{prompt}"]\nmodel = "xai/custom"\n')
-        cfgmod.STATE_FILE.write_text(json.dumps({"models_found": {"grok": ["xai/grok-5-fast", "xai/grok-4.7"]}}))
+        cfgmod.STATE_FILE.write_text(json.dumps({"models_found": {"grok": ["xai/grok-5-fast", "xai/grok-4.7"]},
+                                                 "models_found_v": 2}))
         c = cfgmod.load_config(tmp_path / "proj")
         cl = c.agents["claude"]
-        assert "opus" in cl.models and cl.efforts == ["low", "medium", "high", "max"]
+        assert "opus" in cl.models and cl.efforts == ["low", "medium", "high", "xhigh", "max"]
         assert c.agents["mine"].models == ["a", "b"] and c.agents["mine"].efforts == []
         g = c.agents["grok"]
-        assert g.models_command == ["opencode", "models"]
+        assert g.models_command == ["opencode", "models", "--verbose"]
         assert g.models[:3] == ["xai/grok-5-fast", "xai/grok-4.7", "xai/grok-build-0.1"]
         assert g.model_choices()[0] == "xai/custom"
         text = cfgmod.describe_models(c, "grok")

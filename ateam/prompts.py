@@ -12,8 +12,8 @@ def roster(cfg: Config, with_effort: bool = False) -> str:
     lines = []
     for n, a in cfg.active_agents().items():
         line = f'- "{n}": {a.role or "general"}'
-        if with_effort and a.efforts:
-            line += f"  [effort levels: {', '.join(a.efforts)}]"
+        if with_effort and a.efforts_for():
+            line += f"  [effort levels: {', '.join(a.efforts_for())}]"
         lines.append(line)
     return "\n".join(lines)
 
@@ -301,7 +301,7 @@ def workflow_suggest_prompt(cfg: Config, description: str, cwd: str) -> str:
     return f"""You are designing a reusable ateam WORKFLOW (a fixed chain of steps the team runs for a goal)
 for the repository at: {cwd}
 
-TEAM MEMBERS (name: role){' and their effort levels' if any(a.efforts for a in cfg.active_agents().values()) else ''}:
+TEAM MEMBERS (name: role){' and their effort levels' if any(a.efforts_for() for a in cfg.active_agents().values()) else ''}:
 {roster(cfg, with_effort=True)}
 Use "lead" as the agent of a step that the team lead ("{cfg.lead}") should do (design, review, planning).
 

@@ -123,20 +123,27 @@ Mỗi bước:
 | `after` | bước liền trước | Số thứ tự bước (từ 1) phải xong trước; `[]` = chạy ngay |
 | `effort`, `model` | `""` | Riêng cho task của bước này (không bị lọc như effort trưởng nhóm đặt) |
 
-## Mặc định của 5 agent (config_version 8)
+## Mặc định của 5 agent (config_version 9)
 
 | Agent | command | model_args / effort_args | efforts | fallback |
 | --- | --- | --- | --- | --- |
-| `claude` | `claude -p {prompt} --permission-mode acceptEdits` | `--model` / `--effort` | low, medium, high, max | codex |
+| `claude` | `claude -p {prompt} --permission-mode acceptEdits` | `--model` / `--effort` | low, medium, high, xhigh, max | codex |
 | `codex` | `codex exec --sandbox workspace-write --skip-git-repo-check {prompt}` | `-m` / `-c model_reasoning_effort="…"` | low…ultra | claude |
 | `antigravity` | `agy --mode accept-edits --print-timeout 0 -p {prompt}` (pty) | `--model` / `--effort` | low…max | claude, codex |
 | `grok` | `grok --permission-mode auto --deny Bash -p {prompt}` (Grok Build CLI; `acceptEdits` ở chế độ `-p` chặn cả sửa file) | `-m` / `--reasoning-effort` | low, medium, high, xhigh | codex |
-| `opencode` | `opencode run {prompt}`, model `xai/grok-build-0.1` | `--model` / `--model {model}#{effort}` (variant ghi liền model) | low, medium, high | codex |
+| `opencode` | `opencode run {prompt}`, model `xai/grok-build-0.1` | `--model` / `--variant` | low…max (theo model) | codex |
 
-Bản 8: OpenCode bỏ `run --variant` ("Unrecognized flag: --variant"); variant giờ ghi liền model dạng
-`provider/model#variant`. `effort_args` có `{model}` là dạng gộp: khi có effort và model, nó thay cho
-`model_args`; không có model thì bỏ effort. Agent cũ (kể cả agent tuỳ chỉnh như `opencode-research`) còn
-`effort_args = ["--variant", "{effort}"]` được đổi khi đọc (`LEGACY_EFFORT_ARGS` trong `config.py`).
+Bản 9: OpenCode 1.19 có lại `run --variant`, còn dạng gộp `provider/model#variant` (bản 8) thì báo "Unexpected
+server error" — agent cũ (kể cả agent tuỳ chỉnh) còn `effort_args = ["--model", "{model}#{effort}"]` được đổi
+sang `--variant` khi đọc (`LEGACY_EFFORT_ARGS` trong `config.py`). Claude Code có thêm mức `xhigh`.
+
+**Effort theo từng model.** `efforts` là danh sách chung; mức riêng của từng model được hỏi từ CLI cùng lúc với
+danh sách model (`/models <agent> làm mới`, tự hỏi khi mở app) và lưu ở `state.json` (`model_efforts`): codex
+`codex debug models` (`supported_reasoning_levels`), opencode `opencode models --verbose` (`variants`; model
+không có variant = không gửi effort). agy suy từ tên: `gemini-4-argon-low/-medium/-high` → effort đổi sang đúng
+biến thể, model không có biến thể (claude-*) không nhận effort. Effort đang chọn không có ở model thì tự đổi sang
+mức gần nhất (`nearest_effort`, hoà lấy mức cao hơn) và ghi một dòng log. `models_found_v` trong `state.json`:
+danh sách model lưu bởi bản cũ hơn 2 bị bỏ (bản 0.19.2–0.20.2 bóc rác từ JSON một dòng của codex) và hỏi lại.
 
 Bản 6 đổi `grok` từ OpenCode sang Grok Build CLI. Khi nâng cấp, `ensure_global_config` chuyển các mục
 `state.json` của `grok` cũ (`agents.grok`, `models_found.grok`, `lead`) sang `opencode` (sao lưu

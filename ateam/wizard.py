@@ -357,7 +357,7 @@ def suggestion_form(cfg: Config, raw: dict) -> dict:
             after = None
         steps.append({"agent": agent, "title": str(st.get("title") or "").strip(),
                       "prompt": str(st.get("prompt") or "").strip(), "after": after_text(after),
-                      "effort": effort if a and effort in a.efforts else ""})
+                      "effort": effort if a and effort in a.efforts_for() else ""})
     if not steps:
         raise ValueError(tr("Trưởng nhóm không gợi ý được bước nào — thử mô tả rõ hơn"))
     slug = unicodedata.normalize("NFKD", str(raw.get("name") or "").translate({0x111: "d", 0x110: "D"}))  # đ/Đ không tách dấu
@@ -390,7 +390,7 @@ def flow_agents(cfg: Config) -> list[tuple[str, str]]:
 def flow_step_choices(cfg: Config, agent: str) -> tuple[list[str], list[str]]:
     """(model, effort) gợi ý cho agent của một bước."""
     a = cfg.agents.get(flow_agent(cfg, agent))
-    return (a.model_choices(), list(a.efforts)) if a else ([], [])
+    return (a.model_choices(), list(a.efforts_for())) if a else ([], [])
 
 
 def flow_form(cfg: Config, name: str = "") -> dict:
@@ -430,9 +430,9 @@ def save_flow(cfg: Config, name: str, steps: list[dict], review: bool, make_defa
             raise ValueError(tr("Bước {i}: không có agent '{name}'", i=i, name=agent))
         a = cfg.agents.get(flow_agent(cfg, agent))
         effort = str(ch.get("effort") or "").strip().lower()
-        if effort and a and a.efforts and effort not in a.efforts:
+        if effort and a and a.efforts_for() and effort not in a.efforts_for():
             raise ValueError(tr("Bước {i}: effort '{effort}' không hợp lệ cho {agent} ({v})", i=i, effort=effort,
-                                agent=a.name, v=", ".join(a.efforts)))
+                                agent=a.name, v=", ".join(a.efforts_for())))
         st["agent"] = agent
         for key, val in (("model", str(ch.get("model") or "").strip()), ("effort", effort)):
             if val:

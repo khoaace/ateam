@@ -147,6 +147,11 @@ class Orchestrator:
                  effort: str | None = None, plan: bool = False, session: str | None = None,
                  resume: bool = False) -> list[str]:
         """Lệnh chạy agent, đã đổi @đường-dẫn sang cú pháp của CLI đó (xem mentions.py)."""
+        want = (effort or a.effort or "").strip()
+        got = a.resolve_effort((model or a.model or ""), want)
+        if want and got != want:
+            self.log(tr("⚙ {agent}: model {model} không có effort '{want}' → dùng {got}", agent=a.name,
+                        model=model or a.model or tr("mặc định"), want=want, got=got or tr("mặc định của CLI")))
         prompt, extra = mentions.render(prompt, a.binary, [Path(workdir), self.root],
                                         file_ref=a.file_ref, file_args=a.file_args,
                                         image_args=a.image_args)
@@ -631,7 +636,7 @@ class Orchestrator:
             title = str(item.get("title") or f"Task {i}").strip()
             prompt = str(item.get("prompt") or title).strip()
             effort = str(item.get("effort") or "").strip().lower()
-            if not from_user and (not self.cfg.lead_sets_effort or effort not in agents[agent].efforts):
+            if not from_user and (not self.cfg.lead_sets_effort or effort not in agents[agent].efforts_for()):
                 effort = ""
             model = str(item.get("model") or "").strip() if from_user else ""
             tid = self.db.add_task(agent, title, prompt, goal_id=gid, status=status, source=source,
@@ -790,13 +795,22 @@ class Orchestrator:
             fresh = load_config(self.root).agents.get(agent)
             value = getattr(fresh, key) if fresh else ""
         setattr(a, key, value or "")
+        if key == "effort" and value:
+            # agy: effort nằm trong tên model -> đổi luôn sang biến thể (gemini-4-argon-medium -> -high) để model
+            # hiện trên ô agent đúng cái thật sự chạy
+            model, eff = a.split_effort(a.model, a.resolve_effort(a.model, value))
+            if model != a.model and not eff:
+                save_agent_setting(agent, "model", model)
+                save_agent_setting(agent, "effort", None)
+                a.model, a.effort = model, ""
         self.log(f"⚙ {agent}: {key} = {value or tr('mặc định của CLI')}")
         self.emit("changed")
         return f"{agent}: {a.label()}"
 
     async def discover_models(self, agent: str, timeout: float = 30) -> str:
         """Chạy models_command của agent (vd `opencode models`) để lấy danh sách model thật."""
-        from .config import parse_models, parse_models_json, save_found_models
+        from .config import parse_model_efforts, parse_models, parse_models_json, parse_models_verbose, \
+            save_found_models
         a = self.cfg.agents.get(agent)
         if not a:
             return tr("Không có agent '{agent}'", agent=agent)
@@ -804,23 +818,28 @@ class Orchestrator:
             return tr("{agent}: CLI không có lệnh liệt kê model — dùng danh mục có sẵn", agent=agent)
         if not shutil.which(a.models_command[0]):
             return tr("{agent}: chưa cài lệnh '{v}'", agent=agent, v=a.models_command[0])
+        # max_partial=None: `codex debug models` in JSON ~500KB trên MỘT dòng — cắt ra là bóc thành rác
         run = Run(list(a.models_command), str(self.root), self.env_for(), use_pty=a.pty,
-                  timeout=timeout, on_line=lambda _l: None)
+                  timeout=timeout, on_line=lambda _l: None, max_partial=None)
         try:
             code = await run.start()
         except Exception as e:
             return tr("{agent}: không chạy được {v}: {e}", agent=agent, v=' '.join(a.models_command), e=e)
         found = parse_models(run.output, a.models_filter)
-        # danh sách dạng chữ của opencode lẫn model mọi hãng -> giữ model mang tên agent (nếu có);
-        # JSON (codex) đã chỉ gồm model dùng được, lọc theo tên sẽ chỉ còn "codex-auto-review"
-        if (not a.models_filter and parse_models_json(run.output) is None
+        # danh sách dạng chữ của opencode lẫn model mọi hãng -> agent đặt tên theo hãng (vd "grok" chạy qua
+        # opencode) chỉ giữ model mang tên đó; JSON (codex) đã chỉ gồm model dùng được, lọc theo tên sẽ chỉ còn
+        # "codex-auto-review"; agent trùng tên CLI ("opencode") thì giữ hết, không thì chỉ còn model opencode/*
+        structured = parse_models_json(run.output) is not None or parse_models_verbose(run.output) is not None
+        if (not a.models_filter and not structured and agent.lower() != Path(a.binary).name.lower()
                 and any(agent.lower() in m.lower() for m in found)):
             found = [m for m in found if agent.lower() in m.lower()]
         if code != 0 or not found:
             why = tr("hết thời gian") if run.timed_out else tr("mã thoát {code}", code=code) if code else tr("không thấy model nào")
             return f"{agent}: {' '.join(a.models_command)} — {why}"
-        save_found_models(agent, found)
+        efforts = {m: e for m, e in parse_model_efforts(run.output).items() if m in found}
+        save_found_models(agent, found, efforts)
         a.models = found + [m for m in a.models if m not in found]
+        a.model_efforts = efforts
         self.emit("changed")
         msg = tr("{agent}: tìm thấy {v} model", agent=agent, v=len(found))
         if a.model and a.model not in found:

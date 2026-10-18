@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 # Giả lập OpenCode chạy Grok: tạo b.txt, hoặc README.md nếu được giao viết README.
+if [ "${1:-}" = "models" ] && [ "${2:-}" = "--verbose" ]; then  # như opencode 1.19: tên rồi object JSON nhiều dòng
+  for m in "openai/gpt-5.5:low medium high xhigh" "xai/grok-build-0.1:" "xai/grok-4.7:low medium high xhigh" \
+           "xai/grok-5-fast:" "anthropic/claude-sonnet-5-5:low medium high xhigh max" \
+           "opencode/deepseek-v4.1-flash-free:low high max"; do
+    printf '%s\n{\n  "id": "%s",\n  "variants": {' "${m%%:*}" "${m%%:*}"
+    sep=""; for v in ${m#*:}; do printf '%s\n    "%s": {\n      "reasoningEffort": "%s"\n    }' "$sep" "$v" "$v"; sep=","; done
+    printf '\n  }\n}\n'
+  done
+  exit 0
+fi
 if [ "${1:-}" = "models" ]; then
   printf 'openai/gpt-5.5\nxai/grok-build-0.1\nxai/grok-4.7\nxai/grok-5-fast\nanthropic/claude-sonnet-5-5\n'
   exit 0
@@ -8,7 +18,7 @@ if [ "${1:-}" = "stats" ]; then
   for i in $(seq 1 30); do echo "│stat dòng $i │"; done  # dài như bảng thật -> ateam chỉ giữ 20 dòng
   exit 0
 fi
-fake_flags="--model --auto"
+fake_flags="--model --variant --auto"
 source "$(dirname "$0")/_common.sh"
 P="$fake_prompt"
 # như opencode thật: -f/--file là mảng yargs, nuốt mọi đối số đứng sau cho tới cờ kế tiếp hoặc "--"

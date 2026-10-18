@@ -3018,4 +3018,6 @@ EN: dict[str, str] = {
         "Open the agent's real CLI (continuing the chat session) in a terminal",
     'CLI đã thoát (mã {rc}) — đóng cửa sổ này':
         'CLI exited (code {rc}) — close this window',
+    "⚙ {agent}: model {model} không có effort '{want}' → dùng {got}":
+        "⚙ {agent}: model {model} has no '{want}' effort → using {got}",
 }

@@ -73,7 +73,7 @@ def agents_text(cfg: Config) -> str:
         lead = tr(" ★ trưởng nhóm") if n == cfg.lead else ""
         lead += tr(" · tuỳ chỉnh (/custom)") if n in cfg.custom_agents else ""
         lines.append(f"{n:12} {st}{lead}\n   model/effort: {a.label()}"
-                     + (tr("   (effort hợp lệ: {v})", v=', '.join(a.efforts)) if a.efforts else "")
+                     + (tr("   (effort hợp lệ: {v})", v=', '.join(a.efforts_for())) if a.efforts_for() else "")
                      + tr("\n   lệnh: {v}", v=' '.join(a.argv('<prompt>')))
                      + f"\n   @file → {mentions.describe(a.binary, a.file_ref, a.file_args, a.image_args)}"
                      + tr("\n   vai trò: {role}", role=a.role))

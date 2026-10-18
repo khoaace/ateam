@@ -30,8 +30,10 @@ class Run:
     """Một lần chạy agent. Gọi `await run.start()`; `run.cancel()` để dừng."""
 
     def __init__(self, argv: list[str], cwd: str, env: dict[str, str], *, use_pty: bool,
-                 timeout: float, on_line: Callable[[str], None], keep_lines: int | None = None):
-        """keep_lines: chỉ giữ N dòng cuối trong bộ nhớ (lệnh chạy rất lâu như dev server)."""
+                 timeout: float, on_line: Callable[[str], None], keep_lines: int | None = None,
+                 max_partial: int | None = MAX_PARTIAL):
+        """keep_lines: chỉ giữ N dòng cuối trong bộ nhớ (lệnh chạy rất lâu như dev server).
+        max_partial=None: không cắt dòng dài (output là JSON một dòng cần bóc nguyên vẹn, vd `codex debug models`)."""
         self.argv, self.cwd, self.env = argv, cwd, env
         self.use_pty, self.timeout, self.on_line = use_pty, timeout, on_line
         self.proc: asyncio.subprocess.Process | None = None
@@ -39,6 +41,7 @@ class Run:
         self._output: str | None = None
         self.cancelled = False
         self.timed_out = False
+        self.max_partial = max_partial
 
     def _emit_text(self, buf: list[str], text: str, final: bool = False) -> None:
         text = text.replace("\r\n", "\n")
@@ -48,12 +51,12 @@ class Run:
                 self._emit(line)
         else:
             buf[0] += text
-        if len(buf[0]) > MAX_PARTIAL:
+        if self.max_partial is not None and len(buf[0]) > self.max_partial:
             # spinner/progress chỉ ghi đè bằng \r: giữ từ dấu \r áp chót (clean_line lấy đoạn cuối có chữ)
             cut = buf[0].rfind("\r", 0, len(buf[0]) - 1)
             if cut > 0:
                 buf[0] = buf[0][cut:]
-            if len(buf[0]) > MAX_PARTIAL:
+            if len(buf[0]) > self.max_partial:
                 self._emit(buf[0])
                 buf[0] = ""
         if final and buf[0]:

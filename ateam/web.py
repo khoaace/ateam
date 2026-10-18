@@ -24,7 +24,7 @@ from pathlib import Path
 from aiohttp import WSMsgType, web
 
 from . import __version__, clipboard, mentions, notify, reports, shell, theme, todos, update, wizard
-from .config import Config, load_config, load_state, needs_setup, save_project_setting, save_state
+from .config import Config, found_models, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import ASKING, DB, GOAL_ENDED, Goal, Task
 from .qr import QR
 from .web_auth import Remote, auth_middleware, security_headers
@@ -394,7 +394,7 @@ class WebApp:
         if self.remote.tunnel:
             self._spawn(self._tunnel())
         if not needs_setup():  # như TUI: hỏi model của CLI chưa từng hỏi (wizard tự hỏi khi mở)
-            found = load_state().get("models_found", {})
+            found = found_models(load_state())
             self._spawn(self.orch.discover_all([n for n in self.cfg.active_agents() if n not in found],
                                                on_done=lambda _n, msg: self.orch.log("⚙ " + msg)))
 
@@ -575,7 +575,8 @@ class WebApp:
             acts = [{k: act.get(k) for k in ("task_id", "title", "label", "started")}
                     for act in o.current_activities(name)]
             agents.append({"name": name, "lead": name == cfg.lead, "installed": a.installed(),
-                           "label": a.label(), "role": a.role, "model": a.model, "effort": a.effort,
+                           "label": a.label(), "role": a.role, "model": a.model, "effort": a.current_effort(),
+                           "models": a.model_choices()[:12], "efforts": a.efforts_for(),
                            "cooldown": o.cooldown_label(name) if o.in_cooldown(name) else "",
                            "activities": acts})
         grill = None
@@ -610,7 +611,7 @@ class WebApp:
                 "commands": [{"name": n, "args": a, "desc": d} for n, a, d in COMMANDS],
                 # dữ liệu gợi ý tham số lệnh (/task agent:model@effort, /model, /flow…)
                 "agents": [{"name": n, "model": a.model, "effort": a.effort, "models": a.model_choices(),
-                            "efforts": list(a.efforts), "role": a.role, "installed": a.installed(),
+                            "efforts": list(a.efforts_for()), "role": a.role, "installed": a.installed(),
                             "lead": n == self.cfg.lead, "label": a.label()}
                            for n, a in self.cfg.active_agents().items()],
                 "all_agents": list(self.cfg.agents),
@@ -1080,9 +1081,9 @@ class WebApp:
                 return tr("Dùng: /{cmd} <agent> <giá trị|->  — agent: {v}", cmd=cmd, v=", ".join(cfg.agents)), "warn"
             a = cfg.agents[parts[0]]
             if len(parts) == 1:  # bảng chọn (như open_picker của TUI)
-                items = a.model_choices() if cmd == "model" else list(a.efforts)
+                items = a.model_choices() if cmd == "model" else list(a.efforts_for())
                 return "", "", {"open": {"picker": {"agent": parts[0], "key": cmd, "items": items,
-                                                    "current": a.model if cmd == "model" else a.effort}}}
+                                                    "current": a.model if cmd == "model" else a.current_effort()}}}
             return o.set_agent_option(parts[0], cmd, parts[1].strip()), "info"
         if cmd == "models":
             parts = rest.split()
