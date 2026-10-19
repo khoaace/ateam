@@ -115,6 +115,11 @@ def claude_usage(cwd: str, started: float, finished: float, prompt: str,
             ts = _ts(d.get("timestamp"))
             if d.get("type") == "user" and first_user is None:
                 first_user = _text_of((d.get("message") or {}).get("content"))
+            if (d.get("type") == "user" and not d.get("isMeta")
+                    and _text_of((d.get("message") or {}).get("content")).strip()):
+                # tin nhắn người dùng mới (không phải kết quả công cụ) mở một lượt: phiên tiếp tục (--resume) có
+                # lượt trước vừa xong trong khoảng SLACK — chỉ tính các lượt từ đây
+                msgs.clear()
             if d.get("type") != "assistant" or not (started - SLACK <= ts <= finished + SLACK):
                 continue
             m = d.get("message") or {}

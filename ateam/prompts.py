@@ -20,8 +20,28 @@ def roster(cfg: Config, with_effort: bool = False) -> str:
 
 TASK_SCHEMA = (
     '[{"id": 1, "agent": "<member name>", "title": "<short title>", '
-    '"prompt": "<detailed, self-contained instructions>", "depends_on": [<ids>]}]'
+    '"prompt": "<concise, self-contained instructions: what to change, where (files/areas), done when>", '
+    '"depends_on": [<ids>]}]'
 )
+
+SUMMARY_RULE = ("End your answer with a line starting with 'SUMMARY:' followed by at most ~5 short lines: what you"
+                " changed (files), the result, and anything teammates need to know.")
+
+
+def _plan_rules(cfg: Config, language_of: str) -> str:
+    """Luật chia việc chung cho lập kế hoạch và kế hoạch tiếp: ít task, prompt ngắn, khám phá vừa đủ."""
+    return f"""Explore the project only as much as you need to split the work and name the right files — members
+read the code themselves, so do not read the whole codebase.
+Use as FEW tasks as possible (usually 1-3, at most 6) and assign each to the best member (you may assign
+tasks to yourself, "{cfg.lead}"). If one member can do it, make ONE task. Split only when parts can run in
+parallel on different files or need different strengths. Do NOT create separate tasks for testing,
+reviewing or verifying: ateam runs the project's checks after each task and you review the results at the end.
+Each prompt must be self-contained (the member only sees its own task, the goal and results of tasks it
+depends on) but SHORT — under ~150 words: what to change, where (files/areas), constraints, and when it is
+done. Do not paste code; choose sensible defaults for minor details. Use "depends_on" when a task needs
+another task's output; otherwise tasks run in parallel, so parallel tasks must not edit the same files.
+Write titles and prompts in the same language as the {language_of}.
+DO NOT modify any files now.{effort_hint(cfg)}"""
 
 
 def effort_hint(cfg: Config) -> str:
@@ -55,12 +75,8 @@ GOAL from the user:
 
 {('Shared team notes:' + chr(10) + notes) if notes else ''}
 
-Break the goal into a SMALL number (1-8) of concrete tasks and assign each to the best member
-(you may assign tasks to yourself, "{cfg.lead}"). Each prompt must be self-contained: the member
-only sees its own task, the goal and results of tasks it depends on. Use "depends_on" when a task
-needs another task's output; otherwise tasks run in parallel, so parallel tasks must not edit the
-same files. Write titles and prompts in the same language as the goal.
-You may inspect the project to plan, but DO NOT modify any files now.{effort_hint(cfg)}
+Break the goal into concrete tasks.
+{_plan_rules(cfg, "goal")}
 
 Reply with ONLY a JSON array, no other text:
 {TASK_SCHEMA}{ask}"""
@@ -87,13 +103,8 @@ NEW FOLLOW-UP REQUEST from the user:
 {followup}
 
 Plan ONLY what this new request needs, building on the work already done (do not redo finished
-work). Break it into a SMALL number (1-8) of concrete tasks and assign each to the best member
-(you may assign tasks to yourself, "{cfg.lead}"). Each prompt must be self-contained: the member
-only sees its own task, the goal and results of tasks it depends on, so include the relevant
-context from the work done so far. Use "depends_on" when a task needs another task's output;
-parallel tasks must not edit the same files. Write titles and prompts in the same language as
-the follow-up request.
-You may inspect the project to plan, but DO NOT modify any files now.{effort_hint(cfg)}
+work); include in each prompt the context it needs from the work done so far.
+{_plan_rules(cfg, "follow-up request")}
 
 Reply with ONLY a JSON array, no other text:
 {TASK_SCHEMA}"""
@@ -113,7 +124,10 @@ def thread_prompt(turns: list[tuple[str, str]], new: str) -> str:
 def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: str,
                 goal: str | None, deps: list[tuple[int, str, str, str]], notes: str,
                 cwd: str, can_delegate: bool, qa: list[dict] | None = None,
-                can_ask: bool = True) -> str:
+                can_ask: bool = True, siblings: list[tuple[int, str, str]] | None = None,
+                verify_cmd: str = "") -> str:
+    """siblings: các task khác cùng mục tiêu (id, agent, tiêu đề) — để không làm chồng việc của nhau;
+    verify_cmd: lệnh kiểm tra ateam tự chạy sau task — agent chỉ cần chạy test liên quan."""
     others = [n for n in cfg.active_agents() if n != agent]
     parts = [
         f'You are "{agent}", a member of an AI agent team (team lead: "{cfg.lead}").',
@@ -126,18 +140,29 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
         parts.append("\nRESULTS OF TASKS YOU DEPEND ON:")
         for did, dagent, dtitle, dres in deps:
             parts.append(f"--- #{did} by {dagent}: {dtitle} ---\n{dres or '(no summary)'}")
+    if siblings:
+        parts.append("\nOTHER TASKS IN THIS GOAL (teammates handle these — do not do them):")
+        parts += [f"- #{sid} {sagent}: {stitle}" for sid, sagent, stitle in siblings]
     if notes:
         parts.append(f"\nSHARED TEAM NOTES:\n{notes}")
     if qa:
         parts.append(qa_text(qa))
     rules = [
         "\nRULES:",
-        "- Do your task yourself and stay within its scope.",
+        "- Do your task yourself and stay within its scope. Make the smallest change that completes it: do not"
+        " refactor, reformat or rename unrelated code, and do not add features, dependencies or docs nobody"
+        " asked for.",
+        "- Read only the files you need for this task; do not explore the whole repository.",
+        (f"- After you finish, ateam automatically runs `{verify_cmd}` and sends you any failure — run only the"
+         " tests related to your change, do not run the full suite repeatedly." if verify_cmd else
+         "- Check your change (e.g. run the relevant tests) before finishing."),
+        "- Keep your answer short: no long explanations, do not paste file contents or long logs.",
     ]
     if can_delegate and others:
         rules += [
-            f"- If part of the work is clearly better done by another member ({', '.join(others)}),"
-            " delegate it by printing this block (it will run after you finish):",
+            f"- Only if a clearly separate part needs another member's strength ({', '.join(others)}),"
+            " delegate it by printing this block (it will run after you finish) — never delegate testing or"
+            " reviewing:",
             '<<<DELEGATE to="MEMBER_NAME" title="short title">>>',
             "full self-contained instructions",
             "<<<END>>>",
@@ -145,8 +170,7 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
     rules += ASK_RULES if can_ask else [ASK_DONE_RULE]
     rules += [
         "- To leave information for the whole team, print: <<<NOTE>>>your note<<<END>>>",
-        "- End your answer with a line starting with 'SUMMARY:' followed by a concise summary:"
-        " what you did, files changed, and anything teammates need to know.",
+        "- " + SUMMARY_RULE,
     ]
     parts.extend(rules)
     return "\n".join(parts)
@@ -175,8 +199,8 @@ def retry_prompt(reason: str, reset: bool) -> str:
     where = ("The working tree was reset to the base commit, so your previous changes are gone — redo"
              " the work." if reset else "Your previous changes are still in the working tree.")
     return (f"The user asked you to run this same task again. Previous attempt ended with: "
-            f"{reason or '(no error recorded)'}\n{where}\nFinish the task. End your answer with a line"
-            " starting with 'SUMMARY:'.")
+            f"{reason or '(no error recorded)'}\n{where}\nFinish the task, keeping the change minimal. "
+            + SUMMARY_RULE)
 
 
 def feedback_prompt(feedback: str, reset: bool) -> str:
@@ -184,14 +208,14 @@ def feedback_prompt(feedback: str, reset: bool) -> str:
     where = ("The working tree was reset to the base commit (your rejected changes are gone)." if reset
              else "Your previous changes are still in the working tree.")
     return (f"REVIEWER FEEDBACK — your previous attempt was rejected, address this:\n{feedback}\n{where}\n"
-            "End your answer with a line starting with 'SUMMARY:'.")
+            "Change only what the feedback asks for. " + SUMMARY_RULE)
 
 
 def answer_prompt(question: str, answer: str, can_ask: bool) -> str:
     """Tiếp tục phiên sau khi người dùng trả lời câu hỏi <<<ASK>>>."""
     more = "" if can_ask else " Do not ask further questions; decide yourself and state assumptions."
-    return (f"The user answered your question.\nQ: {question}\nA: {answer}\nContinue the task.{more}"
-            " End your answer with a line starting with 'SUMMARY:'.")
+    return (f"The user answered your question.\nQ: {question}\nA: {answer}\nContinue the task.{more} "
+            + SUMMARY_RULE)
 
 
 SKIP_ANSWER = "(The user did not decide — choose the option you think is best and state your assumption.)"
@@ -207,11 +231,17 @@ OUTPUT (last lines):
 {output}
 
 Fix the code so the verification command passes. Do not delete or weaken tests to make them pass,
-unless a test is clearly wrong — then say why. Run the command yourself if you can.
-End your answer with a line starting with 'SUMMARY:' describing what you fixed."""
+unless a test is clearly wrong — then say why. Keep the fix minimal: change only what the failure needs.
+Run the command yourself if you can.
+End your answer with a line starting with 'SUMMARY:' describing what you fixed (at most ~3 lines)."""
 
 
-def review_prompt(cfg: Config, goal: str, round_no: int, results: str, cwd: str) -> str:
+def review_prompt(cfg: Config, goal: str, round_no: int, results: str, cwd: str, final: bool = False) -> str:
+    """final: vòng cuối (max_rounds) — task mới không chạy nữa nên không cần viết."""
+    more = ("This is the LAST round: new tasks will not run, so set \"new_tasks\" to [] and say in the summary "
+            "what is still missing, if anything." if final else
+            "If not, create follow-up tasks ONLY for concrete bugs or missing requirements (at most 3, same short "
+            "format as a plan) — never for polish, nice-to-haves or new ideas.")
     return f"""You are the TEAM LEAD of a team of AI coding agents working in: {cwd}
 
 Team members:
@@ -223,12 +253,14 @@ GOAL:
 Review round {round_no} of {cfg.max_rounds}. Results of the tasks so far:
 {results}
 
-You may inspect the project files to verify the work, but DO NOT modify any files.
-Decide whether the goal is fully achieved. If not, create follow-up tasks (fix problems, missing
-parts). Write in the same language as the goal.{effort_hint(cfg)}
+Judge from the task results and verification status above. Open files (prefer `git diff`) only to check
+a specific doubt; do not re-explore the project or re-run the whole test suite. DO NOT modify any files.
+Decide whether the goal is achieved: set "done" to true when its requirements are met, even if you would
+have written the code differently. {more}
+Write in the same language as the goal.{effort_hint(cfg) if not final else ''}
 
 Reply with ONLY a JSON object, no other text:
-{{"done": true|false, "summary": "<short assessment for the user>", "new_tasks": {TASK_SCHEMA}}}"""
+{{"done": true|false, "summary": "<1-3 sentence assessment for the user>", "new_tasks": {TASK_SCHEMA}}}"""
 
 
 def compact_prompt(*, notes: str, goals: str, log: str, focus: str, cwd: str) -> str:
@@ -273,7 +305,8 @@ def grill_prompt(cfg: Config, goal: str, qa: list[dict], cwd: str, notes: str, *
 Before planning this GOAL, you INTERVIEW the user to reach a shared understanding of what to build.
 Walk down each branch of the design tree (scope, user flows, data, edge cases, UX, constraints,
 acceptance criteria), resolving dependencies between decisions one at a time. Ask ONE question per
-turn. If a question can be answered by exploring the codebase, explore it instead of asking. Never
+turn. If a question can be answered by exploring the codebase, explore it instead of asking — briefly,
+only what that question needs. Never
 ask something already answered below. Give 2-4 short concrete options and your recommended answer.
 Write questions, options and the spec in the same language as the goal.
 You may inspect the project, but DO NOT modify any files.
@@ -439,5 +472,6 @@ OUTPUT (last lines):
 {output}
 
 Fix the code so the verification command passes. Do not delete or weaken tests to make them pass,
-unless a test is clearly wrong — then say why. Run the command yourself if you can.
-End your answer with a line starting with 'SUMMARY:' describing what you fixed."""
+unless a test is clearly wrong — then say why. Keep the fix minimal: change only what the failure needs.
+Run the command yourself if you can.
+End your answer with a line starting with 'SUMMARY:' describing what you fixed (at most ~3 lines)."""

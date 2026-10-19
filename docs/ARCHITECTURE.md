@@ -83,6 +83,8 @@ focus vào nút duyệt nếu ô nhập đang trống. Mục tiêu tạo từ wo
 các bước chèn thẳng qua `_insert_plan(from_user=True)` (giữ effort/model của bước); `workflow.review`
 (nếu đặt) thay `auto_review` khi `_check_goals` quyết định có review không. Task giao tay (`/task`, `ateam add` ngoài agent) không thuộc mục tiêu nào
 nên không được review.
+Review (`_review`) tiếp tục phiên CLI của lượt lập kế hoạch (`keep_session`, `goal.lead_session`); vòng cuối
+(`round >= max_rounds`) báo trưởng nhóm không viết task mới (`review_prompt(final=True)`).
 
 **Hỏi đáp trước** (`/grill`, "grill me"): `start_grill` tạo mục tiêu ở trạng thái `grilling`, cột `grill`
 (JSON `{"qa": [{"q", "why", "options", "rec", "a"}], "spec", "error"}`). Mỗi lượt `_grill_step` gửi

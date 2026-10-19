@@ -842,3 +842,48 @@ def test_form_models_from_any_agent_of_same_cli():
         got = f(cfg, "opencode")
         assert got[:30] == real and "xai/grok-4.7" in got and "opus" not in got
     assert wizard.quick_models(SimpleNamespace(agents={}, custom_agents=set()), "opencode")  # danh mục
+
+
+def test_prompts_keep_agents_focused(tmp_path, monkeypatch):
+    """Prompt gọn: kế hoạch ít task + prompt ngắn; thành viên biết task song song và lệnh kiểm tra ateam tự chạy;
+    review vòng cuối không viết task mới (sẽ bị bỏ)."""
+    import importlib
+
+    import ateam.config as cfgmod
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfgmod = importlib.reload(cfgmod)
+    try:
+        _check_focused_prompts(cfgmod.load_config(tmp_path / "proj"))
+    finally:
+        monkeypatch.undo()
+        importlib.reload(cfgmod)
+
+
+def _check_focused_prompts(cfg):
+    plan = P.plan_prompt(cfg, "G", "/x", "")
+    assert "as FEW tasks as possible" in plan and "Reply with ONLY a JSON array" in plan
+    assert "To ask the user first" not in plan and "To ask the user first" in P.plan_prompt(cfg, "G", "/x", "", True)
+    assert "as FEW tasks" in P.followup_plan_prompt(cfg, "G", "", "", "thêm", "/x", "")
+    t = P.task_prompt(cfg, agent="codex", task_id=3, title="t", prompt="làm X", goal="G", deps=[], notes="",
+                      cwd="/x", can_delegate=True, siblings=[(4, "claude", "Trang cài đặt")], verify_cmd="pytest -q")
+    assert "#4 claude: Trang cài đặt" in t and "runs `pytest -q`" in t and "smallest change" in t
+    assert "VERIFICATION COMMAND" not in t  # cụm này dành cho lượt sửa lỗi test (agent giả lập dựa vào)
+    t = P.task_prompt(cfg, agent="codex", task_id=3, title="t", prompt="làm X", goal=None, deps=[], notes="",
+                      cwd="/x", can_delegate=False)
+    assert "OTHER TASKS" not in t and "Check your change" in t and "SUMMARY:" in t
+    assert "new_tasks\" to []" in P.review_prompt(cfg, "G", 3, "r", "/x", final=True)
+    r = P.review_prompt(cfg, "G", 1, "r", "/x")
+    assert "Review round 1 of" in r and "ONLY for concrete bugs" in r
+
+
+def test_results_text_marks_verified_tasks(env, project, monkeypatch):
+    """Kết quả gửi trưởng nhóm review ghi task đã qua lệnh kiểm tra — trưởng nhóm khỏi chạy lại test."""
+    from test_resume import _orch
+    from conftest import ateam
+    ateam(env, project, "verify", "true")
+    o = _orch(env, project, monkeypatch)
+    gid = o.db.add_goal("G")
+    o.db.add_task("codex", "a", "a", goal_id=gid, status="done")
+    o.db.add_task("codex", "b", "b", goal_id=gid, status="failed")
+    text = o._results_text(gid)
+    assert text.count("verification `true`: passed") == 1

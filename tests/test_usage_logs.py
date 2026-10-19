@@ -64,6 +64,25 @@ def test_codex_session(tmp_path, monkeypatch):
     assert usage_logs.collect("codex", "/w/khac", t - 1, t + 3, "sửa bug") is None
 
 
+
+def test_claude_resumed_session_counts_only_this_turn(tmp_path, monkeypatch):
+    """Review tiếp tục phiên lập kế hoạch (--resume) ngay sau đó: lượt trước nằm trong khoảng SLACK nhưng không
+    được cộng vào lượt này; kết quả công cụ (tool_result) không mở lượt mới."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    t = time.time()
+    d = tmp_path / "claude" / "projects" / usage_logs.encode_dir("/w/proj")
+    d.mkdir(parents=True)
+
+    def turn(prompt, mid, n):
+        return [{"type": "user", "timestamp": iso(t), "message": {"role": "user", "content": prompt}},
+                {"type": "assistant", "timestamp": iso(t), "message": {"id": mid + "a", "usage": {"input_tokens": n}}},
+                {"type": "user", "timestamp": iso(t), "message": {"role": "user", "content": [
+                    {"type": "tool_result", "content": "ok"}]}},
+                {"type": "assistant", "timestamp": iso(t), "message": {"id": mid + "b", "usage": {"input_tokens": n}}}]
+    lines = turn("lập kế hoạch", "p", 100) + turn("review", "r", 7)
+    (d / "s1.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+    assert usage_logs.collect("claude", "/w/proj", t, t + 1, "review", "s1").in_tok == 14
+
 def test_goal_records_real_tokens_and_dashboard(env, project):
     ateam(env, project, "goal", "-y", "-q", "Tạo các file a b c")
     db = DB(project / ".ateam/team.db")

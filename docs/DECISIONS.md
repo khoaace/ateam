@@ -129,3 +129,16 @@ trò, lưu ngoài repo. Đổi lại tốn thêm token mỗi lượt mới (lư�
 chạy qua ateam. Người dùng chọn cách này (18/10/2026).
 **Xem lại nếu**: người dùng muốn rule có tác dụng cả khi mở CLI ngoài ateam (khi đó ghi một khối do ateam quản lý vào
 `AGENTS.md`), hoặc muốn chia sẻ rule qua git.
+
+## 16. Prompt gọn: ít task, phạm vi hẹp, review tiếp phiên lập kế hoạch
+
+**Lý do**: agent tốn thời gian ở những việc không ai yêu cầu: trưởng nhóm đọc gần hết repo rồi chia nhiều task
+(kể cả task "viết test"/"review" mà ateam đã tự làm qua `/verify` và review), thành viên refactor lan, chạy cả bộ test
+nhiều lần, viết câu trả lời và `SUMMARY` dài (bị gửi tiếp cho task sau và lượt review). Prompt giờ dặn: khám phá vừa đủ,
+ít task nhất (1 nếu một agent làm được), prompt task ngắn (làm gì / ở đâu / xong khi nào); thành viên làm thay đổi nhỏ
+nhất, chỉ đọc file cần, biết các task song song (`siblings`) để không làm chồng, biết lệnh `/verify` ateam sẽ tự chạy
+nên chỉ chạy test liên quan, `SUMMARY` ≤ ~5 dòng. Review tiếp tục phiên lập kế hoạch (`keep_session`) — trưởng nhóm
+đã đọc code lúc đó, CLI dùng được prompt cache — và tin vào kết quả task + dòng "verification … passed" trong
+`_results_text`; chỉ giao thêm việc cho lỗi thật / yêu cầu thiếu, vòng cuối không viết task (đằng nào cũng bị bỏ).
+Người dùng chọn: vẫn review mọi mục tiêu, chia ít task, chỉ chạy test liên quan (20/10/2026).
+**Xem lại nếu**: kế hoạch hay thiếu việc (prompt quá ngắn), hoặc review bỏ sót lỗi vì không tự kiểm.

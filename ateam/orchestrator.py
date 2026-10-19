@@ -1500,7 +1500,10 @@ class Orchestrator:
                     self.cfg, agent=t.agent, task_id=t.id, title=t.title, prompt=t.prompt,
                     goal=goal.full_text() if goal else None, deps=deps, notes=self.notes_text(),
                     cwd=str(workdir), can_delegate=t.depth < self.cfg.max_delegation_depth,
-                    qa=qa, can_ask=can_ask)
+                    qa=qa, can_ask=can_ask,
+                    siblings=[(o.id, o.agent, o.title) for o in self.db.tasks(goal_id=t.goal_id)
+                              if o.id != t.id and o.status != CANCELLED] if t.goal_id else None,
+                    verify_cmd=v.command if v.command and agent.verify else "")
             prompt = t.resume if sess else full
             gate = bool(v.command) and agent.verify and not chat
             before = await self._fingerprint(workdir) if gate and v.only_when_changed else None
@@ -1665,9 +1668,12 @@ class Orchestrator:
             self.db.update_goal(gid, status="reviewing")
             self.emit("changed")
             self.log(tr("🔍 {lead} đang review mục tiêu #{gid} (vòng {round})…", lead=self.cfg.lead, gid=gid, round=g.round))
+            # tiếp tục phiên lập kế hoạch: trưởng nhóm đã đọc code lúc đó, không phải khám phá lại dự án
             out = await self._call_lead(
-                P.review_prompt(self.cfg, g.full_text(), g.round, self._results_text(gid), str(self.root)),
-                tr("Review mục tiêu #{gid} vòng {round}", gid=gid, round=g.round), goal_id=gid)
+                P.review_prompt(self.cfg, g.full_text(), g.round, self._results_text(gid), str(self.root),
+                                final=g.round >= self.cfg.max_rounds),
+                tr("Review mục tiêu #{gid} vòng {round}", gid=gid, round=g.round), goal_id=gid,
+                keep_session=True)
             data = P.extract_json(out or "", dict, keys=("done", "summary", "new_tasks"))
             if not data:
                 self.db.update_goal(gid, status="incomplete",
@@ -1700,10 +1706,14 @@ class Orchestrator:
     def _results_text(self, gid: int) -> str:
         """Kết quả các task của mục tiêu, gửi trưởng nhóm khi review / lập kế hoạch tiếp."""
         lines = []
+        cmd = self.cfg.verify.command
         for t in self.db.tasks(goal_id=gid):
             if t.status == CANCELLED:
                 continue
             body = (t.result or t.error or "")[:1500]
+            a = self.cfg.agents.get(t.agent)
+            if cmd and t.status == DONE and a and a.verify:  # trưởng nhóm khỏi tự chạy lại test
+                body += f"\n(verification `{cmd}`: passed, or no file changes)"
             lines.append(f"#{t.id} [{t.agent}] {t.status}: {t.title}\n{body}\n")
         return "\n".join(lines)
 

@@ -32,8 +32,7 @@ if resume and not os.path.exists(path):
     print(f"No conversation found with session ID: {resume}")
     sys.exit(1)
 with open(path, "a") as f:
-    if not resume:
-        f.write(json.dumps({"type": "user", "timestamp": ts, "message": {"role": "user", "content": p}}) + "\n")
+    f.write(json.dumps({"type": "user", "timestamp": ts, "message": {"role": "user", "content": p}}) + "\n")
     for _ in range(2):  # một tin nhắn, hai khối nội dung: cùng message.id → chỉ tính một lần
         f.write(json.dumps({"type": "assistant", "timestamp": ts,
                             "message": {"id": mid, "model": "claude-sonnet-4-6", "usage": usage}}) + "\n")

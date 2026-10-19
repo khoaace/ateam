@@ -83,3 +83,15 @@ def test_continue_goal_resumes_lead_session(env, project, tmp_path):
     args = (tmp_path / "args2.log").read_text().splitlines()
     assert any(a.startswith("claude --resume " + g.lead_session) for a in args), args
     assert any(t.title == "Tạo d.txt" and t.status == "done" for t in tasks(project))
+
+
+def test_review_resumes_planning_session(env, project, tmp_path):
+    """Review tiếp tục phiên lập kế hoạch: trưởng nhóm đã đọc code lúc đó, không khám phá lại dự án."""
+    env = dict(env, ATEAM_FAKE_ARGS_LOG=str(tmp_path / "args.log"))
+    ateam(env, project, "goal", "-y", "-q", "Tạo các file a b c")
+    from ateam.db import DB
+    g = DB(project / ".ateam/team.db").goal(1)
+    assert g.status == "done" and g.lead_session
+    lead = [a for a in (tmp_path / "args.log").read_text().splitlines() if a.startswith("claude ")]
+    assert lead[0].startswith("claude --session-id " + g.lead_session)  # lập kế hoạch
+    assert any(a.startswith("claude --resume " + g.lead_session) for a in lead[1:]), lead  # review

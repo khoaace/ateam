@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.25.0 — 20/10/2026
+
+- **Agent bớt lan man, chạy nhanh hơn** — viết lại prompt của trưởng nhóm và thành viên:
+  - Lập kế hoạch: chỉ khám phá đủ để chia việc, **ít task nhất có thể** (một agent làm được thì 1 task), không tạo
+    task riêng để test/review (ateam đã tự chạy `/verify` và review); prompt task ngắn: làm gì, ở đâu, xong khi nào.
+  - Thành viên: làm thay đổi nhỏ nhất, không refactor/thêm tính năng ngoài yêu cầu, chỉ đọc file cần; biết các task
+    song song của đồng đội để không làm chồng; đã đặt `/verify` thì chỉ chạy test liên quan (ateam tự chạy cả bộ sau
+    đó); câu trả lời và `SUMMARY` ngắn (≤ ~5 dòng).
+  - Review: trưởng nhóm **tiếp tục phiên lập kế hoạch** (nhớ code đã đọc, không khám phá lại dự án), tin vào kết quả
+    task và trạng thái kiểm tra, chỉ giao thêm việc cho lỗi thật hoặc yêu cầu còn thiếu; vòng cuối không viết task mới.
+- Token của lượt tiếp tục phiên Claude (`--resume`) không còn cộng nhầm lượt trước khi hai lượt sát nhau.
+
 ## 0.24.3 — 19/10/2026
 
 - Sửa màn hình `/roles` khi catalog model tải xong trong lúc người dùng đang chọn: cập nhật các ô chọn tại chỗ,
