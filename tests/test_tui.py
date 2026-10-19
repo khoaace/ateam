@@ -1003,9 +1003,12 @@ def test_tui_diff_screen_shared_mode_and_vscode(env, project, monkeypatch, tmp_p
             assert {(f.status, f.path) for f in scr.ds.files} == {("M", "base.txt"), ("A", "mới.py")}
             assert not scr.is_split()  # màn hình hẹp (< 120 cột): một cột
             # DiffScreen vẽ diff ở lượt vẽ kế tiếp (call_after_refresh): máy chậm (CI macOS) cần chờ
+            body = ""
             for _ in range(30):
-                body = str(scr.query_one("#diff-body").render())
-                if body:
+                nodes = scr.query("#diff-body")
+                if nodes:
+                    body = str(nodes.first().render())
+                if "base đã sửa" in body:
                     break
                 await pilot.pause(0.1)
             assert "base đã sửa" in body
@@ -1620,6 +1623,13 @@ def test_tui_quick_roles(env, project, monkeypatch):
         ensure_global_config()
         save_project_setting(project, "verify_command", "make test")
         app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        discovered = asyncio.Event()
+
+        async def discover_all(timeout=20):
+            await discovered.wait()
+            app.cfg.agents["claude"].models.append("claude-new")
+
+        monkeypatch.setattr(app.orch, "discover_all", discover_all)
         async with app.run_test(size=(160, 48)) as pilot:
             await pilot.pause(0.3)
             app.run_command("/roles")
@@ -1637,11 +1647,23 @@ def test_tui_quick_roles(env, project, monkeypatch):
             eff = scr.query_one("#ob-effort-lead", Select)
             choice = [v for _l, v in eff._options if isinstance(v, str) and v not in ("", eff.value)][0]
             eff.value = choice
+            model = scr.query_one("#ob-model-lead", Select)
+            model.value = "sonnet"
+            # Catalog hoàn tất đúng lúc người dùng đang sửa vai trò: không tháo widget,
+            # không mất model/effort đã chọn, và model mới vẫn được nạp vào dropdown.
+            assert scr.discovering
+            discovered.set()
+            await pilot.pause(0.3)
+            assert not scr.discovering
+            assert scr.query_one("#ob-effort-lead", Select) is eff and eff.value == choice
+            assert scr.query_one("#ob-model-lead", Select) is model and model.value == "sonnet"
+            assert "claude-new" in [v for _l, v in model._options]
             await pilot.press("ctrl+s")
             await pilot.pause(0.8)
             assert not isinstance(app.screen, OnboardScreen)
             lead = app.cfg.lead
             assert app.cfg.agents[lead].effort == choice and lead_cli in app.cfg.agents[lead].command[0]
+            assert app.cfg.agents[lead].model == "sonnet"
             assert app.cfg.verify.command == "make test"  # thiết lập khác giữ nguyên
             await pilot.press("ctrl+q")
 

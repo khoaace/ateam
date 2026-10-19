@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.3 — 19/10/2026
+
+- Sửa màn hình `/roles` khi catalog model tải xong trong lúc người dùng đang chọn: cập nhật các ô chọn tại chỗ,
+  giữ model/effort vừa sửa và tránh lỗi `SelectOverlay`. Chờ dựng xong bước trước khi nạp danh sách mới.
+- Thêm kiểm thử hoàn tất catalog đúng lúc đang sửa vai trò để bắt lỗi không ổn định trên CI Ubuntu Python 3.9.
+  Kiểm thử xem diff chờ nội dung được dựng xong trước khi đọc, tránh lỗi khi máy chạy chậm.
+
 ## 0.24.2 — 19/10/2026
 
 - Sửa lấy danh sách model và effort với OpenCode 2.x (đã kiểm tra catalog trên 2.0.32): thay `models --verbose`

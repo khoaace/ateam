@@ -1044,6 +1044,7 @@ class OnboardScreen(BaseModal):
         self.flow_name = cfg.default_workflow  # workflow chọn ở popup "Luồng mặc định" ("" = mẫu tinh-nang)
         self.git = (root / ".git").exists()
         self.discovering = True
+        self._step_ready = asyncio.Event()
         self._esc_at = 0.0
 
     # ---------------------------------------------------------------- dữ liệu
@@ -1075,19 +1076,27 @@ class OnboardScreen(BaseModal):
                 yield Btn(tr("Tiếp →"), id="ob-next", variant="primary")
 
     async def on_mount(self) -> None:
-        self.run_worker(self._discover(), exclusive=True)
         await self.show_step(self.step)
+        self.run_worker(self._discover(), exclusive=True)
 
     async def _discover(self) -> None:
         try:
             await self.orch.discover_all(timeout=self.timeout)
         except Exception as e:  # không bao giờ chặn wizard
             self.orch.log(tr("⚠ Không hỏi được danh sách model: {e}", e=e))
+        while not self._step_ready.is_set():
+            await self._step_ready.wait()
         self.discovering = False
         if self.STEPS[self.step][0] == "roles":
-            await self.show_step(self.step)  # nạp lại model vừa hỏi được
+            # Giữ nguyên widget đang được nhập/chọn: dựng lại cả bước có thể huỷ Select
+            # giữa lúc xử lý phím hoặc cập nhật value, đồng thời làm mất lựa chọn vừa sửa.
+            self.collect()
+            for role, _label, _desc in ROLES:
+                self._refresh_role(role, self.assign.get(role))
+            self.query_one("#ob-roles-hint", Static).update(self._roles_hint())
 
     async def show_step(self, i: int) -> None:
+        self._step_ready.clear()
         self.step = i
         key, title, _short = self.STEPS[i]
         self.query_one(".m-title", Static).update(Text(
@@ -1111,6 +1120,7 @@ class OnboardScreen(BaseModal):
         self.query_one("#ob-custom").display = key == "review"
         first = body.query("SelectionList, OptionList, Select, Input")
         (first.first() if first else self.query_one("#ob-next")).focus()
+        self._step_ready.set()
 
     # ---------------------------------------------------------------- từng bước
     def _step_cli(self) -> list:
@@ -1182,11 +1192,14 @@ class OnboardScreen(BaseModal):
             self.assign = wizard.default_assign(self.cfg, self.providers, self.tier)
             self._assign_key = key
         out = [Static(tr("Giao từng vai trò cho CLI nào, dùng model và effort gì?"), classes="ob-q"),
-               Static(tr("Cùng một CLI làm nhiều vai trò với model/effort khác nhau → ateam tự tạo "
-                         "thêm agent (vd claude-review).") + (tr("  ⏳ đang hỏi danh sách model từ các CLI…") if self.discovering
-                                               else ""), classes="ob-hint")]
+               Static(self._roles_hint(), classes="ob-hint", id="ob-roles-hint")]
         out += [self._row(k, label, desc) for k, label, desc in ROLES]
         return out
+
+    def _roles_hint(self) -> str:
+        return tr("Cùng một CLI làm nhiều vai trò với model/effort khác nhau → ateam tự tạo "
+                  "thêm agent (vd claude-review).") + (tr("  ⏳ đang hỏi danh sách model từ các CLI…")
+                                                    if self.discovering else "")
 
     def _step_safety(self) -> list:
         access = wizard.ACCESS
@@ -1293,13 +1306,18 @@ class OnboardScreen(BaseModal):
             self.assign[role] = (p,) + tier_preset(p, self.tier, role, self.models_of(p), self.efforts_of(p))
         else:
             return
-        a = self.assign[role]
+        self._refresh_role(role, self.assign[role])
+
+    def _refresh_role(self, role: str, a) -> None:
+        p = a[0] if a else RESET
         msel = self.query(f"#ob-model-{role}")
         esel = self.query(f"#ob-effort-{role}")
         if not msel or not esel:
             return
         msel, esel = msel.first(Select), esel.first(Select)
         models = self.models_of(p) if a else []
+        if a and a[1] and a[1] not in models:
+            models = [a[1]] + models
         effs = self.efforts_of(p) if a else []
         msel.set_options([(m, m) for m in models] + [(tr("(mặc định)"), RESET)])
         msel.value = a[1] if a and a[1] in models else RESET
