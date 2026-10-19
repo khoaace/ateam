@@ -1,6 +1,46 @@
 #!/usr/bin/env bash
 # Giả lập OpenCode chạy Grok: tạo b.txt, hoặc README.md nếu được giao viết README.
+oc_version="${ATEAM_FAKE_OPENCODE_VERSION:-1.19.3}"
+oc_major="${oc_version%%.*}"
+if [ -n "${ATEAM_FAKE_OPENCODE_LOG:-}" ]; then printf '%s\n' "$*" >> "$ATEAM_FAKE_OPENCODE_LOG"; fi
+if [ "${1:-}" = "--version" ]; then
+  if [ "$oc_version" = "fail" ]; then exit 1; fi
+  echo "opencode v$oc_version"; exit 0
+fi
+if [ "${@: -1}" = "--help" ]; then
+  case "${1:-}" in
+    models) opts="--standalone --server"; [ "$oc_major" != "2" ] && opts="$opts --verbose" ;;
+    api) opts="--standalone --server --param --data --header" ;;
+    stats) opts="--standalone --server --days --json --models --project" ;;
+    *) opts="--model --auto --file -f --session --continue"; [ "$oc_major" != "2" ] && opts="$opts --variant" ;;
+  esac
+  printf 'Usage: opencode [OPTIONS]\n  --help\n'
+  for option in $opts; do printf '  %s\n' "$option"; done
+  exit 0
+fi
+if [ "${1:-}" = "api" ]; then
+  if [ "$oc_major" != "2" ] || [ "${2:-}" != "model.list" ]; then exit 1; fi
+  if [ "${4:-}" != "location[directory]=$PWD" ]; then echo '{"error":"wrong location"}'; exit 1; fi
+  case "${ATEAM_FAKE_OPENCODE_CATALOG:-ok}" in
+    error) echo '{"error":"metadata unavailable","settings":"FAKE_CATALOG_SECRET"}'; exit 1 ;;
+    invalid) echo '{"invalid":'; exit 0 ;;
+    empty) echo '{"location":{},"data":[]}'; exit 0 ;;
+    timeout) sleep 5; exit 1 ;;
+  esac
+  cat <<'JSON'
+{"location":{},"data":[
+  {"providerID":"openai","id":"gpt-5.5","enabled":true,"variants":[{"id":"low"},{"id":"medium"},{"id":"high"},{"id":"xhigh"}]},
+  {"providerID":"xai","id":"grok-build-0.1","enabled":true,"variants":[],"settings":{"apiKey":"FAKE_CATALOG_SECRET"}},
+  {"providerID":"xai","id":"grok-4.7","enabled":true,"variants":[{"id":"low"},{"id":"medium"},{"id":"high"},{"id":"xhigh"}]},
+  {"providerID":"xai","id":"grok-5-fast","enabled":true,"variants":[]},
+  {"providerID":"anthropic","id":"claude-sonnet-5-5","enabled":true,"variants":[{"id":"low"},{"id":"medium"},{"id":"high"},{"id":"xhigh"},{"id":"max"}]},
+  {"providerID":"opencode","id":"deepseek-v4.1-flash-free","enabled":true,"variants":[{"id":"low"},{"id":"high"},{"id":"max"}]}
+]}
+JSON
+  exit 0
+fi
 if [ "${1:-}" = "models" ] && [ "${2:-}" = "--verbose" ]; then  # như opencode 1.19: tên rồi object JSON nhiều dòng
+  if [ "$oc_major" = "2" ]; then echo 'ERROR: Unrecognized flag: --verbose'; exit 1; fi
   for m in "openai/gpt-5.5:low medium high xhigh" "xai/grok-build-0.1:" "xai/grok-4.7:low medium high xhigh" \
            "xai/grok-5-fast:" "anthropic/claude-sonnet-5-5:low medium high xhigh max" \
            "opencode/deepseek-v4.1-flash-free:low high max"; do
@@ -11,7 +51,8 @@ if [ "${1:-}" = "models" ] && [ "${2:-}" = "--verbose" ]; then  # như opencode 
   exit 0
 fi
 if [ "${1:-}" = "models" ]; then
-  printf 'openai/gpt-5.5\nxai/grok-build-0.1\nxai/grok-4.7\nxai/grok-5-fast\nanthropic/claude-sonnet-5-5\n'
+  if [ "${ATEAM_FAKE_OPENCODE_MODELS_FAIL:-0}" = "1" ]; then echo 'ERROR: models unavailable'; exit 1; fi
+  printf 'openai/gpt-5.5\nxai/grok-build-0.1\nxai/grok-4.7\nxai/grok-5-fast\nanthropic/claude-sonnet-5-5\nopencode/deepseek-v4.1-flash-free\n'
   exit 0
 fi
 if [ "${1:-}" = "stats" ]; then
@@ -19,6 +60,16 @@ if [ "${1:-}" = "stats" ]; then
   exit 0
 fi
 fake_flags="--model --variant --auto"
+if [ "$oc_major" = "2" ]; then fake_flags="--model --auto"; fi
+if [ "${1:-}" = "run" ]; then
+  model_next=0
+  for a in "$@"; do
+    if [ "$oc_major" = "2" ] && [ "$a" = "--variant" ]; then echo 'ERROR: Unrecognized flag: --variant'; exit 1; fi
+    if [ "$oc_major" = "1" ] && [ "$model_next" = "1" ] && [[ "$a" == *#* ]]; then echo 'ERROR: Unexpected server error'; exit 1; fi
+    model_next=0
+    if [ "$a" = "--model" ] || [ "$a" = "-m" ]; then model_next=1; fi
+  done
+fi
 source "$(dirname "$0")/_common.sh"
 P="$fake_prompt"
 # như opencode thật: -f/--file là mảng yargs, nuốt mọi đối số đứng sau cho tới cờ kế tiếp hoặc "--"

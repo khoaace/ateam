@@ -122,6 +122,8 @@ ateam list   /   ateam log 3   /   ateam log sys
 Chỉ đổi khi đường dẫn có thật trong dự án, nên `a@b.com`, `@property`, `codex@xhigh` giữ nguyên.
 Đường dẫn có dấu cách viết `@"thư mục/file.md"`. Đổi cú pháp cho một agent bằng `file_ref` /
 `file_args` trong config (xem `docs/CONFIG.md`); `ateam doctor` và `/agents` in cú pháp đang dùng.
+Với OpenCode, `@thư_mục` chỉ đưa đường dẫn vào prompt; `-f` dành cho file. OpenCode 2 giới hạn mỗi tệp
+đính kèm 10 MiB; ateam kiểm tra trước khi chạy và giới hạn ảnh tải lên web khi đội có OpenCode 2.
 
 ### Agent hỏi lại giữa task và nhớ phiên làm việc
 
@@ -277,6 +279,11 @@ Trong app (được lưu lại cho lần sau, ở `~/.config/ateam/state.json`):
 /setup                         wizard thiết lập: CLI, kiểu làm việc, vai trò · model · effort, an toàn
 /roles                         sửa nhanh bảng vai trò · CLI · model · effort (không đi lại cả wizard)
 ```
+
+OpenCode được nhận diện tự động theo phiên bản: 1.x dùng `models --verbose` và `--variant`; 2.x dùng API
+catalog theo thư mục dự án để lấy cả model/effort, rồi chạy với `--model provider/model#effort`. Cấu hình cũ và
+agent tuỳ chỉnh dùng OpenCode vẫn được hỗ trợ. API catalog lỗi thì ateam thử `opencode models` và báo thiếu
+metadata effort; gõ `/models opencode làm mới` để thử lại.
 
 Tab Đội cũng hiện danh sách model/effort trong ô từng agent; bấm vào tiêu đề ô để chọn model rồi
 effort. Ngoài app: `ateam models [agent] [--refresh]`.

@@ -70,11 +70,12 @@ def test_argv_opencode_variant_flag():
     oc.model_efforts = {"opencode/deepseek-v4.1-flash-free": ["low", "high", "max"], "xai/grok-build-0.1": []}
     assert oc.argv("P", model="opencode/deepseek-v4.1-flash-free", effort="medium")[-3:-1] == ["--variant", "high"]
     assert "--variant" not in oc.argv("P", model="xai/grok-build-0.1", effort="high")  # model không có variant
-    # cấu hình / agent tuỳ chỉnh cũ còn dạng gộp model#variant được đổi khi đọc
+    # cấu hình cũ còn dạng gộp model#variant được chọn lại theo phiên bản khi dựng lệnh
     old = agent_from_dict("deepseek", {"command": ["opencode", "run", "{prompt}"],
                                        "model_args": ["--model", "{model}"],
                                        "effort_args": ["--model", "{model}#{effort}"],
                                        "model": "xai/grok-4.7", "effort": "high"})
+    old.opencode_major = 1
     assert old.argv("P") == ["opencode", "run", "--model", "xai/grok-4.7", "--variant", "high", "P"]
 
 
@@ -154,7 +155,7 @@ def test_mentions_render_per_agent(tmp_path):
     assert out == "sửa src/app.py. Email a@b.com, @property, (src/) và codex@xhigh"
     assert extra == []
     out, extra = mentions.render(text, "opencode", roots)
-    assert out.startswith("sửa src/app.py.") and extra == ["-f", "src/app.py", "-f", "src/"]
+    assert out.startswith("sửa src/app.py.") and extra == ["-f", "src/app.py"]
     # ghi đè trong config: file_args = [] tắt cờ, file_ref tuỳ ý
     out, extra = mentions.render("@src/app.py", "opencode", roots, file_ref="`{path}`", file_args=[])
     assert out == "`src/app.py`" and extra == []

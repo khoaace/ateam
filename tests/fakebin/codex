@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # Giả lập Codex: tạo a.txt, giao README cho grok, để lại ghi chú; biết sửa lỗi test
 # (tạo fixed.txt) và biết làm trưởng nhóm dự phòng.
+if [ "${@: -1}" = "--help" ]; then
+  opts="--sandbox --skip-git-repo-check -m --model -c --config --image"
+  if [ "${1:-}" = "exec" ] && [ "${2:-}" = "resume" ]; then opts="--skip-git-repo-check -m --model -c --config --image"; fi
+  if [ "${1:-}" = "debug" ]; then opts="--bundled -c --config"; fi
+  printf 'Usage: codex [OPTIONS]\n  --help\n'
+  for option in $opts; do printf '  %s\n' "$option"; done
+  exit 0
+fi
 fake_flags="--sandbox --skip-git-repo-check -m --model -c --config"
 source "$(dirname "$0")/_common.sh"
 # `codex exec resume [OPTIONS] <SESSION_ID> <PROMPT>`: không nhận --sandbox; phiên lạ → lỗi

@@ -29,6 +29,10 @@ SYNTAX: dict[str, tuple[str, list[str]]] = {
 }
 DEFAULT_SYNTAX = ("{path}", [])
 
+
+class AttachmentError(ValueError):
+    """File không đáp ứng giới hạn đính kèm của CLI; hiển thị trực tiếp cho người dùng."""
+
 # Ảnh (png, jpg… — xem clipboard.IMAGE_EXTS): CLI nào đính ảnh bằng cờ riêng thì dùng cờ này thay cho
 # file_args; đường dẫn trong prompt vẫn viết theo file_ref. Ghi đè bằng image_args trong config.
 # codex: `-i/--image` nhận nhiều giá trị, dạng `--image=…` để nó không nuốt luôn prompt phía sau.
@@ -117,7 +121,8 @@ def _located(path: str, roots: list[Path]) -> str:
 
 def render(prompt: str, binary: str, roots: list[Path], *, file_ref: str | None = None,
            file_args: list[str] | None = None,
-           image_args: list[str] | None = None) -> tuple[str, list[str]]:
+           image_args: list[str] | None = None,
+           attachment_limit: int | None = None) -> tuple[str, list[str]]:
     """Đổi @đường-dẫn sang cú pháp của agent. Trả (prompt mới, cờ đính kèm file/ảnh)."""
     ref, args = syntax_for(binary, file_ref, file_args)
     img_args = image_args_for(binary, file_args, image_args)
@@ -134,6 +139,14 @@ def render(prompt: str, binary: str, roots: list[Path], *, file_ref: str | None 
         flags = img_args if is_image(path) else args
         if flags and path not in seen:
             seen.add(path)
+            if Path(binary).name == "opencode" and any(f in ("-f", "--file") for f in flags):
+                target = roots[0] / path
+                if target.is_dir():
+                    continue  # CLI đọc thư mục theo đường dẫn trong prompt; -f chỉ nhận file
+                if attachment_limit is not None and target.stat().st_size > attachment_limit:
+                    raise AttachmentError(tr("Tệp {path} vượt giới hạn đính kèm {n} MiB của OpenCode. "
+                                             "Hãy giảm dung lượng hoặc chia nhỏ tệp.",
+                                             path=path, n=attachment_limit // 1024 ** 2))
             extra += [a.replace("{path}", path) for a in flags]
     parts.append(prompt[last:])
     return "".join(parts), extra

@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # Giả lập Grok Build CLI: `grok -p "<prompt>"` in kết quả rồi thoát; `grok models` liệt kê model.
+if [ "${@: -1}" = "--help" ] && [ "${1:-}" = "models" ]; then
+  printf 'Usage: grok models [OPTIONS]\n  --help\n'; exit 0
+fi
 if [ "${1:-}" = "models" ]; then  # như grok thật (kể cả dòng thừa trước danh sách)
+  if [ "${ATEAM_FAKE_GROK_UNAUTHENTICATED:-0}" = "1" ]; then echo 'You are not authenticated.'; fi
+  if [ "${ATEAM_FAKE_GROK_AUTH_ONLY:-0}" = "1" ]; then echo 'You are not authenticated.'; exit 0; fi
   printf 'Default model: grok-4.7\n\nAvailable models:\n  * grok-4.7 (default)\n  - grok-4.7-build-fast\n  - grok-4.6\n'
   exit 0
 fi
-fake_flags="-p --single -m --model --reasoning-effort --effort --permission-mode --deny --allow"
+fake_flags="-p --single -m --model --reasoning-effort --effort --permission-mode --deny --allow --session-id --resume"
 source "$(dirname "$0")/_common.sh"
 P=""; prev=""; for a in "$@"; do [ "$prev" = "-p" ] && P="$a"; prev="$a"; done
 if [[ "$P" == *"NEEDS_SHELL"* && " $* " == *" --deny Bash "* ]]; then

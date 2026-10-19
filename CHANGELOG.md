@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.24.2 — 19/10/2026
+
+- Sửa lấy danh sách model và effort với OpenCode 2.x (đã kiểm tra catalog trên 2.0.32): thay `models --verbose`
+  bằng `api model.list` có `location[directory]` đúng dự án, và truyền effort bằng `--model provider/model#effort`.
+  OpenCode 1.x vẫn dùng `--verbose`/`--variant`; nhận diện phiên bản được dùng chung cho agent mặc định và
+  agent tuỳ chỉnh mà không ghi lại cấu hình. `doctor` hiển thị cú pháp theo phiên bản đã cài.
+- OpenCode 2.x làm mới catalog khi mở app dù đã có cache; API lỗi thì lấy danh sách bằng `models` và tạm dùng
+  effort mặc định, không gửi mức chưa xác định. Nếu cả hai lệnh lỗi, giữ cache trước đó. Catalog chỉ lưu tên model
+  và variant; không lưu/log cấu hình hoặc thông tin xác thực của provider.
+- Sửa tham chiếu `@thư_mục` với OpenCode: giữ đường dẫn trong prompt thay vì gửi thư mục vào `-f`.
+  OpenCode 2 kiểm tra giới hạn đính kèm 10 MiB trước khi chạy; web cũng chặn ảnh vượt mức khi đội dùng OpenCode 2.
+- Sửa danh sách model Grok bị lẫn chữ `You` từ thông báo chưa đăng nhập; bỏ dữ liệu cache sai, giữ danh sách cũ
+  nếu chỉ nhận thông báo lỗi và nhắc đăng nhập khi CLI trả danh mục mặc định.
+- `doctor` kiểm tra cả cờ model, effort, phiên mới/tiếp tục, chế độ lập kế hoạch, terminal, models và usage bằng
+  trợ giúp của đúng lệnh con. Báo rõ lệnh trợ giúp lỗi hoặc hết thời gian; dùng chung kết quả cho các agent cùng CLI.
+
 ## 0.24.1 — 18/10/2026
 
 - Form thêm agent / chọn vai trò nhanh: danh sách model gộp từ mọi agent cùng CLI, kể cả agent tuỳ chỉnh. Trước đây

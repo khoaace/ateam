@@ -31,6 +31,7 @@ from .qr import QR
 from .web_auth import Remote, auth_middleware, security_headers
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, tr
 from .orchestrator import SYSTEM, Orchestrator
+from .opencode import ATTACHMENT_MAX
 from .pty_session import PtySession
 from .logtail import read_tail
 from .web_code import CodeWeb
@@ -748,8 +749,10 @@ class WebApp:
         if self.remote.readonly:
             return web.json_response({"error": tr("Chế độ chỉ xem (--readonly) — không làm được thao tác này")})
         data = await request.read()
-        if len(data) > IMAGE_MAX:
-            return web.json_response({"error": tr("Ảnh quá lớn (tối đa {n} MB)", n=IMAGE_MAX // 1024 ** 2)})
+        limit = min(IMAGE_MAX, ATTACHMENT_MAX) if any(
+            (a.opencode_major or 0) >= 2 for a in self.cfg.active_agents().values()) else IMAGE_MAX
+        if len(data) > limit:
+            return web.json_response({"error": tr("Ảnh quá lớn (tối đa {n} MB)", n=limit // 1024 ** 2)})
         try:
             p = clipboard.save_image(data, self.root / ".ateam" / "images")
         except ValueError:

@@ -22,6 +22,7 @@ from .db import (ACTIVE, ASKING, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, D
                  FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Goal, Task)
 from .logtail import read_tail
 from .runner import Run
+from .opencode import ATTACHMENT_MAX, Catalog, OpenCode, standard_models
 from .i18n import tr
 
 SYSTEM_LOG_MAX = 5 * 1024 ** 2
@@ -84,6 +85,8 @@ class Orchestrator:
         self.lead_spans: list[list] = []
         # agent đang tạm nghỉ vì hết hạn mức: tên -> thời điểm hồi lại
         self.cooldown: dict[str, float] = limits.load_cooldowns()
+        self.opencode = OpenCode(self.root, self.env_for, self.log)
+        self._opencode_applied: dict[str, tuple[AgentConfig, str, Catalog]] = {}
 
     # ------------------------------------------------------------------ tiện ích
     def emit(self, kind: str, **data) -> None:
@@ -151,13 +154,16 @@ class Orchestrator:
         """Lệnh chạy agent, đã đổi @đường-dẫn sang cú pháp của CLI đó (xem mentions.py) và kèm rule của dự án."""
         prompt = self.with_rules(a, prompt, lead=plan, session=session, resume=resume)
         want = (effort or a.effort or "").strip()
+        if (a.opencode_major or 0) >= 2:
+            want = (effort or (model or a.model or "").partition("#")[2] or a.effort or "").strip()
         got = a.resolve_effort((model or a.model or ""), want)
         if want and got != want:
             self.log(tr("⚙ {agent}: model {model} không có effort '{want}' → dùng {got}", agent=a.name,
                         model=model or a.model or tr("mặc định"), want=want, got=got or tr("mặc định của CLI")))
         prompt, extra = mentions.render(prompt, a.binary, [Path(workdir), self.root],
                                         file_ref=a.file_ref, file_args=a.file_args,
-                                        image_args=a.image_args)
+                                        image_args=a.image_args,
+                                        attachment_limit=ATTACHMENT_MAX if (a.opencode_major or 0) >= 2 else None)
         return mentions.insert_args(a.argv(prompt, model=model, effort=effort, plan=plan, session=session,
                                            resume=resume), prompt, extra)
 
@@ -246,6 +252,7 @@ class Orchestrator:
         """cleanup=False: phiên giao diện khác đang chạy trên dự án — task RUNNING/mục tiêu đang lập
         kế hoạch là của phiên đó, không phải dở dang."""
         await self.apply_isolation()
+        await asyncio.gather(*(self.prepare_agent(a) for a in self.cfg.active_agents().values()))
         if not cleanup:
             return
         # dọn trạng thái dở dang từ phiên trước
@@ -324,9 +331,11 @@ class Orchestrator:
     async def _lead_once(self, lead: AgentConfig, prompt: str, label: str,
                          goal_id: int | None = None, session: str | None = None,
                          keep_session: bool = False) -> tuple[str, int, str]:
+        await self.prepare_agent(lead)
         resume = bool(session)
         if keep_session and not resume:
             session = self.new_session(lead)
+        first_argv = self.argv_for(lead, prompt, self.root, plan=True, session=session, resume=resume)
         span = [time.time(), None, label]
         self.lead_spans.append(span)
         act = self._begin_activity(lead.name, None, label, lead.label())
@@ -342,11 +351,12 @@ class Orchestrator:
                 self.emit("log", task_id=SYSTEM, agent=lead.name, raw=line,
                           line=f"  [{lead.name}] {line}")
 
-            def make() -> Run:
-                return Run(self.argv_for(lead, prompt, self.root, plan=True, session=session, resume=resume),
+            def make(argv=None) -> Run:
+                return Run(argv if argv is not None else
+                           self.argv_for(lead, prompt, self.root, plan=True, session=session, resume=resume),
                            str(self.root), self.env_for(), use_pty=lead.pty, timeout=lead.timeout,
                            on_line=on_line)
-            run = make()
+            run = make(first_argv)
             rc = 1
             try:
                 rc = await run.start()
@@ -409,6 +419,9 @@ class Orchestrator:
             else:
                 self.db.update_goal(gid, status="running")
                 self.log(tr("📋 Kế hoạch #{gid}: {v} task — bắt đầu chạy.", gid=gid, v=len(ids)))
+        except mentions.AttachmentError as e:
+            self.db.update_goal(gid, status="failed", summary=str(e))
+            self.log(str(e))
         except Exception as e:  # không để mục tiêu kẹt ở "planning" tới lần mở app sau
             self.db.update_goal(gid, status="failed", summary=tr("Lỗi khi lập kế hoạch: {e!r}", e=e))
             self.log(tr("✗ Lập kế hoạch mục tiêu #{gid} lỗi: {e!r}", gid=gid, e=e))
@@ -846,6 +859,40 @@ class Orchestrator:
         self.emit("changed")
         return f"{agent}: {a.label()}"
 
+    def _apply_opencode_catalog(self, a: AgentConfig, catalog: Catalog) -> str:
+        from .config import save_found_models
+        if not catalog.models:
+            return catalog.error
+        found = [m for m in catalog.models if not a.models_filter or a.models_filter.lower() in m.lower()]
+        if not found:
+            return tr("{agent}: không thấy model nào", agent=a.name)
+        efforts = {m: e for m, e in catalog.efforts.items() if m in found}
+        save_found_models(a.name, found, efforts)
+        a.models = found
+        a.model_efforts = efforts
+        self._opencode_applied[a.name] = (a, a.models_filter, catalog)
+        self.emit("changed")
+        msg = tr("{agent}: tìm thấy {v} model", agent=a.name, v=len(found))
+        if catalog.warning:
+            msg += "\n" + catalog.warning
+        if a.model and a.model.partition("#")[0] not in found:
+            msg += tr(" ⚠ model đang chọn '{model}' không có trong danh sách — chọn lại: /model "
+                      "{agent}", model=a.model, agent=a.name)
+        return msg
+
+    async def prepare_agent(self, a: AgentConfig) -> None:
+        """Dò cú pháp trước mọi lượt chạy; OpenCode 2 đồng bộ catalog một lần dù đã có cache trên đĩa."""
+        await self.opencode.prepare(a)
+        if (a.opencode_major or 0) >= 2 and standard_models(a):
+            catalog = await self.opencode.catalog(a)
+            previous = self._opencode_applied.get(a.name)
+            if previous is None or previous[0] is not a or previous[1] != a.models_filter or previous[2] is not catalog:
+                msg = self._apply_opencode_catalog(a, catalog)
+                if msg:
+                    self.log(msg)
+                # Ghi nhận cả lỗi để không lặp thông báo mỗi task; /models làm mới vẫn thử lại được.
+                self._opencode_applied[a.name] = (a, a.models_filter, catalog)
+
     async def discover_models(self, agent: str, timeout: float = 30) -> str:
         """Chạy models_command của agent (vd `opencode models`) để lấy danh sách model thật."""
         from .config import parse_model_efforts, parse_models, parse_models_json, parse_models_verbose, \
@@ -857,6 +904,9 @@ class Orchestrator:
             return tr("{agent}: CLI không có lệnh liệt kê model — dùng danh mục có sẵn", agent=agent)
         if not shutil.which(a.models_command[0]):
             return tr("{agent}: chưa cài lệnh '{v}'", agent=agent, v=a.models_command[0])
+        await self.opencode.prepare(a, timeout=timeout)
+        if (a.opencode_major or 0) >= 2 and standard_models(a):
+            return self._apply_opencode_catalog(a, await self.opencode.catalog(a, timeout, refresh=True))
         # max_partial=None: `codex debug models` in JSON ~500KB trên MỘT dòng — cắt ra là bóc thành rác
         run = Run(list(a.models_command), str(self.root), self.env_for(), use_pty=a.pty,
                   timeout=timeout, on_line=lambda _l: None, max_partial=None)
@@ -864,7 +914,7 @@ class Orchestrator:
             code = await run.start()
         except Exception as e:
             return tr("{agent}: không chạy được {v}: {e}", agent=agent, v=' '.join(a.models_command), e=e)
-        found = parse_models(run.output, a.models_filter)
+        found = parse_models(run.output, a.models_filter, binary=a.binary)
         # danh sách dạng chữ của opencode lẫn model mọi hãng -> agent đặt tên theo hãng (vd "grok" chạy qua
         # opencode) chỉ giữ model mang tên đó; JSON (codex) đã chỉ gồm model dùng được, lọc theo tên sẽ chỉ còn
         # "codex-auto-review"; agent trùng tên CLI ("opencode") thì giữ hết, không thì chỉ còn model opencode/*
@@ -881,6 +931,8 @@ class Orchestrator:
         a.model_efforts = efforts
         self.emit("changed")
         msg = tr("{agent}: tìm thấy {v} model", agent=agent, v=len(found))
+        if Path(a.binary).name == "grok" and re.search(r"not authenticated|not logged in", run.output, re.I):
+            msg += "\n" + tr("Grok chưa đăng nhập; danh sách có thể chỉ gồm model mặc định. Chạy `grok login`.")
         if a.model and a.model not in found:
             msg += tr(" ⚠ model đang chọn '{model}' không có trong danh sách — chọn lại: /model "
                       "{agent}", model=a.model, agent=agent)
@@ -1310,11 +1362,13 @@ class Orchestrator:
         """Chạy agent một lượt cho task t, ghi log, thống kê; trả (run, mã thoát, phân loại).
         session: tiếp tục phiên CLI này (prompt là bản ngắn); CLI báo mất phiên thì chạy lại với
         full_prompt trong phiên mới. Phiên của lượt (agent của task) được lưu vào task để lần sau dùng lại."""
+        await self.prepare_agent(a)
         label = a.label(model, effort)
         own = a.name == t.agent and a.can_resume()
         resume = bool(session and own)
         if not resume:
             session = self.new_session(a) if own else None
+        first_argv = self.argv_for(a, prompt, workdir, model=model, effort=effort, session=session, resume=resume)
         act = self._begin_activity(a.name, t.id, title, label)
         log_file.write(f"\n$ {a.name} · {kind} · {label} · {workdir}"
                        + (tr(" · tiếp tục phiên {s}", s=session[:8]) if resume else "") + "\n")
@@ -1327,13 +1381,14 @@ class Orchestrator:
             self._touch(act, line)
             self.emit("log", task_id=t.id, agent=a.name, line=line)
 
-        def make() -> Run:
-            r = Run(self.argv_for(a, prompt, workdir, model=model, effort=effort, session=session,
+        def make(argv=None) -> Run:
+            r = Run(argv if argv is not None else
+                    self.argv_for(a, prompt, workdir, model=model, effort=effort, session=session,
                                   resume=resume), str(workdir),
                     self.env_for(t), use_pty=a.pty, timeout=a.timeout, on_line=on_line)
             self.runs[t.id] = r
             return r
-        run = make()
+        run = make(first_argv)
         rc = 130
         try:
             if t.id in self._cancel_req:
@@ -1532,6 +1587,10 @@ class Orchestrator:
                 status, error = await self._wt_finish(t, workdir, status, error)
             if status == DONE and not asked and not chat:
                 self._delegations(t, "\n".join(outputs))
+        except mentions.AttachmentError as e:
+            status, error = FAILED, str(e)
+            if self.use_worktree and workdir != self.root:
+                status, error = await self._wt_finish(t, workdir, status, error)
         except Exception as e:
             status, error = FAILED, tr("Lỗi nội bộ: {e!r}", e=e)
         finally:

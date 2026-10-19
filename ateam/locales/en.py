@@ -4,6 +4,30 @@ rồi thêm một dòng ở đây (tests/test_i18n.py báo chuỗi nào còn thi
 from __future__ import annotations
 
 EN: dict[str, str] = {
+    "Tệp {path} vượt giới hạn đính kèm {n} MiB của OpenCode. Hãy giảm dung lượng hoặc chia nhỏ tệp.":
+        "File {path} exceeds OpenCode's {n} MiB attachment limit. Reduce its size or split the file.",
+    "Grok chưa đăng nhập; danh sách có thể chỉ gồm model mặc định. Chạy `grok login`.":
+        "Grok is not signed in; the list may only contain default models. Run `grok login`.",
+    "chưa cài lệnh '{v}'":
+        "command '{v}' is not installed",
+    "trợ giúp thoát với mã {code}":
+        "help exited with code {code}",
+    "trợ giúp không có nội dung":
+        "help returned no content",
+    "hết thời gian đọc trợ giúp":
+        "timed out reading help",
+    "không chạy được lệnh trợ giúp":
+        "could not run the help command",
+    "     ✗ Không kiểm tra được `{cmd}`: {why}":
+        "     ✗ Could not check `{cmd}`: {why}",
+    "⚠ Không nhận diện được phiên bản OpenCode ({binary}); giữ cú pháp cấu hình hiện tại.":
+        "⚠ Could not detect the OpenCode version ({binary}); keeping the configured syntax.",
+    "⚠ OpenCode: đã lấy danh sách model nhưng thiếu metadata effort; tạm dùng effort mặc định của CLI.":
+        "⚠ OpenCode: models loaded without effort metadata; using the CLI default effort for now.",
+    "OpenCode: không lấy được catalog model ({why}); giữ danh sách đã lưu.":
+        "OpenCode: could not load the model catalog ({why}); keeping the saved list.",
+    "{agent}: không thấy model nào":
+        "{agent}: no models found",
     "✓ Đã đổi ngôn ngữ sang {v}":
         "✓ Language changed to {v}",
     "Cấu hình chung: {GLOBAL_CONFIG}":

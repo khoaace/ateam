@@ -315,9 +315,40 @@ def apply_access(command: list[str], full: bool) -> list[str]:
 MODEL_RE = re.compile(r"^[A-Za-z0-9][\w.:/@\[\]+-]*$")
 
 
+def parse_opencode_catalog(output: str) -> list[tuple[str, list[str]]] | None:
+    """Catalog OpenCode 2 (`api model.list`), chỉ lấy tên và variant; không giữ settings/headers."""
+    start, end = output.find("{"), output.rfind("}")
+    try:
+        data = json.loads(output[start:end + 1]) if 0 <= start <= end else None
+    except ValueError:
+        return None
+    items = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(items, list) or "location" not in data:
+        return None
+    out = {}
+    for item in items:
+        if not isinstance(item, dict) or item.get("enabled") is False:
+            continue
+        provider, model = item.get("providerID"), item.get("id")
+        if not isinstance(provider, str) or not isinstance(model, str):
+            continue
+        name = provider + "/" + model
+        if not MODEL_RE.fullmatch(name):
+            continue
+        variants = item.get("variants")
+        if not isinstance(variants, list):
+            continue  # thiếu metadata khác với model không có variant (mảng rỗng)
+        out[name] = list(dict.fromkeys(v["id"] for v in variants
+                                      if isinstance(v, dict) and isinstance(v.get("id"), str) and v["id"]))
+    return list(out.items())
+
+
 def parse_models_json(output: str) -> list[str] | None:
     """Danh mục model dạng JSON (vd `codex debug models`): {"models": [{"slug", "visibility"}, …]}.
     Bỏ model ẩn. None nếu output không phải JSON như vậy."""
+    catalog = parse_opencode_catalog(output)
+    if catalog is not None:
+        return [name for name, _ in catalog]
     start, end = output.find("{"), output.rfind("}")
     if start < 0 or end < start:
         return None
@@ -358,6 +389,9 @@ def parse_models_verbose(output: str) -> list[tuple[str, dict]] | None:
 def parse_model_efforts(output: str) -> dict[str, list[str]]:
     """Mức effort riêng của từng model nếu lệnh liệt kê có in: `codex debug models` (supported_reasoning_levels),
     `opencode models --verbose` (variants). {} nếu không biết."""
+    catalog = parse_opencode_catalog(output)
+    if catalog is not None:
+        return dict(catalog)
     out: dict[str, list[str]] = {}
     blocks = parse_models_verbose(output)
     if blocks:
@@ -387,7 +421,7 @@ def nearest_effort(effort: str, allowed: list[str]) -> str:
     return min(ranked, key=lambda e: (abs(EFFORT_SCALE.index(e) - i), -EFFORT_SCALE.index(e)))
 
 
-def parse_models(output: str, filt: str = "") -> list[str]:
+def parse_models(output: str, filt: str = "", *, binary: str = "") -> list[str]:
     """Bóc tên model từ output của lệnh liệt kê (JSON, khối --verbose, hoặc mỗi dòng một model, lấy cột đầu)."""
     found = parse_models_json(output)
     if found is None:
@@ -395,12 +429,19 @@ def parse_models(output: str, filt: str = "") -> list[str]:
         found = [n for n, _d in blocks] if blocks else None
     if found is not None:
         return [m for m in found if not filt or filt.lower() in m.lower()]
+    if Path(binary).name == "grok":
+        header = re.search(r"^\s*Available models:\s*$", output, re.M | re.I)
+        if not header:
+            return []  # thông báo đăng nhập/lỗi có thể thoát 0, không phải tên model
+        output = output[header.end():]
     out: list[str] = []
     for line in output.splitlines():
         line = line.strip().lstrip("-*•").strip()
         if not line or line.endswith(":") or line.startswith("#") or re.match(r"[\w ]+:\s", line):
             continue  # tiêu đề / dòng "Default model: grok-4.7"
         tok = line.split()[0]
+        if Path(binary).name == "grok" and not tok.startswith("grok-"):
+            continue
         if not MODEL_RE.match(tok) or tok.lower() in ("model", "models", "name", "id"):
             continue
         if filt and filt.lower() not in tok.lower():
@@ -440,6 +481,7 @@ class AgentConfig:
     session_args: list[str] | None = None     # None = theo SESSION_PRESETS; đặt id phiên cho lượt mới
     resume_args: list[str] | None = None      # None = theo SESSION_PRESETS; tiếp tục phiên {session}
     session_re: str | None = None             # None = theo SESSION_PRESETS; regex bắt id phiên trong output
+    opencode_major: int | None = None         # chỉ dùng lúc chạy; không ghi vào cấu hình người dùng
 
     @property
     def binary(self) -> str:
@@ -458,7 +500,7 @@ class AgentConfig:
 
     def label(self, model: str | None = None, effort: str | None = None) -> str:
         m = (model if model is not None else self.model) or ""
-        e = self.current_effort(m, (effort if effort is not None else self.effort) or "")
+        e = self.current_effort(m, effort)
         m = self.split_effort(m, e)[0]
         if e and m.endswith("-" + e) and len(m) > len(e) + 1:  # agy: gemini-4-argon-high -> "gemini-4-argon · high"
             m = m[:-len(e) - 1]
@@ -468,6 +510,8 @@ class AgentConfig:
         """Mức effort riêng của `model` (mặc định: model đang dùng) nếu biết; [] = model không nhận effort;
         None = không biết (dùng danh sách chung `efforts`)."""
         m = self.model if model is None else model
+        if self.opencode_major is not None and self.opencode_major >= 2:
+            return list(self.model_efforts.get(m.partition("#")[0], []))
         if m in self.model_efforts:
             return list(self.model_efforts[m])
         if Path(self.binary).name == "agy" and m:
@@ -502,6 +546,9 @@ class AgentConfig:
     def current_effort(self, model: str | None = None, effort: str | None = None) -> str:
         """Effort thật đang dùng — gồm cả effort nằm trong tên model của agy (gemini-4-argon-medium -> medium)."""
         m = self.model if model is None else model
+        if self.opencode_major is not None and self.opencode_major >= 2:
+            base, _, embedded = m.partition("#")
+            return self.resolve_effort(base, effort or embedded or self.effort)
         e = self.resolve_effort(m, self.effort if effort is None else effort)
         if not e:
             stem, _, tail = m.rpartition("-")
@@ -516,6 +563,9 @@ class AgentConfig:
     def split_effort(self, model: str, effort: str) -> tuple[str, str]:
         """Model có sẵn effort trong tên (agy: gemini-4-argon-medium) mà vẫn thêm --effort thì CLI báo
         "conflicts with --effort": đổi sang biến thể đúng effort nếu có trong danh sách model, bỏ cờ effort."""
+        if self.opencode_major is not None and self.opencode_major >= 2:
+            base, _, embedded = model.partition("#")
+            return base, "" if base in self.no_effort else self.resolve_effort(base, effort or embedded)
         if effort and model in self.no_effort:
             return model, ""
         stem, _, tail = model.rpartition("-")
@@ -543,21 +593,30 @@ class AgentConfig:
         """Dựng lệnh: thay {prompt}/{model}/{effort}, chèn cờ model/effort ngay trước prompt.
         session: id phiên — lượt mới thì đặt id (session_args), resume=True thì tiếp tục phiên đó."""
         model = (model if model else self.model) or ""
-        effort = self.resolve_effort(model, (effort if effort else self.effort) or "")
+        requested = (effort if effort else self.effort) or ""
+        if self.opencode_major is not None and self.opencode_major >= 2:
+            model, _, embedded = model.partition("#")
+            requested = effort or embedded or self.effort
+        effort = self.resolve_effort(model, requested)
         model, effort = self.split_effort(model, effort)
         base = apply_access(self.plan_command if plan and self.plan_command else self.command,
                             self.full_access)
         if session and resume:
             base = apply_resume(base)
         extra: list[str] = []
-        combined = any("{model}" in a for a in self.effort_args)  # vd opencode: --model {model}#{effort}
+        effort_args = self.effort_args
+        if Path(self.binary).name == "opencode" and self.opencode_major is not None and effort_args in (
+                ["--variant", "{effort}"], ["--model", "{model}#{effort}"]):
+            effort_args = (["--model", "{model}#{effort}"] if (self.opencode_major or 1) >= 2
+                           else ["--variant", "{effort}"])
+        combined = any("{model}" in a for a in effort_args)
         if combined and effort and model and not any("{model}" in c or "{effort}" in c for c in base):
-            extra += [a.replace("{model}", model).replace("{effort}", effort) for a in self.effort_args]
+            extra += [a.replace("{model}", model).replace("{effort}", effort) for a in effort_args]
         else:
             if model and self.model_args and not any("{model}" in c for c in base):
                 extra += [a.replace("{model}", model) for a in self.model_args]
-            if effort and self.effort_args and not combined and not any("{effort}" in c for c in base):
-                extra += [a.replace("{effort}", effort) for a in self.effort_args]
+            if effort and effort_args and not combined and not any("{effort}" in c for c in base):
+                extra += [a.replace("{effort}", effort) for a in effort_args]
         if session:
             if resume and Path(self.binary).name == "codex" and "--sandbox" in base:
                 # `codex exec resume` không có --sandbox: đổi sang -c sandbox_mode="…"
@@ -670,10 +729,14 @@ def describe_models(cfg: Config, only: str | None = None) -> str:
         models = a.model_choices()
         lines.append("  model:  " + (" · ".join(("●" if m == a.model else "") + m for m in models)
                                      if models else tr("(để CLI tự chọn)")))
-        lines.append("  effort: " + (" · ".join(("●" if e == a.effort else "") + e for e in a.efforts)
-                                     if a.efforts else tr("(không có)")))
+        efforts = a.efforts_for()
+        lines.append("  effort: " + (" · ".join(("●" if e == a.current_effort() else "") + e for e in efforts)
+                                     if efforts else tr("(không có)")))
         if a.models_command:
-            lines.append(tr("  danh sách thật: {v}  (làm mới: /models {n} làm mới)", v=' '.join(a.models_command), n=n))
+            cmd = a.models_command
+            if (a.opencode_major or 0) >= 2 and cmd[1:] == ["models", "--verbose"]:
+                cmd = cmd[:2]  # lệnh người dùng có thể chép chạy; --verbose không tồn tại trên 2.x
+            lines.append(tr("  danh sách thật: {v}  (làm mới: /models {n} làm mới)", v=' '.join(cmd), n=n))
     return "\n".join(lines)
 
 
@@ -1269,19 +1332,6 @@ LEGACY_FLAGS: dict[str, dict[str, list[str]]] = {
     "codex": {"--full-auto": ["--sandbox", "workspace-write"]},
 }
 
-# effort_args đã bị bỏ -> dạng mới, theo tên lệnh. OpenCode bỏ `run --variant` ("Unrecognized flag:
-# --variant"): variant giờ ghi liền model, `--model provider/model#variant`.
-LEGACY_EFFORT_ARGS: dict[str, tuple[list[str], list[str]]] = {
-    # opencode 1.19 có lại --variant, còn "provider/model#variant" thì báo "Unexpected server error"
-    "opencode": (["--model", "{model}#{effort}"], ["--variant", "{effort}"]),
-}
-
-
-def fix_legacy_effort_args(command: list[str], effort_args: list[str]) -> list[str]:
-    old_new = LEGACY_EFFORT_ARGS.get(Path(command[0]).name if command else "")
-    return list(old_new[1]) if old_new and effort_args == old_new[0] else effort_args
-
-
 def fix_legacy_flags(command: list[str]) -> list[str]:
     """Thay cờ đã bị bỏ bằng cờ thay thế; bỏ hẳn nếu lệnh đã có cờ thay thế."""
     table = LEGACY_FLAGS.get(Path(command[0]).name if command else "", {})
@@ -1301,7 +1351,7 @@ def command_flags(command: list[str]) -> list[str]:
     """Các cờ (-x / --xyz) trong lệnh, bỏ placeholder và giá trị sau dấu '='."""
     out = []
     for c in command[1:]:
-        if c.startswith("-") and len(c) > 1 and "{" not in c:
+        if c.startswith("-") and c != "--" and len(c) > 1 and "{" not in c:
             f = c.split("=", 1)[0]
             if f not in out:
                 out.append(f)
@@ -1329,6 +1379,8 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
     cat = CATALOG.get(Path(command[0]).name if command else "", {})
     models = _strs(a.get("models")) or list(cat.get("models", []))
     seen = [str(m) for m in found or []]  # model thật hỏi được từ CLI đứng trước
+    if command and Path(command[0]).name == "grok":
+        seen = [m for m in seen if m.startswith("grok-") and MODEL_RE.fullmatch(m)]
     models = seen + [m for m in models if m not in seen]
     return AgentConfig(
         name=name,
@@ -1343,7 +1395,7 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
         model=st.get("model", a.get("model", "")) or "",
         effort=st.get("effort", a.get("effort", "")) or "",
         model_args=_strs(a.get("model_args")),
-        effort_args=fix_legacy_effort_args(command, _strs(a.get("effort_args"))),
+        effort_args=_strs(a.get("effort_args")),
         efforts=_strs(a["efforts"]) if "efforts" in a else list(cat.get("efforts", [])),
         models=models,
         models_command=_strs(a.get("models_command")) or (

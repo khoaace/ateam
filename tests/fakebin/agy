@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Giả lập Antigravity CLI: như agy thật, KHÔNG in gì khi stdout không phải terminal
 # (ateam phải chạy nó qua pty). In mã màu ANSI và \r để kiểm tra phần làm sạch output.
+if [ "${@: -1}" = "--help" ]; then
+  printf 'Usage: agy [OPTIONS]\n  --help\n  -p\n  --mode\n  --model\n  --effort\n  --print-timeout\n  --dangerously-skip-permissions\n'; exit 0
+fi
 if [ ! -t 1 ]; then exit 0; fi
 if [ "${1:-}" = "models" ]; then
   printf '\033[1mAvailable models:\033[0m\r\n  gemini-3-pro      (default)\r\n  gemini-3-flash\r\n  claude-sonnet-5-5\r\n'

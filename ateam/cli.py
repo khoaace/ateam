@@ -13,10 +13,12 @@ import sys
 from pathlib import Path
 
 from . import __version__, mentions
-from .config import (DEFAULT_CONFIG, GLOBAL_CONFIG, ensure_global_config, help_command,
-                     load_config, needs_setup, save_agent_setting, unknown_flags)
+from .config import (DEFAULT_CONFIG, GLOBAL_CONFIG, ensure_global_config,
+                     load_config, needs_setup, save_agent_setting)
 from .db import DB, QUEUED
+from .doctor import inspect_commands
 from .orchestrator import SYSTEM, Orchestrator
+from .opencode import major_version
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, tr
 
 
@@ -251,6 +253,7 @@ def cmd_doctor(args) -> int:
           + f"   ·   song song: {cfg.max_parallel}")
     print(tr("Kiểm tra sau task: {v}   ·   trưởng nhóm dự phòng: {v2}\n", v=cfg.verify.command or tr("(tắt)"), v2=', '.join(cfg.lead_fallback) or tr("(không)")))
     ok = True
+    help_cache = {}
     for name, a in cfg.agents.items():
         path = shutil.which(a.binary) if a.binary else None
         flag = "✓" if path else "✗"
@@ -259,6 +262,8 @@ def cmd_doctor(args) -> int:
             try:
                 r = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=15)
                 ver = (r.stdout or r.stderr).strip().splitlines()[0][:60] if (r.stdout or r.stderr) else ""
+                if Path(a.binary).name == "opencode" and r.returncode == 0:
+                    a.opencode_major = major_version(ver)
             except Exception:
                 ver = tr("(không lấy được version)")
         else:
@@ -274,11 +279,14 @@ def cmd_doctor(args) -> int:
             print(tr("     model gợi ý: {v}", v=', '.join(a.models[:8])) + (" …" if len(a.models) > 8 else ""))
         print(f"     {' '.join(a.argv('<prompt>'))}")
         if path:
-            bad = _check_flags(path, a)
-            if bad:
+            for issue in inspect_commands(a, root, help_cache):
                 ok = ok and not a.enabled
-                print(tr("     ✗ cờ không thấy trong `{v}`: {v2} — CLI có thể đã đổi cờ; sửa "
-                         "command trong cấu hình", v=' '.join(bad[0]), v2=', '.join(bad[1])))
+                if issue.error:
+                    print(tr("     ✗ Không kiểm tra được `{cmd}`: {why}", cmd=' '.join(issue.help_argv),
+                             why=issue.error))
+                else:
+                    print(tr("     ✗ cờ không thấy trong `{v}`: {v2} — CLI có thể đã đổi cờ; sửa "
+                             "command trong cấu hình", v=' '.join(issue.help_argv), v2=', '.join(issue.flags)))
         print(f"     @file trong prompt → {mentions.describe(a.binary, a.file_ref, a.file_args, a.image_args)}")
     if cfg.lead not in cfg.agents:
         print(tr("\n✗ Trưởng nhóm '{lead}' không có trong [agents].", lead=cfg.lead))
@@ -293,23 +301,6 @@ def cmd_doctor(args) -> int:
                                                      "Cài các CLI còn thiếu hoặc đặt enabled = "
                                                      "false cho agent đó trong config."))
     return 0 if ok else 1
-
-
-def _check_flags(path: str, a) -> tuple[list[str], list[str]] | None:
-    """So cờ trong command (và plan_command) với `<lệnh> --help`. Trả (lệnh help, cờ lạ) hoặc None."""
-    for cmd in [a.command] + ([a.plan_command] if a.plan_command else []):
-        hc = help_command(cmd)
-        try:
-            r = subprocess.run([path] + hc[1:], capture_output=True, text=True, timeout=15)
-        except Exception:
-            continue
-        text = (r.stdout or "") + (r.stderr or "")
-        if r.returncode != 0 or "-" not in text:
-            continue  # CLI không có trang --help dùng được: không đoán
-        bad = unknown_flags(cmd, text)
-        if bad:
-            return hc, bad
-    return None
 
 
 def _printer(prefix_task: bool = True):
