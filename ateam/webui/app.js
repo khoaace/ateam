@@ -674,29 +674,47 @@ function cardHtml(x, last) {
   </div>`;
 }
 
-/* agents: danh sách gọn (agent của đội + agent tuỳ chỉnh), chat 💬 mở popup riêng */
+/* agents: block ⚡ Vai trò (sửa CLI · model · effort ngay trên trang, kèm trạng thái + chat của agent giữ vai trò) và block
+   agent tuỳ chỉnh / ngoài vai trò; chat 💬 mở popup riêng */
 function renderTeam() {
-  const box = $("#team"), cu = S.custom;
+  const box = $("#team"), rolesBox = $("#team-roles"), cu = S.custom;
   const custom = new Set(cu ? cu.agents.map((x) => x.name) : []);
   const active = new Set(S.state.agents.map((a) => a.name));
+  const sig = JSON.stringify(S.state.agents.map((a) => [a.name, a.model, a.effort, a.lead, a.role]));
+  if (rolesBox._sig !== sig && window.Setup) {  // đội đổi (lưu vai trò, /setup…) → nạp lại bảng (bỏ qua khi đang sửa dở)
+    rolesBox._sig = sig;
+    Setup.rolesPanel($("#roles-head"), rolesBox, () => { if (S.view === "team") renderTeam(); });
+  }
   const btn = (act, name, label, cls = "", title = "") => `<button class="btn sm ${cls}" type="button" data-action="${act}" data-agent="${esc(name)}"${title ? ` title="${esc(title)}" aria-label="${esc(title)}"` : ""}>${label}</button>`;
   const editBtns = (name) => custom.has(name) ? btn("agent-edit", name, esc(t("edit")), "ghost") + btn("agent-del", name, esc(t("remove")), "ghost danger") : "";
-  const rows = S.state.agents.map((a) => {
-    const busy = a.activities.length > 0;
-    const st = !a.installed ? badge("failed", t("not_installed"))
-      : a.cooldown ? badge("review", t("cooldown", { v: a.cooldown }))
-      : busy ? badge("running", t("agent_running", { n: a.activities.length }), true) : badge("queued", t("idle"));
-    const act = a.activities[0];
-    return `<div class="ag-row${busy ? " busy" : ""}${a.cooldown ? " cool" : ""}" data-agent="${esc(a.name)}">
+  const status = (a) => !a.installed ? badge("failed", t("not_installed"))
+    : a.cooldown ? badge("review", t("cooldown", { v: a.cooldown }))
+    : a.activities.length ? badge("running", t("agent_running", { n: a.activities.length }), true) : badge("queued", t("idle"));
+  const actHtml = (a) => { const act = a.activities[0];
+    return act ? `<span class="act-mini" ${act.task_id ? `data-action="open-task" data-task="${act.task_id}"` : ""}>${act.task_id ? "#" + act.task_id + " " : ""}${esc(act.title)}${elapsedHtml(act.started)}</span>` : ""; };
+  const chatBtns = (a) => btn("agent-chat", a.name, "💬 " + esc(t("ag_chat")), "", t("ag_chat")) + btn("agent-term", a.name, "⌨", "ghost", t("open_term"));
+  const byName = new Map(S.state.agents.map((a) => [a.name, a]));
+  const roleRows = $$(".role-row", rolesBox), holders = new Set();
+  for (const row of roleRows) {  // chỉ vẽ lại phần sống, không đụng các ô chọn đang sửa
+    const a = byName.get(row.dataset.agent), act = $(".ag-act", row), live = $(".role-live", row);
+    if (a) holders.add(a.name);
+    row.classList.toggle("busy", !!(a && a.activities.length));
+    row.classList.toggle("cool", !!(a && a.cooldown));
+    const h = a ? actHtml(a) || `<span class="muted">${esc(act.dataset.desc)}</span>` : `<span class="muted">${esc(act.dataset.desc)}</span>`;
+    const l = a ? `${status(a)}<div class="ag-btns">${chatBtns(a)}</div>` : "";
+    if (act._h !== h) { act._h = h; act.innerHTML = h; }
+    if (live._h !== l) { live._h = l; live.innerHTML = l; }
+  }
+  if (!roleRows.length) return;  // chờ bảng vai trò nạp xong mới biết agent nào ngoài vai trò
+  const rows = S.state.agents.filter((a) => !holders.has(a.name)).map((a) => `<div class="ag-row${a.activities.length ? " busy" : ""}${a.cooldown ? " cool" : ""}" data-agent="${esc(a.name)}">
       <span class="av lg" style="--h:${hue(a.name)}">${esc(a.name[0])}</span>
       <div class="ag-main"><div class="agent-name">${esc(a.name)}${a.lead ? `<span class="lead-tag">★ ${esc(t("lead"))}</span>` : ""}${custom.has(a.name) ? `<span class="cu-tag">${esc(t("ag_custom"))}</span>` : ""}</div>
         <div class="ag-role">${esc(a.role || "")}</div></div>
       <button class="ag-model" type="button" data-action="agent-pick" data-agent="${esc(a.name)}" title="${esc(t("pick_hint"))}">${esc([a.model || t("default_value"), a.effort].filter(Boolean).join(" · "))}</button>
-      <div class="ag-act">${act ? `<span class="act-mini" ${act.task_id ? `data-action="open-task" data-task="${act.task_id}"` : ""}>${act.task_id ? "#" + act.task_id + " " : ""}${esc(act.title)}${elapsedHtml(act.started)}</span>` : ""}</div>
-      ${st}
-      <div class="ag-btns">${btn("agent-chat", a.name, "💬 " + esc(t("ag_chat")), "", t("ag_chat"))}${btn("agent-term", a.name, "⌨", "ghost", t("open_term"))}${editBtns(a.name)}</div>
-    </div>`;
-  });
+      <div class="ag-act">${actHtml(a)}</div>
+      ${status(a)}
+      <div class="ag-btns">${chatBtns(a)}${editBtns(a.name)}</div>
+    </div>`);
   const off = cu ? cu.agents.filter((x) => !active.has(x.name)) : [];
   const offRows = off.map((x) => `<div class="ag-row off" data-agent="${esc(x.name)}">
       <span class="av lg" style="--h:${hue(x.name)}">${esc(x.name[0])}</span>
@@ -705,10 +723,9 @@ function renderTeam() {
       <span class="ag-model muted">${x.installed ? "" : "✗ " + esc(t("not_installed"))}</span><div class="ag-act"></div>
       ${badge("cancelled", t("ag_off"))}
       <div class="ag-btns">${editBtns(x.name)}</div></div>`);
-  // agent tuỳ chỉnh đã bật nằm luôn trong danh sách trên (tag "tuỳ chỉnh"); mục dưới chỉ cho cái chưa bật / gợi ý thêm
-  const html = `<div class="ag-list">${rows.join("")}</div>`
-    + (offRows.length ? `<div class="sec-title ag-sec">${esc(t("cu_agents"))} · ${esc(t("ag_off"))}</div><div class="muted small">${esc(t("ag_off_hint"))}</div><div class="ag-list">${offRows.join("")}</div>`
-      : cu && !custom.size ? `<div class="muted small ag-sec">${esc(t("cu_no_agents"))}</div>` : "");
+  const all = rows.concat(offRows);
+  const html = all.length ? `<div class="ag-list">${all.join("")}</div>${offRows.length ? `<div class="muted small ag-note">${esc(t("ag_off_hint"))}</div>` : ""}`
+    : cu ? `<div class="muted small">${esc(t("cu_no_agents"))}</div>` : "";
   if (box._html !== html) { box._html = html; box.innerHTML = html; }
 }
 async function loadCustom() {

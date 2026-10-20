@@ -78,13 +78,24 @@ def default_assign(cfg: Config, providers: list[str], tier: str) -> dict:
     return {k: default_role(cfg, k, providers, tier) for k, _l, _d in ROLES}
 
 
+def role_agents(cfg: Config) -> dict:
+    """Agent đang giữ từng vai trò: trưởng nhóm, còn lại là agent có role nhắc tới mô tả vai trò."""
+    agents = {n: a for n, a in cfg.active_agents().items() if provider_of(a.command)}
+    out: dict = {}
+    for key, _label, desc in ROLES:
+        name = cfg.lead if key == "lead" else next((n for n, x in agents.items() if desc in x.role), None)
+        if name in agents:
+            out[key] = name
+    return out
+
+
 def current_assign(cfg: Config, providers: list[str], tier: str) -> dict:
     """Gán vai trò theo đội hiện tại (mở lại /setup): vai trò mà role của agent có nhắc tới; còn lại theo mặc
     định."""
     out: dict = {}
-    agents = {n: a for n, a in cfg.active_agents().items() if provider_of(a.command)}
-    for key, _label, desc in ROLES:
-        a = agents.get(cfg.lead) if key == "lead" else next((x for x in agents.values() if desc in x.role), None)
+    names = role_agents(cfg)
+    for key, _label, _desc in ROLES:
+        a = cfg.agents.get(names.get(key, ""))
         if a and provider_of(a.command) in providers:
             out[key] = (provider_of(a.command), a.model, a.effort)
         else:

@@ -567,7 +567,7 @@ async def shoot_web(base: Path, proj: Path) -> None:
                 await asyncio.sleep(1.0)
                 await c.shot("web-git")
                 await c.js("setView('team')")
-                await c.until("document.querySelectorAll('#team .ag-row').length >= 6")
+                await c.until("document.querySelectorAll('#view-team .ag-row').length >= 6")
                 await asyncio.sleep(0.8)
                 await c.shot("web-agents")
                 await c.js("setView('custom')")

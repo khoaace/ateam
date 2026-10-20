@@ -388,9 +388,9 @@ def ui_strings() -> dict[str, str]:
         "ob_apply": tr("Áp thay đổi"), "ob_verify": tr("Kiểm tra"), "ob_none": tr("không"),
         "ob_no_lead": tr("Chưa có trưởng nhóm — quay lại bước Vai trò."),
         "nav_g_work": tr("Điều phối"), "nav_g_dev": tr("Mã nguồn"), "nav_g_me": tr("Cá nhân"), "nav_g_stats": tr("Báo cáo"),
-        "ag_hint": tr("Agent trong đội và agent tuỳ chỉnh. Bấm model · effort để đổi, 💬 để chat riêng với agent."),
+        "ag_hint": tr("Agent ngoài các vai trò ở trên. Bấm model · effort để đổi, 💬 để chat riêng với agent."),
         "ag_chat": tr("Chat"), "ag_custom": tr("tuỳ chỉnh"), "ag_off": tr("chưa bật"),
-        "ag_off_hint": tr("Chưa tham gia đội — bật ở ⚡ Vai trò · model · effort hoặc /setup."),
+        "ag_off_hint": tr("Chưa tham gia đội — bật ở /setup."),
         "wf_hint": tr("Workflow chạy bằng /flow <tên> <mục tiêu>, hoặc ★ Đặt mặc định để gõ mục tiêu là chạy luôn. "
                       "Agent tuỳ chỉnh nằm ở trang Agents."),
         # --- /custom

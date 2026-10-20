@@ -67,7 +67,7 @@ class SetupWeb:
     async def api_setup(self, _r: web.Request) -> web.Response:
         init = wizard.initial(self.cfg, self.app.root)
         init["assign"] = _assign_out(init["assign"])
-        provs = list(PROVIDERS)
+        provs, holders = list(PROVIDERS), wizard.role_agents(self.cfg)
         return web.json_response({
             "init": init, "discovering": self.app.discovering,
             "steps": [{"key": k, "title": t, "short": s} for k, t, s in wizard.STEPS],
@@ -75,7 +75,7 @@ class SetupWeb:
                            "hint": INSTALL_HINTS.get(p, p)} for p in provs],
             "styles": [{"key": k, "label": lb, "hint": h} for k, lb, h in wizard.STYLES],
             "tiers": [{"key": k, "label": lb, "hint": wizard.TIER_HINTS[k]} for k, lb in TIERS],
-            "roles": [{"key": k, "label": lb, "desc": d} for k, lb, d in ROLES],
+            "roles": [{"key": k, "label": lb, "desc": d, "agent": holders.get(k, "")} for k, lb, d in ROLES],
             "access": [{"key": k, "label": lb, "hint": h} for k, lb, h in wizard.ACCESS],
             "apply": [{"key": k, "label": lb, "hint": h} for k, lb, h in wizard.APPLY],
             "verify": [{"key": k, "label": lb, "hint": h} for k, lb, h in

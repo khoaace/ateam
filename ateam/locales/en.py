@@ -3892,16 +3892,16 @@ EN: dict[str, str] = {
         "Personal",
     "Báo cáo":
         "Reports",
-    "Agent trong đội và agent tuỳ chỉnh. Bấm model · effort để đổi, 💬 để chat riêng với agent.":
-        "Team agents and custom agents. Click model · effort to change it, 💬 to chat with an agent.",
+    "Agent ngoài các vai trò ở trên. Bấm model · effort để đổi, 💬 để chat riêng với agent.":
+        "Agents outside the roles above. Click model · effort to change it, 💬 to chat with an agent.",
     "Chat":
         "Chat",
     "tuỳ chỉnh":
         "custom",
     "chưa bật":
         "off",
-    "Chưa tham gia đội — bật ở ⚡ Vai trò · model · effort hoặc /setup.":
-        "Not on the team yet — turn them on in ⚡ Roles · model · effort or /setup.",
+    "Chưa tham gia đội — bật ở /setup.":
+        "Not on the team yet — turn them on in /setup.",
     "Workflow chạy bằng /flow <tên> <mục tiêu>, hoặc ★ Đặt mặc định để gõ mục tiêu là chạy luôn. Agent tuỳ chỉnh nằm ở trang Agents.":
         "Workflows run with /flow <name> <goal>, or ★ Make default so typing a goal runs it. Custom agents live on the Agents page.",
     'Đã huỷ lập kế hoạch mục tiêu #{gid}':

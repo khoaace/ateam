@@ -5,6 +5,7 @@
 
 window.Setup = (() => {
   let W = null;  // trạng thái wizard
+  let R = null;  // bảng vai trò trên trang Agents
 
   /* ================================================================ wizard /setup */
   async function open(first) {
@@ -59,7 +60,7 @@ window.Setup = (() => {
         W.assignKey = key;
       }
       body.innerHTML = `<div class="ob-q">${esc(t("ob_q_roles"))}</div><div class="muted small">${esc(t("ob_roles_hint"))}${W.discovering ? " ⏳ " + esc(t("ob_discovering")) : ""}</div>
-        <div class="roles">${d.roles.map(roleRow).join("")}</div>`;
+        <div class="roles">${d.roles.map((r) => roleRow(r, W)).join("")}</div>`;
     } else if (s.key === "safety") {
       body.innerHTML = `<div class="ob-q">${esc(t("ob_q_access"))}</div>` + d.access.map((x) => optCard("access", x.key, x.label, x.hint, W.access === x.key)).join("")
         + `<div class="ob-q">${esc(t("ob_q_apply"))}</div>` + d.apply.map((x) => optCard("apply", x.key, x.label,
@@ -88,19 +89,24 @@ window.Setup = (() => {
     $("[data-ob=next]", W.modal).innerHTML = s.key === "review" ? `✓ ${esc(t("ob_save"))}` : `${esc(t("ob_next"))} →`;
     $("[data-ob=custom]", W.modal).classList.toggle("hidden", s.key !== "review");
   }
-  function roleRow(r) {
-    const a = W.assign[r.key], d = W.data;
+  function roleRow(r, st) {  // st: W (wizard, popup /roles) hoặc R (bảng trên trang Agents)
+    const a = st.assign[r.key], d = st.data;
     const p = a ? a[0] : "";
-    const clis = d.providers.filter((x) => W.providers.includes(x.key)).map((x) => `<option value="${x.key}"${x.key === p ? " selected" : ""}>${esc(x.label)}</option>`).join("")
+    const clis = d.providers.filter((x) => st.providers.includes(x.key)).map((x) => `<option value="${x.key}"${x.key === p ? " selected" : ""}>${esc(x.label)}</option>`).join("")
       + (r.key !== "lead" ? `<option value=""${p ? "" : " selected"}>${esc(t("ob_unused"))}</option>` : "");
     let models = a ? (d.models[p] || []).slice() : [];
     if (a && a[1] && !models.includes(a[1])) models = [a[1]].concat(models);
     const effs = a ? d.efforts[p] || [] : [];
     const opt = (v, cur) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(v)}</option>`;
-    return `<div class="role-row" data-role="${r.key}"><b class="rlabel">${esc(r.label)}</b>
-      <select class="agent-select" data-rf="cli">${clis}</select>
+    const selects = `<select class="agent-select" data-rf="cli">${clis}</select>
       <select class="agent-select" data-rf="model" ${a ? "" : "disabled"}>${models.map((m) => opt(m, a && a[1])).join("")}<option value=""${a && a[1] ? "" : " selected"}>${esc(t("default_value"))}</option></select>
-      <select class="agent-select" data-rf="effort" ${a && effs.length ? "" : "disabled"}>${effs.map((e) => opt(e, a && a[2])).join("")}<option value=""${a && a[2] && effs.includes(a[2]) ? "" : " selected"}>${esc(t("default_value"))}</option></select>
+      <select class="agent-select" data-rf="effort" ${a && effs.length ? "" : "disabled"}>${effs.map((e) => opt(e, a && a[2])).join("")}<option value=""${a && a[2] && effs.includes(a[2]) ? "" : " selected"}>${esc(t("default_value"))}</option></select>`;
+    if (st === R) {  // ô trạng thái + nút của agent giữ vai trò do app.js điền (fillRoles), đổi CLI xong mới đổi agent
+      return `<div class="ag-row role-row" data-role="${r.key}" data-agent="${esc(r.agent)}">
+        <span class="av lg" style="--h:${hue(r.agent || r.key)}">${esc((r.agent || "–")[0])}</span><div class="ag-main"><div class="agent-name">${esc(r.label)}</div><div class="ag-role mono">${esc(r.agent || "—")}</div></div>
+        ${selects}<div class="ag-act" data-desc="${esc(r.desc)}"></div><div class="role-live"></div></div>`;
+    }
+    return `<div class="role-row" data-role="${r.key}"><b class="rlabel">${esc(r.label)}</b>${selects}
       <span class="muted small rdesc" title="${esc(r.desc)}">${esc(r.desc)}</span></div>`;
   }
   function collect() {
@@ -115,12 +121,7 @@ window.Setup = (() => {
     if (key === "tier") W.tier = radio("tier") || W.tier;
     if (key === "safety") { W.access = radio("access") || W.access; W.apply = radio("apply") || W.apply; }
     if (key === "verify") { const typed = $("#ob-verify-input", m).value.trim(); W.verify = typed || (radio("verify") ?? W.verify); }
-    if (key === "roles") {
-      $$(".role-row", m).forEach((row) => {
-        const v = (f) => $(`[data-rf=${f}]`, row).value;
-        W.assign[row.dataset.role] = v("cli") ? [v("cli"), v("model"), v("effort")] : null;
-      });
-    }
+    if (key === "roles") readRoles(m, W);
     return null;
   }
   async function save() {
@@ -149,13 +150,19 @@ window.Setup = (() => {
       flowModal({ inSetup: true, name: W.flowName, onSaved: (name) => { if (!W) return; W.flowName = name; W.style = "flow"; step(W.step); } });
     }
   }
-  async function onChange(e) {
+  async function onChange(e) { await changeCli(e, W); }
+  async function changeCli(e, st) {
     const sel = e.target.closest("[data-rf=cli]");
-    if (!sel) return;
+    if (!sel) return false;
     const row = sel.closest(".role-row"), role = row.dataset.role, p = sel.value;
-    W.assign[role] = p ? await (await fetch(`/api/setup/assign?role=${role}&provider=${p}&tier=${W.tier}`)).json() : null;
-    row.outerHTML = roleRow(W.data.roles.find((r) => r.key === role));
+    st.assign[role] = p ? await (await fetch(`/api/setup/assign?role=${role}&provider=${p}&tier=${st.tier}`)).json() : null;
+    row.outerHTML = roleRow(st.data.roles.find((r) => r.key === role), st);
+    return true;
   }
+  const readRoles = (box, st) => $$(".role-row", box).forEach((row) => {
+    const v = (f) => $(`[data-rf=${f}]`, row).value;
+    st.assign[row.dataset.role] = v("cli") ? [v("cli"), v("model"), v("effort")] : null;
+  });
 
   /* ---------------------------------------------------------------- ⚡ sửa nhanh vai trò (/roles) — chỉ bước Vai trò của
      wizard, chọn được mọi CLI đã cài; lưu ngay (server giữ nguyên kiểu làm việc, quyền, worktree, lệnh kiểm tra) */
@@ -166,7 +173,7 @@ window.Setup = (() => {
       tier: i.tier, assign: i.assign, discovering: false };
     const m = openModal(`${modalHead("⚡ " + esc(t("roles_title")))}<div class="modal-pad ob-body">
       <div class="muted small">${esc(t("roles_hint"))}</div>
-      <div class="roles">${data.roles.map(roleRow).join("")}</div></div>
+      <div class="roles">${data.roles.map((r) => roleRow(r, W)).join("")}</div></div>
       <div class="ob-foot"><button class="btn ghost" data-rq="setup">${esc(t("roles_full"))}</button><span style="flex:1"></span>
         <button class="btn ghost" data-rq="cancel">${esc(t("cancel_edit"))}</button>
         <button class="btn primary" data-rq="save">✓ ${esc(t("save"))}</button></div>`,
@@ -182,6 +189,34 @@ window.Setup = (() => {
       const r = await request("roles_save", { assign: W.assign });
       if (r.setup_saved) closeModal(m);
     });
+  }
+
+  /* ---------------------------------------------------------------- ⚡ bảng vai trò ngay trên trang Agents: như popup /roles,
+     đổi gì là hiện nút Lưu; chưa lưu thì không vẽ lại (giữ lựa chọn đang sửa) */
+  async function rolesPanel(head, box, onDraw, force) {
+    if (R && R.dirty && !force) return;
+    const data = await (await fetch("/api/setup")).json();
+    R = { data, providers: data.quick_providers, tier: data.init.tier, assign: data.init.assign, dirty: false };
+    head.innerHTML = `<span class="sec-title">⚡ ${esc(t("roles_title"))}</span><span class="muted small">${esc(t("roles_hint"))}</span><span style="flex:1"></span>
+      <button class="btn sm ghost" data-rp="setup">${esc(t("roles_full"))}</button>
+      <button class="btn sm ghost hidden" data-rp="cancel">${esc(t("cancel_edit"))}</button>
+      <button class="btn sm primary hidden" data-rp="save">✓ ${esc(t("save"))}</button>`;
+    box.innerHTML = data.roles.map((r) => roleRow(r, R)).join("");
+    const dirty = () => { R.dirty = true; $$("[data-rp=cancel], [data-rp=save]", head).forEach((b) => b.classList.remove("hidden")); };
+    box.onchange = async (e) => {
+      dirty();
+      if (await changeCli(e, R)) onDraw();
+    };
+    head.onclick = async (e) => {
+      const b = e.target.closest("[data-rp]");
+      if (!b) return;
+      if (b.dataset.rp === "setup") return open(false);
+      if (b.dataset.rp === "cancel") return rolesPanel(head, box, onDraw, true);
+      readRoles(box, R);
+      const r = await request("roles_save", { assign: R.assign });
+      if (r.setup_saved) rolesPanel(head, box, onDraw, true);
+    };
+    onDraw();
   }
 
   /* ================================================================ /custom — trang Workflows + popup (agent tuỳ chỉnh ở trang Agents) */
@@ -475,5 +510,5 @@ window.Setup = (() => {
     });
   }
 
-  return { open, discovered, custom, showCustom, flowModal, rolesModal, addAgent, editAgent, deleteAgent };
+  return { open, discovered, custom, showCustom, flowModal, rolesModal, rolesPanel, addAgent, editAgent, deleteAgent };
 })();

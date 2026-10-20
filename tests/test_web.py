@@ -428,6 +428,9 @@ def test_web_setup_and_custom(env, project, monkeypatch):
             assert r[1] == "ok" and r[2]["setup_saved"]
             assert wa.cfg.lead == "codex" and wa.cfg.agents["codex"].effort == "high"
             assert not wa.cfg.approve_plan and wa.cfg.verify.command == "make test"  # từ setup_save ở trên
+            # bảng vai trò trên trang Agents: mỗi vai trò kèm agent đang giữ (để hiện trạng thái + chat)
+            roles = {r["key"]: r["agent"] for r in (await (await client.get("/api/setup")).json())["roles"]}
+            assert roles["lead"] == "codex" and all(n in wa.cfg.agents for n in roles.values() if n)
             assert (await wa.handle({"op": "roles_save", "assign": dict(quick, lead=None)}))[1] == "error"
 
             # /custom: agent nhanh, sửa sai tên, xoá

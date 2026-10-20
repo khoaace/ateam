@@ -381,6 +381,15 @@ button.ag-model:hover { border-color: var(--border); background: var(--surface);
 .ag-list + .ag-sec, .ag-sec { margin: 24px 0 4px; }
 .ag-sec + .muted { margin-bottom: 10px; }
 .ag-row > .badge { justify-self: start; }
+.ag-roles { grid-template-columns: 40px minmax(130px, 1fr) 140px minmax(150px, 1.3fr) 110px minmax(0, 1.2fr) auto auto; margin-bottom: 8px; }
+.ag-roles .role-row { grid-template-columns: subgrid; gap: 12px; }
+.ag-roles .role-live { display: contents; }
+.ag-roles .role-live > .badge { justify-self: start; }
+.ag-roles .ag-act { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#roles-head { flex-wrap: nowrap; }
+#roles-head .muted.small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+#roles-head .sec-title, .team-tools .sec-title { margin: 0; white-space: nowrap; }
+.ag-note { margin-top: 8px; }
 .agent-name { font-weight: 650; font-size: 13px; display: flex; align-items: center; gap: 7px; }
 .lead-tag, .cu-tag { font-size: 10px; font-weight: 650; letter-spacing: .04em; color: var(--review); border: 1px solid color-mix(in srgb, var(--review) 45%, var(--border)); padding: 0 5px; border-radius: var(--radius); }
 .cu-tag { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
@@ -843,6 +852,13 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
   .ag-row { row-gap: 6px; }
   .ag-row .ag-model, .ag-row .ag-act { grid-column: 2 / -1; }
   .ag-row .ag-btns { grid-column: 1 / -1; justify-content: flex-start; }
+  .ag-roles { display: block; }
+  .ag-roles .role-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ag-roles .role-row .ag-main { flex: 1 1 60%; }
+  .ag-roles .role-row select.agent-select { flex: 1 1 28%; width: auto; min-width: 0; }
+  .ag-roles .role-row .ag-act { flex-basis: 100%; }
+  .ag-roles .role-live .ag-btns { margin-left: auto; }
+  #roles-head .muted.small { display: none; }
   .nav-group { display: none; }
   .plan-line { grid-template-columns: 36px 1fr auto; }
   .plan-line .deps, .plan-line .plan-sel { display: none; }
