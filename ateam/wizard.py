@@ -326,7 +326,7 @@ def after_text(after) -> str:
 
 def workflow_body(cfg: Config, name: str, old: str | None, description: str, review: bool,
                   steps: list[dict]) -> dict:
-    """Form workflow → thân TOML. steps: [{agent, title, prompt, after (chữ), effort}]. Lỗi -> ValueError."""
+    """Form workflow → thân TOML. steps: [{agent, title, prompt, after (chữ), model, effort}]. Lỗi -> ValueError."""
     if not NAME_RE.match(name):
         raise ValueError(tr("Tên chỉ gồm chữ, số, - và _"))
     if name in cfg.workflows and name != old:
@@ -346,7 +346,8 @@ def workflow_body(cfg: Config, name: str, old: str | None, description: str, rev
                 raise ValueError(tr("Bước {i}: 'Sau bước' phải là số bước đứng trước (1…{v})", i=i, v=i - 1))
             after = [int(p) for p in parts]
         out.append(WorkflowStep(agent=str(st.get("agent") or LEAD_ALIAS), title=title, prompt=prompt, after=after,
-                                effort=str(st.get("effort") or "").strip().lower()))
+                                effort=str(st.get("effort") or "").strip().lower(),
+                                model=str(st.get("model") or "").strip()))
     if not out:
         raise ValueError(tr("Workflow cần ít nhất 1 bước"))
     return workflow_to_dict(Workflow(name=name, description=description.strip(), steps=out, review=review))

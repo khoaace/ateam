@@ -443,16 +443,30 @@ window.Setup = (() => {
   /* ---------------------------------------------------------------- workflow */
   function flowForm(d, w, done) {
     const raw = (w && w.raw) || {};
-    const opts = (cur) => [`<option value="lead"${cur === "lead" ? " selected" : ""}>★ ${esc(t("cu_lead", { lead: d.lead }))}</option>`]
-      .concat(d.agent_names.map((n) => `<option${n === cur ? " selected" : ""}>${esc(n)}</option>`))
-      .concat(cur && cur !== "lead" && !d.agent_names.includes(cur) ? [`<option selected value="${esc(cur)}">${esc(t("cu_not_in_team", { v: cur }))}</option>`] : []).join("");
-    const stepRow = (st) => `<div class="wf-step"><span class="wf-no"></span>
-      <select class="agent-select" data-sf="agent">${opts(st.agent || "lead")}</select>
-      <input class="field one" data-sf="title" value="${esc(st.title || "")}" placeholder="${esc(t("cu_step_title"))}">
-      <input class="field one" data-sf="prompt" value="${esc(st.prompt || "")}" placeholder="${esc(t("cu_step_prompt"))}">
+    // mỗi bước: agent → model → effort (gợi ý theo CLI của agent, như popup Luồng mặc định), rồi tiêu đề + prompt
+    const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(label)}</option>`;
+    const agentOpts = (cur) => d.step_agents.map((a) => opt(a.value, a.label, cur)).join("")
+      + (d.step_agents.some((a) => a.value === cur) ? "" : opt(cur, t("cu_not_in_team", { v: cur }), cur));
+    const modelOpts = (agent, model) => {
+      const c = d.step_choices[agent] || { models: [] };
+      return opt("", t("df_agent_default"), model) + (model && !c.models.includes(model) ? [model] : []).concat(c.models).map((x) => opt(x, x, model)).join("");
+    };
+    const effortOpts = (agent, effort) => {
+      const effs = (d.step_choices[agent] || { efforts: [] }).efforts;
+      return opt("", t("default_value"), effort) + (effort && !effs.includes(effort) ? [effort] : []).concat(effs).map((x) => opt(x, x, effort)).join("");
+    };
+    const hasEfforts = (agent, effort) => !!(effort || (d.step_choices[agent] || { efforts: [] }).efforts.length);
+    const stepRow = (st) => {
+      const agent = st.agent || "lead";
+      return `<div class="wf-step"><span class="wf-no"></span>
+      <select class="agent-select" data-sf="agent">${agentOpts(agent)}</select>
+      <select class="agent-select" data-sf="model">${modelOpts(agent, st.model || "")}</select>
+      <select class="agent-select" data-sf="effort"${hasEfforts(agent, st.effort) ? "" : " disabled"}>${effortOpts(agent, st.effort || "")}</select>
       <input class="field one" data-sf="after" value="${esc(st.after || "")}" placeholder="${esc(t("cu_step_after"))}">
-      <input class="field one" data-sf="effort" value="${esc(st.effort || "")}" placeholder="effort">
-      <button class="mini danger" data-wf="del">✕</button></div>`;
+      <button class="mini danger" data-wf="del">✕</button>
+      <input class="field one wf-title" data-sf="title" value="${esc(st.title || "")}" placeholder="${esc(t("cu_step_title"))}">
+      <input class="field one wf-prompt" data-sf="prompt" value="${esc(st.prompt || "")}" placeholder="${esc(t("cu_step_prompt"))}"></div>`;
+    };
     const steps = (w && w.step_rows) || [{ agent: "lead" }];
     const m = openModal(`${modalHead(esc(w && w.in_file ? t("cu_edit_flow", { name: w.name }) : t("cu_add_flow")))}<div class="modal-pad form">
       <div class="muted small">${esc(t("cu_flow_hint"))}</div>
@@ -462,13 +476,20 @@ window.Setup = (() => {
       <label>${esc(t("cu_name"))}<input class="field one" id="wf-name" value="${esc(w && w.in_file ? w.name : "")}"></label>
       <label>${esc(t("cu_desc"))}<input class="field one" id="wf-desc" value="${esc(raw.description || "")}"></label>
       <label class="chk"><input type="checkbox" id="wf-review" ${(raw.review ?? d.auto_review) ? "checked" : ""}> ${esc(t("cu_review"))}</label>
-      <div class="wf-head"><span></span><span>Agent</span><span>${esc(t("cu_step_title"))}</span><span>Prompt</span><span>${esc(t("cu_step_after"))}</span><span>Effort</span><span></span></div>
+      <div class="wf-head"><span></span><span>Agent</span><span>Model</span><span>Effort</span><span>${esc(t("cu_step_after"))}</span><span></span></div>
       <div id="wf-steps">${steps.map(stepRow).join("")}</div>
       <button class="btn sm" data-wf="add">+ ${esc(t("cu_add_step"))}</button>
       <div class="row-actions end"><button class="btn ghost" data-wf="cancel">${esc(t("cancel_edit"))}</button><button class="btn primary" data-wf="save">${esc(t("save"))}</button></div></div>`, { box: "lg" });
     const renumber = () => $$(".wf-no", m).forEach((x, i) => { x.textContent = i + 1 + "."; });
     renumber();
     m.addEventListener("change", async (e) => {
+      if (e.target.dataset.sf === "agent") {  // đổi agent: nạp lại model/effort gợi ý của bước
+        const r = e.target.closest(".wf-step"), eff = $("[data-sf=effort]", r);
+        $("[data-sf=model]", r).innerHTML = modelOpts(e.target.value, "");
+        eff.innerHTML = effortOpts(e.target.value, "");
+        eff.disabled = !hasEfforts(e.target.value, "");
+        return;
+      }
       if (e.target.id !== "wf-template" || !e.target.value) return;
       const tp = await (await fetch("/api/custom/template?kind=workflow&key=" + encodeURIComponent(e.target.value))).json();
       $("#wf-desc", m).value = tp.description || "";

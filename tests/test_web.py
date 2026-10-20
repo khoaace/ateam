@@ -451,8 +451,13 @@ def test_web_setup_and_custom(env, project, monkeypatch):
             assert prev["argv"].startswith("mycli -p") and not prev["no_prompt"]
             r = await wa.handle({"op": "custom_save", "kind": "workflows", "name": "nhanh", "description": "thử",
                                  "review": False, "steps": [{"agent": "lead", "title": "Làm {goal}"},
-                                                            {"agent": "claude", "prompt": "test", "after": "1"}]})
+                                                            {"agent": "claude", "prompt": "test", "after": "1",
+                                                             "model": "opus", "effort": "high"}]})
             assert r[1] == "ok" and "nhanh" in wa.cfg.workflows
+            st2 = wa.cfg.workflows["nhanh"].steps[1]
+            assert (st2.model, st2.effort) == ("opus", "high")  # form workflow: agent → model → effort
+            cu = await (await client.get("/api/custom")).json()
+            assert cu["step_agents"][0]["value"] == "lead" and "efforts" in cu["step_choices"]["claude"]
             r = await wa.handle({"op": "custom_save", "kind": "workflows", "name": "hong", "steps": [
                 {"agent": "lead", "title": "a", "after": "2"}]})
             assert r[1] == "error"
