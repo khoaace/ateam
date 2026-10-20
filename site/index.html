@@ -448,7 +448,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
   <section class="hero">
     <div class="wrap hero-grid">
       <div>
-        <a class="pill" href="#moi"><b>Mới</b> v{{VERSION}} · rule cho cả đội, chat riêng từng agent, command palette →</a>
+        <a class="pill" href="#moi"><b>Mới</b> v{{VERSION}} · trang Agents & Workflows, lưới terminal, To-do, Ghi chú →</a>
         <h1>Cả một <span class="grad">đội AI agent</span>, làm việc trong terminal của bạn.</h1>
         <p class="lede">Gõ một mục tiêu. <strong>Trưởng nhóm</strong> chia việc, <strong>Claude Code, Codex, Antigravity, Grok, OpenCode</strong> làm song song trên cùng repo, tự chạy test, đổi người khi hết hạn mức — rồi chờ <strong>bạn duyệt diff</strong> trước khi merge.</p>
         <div class="actions">
@@ -500,7 +500,10 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
 
       <div class="tabs" role="tablist" aria-label="Màn hình của ateam">
         <button class="tab" role="tab" id="tab-board" aria-controls="p-board" aria-selected="true">📋 Bảng việc</button>
-        <button class="tab" role="tab" id="tab-team" aria-controls="p-team" aria-selected="false" tabindex="-1">👥 Tab Đội</button>
+        <button class="tab" role="tab" id="tab-team" aria-controls="p-team" aria-selected="false" tabindex="-1">👥 Agents</button>
+        <button class="tab" role="tab" id="tab-workflows" aria-controls="p-workflows" aria-selected="false" tabindex="-1">🧩 Workflows</button>
+        <button class="tab" role="tab" id="tab-todo" aria-controls="p-todo" aria-selected="false" tabindex="-1">✅ To-do</button>
+        <button class="tab" role="tab" id="tab-notes" aria-controls="p-notes" aria-selected="false" tabindex="-1">🗒 Ghi chú</button>
         <button class="tab" role="tab" id="tab-plan" aria-controls="p-plan" aria-selected="false" tabindex="-1">🧠 Kế hoạch</button>
         <button class="tab" role="tab" id="tab-grill" aria-controls="p-grill" aria-selected="false" tabindex="-1">🔎 Hỏi kỹ /grill</button>
         <button class="tab" role="tab" id="tab-code" aria-controls="p-code" aria-selected="false" tabindex="-1">📝 Code kiểu vim</button>
@@ -521,11 +524,41 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
       </div>
       <div class="shot-panel" id="p-team" role="tabpanel" aria-labelledby="tab-team" hidden>
         <div class="shot-wrap">
-          <div class="shot"><img src="shots/team.svg" width="1848" height="1075" loading="lazy" alt="Tab Đội: mỗi agent một ô với model, effort, task đang làm, log; timeline phía dưới"></div>
+          <div class="shot"><img src="shots/agents.svg" width="1848" height="1075" loading="lazy" alt="Tab Agents: danh sách agent kèm model, effort, task đang làm, agent tuỳ chỉnh và nút tạo agent mới"></div>
           <div class="shot-note">
-            <h3>Tab Đội — cả đội trên một màn hình</h3>
-            <p>Mỗi agent một ô: model, effort, task đang làm, dòng log mới nhất, cảnh báo khi im lặng quá lâu.</p>
-            <ul><li>Bấm model / effort để đổi ngay</li><li>Timeline: ai làm gì, lúc nào</li><li>Viền ô đổi màu khi đang chạy, đang nghỉ, vừa lỗi</li></ul>
+            <h3>Agents — danh sách gọn, tạo agent ngay tại đó</h3>
+            <p>Mỗi agent một dòng: model, effort, task đang làm, trạng thái. Agent có sẵn và agent tuỳ chỉnh nằm chung một nơi; thêm CLI của bạn bằng nút <b>＋ Agent</b>.</p>
+            <ul><li>Bấm model / effort để đổi ngay</li><li><kbd>F7</kbd> hoặc <code>/chat</code> mở chat riêng, ⌨ mở CLI thật</li><li>Muốn xem terminal của cả đội: tab 🔲 Lưới</li></ul>
+          </div>
+        </div>
+      </div>
+      <div class="shot-panel" id="p-workflows" role="tabpanel" aria-labelledby="tab-workflows" hidden>
+        <div class="shot-wrap">
+          <div class="shot"><img src="shots/workflows.svg" width="1848" height="1075" loading="lazy" alt="Tab Workflows: workflow dựng sẵn và workflow tuỳ chỉnh, luồng mặc định"></div>
+          <div class="shot-note">
+            <h3>Workflows — luồng làm việc của đội</h3>
+            <p>Thiết kế → code → test, hay bất kỳ chuỗi bước nào bạn muốn. Mô tả bằng lời, ✨ trưởng nhóm dựng các bước giúp.</p>
+            <ul><li>Đặt luồng mặc định cho mục tiêu mới</li><li>Mẫu có sẵn, sửa tuỳ ý</li><li>Agent tuỳ chỉnh đã chuyển sang trang Agents</li></ul>
+          </div>
+        </div>
+      </div>
+      <div class="shot-panel" id="p-todo" role="tabpanel" aria-labelledby="tab-todo" hidden>
+        <div class="shot-wrap">
+          <div class="shot"><img src="shots/todo.svg" width="1848" height="1075" loading="lazy" alt="Tab To-do: việc cần làm có tag, hạn, mức ưu tiên"></div>
+          <div class="shot-note">
+            <h3>To-do — việc của bạn, cạnh việc của đội</h3>
+            <p>Gõ nhanh <code>Sửa lỗi đăng nhập #api !cao @mai 17:00</code>: tự bóc tag, ưu tiên và hạn.</p>
+            <ul><li>Tag dùng chung, quản lý màu và tên</li><li>Lọc theo tag, hạn, ưu tiên</li><li>Lưu theo dự án, ngoài repo</li></ul>
+          </div>
+        </div>
+      </div>
+      <div class="shot-panel" id="p-notes" role="tabpanel" aria-labelledby="tab-notes" hidden>
+        <div class="shot-wrap">
+          <div class="shot"><img src="shots/notes.svg" width="1848" height="1075" loading="lazy" alt="Tab Ghi chú: ghi chú markdown theo dự án"></div>
+          <div class="shot-note">
+            <h3>Ghi chú — markdown theo dự án</h3>
+            <p>Ghi lại quyết định, ý tưởng, đoạn prompt hay dùng; xem trước markdown ngay bên cạnh.</p>
+            <ul><li>Phát hiện xung đột khi sửa ở hai nơi</li><li>Lưu ngoài repo, không lẫn vào commit</li><li>Dùng chung giữa terminal và web</li></ul>
           </div>
         </div>
       </div>
@@ -601,6 +634,11 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
 
       <div class="tabs" role="tablist" aria-label="Giao diện web của ateam">
         <button class="tab" role="tab" id="tab-wboard" aria-controls="p-wboard" aria-selected="true">📋 Bảng Kanban</button>
+        <button class="tab" role="tab" id="tab-wagents" aria-controls="p-wagents" aria-selected="false" tabindex="-1">👥 Agents</button>
+        <button class="tab" role="tab" id="tab-wworkflows" aria-controls="p-wworkflows" aria-selected="false" tabindex="-1">🧩 Workflows</button>
+        <button class="tab" role="tab" id="tab-wgrid" aria-controls="p-wgrid" aria-selected="false" tabindex="-1">🔲 Lưới terminal</button>
+        <button class="tab" role="tab" id="tab-wtodo" aria-controls="p-wtodo" aria-selected="false" tabindex="-1">✅ To-do</button>
+        <button class="tab" role="tab" id="tab-wnotes" aria-controls="p-wnotes" aria-selected="false" tabindex="-1">🗒 Ghi chú</button>
         <button class="tab" role="tab" id="tab-wcode" aria-controls="p-wcode" aria-selected="false" tabindex="-1">📝 Code + vim</button>
         <button class="tab" role="tab" id="tab-wgit" aria-controls="p-wgit" aria-selected="false" tabindex="-1">🌿 Git</button>
       </div>
@@ -642,6 +680,62 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
       <p class="web-cmd">Lần đầu cài thêm <code>aiohttp</code> vào môi trường của ateam, rồi mở trong thư mục dự án:</p>
       <div class="cmd reveal"><pre id="web-run">~/.ateam/venv/bin/python -m pip install aiohttp
 ateam web --open</pre><button class="copy" type="button" data-copy="web-run">Sao chép</button></div>
+
+      <div class="shot-panel" id="p-wagents" role="tabpanel" aria-labelledby="tab-wagents" hidden>
+        <div class="shot-wrap">
+          <div class="browser"><div class="term-bar"><i></i><i></i><i></i><span class="url">127.0.0.1:8000 · Agents</span></div>
+            <img src="shots/web-agents.webp" width="2880" height="1800" loading="lazy" alt="Trang Agents trên web: danh sách agent và agent tuỳ chỉnh"></div>
+          <div class="shot-note">
+            <h3>Agents — danh sách và tạo agent tuỳ chỉnh</h3>
+            <p>Danh sách gọn mọi agent, chỉnh model / effort, thêm CLI của bạn bằng form.</p>
+            <ul><li>Chat riêng từng agent</li><li>Mở CLI thật trong trình duyệt</li></ul>
+          </div>
+        </div>
+      </div>
+      <div class="shot-panel" id="p-wworkflows" role="tabpanel" aria-labelledby="tab-wworkflows" hidden>
+        <div class="shot-wrap">
+          <div class="browser"><div class="term-bar"><i></i><i></i><i></i><span class="url">127.0.0.1:8000 · Workflows</span></div>
+            <img src="shots/web-workflows.webp" width="2880" height="1800" loading="lazy" alt="Trang Workflows trên web"></div>
+          <div class="shot-note">
+            <h3>Workflows</h3>
+            <p>Dựng và chọn luồng làm việc, đặt luồng mặc định.</p>
+            <ul><li>✨ trưởng nhóm gợi ý các bước</li></ul>
+          </div>
+        </div>
+      </div>
+      <div class="shot-panel" id="p-wgrid" role="tabpanel" aria-labelledby="tab-wgrid" hidden>
+        <div class="shot-wrap">
+          <div class="browser"><div class="term-bar"><i></i><i></i><i></i><span class="url">127.0.0.1:8000 · Lưới</span></div>
+            <img src="shots/web-grid.webp" width="2880" height="1800" loading="lazy" alt="Lưới terminal trên web: bốn agent chạy CLI thật cạnh nhau"></div>
+          <div class="shot-note">
+            <h3>Lưới — CLI thật của cả đội cạnh nhau</h3>
+            <p>Mỗi ô là CLI tương tác thật của một agent. Kéo thả để sắp xếp, kéo khe để đổi kích thước.</p>
+            <ul><li>Bố cục có sẵn: 2 cột, 3 cột…</li><li>Nhớ bố cục theo dự án</li></ul>
+          </div>
+        </div>
+      </div>
+      <div class="shot-panel" id="p-wtodo" role="tabpanel" aria-labelledby="tab-wtodo" hidden>
+        <div class="shot-wrap">
+          <div class="browser"><div class="term-bar"><i></i><i></i><i></i><span class="url">127.0.0.1:8000 · To-do</span></div>
+            <img src="shots/web-todo.webp" width="2880" height="1800" loading="lazy" alt="To-do trên web"></div>
+          <div class="shot-note">
+            <h3>To-do có tag, hạn, ưu tiên</h3>
+            <p>Danh sách việc của bạn, kèm lịch và quản lý tag.</p>
+            <ul><li>Gõ nhanh <code>#tag !cao @mai</code></li></ul>
+          </div>
+        </div>
+      </div>
+      <div class="shot-panel" id="p-wnotes" role="tabpanel" aria-labelledby="tab-wnotes" hidden>
+        <div class="shot-wrap">
+          <div class="browser"><div class="term-bar"><i></i><i></i><i></i><span class="url">127.0.0.1:8000 · Ghi chú</span></div>
+            <img src="shots/web-notes.webp" width="2880" height="1800" loading="lazy" alt="Ghi chú markdown trên web"></div>
+          <div class="shot-note">
+            <h3>Ghi chú markdown</h3>
+            <p>Viết và xem trước markdown cạnh danh sách ghi chú.</p>
+            <ul><li>Lưu theo dự án</li></ul>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -734,6 +828,10 @@ ateam web --open</pre><button class="copy" type="button" data-copy="web-run">Sao
       <h2>Mới trong các bản gần đây.</h2>
       <p class="intro">Có cả trong terminal lẫn <code>ateam web</code>.</p>
       <div class="features">
+        <div class="card reveal" style="--c: var(--agy)"><div class="ic">👥</div><h3>Agents & Workflows tách riêng</h3><p>Trang <b>Agents</b> liệt kê agent có sẵn và agent tuỳ chỉnh, tạo CLI mới ngay tại đó. Trang <b>Workflows</b> chỉ còn luồng làm việc. Thanh bên được sắp xếp lại theo nhóm.</p></div>
+        <div class="card reveal" style="--c: var(--codex)"><div class="ic">🔲</div><h3>Lưới terminal</h3><p><code>/grid</code>: CLI thật của nhiều agent chạy cạnh nhau trong một lưới, kéo thả, đổi kích thước, nhớ bố cục.</p></div>
+        <div class="card reveal" style="--c: var(--grok)"><div class="ic">✅</div><h3>To-do có tag, hạn, ưu tiên</h3><p><code>/todo</code>: gõ <code>#tag !cao @mai 17:00</code> là tự bóc. Quản lý tag dùng chung, lịch xem hạn.</p></div>
+        <div class="card reveal" style="--c: var(--opencode)"><div class="ic">🗒</div><h3>Ghi chú markdown</h3><p><code>/notes</code>: ghi chú theo dự án, xem trước markdown, lưu ngoài repo.</p></div>
         <div class="card reveal" style="--c: var(--claude)"><div class="ic">📏</div><h3>Rule cho cả đội</h3><p><code>/rules</code>: những điều mọi agent phải tuân theo trong dự án, như <code>AGENTS.md</code> của Codex hay rule của Antigravity — ateam gửi kèm mọi prompt nên agent nào cũng nhận, kể cả agent tuỳ chỉnh. Bật/tắt từng rule, chỉ áp cho vài agent hoặc vai trò.</p></div>
         <div class="card reveal" style="--c: var(--opencode)"><div class="ic">❓</div><h3>Trưởng nhóm hỏi lại khi chưa rõ</h3><p>Không cần gõ <code>/grill</code>: lúc lập kế hoạch mà có điểm quan trọng chưa rõ, trưởng nhóm hỏi bạn kèm phương án gợi ý thay vì đoán, rồi mới chia việc.</p></div>
         <div class="card reveal" style="--c: var(--codex)"><div class="ic">💬</div><h3>Chat riêng với từng agent</h3><p>Ô 💬 ở mỗi agent: chat như trong CLI, giữ đúng phiên. <kbd>F7</kbd> phóng to một agent cả màn hình; ⌨ mở CLI thật tiếp tục phiên đó.</p></div>
@@ -759,7 +857,7 @@ ateam web --open</pre><button class="copy" type="button" data-copy="web-run">Sao
         <div class="card reveal" style="--c: var(--accent-2)"><div class="ic">📝</div><h3>Code kiểu vim trong app</h3><p>Tab Code: tô màu cú pháp, phím vim, nhiều file, tự nạp lại khi agent sửa. File 60 000 dòng vẫn mượt.</p></div>
         <div class="card reveal" style="--c: var(--codex)"><div class="ic">🌿</div><h3>Git đầy đủ</h3><p>Stage, commit (trưởng nhóm viết message), nhánh, pull/push, stash, lịch sử, revert — ngay trong app.</p></div>
         <div class="card reveal" style="--c: var(--claude)"><div class="ic">🎛</div><h3>Model & effort từng việc</h3><p><code>/model claude opus</code>, <code>/effort codex xhigh</code>, hoặc <code>/task codex@xhigh …</code> cho riêng một việc khó.</p></div>
-        <div class="card reveal" style="--c: var(--agy)"><div class="ic">🧩</div><h3>Agent & workflow của bạn</h3><p>Gemini CLI, Cursor CLI, Aider… CLI nào chạy headless cũng vào đội được. Workflow dựng sẵn: thiết kế → code → test — hoặc mô tả bằng lời, ✨ trưởng nhóm thiết kế các bước giúp bạn.</p></div>
+        <div class="card reveal" style="--c: var(--agy)"><div class="ic">🧩</div><h3>Agent & workflow của bạn</h3><p>Tạo ở trang Agents và Workflows. Gemini CLI, Cursor CLI, Aider… CLI nào chạy headless cũng vào đội được. Workflow dựng sẵn: thiết kế → code → test — hoặc mô tả bằng lời, ✨ trưởng nhóm thiết kế các bước giúp bạn.</p></div>
         <div class="card reveal" style="--c: var(--grok)"><div class="ic">💻</div><h3>Terminal tích hợp</h3><p><code>!yarn dev</code> chạy dev server ngay trong app, gợi ý script từ package.json / Makefile, bắt port.</p></div>
         <div class="card reveal" style="--c: var(--opencode)"><div class="ic">📎</div><h3>@file và dán ảnh</h3><p>Gõ <code>@</code> để nhắc file — tự đổi sang cú pháp của từng CLI. <kbd>Ctrl</kbd>+<kbd>V</kbd> dán ảnh chụp màn hình.</p></div>
         <div class="card reveal" style="--c: var(--claude)"><div class="ic">❓</div><h3>Agent hỏi lại, nhớ phiên</h3><p>Gặp chỗ mơ hồ, agent dừng hỏi bạn (<code>&lt;&lt;&lt;ASK&gt;&gt;&gt;</code>) thay vì đoán. <code>/retry</code>, vòng sửa test, <code>/continue</code> tiếp tục đúng phiên CLI (<code>--resume</code>) — đỡ token.</p></div>
@@ -822,6 +920,7 @@ ateam web --open</pre><button class="copy" type="button" data-copy="web-run">Sao
               <tr><td><code>/reject 3 thiếu xử lý lỗi</code></td><td>Trả lại task kèm góp ý để làm lại</td></tr>
               <tr><td><code>/git</code> · <code>/commit</code></td><td>Tab Git · commit (trống: trưởng nhóm viết message)</td></tr>
               <tr><td><code>/model claude opus</code></td><td>Model mặc định của một agent</td></tr>
+              <tr><td><code>/grid</code> · <code>/todo</code> · <code>/notes</code></td><td>Lưới terminal · việc cần làm · ghi chú</td></tr>
               <tr><td><code>/setup</code> · <code>/custom</code></td><td>Chọn đội · thêm agent & workflow của bạn</td></tr>
               <tr><td><code>/theme nord tím</code> · <code>/lang en</code></td><td>Đổi theme · giao diện tiếng Anh</td></tr>
               <tr><td><code>/usage</code></td><td>Lượt chạy, thời gian, hạn mức còn lại của từng CLI</td></tr>
