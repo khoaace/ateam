@@ -367,6 +367,19 @@ nội dung người dùng viết. Điểm gắn duy nhất: `Orchestrator.argv_f
 (`TextAreaVN`: ô nhiều dòng gõ tiếng Việt như `TextInput`). Web: `rules.js`, op `rules` / `rules_list` (đọc được ở
 `--readonly`).
 
+## To-do, tag và Ghi chú (`todos.py`, `notes.py`)
+
+Ba file JSON theo dự án ở `config.GLOBAL_DIR/{todos,tags,notes}/` (cùng tên file, `todos.path_for(root, kind)`),
+đọc có cache theo mtime, ghi tmp + replace. TUI và web cùng gọi `todos.apply` / `todos.apply_tag` / `notes.apply`; web
+gửi `todos`, `tags` và `notes.summaries` (bản rút gọn, không có nội dung) trong ảnh chụp trạng thái, nội dung ghi chú
+tải bằng op `note` / `get`. Tag lưu theo id nên đổi tên không phải sửa việc; xoá / gộp tag (`_retag`) sửa cả to-do lẫn
+ghi chú. Ô thêm nhanh: `todos.parse_quick` bóc `#tag` (chỉ số như `#19` thì không), `!`…`!!!` / `!cao`, `@hạn [giờ]`;
+`webui/todo.js` có bản bóc giống hệt để tô màu và xem trước, server bóc lại khi lưu (`plain` = không bóc). Nhóm theo
+hạn: `todos.bucket` (tuần tính tới hết Chủ nhật). Ghi chú lưu kèm `base` = `updated` đã đọc; file có bản mới hơn thì
+`notes.Conflict` → web trả `note_conflict`, TUI hỏi bằng `ConfirmScreen` (ghi đè = `force`). TUI: `tui_todo.py`
+(`TodoPanel`, `TodoEditScreen`, `TagScreen`, `NotesPanel`), nạp muộn trong `TeamApp.compose` để import ngược `tui`
+không vòng.
+
 ## Mở folder / dự án khác (`/open`)
 
 Mọi thứ (Orchestrator, DB, khoá phiên, cấu hình, `FileIndex`, `ShellManager`…) gắn với một `root`, nên đổi dự án là

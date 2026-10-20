@@ -23,7 +23,7 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import (__version__, clipboard, mentions, notify, palette, projects, reports, rules, shell, theme, todos,
+from . import (__version__, clipboard, mentions, notes, notify, palette, projects, reports, rules, shell, theme, todos,
                update, wizard)
 from .config import Config, found_models, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import DB, GOAL_ENDED, Goal, Task
@@ -291,10 +291,50 @@ def ui_strings() -> dict[str, str]:
         "accent_shared": tr("Màu nhấn lưu chung với giao diện terminal; sáng/tối chỉ áp cho trình duyệt này."),
         "sound": tr("Âm thanh"), "sound_on": tr("Phát âm thanh khi có thông báo"), "sound_volume": tr("Âm lượng"),
         "sound_test": tr("Nghe thử"),
-        "todo": tr("To-do"), "todo_ph": tr("Thêm việc cần làm rồi Enter…"),
-        "todo_left": tr("{n} việc chưa xong"), "todo_clear": tr("Xoá việc đã xong"), "todo_empty": tr("Chưa có việc nào"),
-        "todo_where": tr("Lưu riêng cho dự án này ở {path} — ngoài thư mục dự án, không cần .gitignore."),
-        "todo_edit": tr("Bấm đúp để sửa"), "todo_del": tr("Xoá"),
+        "todo": tr("To-do"), "todo_ph": tr("Thêm việc…  #tag  !cao  @mai 17:00"),
+        "todo_left": tr("{n} việc chưa xong"), "todo_clear": tr("Dọn việc đã xong"), "todo_empty": tr("Chưa có việc nào"),
+        "todo_where": tr("Lưu riêng cho dự án này ở {path} — ngoài thư mục dự án, dùng chung tag với Ghi chú."),
+        "todo_edit": tr("Bấm đúp để sửa"), "todo_del": tr("Xoá"), "todo_search": tr("Tìm việc…"),
+        "todo_group": tr("Nhóm theo"), "grp_due": tr("Hạn"), "grp_tag": tr("Tag"), "grp_pri": tr("Ưu tiên"),
+        "grp_manual": tr("Thủ công"), "f_due_all": tr("Hạn: tất cả"), "f_pri_all": tr("Ưu tiên: tất cả"),
+        "pri_0": tr("Không"), "pri_1": tr("Thấp"), "pri_2": tr("Vừa"), "pri_3": tr("Cao"),
+        "todo_hide_done": tr("Ẩn việc đã xong"), "todo_nomatch": tr("Không có việc nào khớp bộ lọc"),
+        "tag_all": tr("tất cả"), "tag_manage": tr("⚙ quản lý"), "tag_manage_btn": tr("⚙ Quản lý tag"),
+        "b_over": tr("Quá hạn"), "b_today": tr("Hôm nay"), "b_week": tr("Tuần này"), "b_later": tr("Sau này"),
+        "b_none": tr("Không có hạn"), "b_done": tr("Đã xong"), "b_untagged": tr("Không có tag"), "b_all": tr("Việc"),
+        "due_over_days": tr("quá {n} ngày"), "due_today": tr("hôm nay"), "due_tomorrow": tr("mai"),
+        "wd_short": tr("T2 T3 T4 T5 T6 T7 CN"),
+        "st_overview": tr("Tổng quan"), "st_over": tr("quá hạn"), "st_today": tr("hôm nay"), "st_open": tr("chưa xong"),
+        "st_week": tr("xong tuần này"),
+        "dr_todo": tr("Việc #{id}"), "dr_nav": tr("việc khác"), "dr_close": tr("đóng"), "f_pri": tr("Ưu tiên"),
+        "f_due": tr("Hạn"), "f_tags": tr("Tag"), "f_status": tr("Trạng thái"), "st_undone": tr("Chưa xong"),
+        "st_done": tr("Đã xong"), "f_desc": tr("Mô tả (markdown)"), "md_edit": tr("Sửa"), "md_view": tr("Xem"),
+        "md_split": tr("Chia đôi"), "desc_ph": tr("Chi tiết, checklist - [ ] …"), "no_due": tr("Chưa đặt hạn"),
+        "q_today": tr("Hôm nay"), "q_tomorrow": tr("Ngày mai"), "q_nextweek": tr("Tuần sau"), "q_pick": tr("Chọn ngày…"),
+        "add_tag": tr("＋ thêm tag"), "add_tag_ph": tr("tên tag rồi Enter"), "created_at": tr("tạo {t}"),
+        "updated_at": tr("sửa {t}"), "to_lead": tr("▶ Giao cho trưởng nhóm"),
+        "to_lead_tip": tr("Gửi tiêu đề + mô tả làm mục tiêu cho trưởng nhóm"), "del_todo_q": tr("Xoá việc “{v}”?"),
+        "cal_time": tr("Giờ"), "cal_clear": tr("Bỏ hạn"), "cal_hint": tr("gõ được: mai, t6, 24/10 17h"),
+        "qp_tags": tr("tag:"), "qp_due": tr("hạn:"), "qp_pri": tr("ưu tiên:"), "ac_new": tr("＋ Tạo tag mới “{v}”"),
+        "ac_count": tr("{n} việc · {m} ghi chú"), "kb_pick": tr("chọn"), "kb_add": tr("thêm"),
+        "m_open": tr("Mở chi tiết"), "m_due": tr("Đặt hạn…"),
+        "tag_title": tr("Quản lý tag"), "tag_sub": tr("dùng chung cho To-do và Ghi chú của dự án này"),
+        "tg_new_ph": tr("Tên tag mới, ví dụ: hotfix"), "tg_add": tr("＋ Thêm tag"),
+        "tg_help": tr("Xoá tag chỉ gỡ tag khỏi việc và ghi chú, không xoá chúng · Gộp: chuyển mọi việc/ghi chú sang "
+                      "tag khác rồi xoá tag này · Kéo ⋮⋮ để đổi thứ tự"),
+        "th_todos": tr("Việc"), "th_notes": tr("Ghi chú"), "th_open": tr("Chưa xong"), "tg_rename": tr("Đổi tên"),
+        "tg_merge": tr("Gộp vào…"), "tg_merge_go": tr("Gộp"), "tg_save": tr("Lưu"), "tg_hint": tr("Enter lưu · Esc huỷ"),
+        "tg_color": tr("Màu"), "tg_del_q": tr("Xoá tag “{v}”? Việc và ghi chú vẫn còn, chỉ gỡ tag."),
+        "tg_empty": tr("Chưa có tag nào — gõ #tag khi thêm việc, hoặc thêm ở đây"),
+        "notes": tr("Ghi chú"), "n_search": tr("Tìm trong ghi chú…"), "n_new": tr("＋ Ghi chú"),
+        "n_pinned": tr("Đã ghim"), "n_recent": tr("Gần đây"), "n_untitled": tr("Ghi chú không tên"),
+        "n_title_ph": tr("Tiêu đề"), "n_body_ph": tr("Viết markdown… # tiêu đề, - danh sách, - [ ] việc, `code`"),
+        "n_pin": tr("📌 Ghim"), "n_unpin": tr("📌 Bỏ ghim"), "n_del_q": tr("Xoá ghi chú “{v}”?"),
+        "n_saved": tr("● Đã lưu {t}"), "n_saving": tr("Đang lưu…"), "n_unsaved": tr("● Chưa lưu"),
+        "n_autosave": tr("tự lưu khi gõ"), "n_chars": tr("{n} ký tự"), "n_empty": tr("Chưa có ghi chú nào"),
+        "n_none": tr("Chọn một ghi chú bên trái hoặc tạo ghi chú mới"), "n_nomatch": tr("Không có ghi chú khớp"),
+        "n_conflict": tr("Ghi chú vừa được sửa ở nơi khác."), "n_reload": tr("Tải lại"), "n_overwrite": tr("Ghi đè"),
+        "n_to_todo": tr("＋ Tạo to-do từ dòng đã chọn"), "n_tag_add": tr("＋ tag"),
         "goal_plan": tr("Kế hoạch"), "goal_plan_title": tr("Kế hoạch mục tiêu #{id}"),
         "src_plan": tr("Kế hoạch ban đầu"), "src_workflow": tr("Theo workflow"), "src_review": tr("Bổ sung khi review"),
         "src_followup": tr("Tiếp tục / làm thêm"), "src_delegate": tr("Giao việc chéo"), "src_user": tr("Thêm tay"),
@@ -716,13 +756,15 @@ class WebApp:
         return {"t": "state", "goals": goals, "tasks": [task_json(t, full=False) for t in tasks], "agents": agents,
                 "grill": grill, "ask": ask, "jobs": jobs, "paused": o.paused, "worktree": o.use_worktree,
                 "lead": cfg.lead, "commit_agent": cfg.commit_agent, "workflow": cfg.default_workflow, "compacting": o.compacting,
-                "continue": reports.continue_candidates(self.db, tasks_all, goals_all), "busy": len(o.runs), "todos": todos.load(self.root)}
+                "continue": reports.continue_candidates(self.db, tasks_all, goals_all), "busy": len(o.runs), "todos": todos.load(self.root),
+                "tags": todos.load_tags(self.root), "notes": notes.summaries(self.root)}
 
     def hello(self) -> dict:
         from .tui import COMMANDS, HELP  # danh sách lệnh + trợ giúp dùng chung với TUI
         st = load_state()
         return {"t": "hello", "version": __version__, "project": self.root.name, "root": str(self.root),
                 "todo_file": str(todos.path_for(self.root)).replace(str(Path.home()), "~", 1),
+                "notes_file": str(notes.path_for(self.root)).replace(str(Path.home()), "~", 1),
                 "remote": self.remote.enabled, "readonly": self.remote.readonly,
                 "lang": get_lang(), "T": ui_strings(), "help": HELP,
                 "commands": [{"name": n, "args": a, "desc": d} for n, a, d in COMMANDS],
@@ -989,7 +1031,7 @@ class WebApp:
     async def handle(self, d: dict) -> tuple | None:
         """Một thao tác từ trình duyệt. Trả (thông báo, mức: info|ok|warn|error[, thêm]) hoặc None."""
         o, op = self.orch, d.get("op")
-        if self.remote.readonly and op not in READONLY_OPS:
+        if self.remote.readonly and op not in READONLY_OPS and not (op == "note" and d.get("action") == "get"):
             return tr("Chế độ chỉ xem (--readonly) — không làm được thao tác này"), "warn"
         if op == "submit":
             return await self.submit(str(d.get("text") or ""))
@@ -1111,9 +1153,33 @@ class WebApp:
             except ValueError:
                 return tr("Nhập nội dung việc cần làm"), "warn"
             return None
+        if op == "tag":
+            try:
+                todos.apply_tag(self.root, str(d.get("action") or ""), d)
+            except ValueError as e:
+                return (tr("Đã có tag “{name}”", name=todos.norm_tag(d.get("name"))) if str(e) == "exists"
+                        else tr("Nhập tên tag")), "warn"
+            return None
+        if op == "note":
+            return self.note_op(d)
         if op == "goal_plan":
             return self.goal_plan(d.get("goal"))
         return tr("Không hiểu thao tác {op}", op=op), "warn"
+
+    def note_op(self, d: dict) -> tuple | None:
+        """🗒 Ghi chú: get/add/save trả {"note": …} cho đúng tab hỏi (ref); save gặp bản mới hơn trả {"note_conflict": …}."""
+        action = str(d.get("action") or "")
+        try:
+            n = notes.apply(self.root, action, d)
+        except notes.Conflict as c:
+            return "", "", {"note_conflict": c.note}
+        if action == "to_todo":
+            return tr("✅ Đã thêm vào To-do"), "ok"
+        if action in ("get", "add", "save"):
+            if n is None:
+                return tr("Không thấy ghi chú #{id}", id=d.get("id")), "warn"
+            return "", "", {"note": n}
+        return None
 
     def goal_plan(self, gid) -> tuple:
         """📋 Kế hoạch của một mục tiêu (cả khi đã duyệt / xong): mọi task của nó, nhóm theo nguồn."""
@@ -1335,8 +1401,16 @@ class WebApp:
             return ("", "", {"open": {"plan": gid}}) if gid else (tr("Chưa có mục tiêu nào"), "warn")
         if cmd == "todo":
             if rest.strip():
-                todos.apply(self.root, "add", {"text": rest})
+                try:
+                    todos.apply(self.root, "add", {"text": rest})
+                except ValueError:
+                    return tr("Nhập nội dung việc cần làm"), "warn"
             return (tr("✅ Đã thêm vào To-do") if rest.strip() else ""), "ok", {"open": {"view": "todo"}}
+        if cmd == "notes":
+            n = notes.apply(self.root, "add", {"title": rest}) if rest.strip() else None
+            return "", "", {"open": {"view": "notes", "note": n["id"] if n else None}}
+        if cmd == "tags":
+            return "", "", {"open": {"view": "todo", "modal": "tags"}}
         if cmd == "grid":
             if rest.strip():
                 new, err = await self.grid.add(rest.strip())

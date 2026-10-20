@@ -1536,7 +1536,8 @@ def test_tui_plan_view_and_todo(env, project, monkeypatch):
     from ateam import todos
     from ateam.config import ensure_global_config, load_config
     from ateam.db import DB
-    from ateam.tui import PlanViewScreen, TeamApp, TodoList
+    from ateam.tui import PlanViewScreen, TeamApp
+    from ateam.tui_todo import TodoList
 
     async def main():
         ensure_global_config()
@@ -1581,7 +1582,10 @@ def test_tui_plan_view_and_todo(env, project, monkeypatch):
             assert inp.value == "" and not app.db.goals()[1:]  # Enter ở ô To-do không thành mục tiêu
             lst = app.query_one(TodoList)
             lst.focus()
-            lst.highlighted = 0
+            await pilot.press("g", "g", "g")               # nhóm theo hạn → tag → ưu tiên → thủ công
+            await pilot.pause(0.1)
+            assert app.query_one("#todo-tab").group == "manual"
+            lst.highlighted = 1                            # dòng 0 là tiêu đề nhóm
             await pilot.press("space")                     # xong
             await pilot.press("down", "shift+up")          # "sửa README" lên đầu
             await pilot.press("e")                         # sửa dòng đang chọn
@@ -1594,6 +1598,118 @@ def test_tui_plan_view_and_todo(env, project, monkeypatch):
             await pilot.pause(0.2)
             assert [x["text"] for x in todos.load(project)] == ["sửa README phần 2FA", "deploy"]
             assert not (project / ".ateam" / "todos").exists() and project not in todos.path_for(project).parents
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+
+
+def test_tui_todo_tags_due_and_notes(env, project, monkeypatch):
+    """To-do: ô nhập hiểu #tag !cao @mai, phím p/u/t, popup chi tiết, /tags; Ghi chú: /notes, tự lưu, xung đột với
+    bản web vừa sửa, Alt+T tạo việc từ dòng — cùng file với web."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import TabbedContent, TextArea
+
+    from ateam import notes, todos
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import ConfirmScreen, PromptScreen, TeamApp
+    from ateam.tui_todo import NoteList, TagScreen, TodoEditScreen, TodoList
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.3)
+            app.run_command("/todo")
+            await pilot.pause(0.2)
+            inp = app.query_one("#todo-input")
+            inp.focus()
+            inp.value = "sửa login #bug #ui !cao @mai 17:00"
+            await pilot.press("enter")
+            await pilot.pause(0.1)
+            x = todos.load(project)[0]
+            assert x["text"] == "sửa login" and x["priority"] == 3 and x["due"].endswith("T17:00")
+            assert todos.tag_names(project, x["tags"]) == ["bug", "ui"]
+            lst = app.query_one(TodoList)
+            lst.focus()
+            lst.highlighted = 1
+            await pilot.press("p")                         # ưu tiên vòng: cao → không
+            await pilot.pause(0.1)
+            assert todos.load(project)[0]["priority"] == 0
+            await pilot.press("u")                         # hạn: trống = bỏ hạn
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, PromptScreen)
+            app.screen.query_one("#prompt-in").value = ""
+            await pilot.press("enter")
+            await pilot.pause(0.1)
+            assert not todos.load(project)[0].get("due")
+            await pilot.press("t")                         # tag: thay bằng danh sách mới
+            await pilot.pause(0.2)
+            app.screen.query_one("#prompt-in").value = "ui, docs"
+            await pilot.press("enter")
+            await pilot.pause(0.1)
+            assert todos.tag_names(project, todos.load(project)[0]["tags"]) == ["ui", "docs"]
+            await pilot.press("enter")                     # chi tiết
+            await pilot.pause(0.3)
+            scr = app.screen
+            assert isinstance(scr, TodoEditScreen)
+            scr.query_one("#td-due").value = "24/12 9h"
+            scr.query_one("#td-desc", TextArea).load_text("- bước 1")
+            await pilot.press("ctrl+s")
+            await pilot.pause(0.2)
+            x = todos.load(project)[0]
+            assert x["due"].endswith("-12-24T09:00") and x["desc"] == "- bước 1"
+
+            app.run_command("/tags")
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, TagScreen)
+            names = [t["name"] for t in todos.load_tags(project)]
+            assert names == ["bug", "ui", "docs"]
+            await pilot.press("d")                         # xoá "bug": chỉ gỡ tag
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, ConfirmScreen)
+            app.screen.action_yes()
+            await pilot.pause(0.2)
+            assert [t["name"] for t in todos.load_tags(project)] == ["ui", "docs"] and todos.load(project)
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+
+            app.run_command("/notes Họp sprint")
+            await pilot.pause(0.3)
+            assert app.query_one("#tabs", TabbedContent).active == "tab-notes"
+            n = notes.load(project)[0]
+            assert n["title"] == "Họp sprint"
+            body = app.query_one("#note-body", TextArea)
+            assert body.has_focus
+            body.insert("- [ ] gửi biên bản")
+            await pilot.pause(0.1)
+            await pilot.press("ctrl+s")
+            await pilot.pause(0.2)
+            assert notes.get(project, n["id"])["body"] == "- [ ] gửi biên bản"
+            await pilot.press("alt+t")                     # dòng có con trỏ → việc mới
+            await pilot.pause(0.2)
+            assert todos.load(project)[-1]["text"] == "gửi biên bản"
+            # web sửa cùng ghi chú trong lúc TUI cũng đang gõ → hỏi ghi đè
+            notes.apply(project, "save", {"id": n["id"], "body": "bản web"})
+            body.insert("\nthêm")
+            await pilot.pause(0.1)
+            await pilot.press("ctrl+s")
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, ConfirmScreen)
+            await pilot.press("escape")                    # huỷ = tải lại bản mới
+            await pilot.pause(0.3)
+            assert app.query_one("#note-body", TextArea).text == "bản web"
+            app.query_one(NoteList).focus()
+            await pilot.press("p")                         # ghim
+            await pilot.pause(0.1)
+            assert notes.get(project, n["id"])["pinned"]
             await pilot.press("ctrl+q")
 
     asyncio.run(main())

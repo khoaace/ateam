@@ -642,6 +642,43 @@ def test_web_todos_outside_repo(env, project, monkeypatch):
     asyncio.run(cmds())
 
 
+def test_web_tags_and_notes(env, project, monkeypatch):
+    """Quản lý tag (op tag) và 🗒 Ghi chú (op note): ảnh chụp gửi tag + bản rút gọn ghi chú, lưu xung đột trả bản mới
+    cho tab đó tự hỏi, /notes và /tags mở đúng chỗ."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    from ateam import notes, todos
+    wa = _web_app(env, project, monkeypatch)
+
+    async def main():
+        await wa.handle({"op": "todo", "action": "add", "text": "sửa login #bug !cao @mai"})
+        snap = wa.snapshot()
+        assert [t["name"] for t in snap["tags"]] == ["bug"] and snap["todos"][0]["priority"] == 3
+        bug = snap["tags"][0]["id"]
+        assert (await wa.handle({"op": "tag", "action": "add", "name": " "}))[1] == "warn"
+        assert await wa.handle({"op": "tag", "action": "add", "name": "UI"}) is None
+        r = await wa.handle({"op": "tag", "action": "rename", "id": bug, "name": "ui"})
+        assert r[1] == "warn" and "ui" in r[0]
+        r = await wa.handle({"op": "note", "action": "add", "title": "Họp", "tags": ["bug"]})
+        n = r[2]["note"]
+        assert n["tags"] == [bug] and wa.snapshot()["notes"][0]["title"] == "Họp"
+        r = await wa.handle({"op": "note", "action": "save", "id": n["id"], "body": "- [ ] a", "base": n["updated"]})
+        assert r[2]["note"]["body"] == "- [ ] a"
+        r = await wa.handle({"op": "note", "action": "save", "id": n["id"], "body": "cũ", "base": n["updated"]})
+        assert r[2]["note_conflict"]["body"] == "- [ ] a"
+        assert (await wa.handle({"op": "note", "action": "get", "id": 999}))[1] == "warn"
+        assert (await wa.handle({"op": "note", "action": "to_todo", "id": n["id"], "text": "a"}))[1] == "ok"
+        assert todos.load(project)[-1]["tags"] == [bug]
+        await wa.handle({"op": "tag", "action": "delete", "id": bug})
+        assert notes.get(project, n["id"])["tags"] == [] and [t["name"] for t in wa.snapshot()["tags"]] == ["ui"]
+        r = await wa.command("/notes Ý tưởng")
+        assert r[2]["open"]["view"] == "notes" and notes.get(project, r[2]["open"]["note"])["title"] == "Ý tưởng"
+        assert (await wa.command("/tags"))[2]["open"] == {"view": "todo", "modal": "tags"}
+        assert wa.hello()["notes_file"].endswith(notes.path_for(project).name)
+
+    asyncio.run(main())
+
+
 def test_web_continue_does_not_open_drawer(env, project, monkeypatch):
     """/continue t<id> …: báo bằng toast có nút "Xem" (open.task_link) — không tự bật ngăn chi tiết che bảng việc."""
     import pytest

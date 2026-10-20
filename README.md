@@ -189,9 +189,17 @@ ateam web --open           # mở http://127.0.0.1:8000  ·  đổi cổng: atea
   `/search [từ khoá]` mở cùng chức năng (Enter mở file đúng chỗ · r thay trong file · x bỏ file · Ctrl+R thay tất cả).
 - Dán ảnh (⌘V) hoặc kéo-thả file ảnh vào ô nhập: ảnh lưu vào `.ateam/images/` và chèn `@ảnh` vào prompt như Ctrl+V
   của TUI — ảnh đọc ngay trong trình duyệt nên dùng được cả khi mở từ điện thoại / qua tunnel.
-- ✅ **To-do** (tab trên thanh bên, cả TUI: tab ✅ To-do hoặc `/todo [việc]`): danh sách việc cần làm riêng cho từng dự án —
-  Enter để thêm, tick xong, bấm đúp để sửa, kéo để đổi thứ tự (TUI: Space · e · d · Shift+↑↓ · c). Lưu ở
-  `~/.config/ateam/todos/`, **không** nằm trong thư mục dự án nên không cần `.gitignore`; TUI và web dùng chung.
+- ✅ **To-do** (tab trên thanh bên, cả TUI: tab ✅ To-do hoặc `/todo [việc]`): quản lý việc riêng cho từng dự án —
+  **tag** (màu, lọc, gộp, đổi tên ở popup **Quản lý tag** / `/tags`), **hạn** (nhóm Quá hạn · Hôm nay · Tuần này · Sau
+  này, lịch chọn ngày), **ưu tiên** và **mô tả markdown** (checklist `- [ ]`). Ô thêm nhanh hiểu
+  `Sửa login #bug !cao @mai 17:00` (`@hôm-nay` `@t6` `@tuần-sau` `@24/10` `@17h`; `!`/`!!`/`!!!`). Bấm một việc mở
+  ngăn chi tiết, có nút giao việc đó cho trưởng nhóm. Nhóm theo hạn / tag / ưu tiên / thủ công (kéo để đổi thứ tự).
+  TUI: Enter chi tiết · Space xong · t tag · u hạn · p ưu tiên · g nhóm · f lọc tag · h ẩn việc xong · T quản lý tag.
+- 🗒 **Ghi chú** (`/notes [tiêu đề]`, TUI: tab 🗒 Ghi chú): ghi chú markdown theo dự án, dùng chung tag với To-do —
+  ghim, tìm (`#tag` để lọc), soạn / xem trước / chia đôi, tự lưu khi gõ; hai nơi cùng sửa thì hỏi tải lại hay ghi đè.
+  Chọn vài dòng → **＋ Tạo to-do** (TUI: Alt+T) hoặc gửi cho trưởng nhóm.
+  To-do, tag và ghi chú lưu ở `~/.config/ateam/{todos,tags,notes}/`, **không** nằm trong thư mục dự án nên không cần
+  `.gitignore`; TUI và web dùng chung.
 - 📋 **Xem lại kế hoạch**: nút 📋 trên thẻ mục tiêu (TUI và ô nhập web: `/plan [mục tiêu]`) mở toàn bộ kế hoạch của
   trưởng nhóm kể cả khi đã duyệt / đã xong — task chia theo nguồn (kế hoạch ban đầu, bổ sung khi review, tiếp tục,
   giao việc chéo), trạng thái, chọn dòng xem prompt.
