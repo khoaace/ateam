@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.31.0 — 20/10/2026
 
 - **Trang 🤖 Agents thay tab Đội** (web và TUI): danh sách gọn mọi agent kèm agent tuỳ chỉnh (thêm / sửa / xoá ngay
   tại đây), thay cho lưới ô log kiểu terminal. Chat riêng vẫn còn: web mở popup 💬 Chat, TUI bấm vào agent (F7) để
@@ -9,6 +9,7 @@
   trang Agents.
 - Sidebar web xếp theo nhóm *Điều phối* (Bảng việc, Agents, Workflows) · *Mã nguồn* (Code, Git, Terminal, Lưới) ·
   *Cá nhân* (To-do, Ghi chú) · *Báo cáo* (Thống kê); tab TUI theo cùng thứ tự (Alt+số đổi theo).
+- **Landing page** cập nhật: tab Agents, Workflows, To-do, Ghi chú, Lưới và ảnh chụp mới.
 
 ## 0.30.0 — 20/10/2026
 
