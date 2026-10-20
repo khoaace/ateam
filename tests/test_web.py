@@ -406,6 +406,10 @@ def test_web_code_files(env, project, monkeypatch):
             assert f["text"] == "print('hi')\n" and f["newline"] == "\r\n" and f["language"] == "Python"
             r = wa.code.save({"path": "src/app.py", "text": "print('xin chào')\n", "mtime": f["mtime"]})
             assert r[1] == "ok" and r[2]["save"]["mtime"]
+            # mọi tab đang mở hỏi mtime một lần (agent sửa file ở tab khác); file không còn / ngoài dự án → 0
+            st = await (await client.get("/api/file/stat?p=src/app.py&p=khong-co.txt&p=../ngoai.txt")).json()
+            assert st["mtimes"] == {"src/app.py": r[2]["save"]["mtime"], "khong-co.txt": 0.0, "../ngoai.txt": 0.0}
+            assert (await (await client.get("/api/file/stat?path=src/app.py")).json())["mtime"] == r[2]["save"]["mtime"]
             assert (project / "src" / "app.py").read_bytes() == "print('xin chào')\r\n".encode()  # giữ CRLF
             # agent sửa file trong lúc đang mở -> xung đột, ghi đè khi force
             r = wa.code.save({"path": "src/app.py", "text": "x\n", "mtime": f["mtime"]})

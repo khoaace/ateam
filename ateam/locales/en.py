@@ -4000,4 +4000,26 @@ EN: dict[str, str] = {
         'Limits reported by each CLI:',
     '📊 Đang hỏi hạn mức…':
         '📊 Asking for limits…',
+    'Mất kết nối tới ateam web — thử lại sau':
+        'Lost connection to ateam web — try again later',
+    'Làm mới danh sách file':
+        'Refresh file list',
+    '{path} vừa đổi trên đĩa (có thể do agent sửa) trong lúc bạn đang sửa dở':
+        '{path} changed on disk (maybe an agent edited it) while you have unsaved edits',
+    'Đã lưu {n} file':
+        'Saved {n} files',
+    'Đã lưu {n} file · chưa lưu: {v}':
+        'Saved {n} files · not saved: {v}',
+    'File mới ở đây…':
+        'New file here…',
+    'Tìm trong thư mục này':
+        'Search in this folder',
+    'Đổi tên / chuyển…':
+        'Rename / move…',
+    'Xoá (vào Thùng rác)':
+        'Delete (to Trash)',
+    'Chép đường dẫn':
+        'Copy path',
+    'Xem thay đổi git':
+        'Show git changes',
 }

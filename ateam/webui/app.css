@@ -1247,6 +1247,12 @@ body.readonly .card-actions { display: none !important; }
 .code-filter-row { display: flex; align-items: center; gap: 6px; margin: 8px; }
 .code-side .code-filter-row .field { margin: 0; flex: 1; min-width: 0; }
 .code-filter-row .icon-btn { flex: none; font-size: 16px; }
+/* menu chuột phải (cây file tab Code) */
+.ctx-menu { position: fixed; z-index: 1000; min-width: 190px; padding: 4px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-pop), 0 6px 20px rgba(0, 0, 0, .25); display: flex; flex-direction: column; }
+.ctx-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border: 0; background: transparent; color: var(--text); font: 12.5px/1.5 var(--font); text-align: left; cursor: pointer; border-radius: var(--radius); }
+.ctx-item:hover, .ctx-item:focus { background: var(--accent-soft); outline: none; }
+.ctx-item.danger { color: var(--failed); }
+.ctx-sep { height: 1px; margin: 4px 2px; background: var(--border); }
 
 /* giải quyết xung đột git (git.js: resolve) */
 .cf-body { display: flex; flex-direction: column; gap: 10px; max-height: 75vh; overflow: auto; }

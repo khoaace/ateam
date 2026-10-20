@@ -289,6 +289,13 @@ def ui_strings() -> dict[str, str]:
         "code_md_edit": tr("Sửa"), "code_md_split": tr("Chia đôi"), "code_md_view": tr("Xem trước"),
         "code_md_title": tr("Xem trước markdown (Ctrl/⌘+Shift+V đổi chế độ)"),
         "code_load_fail": tr("Không nạp được editor (vendor/codemirror.js)"),
+        "code_net_fail": tr("Mất kết nối tới ateam web — thử lại sau"), "code_refresh": tr("Làm mới danh sách file"),
+        "code_changed_tab": tr("{path} vừa đổi trên đĩa (có thể do agent sửa) trong lúc bạn đang sửa dở", path="{path}"),
+        "code_saved_all": tr("Đã lưu {n} file", n="{n}"),
+        "code_saved_some": tr("Đã lưu {n} file · chưa lưu: {v}", n="{n}", v="{v}"),
+        "ctx_open": tr("Mở"), "ctx_new_here": tr("File mới ở đây…"), "ctx_search_in": tr("Tìm trong thư mục này"),
+        "ctx_rename": tr("Đổi tên / chuyển…"), "ctx_delete": tr("Xoá (vào Thùng rác)"),
+        "ctx_copy_path": tr("Chép đường dẫn"), "ctx_git_diff": tr("Xem thay đổi git"),
         # --- gợi ý ô nhập
         "cmds": tr("Lệnh"), "sg_agent": tr("Agent"), "sg_agent_task": tr("Agent · thêm :model hoặc @effort"),
         "sg_model": tr("Model của {v}"), "sg_effort": tr("Effort của {v}"), "sg_task": tr("Task"),

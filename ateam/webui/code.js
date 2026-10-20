@@ -9,8 +9,11 @@
 window.CodeView = (() => {
   const LIMIT = 10;
   const C = { view: null, bufs: new Map(), order: [], cur: null, open: new Set([""]), tree: {}, filter: "",
-    loading: null, comp: null, warned: {}, timer: null, mode: "normal", wrap: false };
+    loading: null, comp: null, warned: {}, timer: null, ticks: 0, mode: "normal", wrap: false, restored: false };
   const el = () => $("#code");
+  async function getJSON(url) {  // mất kết nối / server lỗi → {error} thay vì lỗi không ai bắt
+    try { return await (await fetch(url)).json(); } catch (e) { return { error: t("code_net_fail") }; }
+  }
 
   /* ---------------------------------------------------------------- nạp CodeMirror */
   function loadCM() {
@@ -84,7 +87,8 @@ window.CodeView = (() => {
         </div>
         <div class="side-pane" id="side-files">
           <div class="code-filter-row"><input class="field one" id="code-filter" placeholder="${esc(t("code_filter"))}" autocomplete="off" spellcheck="false">
-            <button class="icon-btn" id="code-new" title="${esc(t("pal_new"))}" aria-label="${esc(t("pal_new"))}">＋</button></div>
+            <button class="icon-btn" id="code-new" title="${esc(t("pal_new"))}" aria-label="${esc(t("pal_new"))}">＋</button>
+            <button class="icon-btn" id="code-refresh" title="${esc(t("code_refresh"))}" aria-label="${esc(t("code_refresh"))}">⟳</button></div>
           <div class="tree" id="code-tree"></div>
         </div>
         <div class="side-pane hidden" id="side-search">${searchPane()}</div>
@@ -100,6 +104,7 @@ window.CodeView = (() => {
     bindSearch();
     $("#code-filter").addEventListener("input", (e) => { C.filter = e.target.value; renderTree(); });
     $("#code-new").addEventListener("click", () => runCmd("new_file"));
+    $("#code-refresh").addEventListener("click", () => refreshTree(true));
     $("#code-filter").addEventListener("keydown", (e) => {
       if (e.key === "Enter") { const f = $("#code-tree .tnode.file"); if (f) open(f.dataset.path); }
       if (e.key === "Escape" && C.filter) { e.target.value = C.filter = ""; renderTree(); e.stopPropagation(); }
@@ -109,9 +114,21 @@ window.CodeView = (() => {
   /* ---------------------------------------------------------------- cây thư mục */
   async function loadDir(dir, force) {
     if (C.tree[dir] && !force) return C.tree[dir];
-    try { C.tree[dir] = await (await fetch(`/api/tree?dir=${encodeURIComponent(dir)}${force ? "&refresh=1" : ""}`)).json(); }
-    catch (e) { C.tree[dir] = []; }
+    const r = await getJSON(`/api/tree?dir=${encodeURIComponent(dir)}${force ? "&refresh=1" : ""}`);
+    C.tree[dir] = Array.isArray(r) ? r : C.tree[dir] || [];
     return C.tree[dir];
+  }
+  /* agent tạo / xoá file: tải lại các thư mục đang mở (vài giây một lần, ⟳ thì ngay), chỉ vẽ lại khi có đổi */
+  async function refreshTree(force) {
+    if (!force && (S.view !== "code" || document.hidden)) return;
+    const dirs = [""].concat([...C.open].filter((d) => d && C.tree[d]));
+    for (const d of Object.keys(C.tree)) if (!dirs.includes(d)) delete C.tree[d];  // thư mục đang đóng: nạp lại khi mở
+    let changed = false;
+    for (const [i, d] of dirs.entries()) {
+      const r = await getJSON(`/api/tree?dir=${encodeURIComponent(d)}${i ? "" : force ? "&refresh=1" : "&age=5"}`);
+      if (Array.isArray(r) && JSON.stringify(r) !== JSON.stringify(C.tree[d])) { C.tree[d] = r; changed = true; }
+    }
+    if (changed || force) renderTree();
   }
   function icon(n) {
     if (n.dir) return C.open.has(n.path) ? "▾" : "▸";
@@ -132,7 +149,8 @@ window.CodeView = (() => {
     if (!box) return;
     if (C.filter.trim()) {
       const seq = ++filterSeq;
-      const files = await (await fetch(`/api/files?n=80&q=${encodeURIComponent(C.filter.trim())}`)).json();
+      const r = await getJSON(`/api/files?n=80&q=${encodeURIComponent(C.filter.trim())}`);
+      const files = Array.isArray(r) ? r : [];
       if (seq !== filterSeq) return;
       box.innerHTML = files.map((f) => {
         const dir = f.endsWith("/");
@@ -250,10 +268,12 @@ window.CodeView = (() => {
     renderTabs(); renderStatus(); renderPreview();
     revealInTree(path);
     if (!b.syms) loadSyms(b);
+    persist();
   }
   /* symbol (hàm, class, heading) của file: thanh "› đang ở đâu" và palette @ — tính lại khi mở / lưu */
   async function loadSyms(b) {
-    try { b.syms = await (await fetch("/api/symbols?path=" + encodeURIComponent(b.path))).json(); } catch (e) { b.syms = []; }
+    const r = await getJSON("/api/symbols?path=" + encodeURIComponent(b.path));
+    b.syms = Array.isArray(r) ? r : [];
     if (b.path === C.cur) renderStatus();
     return b.syms;
   }
@@ -281,9 +301,14 @@ window.CodeView = (() => {
     await show();
     if (!path) return;
     if (C.bufs.has(path)) { activate(path, line, col, len); return; }
-    const r = await (await fetch("/api/file?path=" + encodeURIComponent(path))).json();
+    const r = await getJSON("/api/file?path=" + encodeURIComponent(path));
     if (r.dir) { C.filter = path + "/"; $("#code-filter").value = C.filter; renderTree(); return; }
     if (r.error) { toast(r.error, "warn"); return; }
+    addBuf(r);
+    activate(r.path, line, col, len);
+    if (r.new) toast(t("code_new_file"), "info");
+  }
+  function addBuf(r) {  // r: trả lời của /api/file
     const lang = CM.languageFor(r.path);
     const b = { path: r.path, saved: r.text, mtime: r.mtime, ro: r.read_only, note: r.note, newline: r.newline, lang,
       language: r.language, dirty: false, state: null };
@@ -294,8 +319,35 @@ window.CodeView = (() => {
       if (!old) break;
       C.order.splice(C.order.indexOf(old), 1); C.bufs.delete(old);
     }
-    activate(r.path, line, col, len);
-    if (r.new) toast(t("code_new_file"), "info");
+    return b;
+  }
+  /* nhớ file đang mở + vị trí con trỏ theo dự án (tải lại trang thì mở lại) */
+  const sessKey = () => "ateam-code:" + (S.meta.root || "");
+  function persist() {
+    const pos = {};
+    for (const p of C.order) {
+      const st = p === C.cur && C.view ? C.view.state : C.bufs.get(p).state;
+      if (st) pos[p] = st.selection.main.head;
+    }
+    try { localStorage.setItem(sessKey(), JSON.stringify({ order: C.order, cur: C.cur, pos })); } catch (e) { /* chặn lưu */ }
+  }
+  async function restore() {
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem(sessKey()) || "null"); } catch (e) { /* chặn đọc */ }
+    if (!s || !Array.isArray(s.order)) return;
+    const pos = s.pos || {};
+    for (const p of s.order.slice(0, LIMIT)) {
+      if (C.bufs.has(p)) continue;
+      const r = await getJSON("/api/file?quiet=1&path=" + encodeURIComponent(p));
+      if (r.error || r.dir || r.new) continue;  // file không còn
+      const b = addBuf(r);
+      b.state = CM.EditorState.create({ doc: b.saved, extensions: extensions(b), selection: { anchor: Math.min(pos[p] || 0, b.saved.length) } });
+    }
+    const cur = C.bufs.has(s.cur) ? s.cur : C.order[0];
+    if (!cur) return;
+    activate(cur);
+    const head = C.view.state.selection.main.head;
+    C.view.dispatch({ effects: CM.EditorView.scrollIntoView(head, { y: "center" }) });
   }
   async function close(path, force) {
     const b = path && C.bufs.get(path);
@@ -314,6 +366,7 @@ window.CodeView = (() => {
       else { C.view.setState(CM.EditorState.create({ doc: "", extensions: [CM.EditorState.readOnly.of(true), comps().theme.of(isDark() ? CM.oneDark : [])] })); renderStatus(); renderPreview(); }
     }
     renderTabs();
+    persist();
   }
   function cycle(d) {
     if (!C.order.length) return;
@@ -323,33 +376,38 @@ window.CodeView = (() => {
   async function save(force = false) {
     const b = C.cur && C.bufs.get(C.cur);
     if (!b) return false;
-    const text = C.view.state.doc.toString();
+    const ok = await saveBuf(b, C.view.state.doc.toString(), force);
+    renderTabs(); renderStatus();
+    return ok;
+  }
+  /* ghi một buffer (đang xem hoặc ở tab khác); file đã đổi trên đĩa / chỉ đọc → hỏi ghi đè */
+  async function saveBuf(b, text, force = false) {
     const r = await request("save", { path: b.path, text, mtime: b.mtime, force });
     const sv = r.save || {};
     if (sv.conflict) {
-      if (await confirmBox(t("code_conflict"), t("code_conflict_q", { path: b.path }), t("code_overwrite"))) return save(true);
-      return false;
+      return await confirmBox(t("code_conflict"), t("code_conflict_q", { path: b.path }), t("code_overwrite")) && saveBuf(b, text, true);
     }
     if (sv.read_only) {
-      if (await confirmBox(t("code_readonly_title"), t("code_readonly_q", { v: b.note }), t("code_write_anyway"))) return save(true);
-      return false;
+      return await confirmBox(t("code_readonly_title"), t("code_readonly_q", { v: b.note }), t("code_write_anyway")) && saveBuf(b, text, true);
     }
-    if (sv.mtime) {
-      b.saved = text; b.mtime = sv.mtime; b.dirty = false; C.warned[b.path] = 0;
-      renderTabs(); renderStatus(); loadSyms(b);
-      return true;
-    }
-    return false;
+    if (!sv.mtime) return false;
+    const st = b.path === C.cur && C.view ? C.view.state : b.state;
+    b.saved = text; b.mtime = sv.mtime; b.dirty = !!st && st.doc.toString() !== text; C.warned[b.path] = 0;
+    loadSyms(b);
+    return true;
   }
   async function reload(quiet, path) {
     const b = C.bufs.get(path || C.cur);
     if (!b) return;
-    if (b.path !== C.cur) {  // file mở ở tab khác (vd vừa thay thế): nạp lại khi chuyển tới
-      const r = await (await fetch("/api/file?quiet=1&path=" + encodeURIComponent(b.path))).json();
-      if (!r.error) { b.saved = r.text; b.mtime = r.mtime; b.dirty = false; b.state = null; renderTabs(); }
+    const r = await getJSON("/api/file?quiet=1&path=" + encodeURIComponent(b.path));
+    if (b.path !== C.cur) {  // file mở ở tab khác (vd vừa thay thế, agent sửa): nạp lại khi chuyển tới
+      if (r.error) return;
+      const head = b.state ? Math.min(b.state.selection.main.head, r.text.length) : 0;  // giữ chỗ con trỏ
+      b.saved = r.text; b.mtime = r.mtime; b.dirty = false; b.syms = null;
+      b.state = CM.EditorState.create({ doc: r.text, extensions: extensions(b), selection: { anchor: head } });
+      renderTabs();
       return;
     }
-    const r = await (await fetch("/api/file?quiet=1&path=" + encodeURIComponent(b.path))).json();
     if (r.error) { toast(r.error, "warn"); return; }
     const head = C.view.state.selection.main.head;
     b.saved = r.text; b.mtime = r.mtime; b.dirty = false; b.ro = r.read_only; b.note = r.note;
@@ -359,15 +417,24 @@ window.CodeView = (() => {
     renderTabs(); renderStatus(); renderPreview();
     toast(quiet === "disk" ? t("code_reloaded_disk") : t("code_reloaded"), "info");
   }
-  async function checkDisk() {  // agent sửa file đang mở
-    const b = C.cur && C.bufs.get(C.cur);
-    if (!b || S.view !== "code" || document.hidden) return;
-    try {
-      const r = await (await fetch("/api/file/stat?path=" + encodeURIComponent(b.path))).json();
-      if (!r.mtime || r.mtime === b.mtime || C.cur !== b.path) return;
-      if (!b.dirty) reload("disk");
-      else if (C.warned[b.path] !== r.mtime) { C.warned[b.path] = r.mtime; toast(t("code_changed_dirty"), "warn"); }
-    } catch (e) { /* bỏ qua */ }
+  async function checkDisk() {  // agent sửa file đang mở (mọi tab, không chỉ file đang xem)
+    if (S.view !== "code" || document.hidden || !C.order.length) return;
+    const r = await getJSON("/api/file/stat?" + C.order.map((p) => "p=" + encodeURIComponent(p)).join("&"));
+    for (const [path, mtime] of Object.entries(r.mtimes || {})) {
+      const b = C.bufs.get(path);
+      if (!b || !mtime || mtime === b.mtime) continue;
+      const cur = path === C.cur;
+      const dirty = b.dirty || (cur && C.view && C.view.state.doc.toString() !== b.saved);
+      if (!dirty) reload("disk", path);
+      else if (C.warned[path] !== mtime) {
+        C.warned[path] = mtime;
+        toast(cur ? t("code_changed_dirty") : t("code_changed_tab", { path }), "warn");
+      }
+    }
+  }
+  function tick() {
+    checkDisk();
+    if (++C.ticks % 3 === 0) refreshTree();
   }
 
   /* ---------------------------------------------------------------- 🔍 tìm & thay trong dự án */
@@ -617,16 +684,110 @@ window.CodeView = (() => {
   }
   async function saveAll() {
     stash();
+    let n = 0;
+    const skipped = [];
     for (const b of C.bufs.values()) {
-      if (b.path === C.cur || !b.state) continue;
+      if (!b.state) continue;
       const text = b.state.doc.toString();
       if (text === b.saved) continue;
-      const r = await request("save", { path: b.path, text, mtime: b.mtime });
-      if ((r.save || {}).mtime) { b.saved = text; b.mtime = r.save.mtime; b.dirty = false; }
+      if (await saveBuf(b, text)) n++; else skipped.push(b.path);
     }
-    if (C.cur) await save();
-    renderTabs();
+    renderTabs(); renderStatus();
+    if (skipped.length) toast(t("code_saved_some", { n, v: skipped.join(", ") }), "warn");
+    else if (n > 1) toast(t("code_saved_all", { n }), "ok");
   }
+  /* thao tác file — dùng chung cho palette (file đang mở) và menu chuột phải trên cây */
+  async function copyText(v) {
+    try { await navigator.clipboard.writeText(v); toast(t("pal_copied", { v }), "info"); } catch (e) { toast(v, "info"); }
+  }
+  async function newFile(dir) {
+    const p = await inputBox(t("pal_new"), t("pal_path"), dir);
+    if (p && (await request("file_new", { path: p })).ok) { C.tree = {}; await open(p); }
+  }
+  const under = (path) => [...C.bufs.keys()].filter((p) => p === path || p.startsWith(path + "/"));
+  async function renameFile(path, line) {
+    const open_ = under(path);
+    if (open_.some((p) => C.bufs.get(p).dirty)) { toast(t("pal_save_first"), "warn"); return; }
+    const to = (await inputBox(t("pal_rename", { v: path }), t("pal_path"), path) || "").replace(/\/$/, "");
+    if (!to || to === path) return;
+    if (!(await request("file_rename", { path, to })).ok) return;
+    const was = open_.includes(C.cur) ? C.cur : null;
+    for (const p of open_) await close(p, true);
+    C.tree = {};
+    if (was) await open(to + was.slice(path.length), line); else renderTree();
+  }
+  async function deleteFile(path) {
+    if (!await confirmBox(t("pal_delete"), t("pal_delete_q", { v: path }), t("pal_delete_yes"))) return;
+    if ((await request("file_delete", { path })).ok) { if (C.bufs.has(path)) await close(path, true); C.tree = {}; renderTree(); }
+  }
+  function searchIn(dir) {  // 🔍 chỉ trong thư mục này
+    sidePane("search");
+    SR.include = dir; SR.more = true;
+    $("#sr-inc").value = dir; $("#sr-filters").classList.remove("hidden");
+    if (SR.query) runSearch();
+  }
+
+  /* menu chuột phải: items = [{label, run, key?, danger?} | "-"] */
+  let CTX = null;
+  function closeCtx() {
+    if (!CTX) return;
+    CTX.m.remove();
+    document.removeEventListener("mousedown", CTX.off, true);
+    document.removeEventListener("keydown", CTX.off, true);
+    CTX = null;
+  }
+  function ctxMenu(e, items) {
+    e.preventDefault();
+    closeCtx();
+    const m = document.createElement("div");
+    m.className = "ctx-menu";
+    m.setAttribute("role", "menu");
+    m.innerHTML = items.map((it, i) => it === "-" ? `<div class="ctx-sep"></div>` :
+      `<button class="ctx-item${it.danger ? " danger" : ""}" data-i="${i}" role="menuitem">${esc(it.label)}${it.key ? `<span class="pal-key">${esc(it.key)}</span>` : ""}</button>`).join("");
+    document.body.appendChild(m);
+    const r = m.getBoundingClientRect();
+    m.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 4)) + "px";
+    m.style.top = Math.max(4, Math.min(e.clientY, innerHeight - r.height - 4)) + "px";
+    m.addEventListener("click", (ev) => { const b = ev.target.closest("[data-i]"); if (b) { closeCtx(); items[+b.dataset.i].run(); } });
+    const off = (ev) => {
+      if (ev.type === "mousedown") { if (!m.contains(ev.target)) closeCtx(); return; }
+      const btns = $$(".ctx-item", m), i = btns.indexOf(document.activeElement);
+      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeCtx(); }
+      else if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+        ev.preventDefault(); ev.stopPropagation();
+        btns[(i + (ev.key === "ArrowDown" ? 1 : -1) + btns.length) % btns.length].focus();
+      }
+    };
+    CTX = { m, off };
+    document.addEventListener("mousedown", off, true);
+    document.addEventListener("keydown", off, true);
+    const first = $(".ctx-item", m);
+    if (first) first.focus();
+  }
+  function treeMenu(e, n) {
+    const path = n.dataset.path;
+    if (n.dataset.dir === "1") {
+      return ctxMenu(e, [
+        { label: t("ctx_new_here"), run: () => newFile(path + "/") },
+        { label: t("ctx_search_in"), run: () => searchIn(path) },
+        "-",
+        { label: t("ctx_rename"), run: () => renameFile(path) },
+        { label: t("ctx_copy_path"), run: () => copyText(path) },
+      ]);
+    }
+    const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
+    ctxMenu(e, [
+      { label: t("ctx_open"), run: () => open(path) },
+      { label: t("ctx_new_here"), run: () => newFile(dir) },
+      "-",
+      { label: t("ctx_rename"), run: () => renameFile(path) },
+      { label: t("ctx_delete"), run: () => deleteFile(path), danger: true },
+      "-",
+      { label: t("ctx_copy_path"), run: () => copyText(path) },
+      { label: t("ctx_git_diff"), run: () => DiffView.git({ kind: "file", path }) },
+    ]);
+  }
+
   async function runCmd(id) {
     const b = C.cur && C.bufs.get(C.cur);
     const line = b && C.view ? C.view.state.doc.lineAt(C.view.state.selection.main.head).number : 1;
@@ -644,33 +805,12 @@ window.CodeView = (() => {
       case "open_folder": return projectModal();
       case "toggle_wrap":
         C.wrap = !C.wrap; refreshConfig(); toast(t(C.wrap ? "pal_wrap_on" : "pal_wrap_off"), "info"); return;
-      case "copy_path": {
-        const v = `${C.cur}:${line}`;
-        try { await navigator.clipboard.writeText(v); toast(t("pal_copied", { v }), "info"); } catch (e) { toast(v, "info"); }
-        return;
-      }
+      case "copy_path": return copyText(`${C.cur}:${line}`);
       case "git_diff": return DiffView.git({ kind: "file", path: C.cur });
       case "open_vscode": return send("open_vscode", { path: C.cur, line });
-      case "new_file": {
-        const dir = b && C.cur.includes("/") ? C.cur.slice(0, C.cur.lastIndexOf("/") + 1) : "";
-        const p = await inputBox(t("pal_new"), t("pal_path"), dir);
-        if (p && (await request("file_new", { path: p })).ok) { C.tree = {}; await open(p); }
-        return;
-      }
-      case "rename_file": {
-        if (b.dirty) { toast(t("pal_save_first"), "warn"); return; }
-        const to = await inputBox(t("pal_rename", { v: C.cur }), t("pal_path"), C.cur);
-        if (!to || to === C.cur) return;
-        const old = C.cur;
-        if ((await request("file_rename", { path: old, to })).ok) { await close(old, true); C.tree = {}; await open(to, line); }
-        return;
-      }
-      case "delete_file": {
-        const p = C.cur;
-        if (!await confirmBox(t("pal_delete"), t("pal_delete_q", { v: p }), t("pal_delete_yes"))) return;
-        if ((await request("file_delete", { path: p })).ok) { await close(p, true); C.tree = {}; renderTree(); }
-        return;
-      }
+      case "new_file": return newFile(b && C.cur.includes("/") ? C.cur.slice(0, C.cur.lastIndexOf("/") + 1) : "");
+      case "rename_file": return renameFile(C.cur, line);
+      case "delete_file": return deleteFile(C.cur);
       case "ask_agent": case "task_agent": {
         const ref = selRef(), agent = await pickAgent();
         if (!agent) return;
@@ -686,12 +826,13 @@ window.CodeView = (() => {
 
   async function show() {
     layout();
-    if (!C.timer) C.timer = setInterval(checkDisk, 2000);
+    if (!C.timer) C.timer = setInterval(tick, 2000);
     renderTree(); renderTabs(); renderStatus();
     try { await loadCM(); } catch (e) { toast(t("code_load_fail"), "error"); return; }
     if (!C.view) {
       newView(CM.EditorState.create({ doc: "", extensions: [CM.EditorState.readOnly.of(true), comps().theme.of(isDark() ? CM.oneDark : [])] }));
     }
+    if (!C.restored) { C.restored = true; await restore(); }
     if (C.cur) C.view.focus(); else $("#code-filter").focus();
   }
 
@@ -705,6 +846,10 @@ window.CodeView = (() => {
     if (e.target.closest("[data-cact=vim]")) request("prefs", { vim: !vimOn() });
     const md = e.target.closest("[data-cact=md]");
     if (md) setMd(md.dataset.md);
+  });
+  document.addEventListener("contextmenu", (e) => {
+    const n = e.target.closest && e.target.closest("#code-tree .tnode");
+    if (n) treeMenu(e, n);
   });
   document.addEventListener("keydown", (e) => {  // ⌘⇧F ở mọi tab: sang tab Code, mở ô tìm (lấy chữ đang chọn)
     if (!((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f")) return;
@@ -731,6 +876,7 @@ window.CodeView = (() => {
     palette(k === "o" ? "@" : e.shiftKey ? ">" : "");
   }, true);
   window.addEventListener("beforeunload", (e) => {
+    if (C.restored) persist();
     if (S.switching) return;  // đổi dự án (/open): đã hỏi bỏ thay đổi
     if ([...C.bufs.values()].some((b) => b.dirty || (b.path === C.cur && C.view && C.view.state.doc.toString() !== b.saved))) { e.preventDefault(); e.returnValue = ""; }
   });

@@ -7,6 +7,7 @@ và thư mục `.git` bị từ chối. Ghi file kèm mtime lúc mở để phá
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -47,8 +48,14 @@ class CodeWeb:
                 web.get("/api/recent", self.api_recent)]
 
     async def api_tree(self, r: web.Request) -> web.Response:
+        """?refresh=1: quét lại ngay (⟳); ?age=5: quét lại nếu danh sách cũ hơn 5 giây (tab Code hỏi định kỳ để
+        thấy file agent vừa tạo — nhanh hơn TTL mặc định của FileIndex)."""
         idx = self.app.index
-        if r.query.get("refresh") or idx.stale():
+        try:
+            age = float(r.query.get("age") or idx.ttl)
+        except ValueError:
+            age = idx.ttl
+        if r.query.get("refresh") or idx.stale() or time.time() - idx.loaded_at > max(age, 2.0):
             await idx.refresh()
         return web.json_response(children(idx.entries, r.query.get("dir", "")))
 
@@ -109,6 +116,14 @@ class CodeWeb:
         return "", "ok", {"ok": True}
 
     async def api_stat(self, r: web.Request) -> web.Response:
+        """?path=a → {"mtime"}; ?p=a&p=b (mọi tab đang mở) → {"mtimes": {a: …, b: …}} (0 = không còn file)."""
+        many = r.query.getall("p", [])
+        if many:
+            out = {}
+            for rel in many[:50]:
+                p = safe_path(self.app.root, rel)
+                out[rel] = editor.disk_mtime(p) if p else 0.0
+            return web.json_response({"mtimes": out})
         p = safe_path(self.app.root, r.query.get("path", ""))
         return web.json_response({"mtime": editor.disk_mtime(p) if p else 0.0})
 
