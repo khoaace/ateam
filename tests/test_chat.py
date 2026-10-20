@@ -117,7 +117,7 @@ def test_tui_chat_box(env, project, monkeypatch):
             app.run_command("/focus")
             assert app.focus_agent is None
             app.query_one("#cmd").focus()
-            await pilot.press("alt+3")  # Alt+số: tới thẳng tab
+            await pilot.press("alt+4")  # Alt+số: tới thẳng tab (1 Bảng việc, 2 Đội, 3 Lưới, 4 Terminal…)
             await pilot.pause(0.1)
             assert app.query_one("#tabs").active == "tab-term"
             await pilot.press("alt+1")
@@ -183,8 +183,10 @@ def test_web_pty_open_runs_agent_cli(env, project, monkeypatch):
                 if m["t"] == "toast" and m.get("ref") == 1:
                     got["open"] = m["open"]
                 elif m["t"] == "pty":
+                    if not got.get("data"):  # claude giả lập ở chế độ tương tác: gõ exit để thoát
+                        await ws.send_json({"op": "pty_in", "id": m["id"], "data": "exit\r"})
                     got.setdefault("data", True)
-                elif m["t"] == "pty_exit":  # claude giả lập không tương tác: in rồi thoát
+                elif m["t"] == "pty_exit":
                     got["exit"] = m
                     break
             assert got["open"]["pty"] and "claude" in got["open"]["title"] and got.get("data")

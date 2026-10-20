@@ -487,13 +487,27 @@ class AgentConfig:
     def binary(self) -> str:
         return self.command[0] if self.command else ""
 
-    def interactive_argv(self, session: str | None = None) -> list[str] | None:
+    def interactive_argv(self, session: str | None = None, *, model: str | None = None,
+                         effort: str | None = None) -> list[str] | None:
         """Lệnh mở CLI của agent ở chế độ tương tác (như gõ trong terminal), tiếp tục phiên `session` nếu CLI hỗ
-        trợ. None: không biết cách mở (agent tuỳ chỉnh)."""
+        trợ. model/effort (ô của tab Lưới chọn khác mặc định): thêm cờ model_args/effort_args như lệnh headless.
+        None: không biết cách mở (agent tuỳ chỉnh)."""
         tpl = INTERACTIVE_RESUME.get(Path(self.binary).name)
         if tpl is None:
             return None
-        return [self.binary] + ([a.replace("{session}", session) for a in tpl] if session and tpl else [])
+        out = [self.binary] + ([a.replace("{session}", session) for a in tpl] if session and tpl else [])
+        if model or effort:
+            m = model or self.model or ""
+            e = self.resolve_effort(m, effort) if effort else ""
+            if any("{model}" in a for a in self.effort_args):  # dạng gộp model#effort (opencode 2)
+                if m:
+                    out += [a.replace("{model}", m).replace("{effort}", e).rstrip("#") for a in self.effort_args]
+            else:
+                if model and self.model_args:
+                    out += [a.replace("{model}", model) for a in self.model_args]
+                if e and self.effort_args:
+                    out += [a.replace("{effort}", e) for a in self.effort_args]
+        return out
 
     def installed(self) -> bool:
         return bool(self.binary) and which(self.binary) is not None

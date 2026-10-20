@@ -53,6 +53,10 @@ nhưng chưa có báo cáo chạy thật. Cần xác nhận:
 - [ ] `ateam web --tunnel` với cloudflared thật: dòng URL trong stderr khớp `TUNNEL_RE`; WebSocket qua tunnel;
       cookie `Secure` khi `X-Forwarded-Proto: https`; mã QR in ra terminal quét được bằng camera iPhone/Android.
 
+- **Tab 🔲 Lưới**: cờ model/effort khi mở CLI ở chế độ tương tác (`interactive_argv`) mới kiểm bằng agent giả
+  lập; giả lập terminal của TUI (`vterm.py`) chưa thử với giao diện đầy đủ của từng CLI thật (claude/codex dùng alt
+  screen, chuột, màu 24-bit).
+
 ## Backlog tính năng (đã đề xuất với người dùng, chưa làm)
 
 Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ sửa.

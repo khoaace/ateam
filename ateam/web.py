@@ -33,6 +33,7 @@ from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, t
 from .orchestrator import SYSTEM, Orchestrator
 from .opencode import ATTACHMENT_MAX
 from .pty_session import PtySession
+from .grid import WHERE, GridHub, preset_names
 from .logtail import read_tail
 from .web_code import CodeWeb
 from .web_git import GitWeb
@@ -119,6 +120,28 @@ def ui_strings() -> dict[str, str]:
         "effort_none": tr("model này không chỉnh effort (CLI tự chọn)"),
         "open_term": tr("Mở CLI thật của agent (tiếp tục phiên chat) trong terminal"),
         "pty_exit": tr("CLI đã thoát (mã {rc}) — đóng cửa sổ này"),
+        "grid": tr("Lưới"), "g_add": tr("＋ Thêm agent"), "g_layout": tr("Bố cục"), "g_to": tr("Gõ tới"),
+        "g_one": tr("◉ Ô đang chọn"), "g_all": tr("⇉ Tất cả {n} ô"), "g_full": tr("⛶ Toàn màn hình"),
+        "g_zoom": tr("Phóng to / thu lại ô"), "g_close": tr("Đóng terminal (dừng CLI)"),
+        "g_restart": tr("Mở lại CLI (tiếp tục phiên)"), "g_more": tr("Thêm"),
+        "g_empty_t": tr("Thêm agent vào ô này"),
+        "g_empty_s": tr("Mỗi ô là CLI thật trong terminal · kéo tiêu đề ô để đổi chỗ, kéo khe để đổi kích thước"),
+        "g_hint": tr("Kéo ⠿ tiêu đề ô để di chuyển · kéo khe giữa các ô để đổi kích thước · đúp-click khe: chia đều"),
+        "g_drop_left": tr("Trái"), "g_drop_right": tr("Phải"), "g_drop_top": tr("Trên"), "g_drop_bottom": tr("Dưới"),
+        "g_drop_center": tr("⇄ Đổi chỗ"),
+        "g_run": tr("đang chạy"), "g_exit": tr("đã thoát ({rc})"), "g_off": tr("chưa mở"),
+        "g_off_msg": tr("CLI chưa chạy — bấm để mở (tiếp tục phiên gần nhất)"),
+        "g_exit_msg": tr("CLI đã thoát (mã {rc}) — bấm ⟲ để mở lại"),
+        "g_add_title": tr("Thêm agent vào lưới · mở CLI thật trong một ô mới"),
+        "g_cli": tr("CLI"), "g_model": tr("Model & effort"), "g_session": tr("Phiên"),
+        "g_place": tr("Đặt ở đâu"), "g_new": tr("Phiên mới"), "g_resume": tr("Tiếp tục phiên gần nhất"),
+        "g_resume_s": tr("--resume phiên chat/task gần nhất của agent"), "g_new_s": tr("CLI mở cuộc trò chuyện mới"),
+        "g_place_auto": tr("Theo bố cục"), "g_place_right": tr("Chia ô chọn: phải"),
+        "g_place_bottom": tr("Chia ô chọn: dưới"), "g_open": tr("▶ Mở terminal"),
+        "g_default": tr("mặc định"), "g_no_tty": tr("agent tuỳ chỉnh: không mở được ở chế độ tương tác"),
+        "g_installed": tr("✓ đã cài"), "g_missing": tr("✗ chưa cài"), "g_bcast_in": tr("Nhận phím khi gửi tất cả"),
+        "g_close_q": tr("Dừng CLI {agent} trong ô này và bỏ ô khỏi lưới?"), "g_close_yes": tr("Đóng"),
+        "g_split_r": tr("◫ Chia dọc · thêm agent bên phải"), "g_split_b": tr("⊟ Chia ngang · thêm agent bên dưới"),
         "no_log": tr("Chưa có log."), "no_result": tr("Chưa có kết quả."), "error": tr("Lỗi"),
         "md_note": tr("Ghi chú"), "md_summary": tr("Tóm tắt"), "md_delegate": tr("Giao việc"),
         "started": tr("Bắt đầu"), "duration": tr("Thời gian"),
@@ -400,7 +423,7 @@ def guard_middleware(port: int):
 
 
 # --readonly: thao tác không đổi gì vẫn cho phép
-READONLY_OPS = ("custom_preview", "goal_plan", "code_search", "rules_list")
+READONLY_OPS = ("custom_preview", "goal_plan", "code_search", "rules_list", "grid_attach")
 
 
 def text_box(title: str, body: str) -> dict:
@@ -425,6 +448,11 @@ class WebApp:
         self._cache: dict[tuple, tuple] = {}
         self.ptys: dict[int, tuple[PtySession, web.WebSocketResponse]] = {}  # "Mở trong terminal" (xterm.js)
         self._pty_seq = 0
+        # mục 🔲 Lưới: CLI thật của agent trong từng ô — thuộc về server (đóng tab không dừng CLI), tab mở sau
+        # nhận lại output gần nhất (grid_attach)
+        self.grid = GridHub(root, lambda: self.cfg, lambda a: self.orch.terminal_session(a))
+        self.grid.listen(self._on_grid)
+        self.grid_ws: set[web.WebSocketResponse] = set()
         self._out: list[dict] = []    # dòng log / output lệnh chờ gửi (gom theo LOG_FLUSH)
         self._flushing = False
         self.notices = notify.Watcher()  # báo trình duyệt khi task lỗi / chờ duyệt (như TUI)
@@ -486,6 +514,7 @@ class WebApp:
         await self.remote.stop_tunnel()
         for sess, _ws in list(self.ptys.values()):
             sess.kill_now()
+        self.grid.shutdown()
         runs = [j.run for j in self.shell.jobs.values() if j.run and j.alive]
         runs += [r for r in self.orch.runs.values() if r is not None]
         self.shell.stop_all()  # không để lại dev server mồ côi
@@ -700,9 +729,11 @@ class WebApp:
                 # dữ liệu gợi ý tham số lệnh (/task agent:model@effort, /model, /flow…)
                 "agents": [{"name": n, "model": a.model, "effort": a.effort, "models": a.model_choices(),
                             "efforts": list(a.efforts_for()), "role": a.role, "installed": a.installed(),
-                            "lead": n == self.cfg.lead, "label": a.label()}
+                            "lead": n == self.cfg.lead, "label": a.label(),
+                            "tty": a.interactive_argv() is not None, "bin": a.binary}
                            for n, a in self.cfg.active_agents().items()],
                 "all_agents": list(self.cfg.agents),
+                "grid_presets": preset_names(),
                 "code_commands": palette.commands_json(),
                 "workflows": [{"name": n, "summary": w.summary(), "description": w.description}
                               for n, w in self.cfg.workflows.items()],
@@ -821,7 +852,8 @@ class WebApp:
                 try:
                     data = json.loads(msg.data)
                     op = str(data.get("op") or "")
-                    reply = await self.pty_op(ws, data) if op.startswith("pty_") else await self.handle(data)
+                    reply = (await self.pty_op(ws, data) if op.startswith("pty_") else
+                             await self.grid_op(ws, data) if op.startswith("grid_") else await self.handle(data))
                 except Exception as e:  # thao tác lỗi không làm rớt kết nối
                     reply = (tr("Lỗi: {e}", e=e), "error")
                 # (thông báo, mức) hoặc (thông báo, mức, {"open": …, …} cho trình duyệt mở khung/tab)
@@ -833,6 +865,7 @@ class WebApp:
                     await ws.send_str(json.dumps(out, ensure_ascii=False))
         finally:
             self.clients.discard(ws)
+            self.grid_ws.discard(ws)
             for pid, (sess, owner) in list(self.ptys.items()):  # tab đóng: đóng luôn terminal của nó
                 if owner is ws:
                     sess.close()
@@ -882,6 +915,75 @@ class WebApp:
         elif op == "pty_close":
             sess.close()
             self.ptys.pop(int(d["id"]), None)
+        return None
+
+    # ------------------------------------------------------------------ mục 🔲 Lưới
+    def _on_grid(self, cid: str, kind: str, payload) -> None:
+        if not self.grid_ws:
+            return
+        if kind == "data":
+            msg = json.dumps({"t": "gpty", "id": cid, "data": base64.b64encode(payload).decode()})
+        elif kind == "exit":
+            msg = json.dumps({"t": "gpty_exit", "id": cid, "rc": payload})
+        else:
+            msg = json.dumps(dict(self.grid.state(), t="grid"), ensure_ascii=False)
+        for ws in list(self.grid_ws):
+            if not ws.closed:
+                self._spawn(self._send(ws, msg))
+
+    async def grid_op(self, ws: web.WebSocketResponse, d: dict) -> tuple | None:
+        """grid_attach (mở mục Lưới: nhận bố cục + output gần nhất của từng ô, rồi output mới), grid_add {agent,
+        model, effort, resume, near, where, rows, cols}, grid_start {id, rows, cols} (mở lại CLI), grid_in {id, data},
+        grid_size {id, rows, cols}, grid_close {id}, grid_move {src, dst, where}, grid_preset {preset},
+        grid_sizes {widths, heights}, grid_bcast {on}, grid_cell {id, bcast}."""
+        op, g = d.get("op"), self.grid
+        if op == "grid_attach":
+            self.grid_ws.add(ws)
+            await self._send(ws, json.dumps(dict(g.state(), t="grid"), ensure_ascii=False))
+            for cid, t in list(g.terms.items()):
+                if t.buf:
+                    await self._send(ws, json.dumps({"t": "gpty", "id": cid, "replay": True,
+                                                     "data": base64.b64encode(bytes(t.buf)).decode()}))
+            return None
+        if self.remote.readonly:
+            return tr("Chế độ chỉ xem (--readonly) — không làm được thao tác này"), "warn"
+        cid = str(d.get("id") or "")
+        rows, cols = int(d.get("rows") or 24), int(d.get("cols") or 80)
+        if op == "grid_in":
+            g.write(cid, str(d.get("data") or "").encode())
+            return None
+        if op == "grid_size":
+            g.resize(cid, rows, cols)
+            return None
+        if op == "grid_add":
+            where = str(d.get("where") or "")
+            new, err = await g.add(str(d.get("agent") or ""), model=str(d.get("model") or ""),
+                                   effort=str(d.get("effort") or ""), resume=d.get("resume", True) is not False,
+                                   near=str(d.get("near") or "") or None, where=where if where in WHERE else "",
+                                   rows=rows, cols=cols)
+            return (err, "warn" if not new else "error") if err else ("", "", {"grid_cell": new})
+        if op == "grid_start":
+            err = await g.start(cid, rows, cols)
+            return (err, "error") if err else None
+        if op == "grid_close":
+            g.close(cid)
+        elif op == "grid_move":
+            if g.layout.move(str(d.get("src") or ""), str(d.get("dst") or ""), str(d.get("where") or "")):
+                g.changed()
+        elif op == "grid_preset":
+            name = str(d.get("preset") or "")
+            if name in preset_names():
+                g.layout.apply(name)
+                g.changed()
+        elif op == "grid_sizes":
+            g.layout.set_sizes(d.get("widths") if isinstance(d.get("widths"), list) else None,
+                               d.get("heights") if isinstance(d.get("heights"), dict) else None)
+            g.changed()
+        elif op == "grid_bcast":
+            g.bcast = bool(d.get("on"))
+            g.changed(save=False)
+        elif op == "grid_cell":
+            g.update_cell(cid, **{k: d[k] for k in ("bcast", "resume", "model", "effort") if k in d})
         return None
 
     async def handle(self, d: dict) -> tuple | None:
@@ -1235,6 +1337,12 @@ class WebApp:
             if rest.strip():
                 todos.apply(self.root, "add", {"text": rest})
             return (tr("✅ Đã thêm vào To-do") if rest.strip() else ""), "ok", {"open": {"view": "todo"}}
+        if cmd == "grid":
+            if rest.strip():
+                new, err = await self.grid.add(rest.strip())
+                if not new:
+                    return err, "warn"
+            return "", "", {"open": {"view": "grid"}}
         if cmd == "flow-setup":
             return "", "", {"open": {"modal": "flow"}}
         if cmd == "theme":
