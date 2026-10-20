@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.34.0 — 20/10/2026
+
+Tab 📝 Code của `ateam web`:
+- **✨ AI sửa inline (⌘I)**: chọn đoạn code, gõ yêu cầu, chọn agent — agent chỉ trả đoạn mới, editor hiện diff tại chỗ
+  để **Chấp nhận / Bỏ** từng đoạn (hoặc cả lượt ⌘⏎ / Esc). **⌘⇧E** giải thích đoạn đang chọn ở khung bên phải.
+- **Thấy ngay agent sửa gì**: dấu dòng thêm / sửa / xoá so với HEAD ở lề editor (bấm để xem đoạn cũ, hoàn tác đoạn
+  đó), cây file hiện `M` / `U` / `A` / `C` và tự làm mới khi agent tạo file (nút ⟳), thanh dưới báo agent đang chạy.
+- **Điều hướng**: palette `#` tìm hàm / class trong cả dự án, **F12** / ⌘+click đi tới định nghĩa, **⌥Tab** đổi
+  file vừa dùng, tab **Outline**, bấm `› tên hàm` để mở `@`.
+- **Soạn thảo**: **⇧⌥F** format bằng công cụ của dự án (ruff/black, prettier, gofmt, rustfmt, shfmt), format khi
+  lưu, tự lưu (tắt mặc định), **⌘\\** chia đôi hai khung, xem ảnh và PDF ngay trong tab.
+- **Menu chuột phải** trên cây file (mở bên phải, file mới ở đây, đổi tên / chuyển cả thư mục, xoá, chép đường dẫn,
+  xem thay đổi git, tìm trong thư mục). Tải lại trang thì các file đang mở được mở lại.
+- Sửa: "Lưu tất cả" bỏ qua file đã đổi trên đĩa mà không báo; ⌘S lưu hai lần gây báo xung đột giả; file ở tab
+  khác đổi trên đĩa không được nạp lại; mất kết nối khi mở file không có thông báo.
+
+`/usage` hiện đủ 4 CLI **claude, codex, agy, grok** (grok: lượt / token / chi phí hôm nay và 7 ngày), agent dùng chung
+một CLI gộp một khối, CLI chưa cài / đang tắt có ghi chú; web hiện bảng và hạn mức ngay trong khung.
+
 ## 0.33.1 — 20/10/2026
 
 - **Toast "đang chạy…" tới khi xong**: ✨ AI viết commit message, Commit (kể cả hook chạy lâu), Push / Pull / Fetch,
