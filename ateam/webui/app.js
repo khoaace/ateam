@@ -148,8 +148,8 @@ function onToast(m) {
   if (o.view === "notes" && o.note != null && window.NotesView) NotesView.openNote(o.note);
   if (o.view) setView(o.view);
   if (o.modal === "tags" && window.TD) TD.tagModal();
-  if (o.chat) setTimeout(() => focusChat(o.chat), 50);
-  if (o.focus != null) setTimeout(() => focusAgent(o.focus || S.focusAgent || (S.state.agents.find((a) => a.lead) || {}).name), 50);
+  if (o.chat) setTimeout(() => chatModal(o.chat), 50);
+  if (o.focus != null) setTimeout(() => focusAgent(o.focus), 50);
   if (o.pty != null) ptyModal(o.pty, o.title || "");  // /chat <agent>: tới ô 💬 của agent đó
   if (o.git_ai && window.GitView) GitView.aiMessage();
   if (o.modal === "help") helpModal();
@@ -607,7 +607,7 @@ const COLUMNS = [
   { key: "done", st: ["done"], c: "var(--done)" },
   { key: "bad", st: ["failed", "blocked", "cancelled"], c: "var(--failed)" },
 ];
-const boardTasks = () => S.state.tasks.filter((x) => x.source !== "chat");  // lượt chat hiện ở thẻ agent (tab Đội)
+const boardTasks = () => S.state.tasks.filter((x) => x.source !== "chat");  // lượt chat hiện ở popup 💬 (trang Agents)
 function renderKanban() {
   const box = $("#kanban");
   let tasks = boardTasks();
@@ -673,62 +673,46 @@ function cardHtml(x, last) {
   </div>`;
 }
 
-/* đội */
+/* agents: danh sách gọn (agent của đội + agent tuỳ chỉnh), chat 💬 mở popup riêng */
 function renderTeam() {
-  const box = $("#team");
-  const sig = S.state.agents.map((a) => a.name).join();
-  if (box.dataset.sig !== sig) {
-    box.dataset.sig = sig;
-    box.innerHTML = S.state.agents.map((a) => `<div class="agent-card" data-agent="${esc(a.name)}">
-      <div class="agent-head" data-head></div><div class="agent-opts" data-opts></div><div class="acts" data-acts></div>
-      <div class="mini-log log" data-mini="${esc(a.name)}"></div>
-      <form class="chat-row" data-chat="${esc(a.name)}">
-        <input class="field one chat-in" autocomplete="off" placeholder="${esc(t("chat_ph", { agent: a.name }))}">
-        <button class="btn sm" type="submit">${esc(t("chat_send"))}</button>
-        <button class="btn sm ghost" type="button" data-action="agent-term" data-agent="${esc(a.name)}" title="${esc(t("open_term"))}" aria-label="${esc(t("open_term"))}">⌨</button>
-        <button class="btn sm ghost" type="button" data-action="agent-focus" data-agent="${esc(a.name)}" title="${esc(t("focus_agent"))}" aria-label="${esc(t("focus_agent"))}">⛶</button>
-      </form></div>`).join("");
-    if (S.focusAgent && !S.state.agents.some((a) => a.name === S.focusAgent)) S.focusAgent = null;
-    applyFocus();
-    for (const a of S.state.agents) {
-      const mini = $(`[data-mini="${CSS.escape(a.name)}"]`);
-      if (S.agentLogs[a.name]) { appendLines(mini, S.agentLogs[a.name], 300); mini.scrollTop = mini.scrollHeight; }
-      else loadAgentTail(a.name);  // mới mở trang: phần cuối việc gần nhất của agent
-    }
-  }
-  for (const a of S.state.agents) {
-    const card = $(`.agent-card[data-agent="${CSS.escape(a.name)}"]`);
-    if (!card) continue;
+  const box = $("#team"), cu = S.custom;
+  const custom = new Set(cu ? cu.agents.map((x) => x.name) : []);
+  const active = new Set(S.state.agents.map((a) => a.name));
+  const btn = (act, name, label, cls = "", title = "") => `<button class="btn sm ${cls}" type="button" data-action="${act}" data-agent="${esc(name)}"${title ? ` title="${esc(title)}" aria-label="${esc(title)}"` : ""}>${label}</button>`;
+  const editBtns = (name) => custom.has(name) ? btn("agent-edit", name, esc(t("edit")), "ghost") + btn("agent-del", name, esc(t("remove")), "ghost danger") : "";
+  const rows = S.state.agents.map((a) => {
     const busy = a.activities.length > 0;
-    card.classList.toggle("busy", busy);
-    card.classList.toggle("cool", !!a.cooldown);
     const st = !a.installed ? badge("failed", t("not_installed"))
       : a.cooldown ? badge("review", t("cooldown", { v: a.cooldown }))
       : busy ? badge("running", t("agent_running", { n: a.activities.length }), true) : badge("queued", t("idle"));
-    $("[data-head]", card).innerHTML = `<span class="av lg" style="--h:${hue(a.name)}">${esc(a.name[0])}</span>
-      <div style="min-width:0;cursor:pointer" data-action="agent-pick" data-agent="${esc(a.name)}" title="${esc(t("pick_hint"))}"><div class="agent-name">${esc(a.name)}${a.lead ? `<span class="lead-tag">★ ${esc(t("lead"))}</span>` : ""}</div>
-      <div class="agent-label">${esc(a.label)}</div></div>${st}`;
-    const opts = optsHtml(a);
-    if (card._opts !== opts) { card._opts = opts; $("[data-opts]", card).innerHTML = opts; }
-    $("[data-acts]", card).innerHTML = a.activities.map((act) => `
-      <div class="act" ${act.task_id ? `data-action="open-task" data-task="${act.task_id}"` : ""}>
-        <span class="spin" style="--c:var(--running)"></span>
-        <span class="title">${act.task_id ? "#" + act.task_id + " " : ""}${esc(act.title)}</span>
-        <span class="lbl">${esc(act.label)}</span>${elapsedHtml(act.started)}
-      </div>`).join("");
-  }
+    const act = a.activities[0];
+    return `<div class="ag-row${busy ? " busy" : ""}${a.cooldown ? " cool" : ""}" data-agent="${esc(a.name)}">
+      <span class="av lg" style="--h:${hue(a.name)}">${esc(a.name[0])}</span>
+      <div class="ag-main"><div class="agent-name">${esc(a.name)}${a.lead ? `<span class="lead-tag">★ ${esc(t("lead"))}</span>` : ""}${custom.has(a.name) ? `<span class="cu-tag">${esc(t("ag_custom"))}</span>` : ""}</div>
+        <div class="ag-role">${esc(a.role || "")}</div></div>
+      <button class="ag-model" type="button" data-action="agent-pick" data-agent="${esc(a.name)}" title="${esc(t("pick_hint"))}">${esc([a.model || t("default_value"), a.effort].filter(Boolean).join(" · "))}</button>
+      <div class="ag-act">${act ? `<span class="act-mini" ${act.task_id ? `data-action="open-task" data-task="${act.task_id}"` : ""}>${act.task_id ? "#" + act.task_id + " " : ""}${esc(act.title)}${elapsedHtml(act.started)}</span>` : ""}</div>
+      ${st}
+      <div class="ag-btns">${btn("agent-chat", a.name, "💬 " + esc(t("ag_chat")), "", t("ag_chat"))}${btn("agent-term", a.name, "⌨", "ghost", t("open_term"))}${editBtns(a.name)}</div>
+    </div>`;
+  });
+  const off = cu ? cu.agents.filter((x) => !active.has(x.name)) : [];
+  const offRows = off.map((x) => `<div class="ag-row off" data-agent="${esc(x.name)}">
+      <span class="av lg" style="--h:${hue(x.name)}">${esc(x.name[0])}</span>
+      <div class="ag-main"><div class="agent-name">${esc(x.name)}<span class="cu-tag">${esc(t("ag_custom"))}</span></div>
+        <div class="ag-role mono">${esc(x.argv)}</div></div>
+      <span class="ag-model muted">${x.installed ? "" : "✗ " + esc(t("not_installed"))}</span><div class="ag-act"></div>
+      ${badge("cancelled", t("ag_off"))}
+      <div class="ag-btns">${editBtns(x.name)}</div></div>`);
+  // agent tuỳ chỉnh đã bật nằm luôn trong danh sách trên (tag "tuỳ chỉnh"); mục dưới chỉ cho cái chưa bật / gợi ý thêm
+  const html = `<div class="ag-list">${rows.join("")}</div>`
+    + (offRows.length ? `<div class="sec-title ag-sec">${esc(t("cu_agents"))} · ${esc(t("ag_off"))}</div><div class="muted small">${esc(t("ag_off_hint"))}</div><div class="ag-list">${offRows.join("")}</div>`
+      : cu && !custom.size ? `<div class="muted small ag-sec">${esc(t("cu_no_agents"))}</div>` : "");
+  if (box._html !== html) { box._html = html; box.innerHTML = html; }
 }
-
-/* chip chọn nhanh model / effort trên thẻ agent (bấm là đổi ngay, như ô agent của TUI) */
-function optsHtml(a) {
-  const chip = (key, v, label, on) => `<button class="chip${on ? " on" : ""}" type="button" data-action="agent-opt" data-agent="${esc(a.name)}" data-key="${key}" data-v="${esc(v)}"${on ? ' aria-pressed="true"' : ""}>${esc(label)}</button>`;
-  const models = [a.model, ...a.models.filter((m) => m !== a.model)].filter(Boolean).slice(0, 4);
-  const more = a.models.length > models.length;
-  return `<div class="opt-row"><span class="opt-k">model</span>${models.map((m) => chip("model", m, m, m === a.model)).join("")}
-      ${more || !models.length ? `<button class="chip ghost" type="button" data-action="agent-pick" data-agent="${esc(a.name)}" title="${esc(t("pick_hint"))}">${models.length ? "…" : esc(t("default_value"))}</button>` : ""}</div>
-    <div class="opt-row"><span class="opt-k">effort</span>${a.efforts.length
-      ? a.efforts.map((e) => chip("effort", e, e, e === a.effort)).join("") + (a.effort ? chip("effort", "", "↺", false) : "")
-      : `<span class="opt-none">${esc(t("effort_none"))}</span>`}</div>`;
+async function loadCustom() {
+  try { S.custom = await (await fetch("/api/custom")).json(); } catch (e) { return; }
+  if (S.view === "team" && S.state) renderTeam();
 }
 
 document.addEventListener("submit", (e) => {  // ô 💬 trên thẻ agent
@@ -738,7 +722,7 @@ document.addEventListener("submit", (e) => {  // ô 💬 trên thẻ agent
   const inp = $(".chat-in", f), text = inp.value.trim();
   if (!text) return;
   if (text === "/term" || text === "/terminal") { inp.value = ""; agentTerminal(f.dataset.chat); return; }
-  if (text === "/focus") { inp.value = ""; focusAgent(f.dataset.chat); return; }
+  if (text === "/focus") { inp.value = ""; return; }  // đã ở popup chat
   if (send("chat", { agent: f.dataset.chat, text })) inp.value = "";
 });
 
@@ -796,26 +780,25 @@ function ptyExit(m) {
   const term = S.ptys[m.id];
   if (term) term.write(`\r\n\x1b[2m[${esc(t("pty_exit", { rc: m.rc }))}]\x1b[0m\r\n`);
 }
-/* ⛶ phóng to 1 thẻ agent cả tab Đội để chat riêng; bấm lại / Esc / agent khác = đổi */
-function applyFocus() {
-  const grid = $("#team");
-  grid.classList.toggle("focused", !!S.focusAgent);
-  for (const c of grid.querySelectorAll(".agent-card")) {
-    const on = c.dataset.agent === S.focusAgent;
-    c.classList.toggle("focus", on);
-    const mini = $(".mini-log", c);
-    if (on && mini) mini.scrollTop = mini.scrollHeight;
-  }
+/* 💬 chat với một agent: popup có log trực tiếp của agent (S.agentLogs) + ô nhắn — mỗi tin một lượt --resume */
+function chatModal(agent) {
+  if (!agent || !S.state || !S.state.agents.some((a) => a.name === agent)) return;
+  const open = $(`.modal.chat form[data-chat="${CSS.escape(agent)}"]`);
+  if (open) { $(".chat-in", open).focus(); return; }
+  const m = openModal(`${modalHead("💬 " + esc(agent))}<div class="chat-pop">
+      <div class="mini-log log" data-mini="${esc(agent)}"></div>
+      <form class="chat-row" data-chat="${esc(agent)}">
+        <input class="field one chat-in" autocomplete="off" placeholder="${esc(t("chat_ph", { agent }))}">
+        <button class="btn sm primary" type="submit">${esc(t("chat_send"))}</button>
+        <button class="btn sm ghost" type="button" data-action="agent-term" data-agent="${esc(agent)}" title="${esc(t("open_term"))}" aria-label="${esc(t("open_term"))}">⌨</button>
+      </form></div>`, { box: "lg", cls: "chat" });
+  const log = $(".mini-log", m);
+  if (S.agentLogs[agent]) { appendLines(log, S.agentLogs[agent], 300); log.scrollTop = log.scrollHeight; }
+  else loadAgentTail(agent);
+  setTimeout(() => $(".chat-in", m).focus(), 40);
 }
-function focusAgent(agent) {
-  S.focusAgent = !agent || S.focusAgent === agent ? null : agent;
-  applyFocus();
-  if (S.focusAgent) focusChat(S.focusAgent);
-}
-function focusChat(agent) {
-  const f = $(`form[data-chat="${CSS.escape(agent)}"]`);
-  if (f) { f.scrollIntoView({ block: "nearest" }); $(".chat-in", f).focus(); }
-}
+function focusAgent(agent) { chatModal(agent || (S.state.agents.find((a) => a.lead) || {}).name); }
+function focusChat(agent) { chatModal(agent); }
 
 /* terminal */
 function renderTerm() {
@@ -1672,6 +1655,7 @@ function setView(v) {
   if (prev === "git" && v !== "git" && window.GitView) GitView.hide();
   if (v === "code" && window.CodeView) CodeView.show();
   if (v === "custom" && window.Setup) Setup.showCustom();
+  if (v === "team") loadCustom();
   if (v === "dash" && window.DashView) DashView.show();
   if (v === "todo" && window.TodoView) TodoView.show();
   if (v === "notes" && window.NotesView) NotesView.show();
@@ -1732,7 +1716,10 @@ const ACTIONS = {
   "reject-cancel": () => { S.rejecting = false; renderDrawer(true); },
   "diff": (el) => DiffView.task(+el.dataset.task),
   "agent-term": (el) => agentTerminal(el.dataset.agent),
-  "agent-focus": (el) => focusAgent(el.dataset.agent),
+  "agent-chat": (el) => chatModal(el.dataset.agent),
+  "agent-add": () => Setup.addAgent(loadCustom),
+  "agent-edit": (el) => Setup.editAgent(el.dataset.agent, loadCustom),
+  "agent-del": (el) => Setup.deleteAgent(el.dataset.agent, loadCustom),
   "agent-opt": (el) => { if (!el.classList.contains("on")) request("agent_option", { agent: el.dataset.agent, key: el.dataset.key, value: el.dataset.v }); },
   "agent-pick": (el) => { const a = S.meta.agents.find((x) => x.name === el.dataset.agent); if (a) pickerModal({ agent: a.name, key: "model", items: a.models, current: a.model, then_effort: true }); },
   "open-job": (el) => openJob(+el.dataset.job),
@@ -1777,12 +1764,11 @@ document.addEventListener("keydown", (e) => {
     else if (S.view === "todo" && window.TodoView && TodoView.escape()) e.preventDefault();
     else if (S.view === "notes" && window.NotesView && NotesView.escape()) e.preventDefault();
     else if (S.openTask != null) closeDrawer();
-    else if (S.focusAgent && S.view === "team") focusAgent(null);
   }
-  if (e.key === "F7" && S.view === "team") {  // như TUI: phóng to thẻ đang gõ (hoặc trưởng nhóm) / thu lại
+  if (e.key === "F7" && S.view === "team" && !topModal()) {  // như TUI: chat với agent đang trỏ (hoặc trưởng nhóm)
     e.preventDefault();
-    const card = e.target.closest && e.target.closest(".agent-card");
-    focusAgent(S.focusAgent ? null : card ? card.dataset.agent : (S.state.agents.find((a) => a.lead) || {}).name);
+    const row = e.target.closest && e.target.closest(".ag-row");
+    focusAgent(row ? row.dataset.agent : null);
   }
 });
 

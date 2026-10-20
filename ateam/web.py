@@ -49,7 +49,7 @@ TASK_LIMIT = 400     # bảng việc gửi tối đa ngần này task gần nh�
 def ui_strings() -> dict[str, str]:
     """Mọi chữ hiển thị trên trang web (JS chỉ dùng các khoá này — tests/test_web.py bắt chữ viết thẳng trong JS)."""
     return {
-        "board": tr("Bảng việc"), "team": tr("Đội"), "terminal": tr("Terminal"), "git": tr("Git"),
+        "board": tr("Bảng việc"), "team": tr("Agents"), "terminal": tr("Terminal"), "git": tr("Git"),
         "code": tr("Code"), "syslog": tr("Log hệ thống"), "phone": tr("Điện thoại"),
         "phone_title": tr("Mở trên điện thoại"),
         "phone_hint": tr("Quét mã bằng camera điện thoại. URL chứa token toàn quyền — đừng gửi cho người khác."),
@@ -59,7 +59,7 @@ def ui_strings() -> dict[str, str]:
         "phone_local_tunnel": tr("mọi nơi qua Cloudflare Tunnel (https, cần cài cloudflared)"),
         "phone_copy": tr("Chép"), "copied": tr("Đã chép"),
         "readonly_banner": tr("👁 Chế độ chỉ xem — thao tác bị tắt"),
-        "custom": tr("Tuỳ chỉnh"), "dash": tr("Thống kê"), "dash_today": tr("Hôm nay"), "dash_week": tr("7 ngày"),
+        "custom": tr("Workflows"), "dash": tr("Thống kê"), "dash_today": tr("Hôm nay"), "dash_week": tr("7 ngày"),
         "dash_month": tr("30 ngày"), "dash_runs": tr("{n} lượt"), "dash_failed": tr("{f} lỗi · {r} hết hạn mức"),
         "dash_chart": tr("Token theo ngày (14 ngày)"), "dash_by_agent": tr("Theo agent (30 ngày)"),
         "dash_by_model": tr("Theo model (30 ngày)"), "dash_history": tr("Lịch sử mục tiêu"),
@@ -71,8 +71,8 @@ def ui_strings() -> dict[str, str]:
         "df_title": tr("Luồng mặc định"), "df_step": tr("Bước"), "df_agent_default": tr("(mặc định của agent)"),
         "df_review": tr("Trưởng nhóm review khi xong"), "df_default": tr("Chạy khi gõ mục tiêu (luồng mặc định)"),
         "df_hint": tr("Gõ mục tiêu (không kèm /goal) là chạy workflow này: mỗi bước một task, bước sau chờ bước "
-                      "trước. Chọn agent, model, effort cho từng bước — sửa tiêu đề/prompt hay thêm bước ở mục "
-                      "Tuỳ chỉnh."),
+                      "trước. Chọn agent, model, effort cho từng bước — sửa tiêu đề/prompt hay thêm bước ở trang "
+                      "Workflows."),
         "connected": tr("Đã kết nối"), "disconnected": tr("Mất kết nối — đang thử lại…"),
         "pause": tr("Tạm dừng"), "resume": tr("Tiếp tục nhận task"), "paused": tr("Đang tạm dừng"),
         "clear": tr("Dọn việc đã xong"), "theme": tr("Giao diện & màu nhấn"),
@@ -106,7 +106,7 @@ def ui_strings() -> dict[str, str]:
         "placeholder_wf": tr("Nhập mục tiêu (chạy theo workflow '{wf}') · / lệnh · ! lệnh terminal · @ nhắc file"),
         "mode_lead": tr("★ Trưởng nhóm"), "mode_lead_full": tr("★ Trưởng nhóm lập kế hoạch"),
         "mode_lead_desc": tr("chia việc theo mục tiêu (mặc định)"),
-        "mode_head": tr("Gõ mục tiêu sẽ chạy theo…"), "mode_no_flows": tr("chưa có workflow — tạo ở 🧩 Tuỳ chỉnh"),
+        "mode_head": tr("Gõ mục tiêu sẽ chạy theo…"), "mode_no_flows": tr("chưa có workflow — tạo ở 🔀 Workflows"),
         "mode_pick_title": tr("Gõ mục tiêu → trưởng nhóm lập kế hoạch hay chạy một workflow (đổi luồng mặc định)"),
         "cu_make_default": tr("★ Đặt mặc định"), "cu_unset_default": tr("☆ Bỏ mặc định"),
         "placeholder_grill": tr("Trả lời câu hỏi của trưởng nhóm (Enter) · gõ số để chọn phương án"),
@@ -115,8 +115,8 @@ def ui_strings() -> dict[str, str]:
         "reject": tr("Từ chối"), "reject_ph": tr("Góp ý (để trống = chỉ từ chối, có góp ý = giao làm lại)"),
         "continue_task": tr("Hỏi tiếp"), "close": tr("Đóng"),
         "tab_log": tr("Log"), "tab_prompt": tr("Nội dung"), "tab_result": tr("Kết quả"),
-        "chat_ph": tr("💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: CLI thật · /focus: phóng to)"),
-        "chat_send": tr("Gửi"), "focus_agent": tr("⛶ Phóng to / thu lại (Esc)"),
+        "chat_ph": tr("💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: CLI thật)"),
+        "chat_send": tr("Gửi"),
         "effort_none": tr("model này không chỉnh effort (CLI tự chọn)"),
         "open_term": tr("Mở CLI thật của agent (tiếp tục phiên chat) trong terminal"),
         "pty_exit": tr("CLI đã thoát (mã {rc}) — đóng cửa sổ này"),
@@ -252,7 +252,7 @@ def ui_strings() -> dict[str, str]:
         "pal_choose_agent": tr("Chọn agent"), "pal_ask": tr("Hỏi {agent} về {v}", agent="{agent}", v="{v}"),
         "pal_task": tr("Giao task cho {agent} về {v}", agent="{agent}", v="{v}"),
         "pal_ask_ph": tr("vd: giải thích đoạn này / viết test cho hàm này"),
-        "pal_asked": tr("Đã hỏi {agent} — xem trả lời ở tab 👥 Đội", agent="{agent}"),
+        "pal_asked": tr("Đã hỏi {agent} — xem trả lời ở tab 🤖 Agents", agent="{agent}"),
         "pal_assigned": tr("Đã giao cho {agent}: {v}", agent="{agent}", v="{v}"),
         "pal_copied": tr("Đã chép {v}", v="{v}"), "pal_save_first": tr("Lưu file trước khi đổi tên"),
         "pal_line1": tr("(dòng {a})", a="{a}"), "pal_lines": tr("(dòng {a}–{b})", a="{a}", b="{b}"),
@@ -384,6 +384,12 @@ def ui_strings() -> dict[str, str]:
         "ob_how": tr("Cách làm việc"), "ob_style": tr("Kiểu"), "ob_tier": tr("Mức"), "ob_access": tr("Quyền"),
         "ob_apply": tr("Áp thay đổi"), "ob_verify": tr("Kiểm tra"), "ob_none": tr("không"),
         "ob_no_lead": tr("Chưa có trưởng nhóm — quay lại bước Vai trò."),
+        "nav_g_work": tr("Điều phối"), "nav_g_dev": tr("Mã nguồn"), "nav_g_me": tr("Cá nhân"), "nav_g_stats": tr("Báo cáo"),
+        "ag_hint": tr("Agent trong đội và agent tuỳ chỉnh. Bấm model · effort để đổi, 💬 để chat riêng với agent."),
+        "ag_chat": tr("Chat"), "ag_custom": tr("tuỳ chỉnh"), "ag_off": tr("chưa bật"),
+        "ag_off_hint": tr("Chưa tham gia đội — bật ở ⚡ Vai trò · model · effort hoặc /setup."),
+        "wf_hint": tr("Workflow chạy bằng /flow <tên> <mục tiêu>, hoặc ★ Đặt mặc định để gõ mục tiêu là chạy luôn. "
+                      "Agent tuỳ chỉnh nằm ở trang Agents."),
         # --- /custom
         "cu_title": tr("Agent & workflow tuỳ chỉnh"),
         "cu_hint": tr("Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc theo vai trò, bật/tắt ở "
@@ -632,7 +638,7 @@ class WebApp:
 
     # ------------------------------------------------------------------ sự kiện → trình duyệt
     def on_orch_event(self, kind: str, data: dict) -> None:
-        if kind == "log":  # line: dòng cho log của task; raw (nếu khác): dòng gốc cho ô agent (tab Đội)
+        if kind == "log":  # line: dòng cho log của task; raw (nếu khác): dòng gốc cho ô agent (tab Agents)
             item = {"k": "log", "task": data.get("task_id"), "agent": data.get("agent"), "line": data.get("line", "")}
             if data.get("raw") not in (None, item["line"]):
                 item["raw"] = data["raw"]
@@ -818,7 +824,7 @@ class WebApp:
                                  if t else {"id": None})
 
     async def api_agent_tail(self, request: web.Request) -> web.Response:
-        """Phần cuối log của task gần nhất của agent (ô agent ở tab Đội lúc mới mở trang)."""
+        """Phần cuối log của task gần nhất của agent (ô agent ở tab Agents lúc mới mở trang)."""
         name = request.match_info["name"]
         last = [t for t in self.db.tasks() if t.agent == name and t.started]
         if not last:
@@ -1255,7 +1261,7 @@ class WebApp:
             return command_usage(cmd), "warn"
 
     def chat(self, agent: str, text: str) -> tuple | None:
-        """Tin nhắn ô 💬 (thẻ agent, tab Đội) hoặc /chat: như TeamApp.send_chat."""
+        """Tin nhắn ô 💬 (thẻ agent, tab Agents) hoặc /chat: như TeamApp.send_chat."""
         text = text.strip()
         new = text == "/new" or text.startswith("/new ")
         if new:
@@ -1391,7 +1397,7 @@ class WebApp:
         if cmd == "roles":
             return "", "", {"open": {"modal": "roles"}}
         if cmd == "custom":
-            return "", "", {"open": {"view": "custom"}}  # mục 🧩 Tuỳ chỉnh ở sidebar (popup vẫn mở từ /setup)
+            return "", "", {"open": {"view": "custom"}}  # mục 🔀 Workflows ở sidebar (popup vẫn mở từ /setup)
         if cmd == "dash":
             return "", "", {"open": {"view": "dash"}}
         if cmd == "search":

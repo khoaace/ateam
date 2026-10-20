@@ -45,6 +45,19 @@ case "${1:-}" in
   debug) echo '{"models":[{"slug":"gpt-6.1","visibility":"list"},{"slug":"gpt-6-mini","visibility":"list"}]}'; exit 0 ;;
 esac
 slow() { sleep "${DEMO_SLOW:-0.8}"; }
+if [ -t 0 ] && [ -t 1 ]; then  # chạy tương tác trong pty (tab Lưới): màn hình CLI giả
+  C=$'\e[36m'; G=$'\e[32m'; Y=$'\e[33m'; D=$'\e[2m'; B=$'\e[1m'; R=$'\e[0m'
+  printf '%s%s ● %s%s  %sv1.0.0%s\n%s~/code/so-tay-nhom%s\n\n' "$B" "$C" "$name" "$R" "$D" "$R" "$D" "$R"
+  case "$name" in
+    claude) printf '%s>%s Tóm tắt các route đăng nhập\n\n%s●%s Đọc %sapp/auth/google.py%s\n%s●%s Có 2 route: %s/auth/google%s (chuyển sang Google) và\n  %s/auth/callback%s (nhận mã, tạo phiên).\n  Đang kiểm tra %sstate%s chống CSRF…\n' "$Y" "$R" "$G" "$R" "$C" "$R" "$G" "$R" "$C" "$R" "$C" "$R" "$C" "$R" ;;
+    codex) printf '%s>%s Viết test cho /auth/callback\n\n%s•%s Tạo %stests/test_auth.py%s\n%s•%s Chạy %spytest -q%s\n  %s....  4 passed in 0.41s%s\n' "$Y" "$R" "$G" "$R" "$C" "$R" "$G" "$R" "$C" "$R" "$G" "$R" ;;
+    agy) printf '%s>%s Dựng nút "Đăng nhập với Google"\n\n%s✓%s Cập nhật %sapp/templates/login.html%s\n%s✓%s Thêm style cho nút\n' "$Y" "$R" "$G" "$R" "$C" "$R" "$G" "$R" ;;
+    grok) printf '%s>%s Cập nhật README\n\n%s•%s Thêm mục "Đăng nhập bằng Google"\n%s•%s Hướng dẫn đặt %sGOOGLE_CLIENT_ID%s\n' "$Y" "$R" "$G" "$R" "$G" "$R" "$C" "$R" ;;
+    *) printf '%s>%s Sẵn sàng\n' "$Y" "$R" ;;
+  esac
+  printf '\n%s> %s' "$B" "$R"
+  exec sleep 900
+fi
 if [[ "$P" == *"you INTERVIEW the user"* ]]; then
   n=$(printf '%s\n' "$P" | grep -cE '^A[0-9]+:' || true)
   if [ "$n" = 0 ]; then
@@ -242,10 +255,85 @@ def make_project(base: Path) -> Path:
     return proj
 
 
+CUSTOM = """[agents.gemini-cli]
+command = ["gemini", "-p", "{prompt}"]
+role = "Viết tài liệu, dịch thuật, tóm tắt"
+efforts = ["low", "high"]
+
+[workflows.tinh-nang-moi]
+description = "Tính năng mới: thiết kế → code → test → tài liệu"
+review = true
+
+[[workflows.tinh-nang-moi.steps]]
+agent = "lead"
+title = "Thiết kế {goal}"
+prompt = "Thiết kế ngắn gọn: {goal}"
+
+[[workflows.tinh-nang-moi.steps]]
+agent = "codex"
+title = "Viết code"
+prompt = "Cài đặt theo thiết kế: {goal}"
+
+[[workflows.tinh-nang-moi.steps]]
+agent = "grok"
+title = "Viết test"
+prompt = "Viết test cho: {goal}"
+
+[workflows.sua-loi]
+description = "Sửa lỗi: tái hiện → sửa → test chống tái diễn"
+review = false
+
+[[workflows.sua-loi.steps]]
+agent = "codex"
+title = "Tái hiện lỗi"
+prompt = "Tái hiện: {goal}"
+
+[[workflows.sua-loi.steps]]
+agent = "codex"
+title = "Sửa và thêm test"
+prompt = "Sửa lỗi và thêm test chống tái diễn: {goal}"
+"""
+
+
+def seed_demo(proj: Path) -> None:
+    """Agent/workflow tuỳ chỉnh (trang Agents, Workflows) + to-do và ghi chú (tab To-do, Ghi chú)."""
+    import datetime as dt
+
+    from ateam import notes, todos
+    from ateam.config import CUSTOM_FILE
+    CUSTOM_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CUSTOM_FILE.write_text(CUSTOM, encoding="utf-8")
+    today = dt.date.today()
+
+    def due(days: int, hm: str = "") -> str:
+        return (today + dt.timedelta(days=days)).isoformat() + (("T" + hm) if hm else "")
+
+    for text, extra in (
+        ("Sửa lỗi đăng xuất không xoá cookie #bug !cao", {"due": due(-1, "17:00"), "desc": "Cookie `session` vẫn còn sau `/logout`.\n- Kiểm tra `Set-Cookie` max-age\n- Thêm test"}),
+        ("Duyệt PR đăng nhập Google #review !cao", {"due": due(0, "15:00")}),
+        ("Viết tài liệu cấu hình OAuth #docs", {"due": due(0, "17:30"), "priority": 2}),
+        ("Thêm giới hạn tốc độ cho /auth/callback #bug", {"due": due(2), "priority": 2}),
+        ("Chuyển CI sang chạy song song #hạ-tầng", {"due": due(4)}),
+        ("Dọn các nhánh ateam/* cũ #hạ-tầng !thấp", {"due": due(9)}),
+        ("Đặt tên lại bảng users → accounts #db", {}),
+    ):
+        todos.apply(proj, "add", dict({"text": text}, **extra))
+    items = todos.load(proj)
+    todos.apply(proj, "toggle", {"id": items[-1]["id"]}) if False else None
+    todos.apply(proj, "add", {"text": "Thêm trang hồ sơ người dùng #feature"})
+    todos.apply(proj, "toggle", {"id": todos.load(proj)[-1]["id"]})
+    n = notes.apply(proj, "add", {"title": "Quyết định: đăng nhập chỉ bằng Google", "tags": ["docs"], "body":
+        "# Quyết định đăng nhập\n\nChọn **chỉ Google (OAuth 2.0 + PKCE)** vì:\n\n- không phải lưu mật khẩu\n- ít bề mặt tấn công hơn\n- người dùng nội bộ đều có tài khoản Google\n\n## Việc còn lại\n\n- [ ] Trang lỗi khi `access_denied`\n- [ ] Ghi `GOOGLE_CLIENT_ID` vào README\n\n```python\nSCOPES = [\"openid\", \"email\", \"profile\"]\n```\n"})
+    notes.apply(proj, "pin", {"id": n["id"], "on": True})
+    notes.apply(proj, "add", {"title": "Câu hỏi cho buổi review", "tags": ["review"], "body":
+        "- Có cần đăng xuất ở mọi thiết bị?\n- Thời hạn phiên: 7 ngày hay 30 ngày?\n"})
+    notes.apply(proj, "add", {"title": "Ý tưởng: nhắc việc qua email", "tags": ["feature"], "body": "Gửi email tóm tắt việc quá hạn mỗi sáng."})
+
+
 def make_bin(base: Path) -> Path:
     bindir = base / "bin"
     bindir.mkdir()
-    for name in ("claude", "codex", "agy", "grok", "opencode"):
+    for name in ("claude", "codex", "agy", "grok", "opencode", "gemini"):
         p = bindir / name
         p.write_text(AGENT, encoding="utf-8")
         p.chmod(0o755)
@@ -269,6 +357,7 @@ async def shoot(base: Path, proj: Path) -> None:
         mark_setup_done()
     except Exception:
         pass
+    seed_demo(proj)
 
     async def wait(pilot, cond, n=150):
         for _ in range(n):
@@ -312,7 +401,16 @@ async def shoot(base: Path, proj: Path) -> None:
         save(app, "board")
         app.action_toggle_tab()
         await pilot.pause(1.0)
-        save(app, "team")
+        save(app, "agents")
+        app.query_one("#tabs").active = "tab-custom"
+        await pilot.pause(1.0)
+        save(app, "workflows")
+        app.query_one("#tabs").active = "tab-todo"
+        await pilot.pause(1.0)
+        save(app, "todo")
+        app.query_one("#tabs").active = "tab-notes"
+        await pilot.pause(1.0)
+        save(app, "notes")
         app.run_command("/code @app/auth/google.py:35")
         await wait(pilot, lambda: app.code_editor().buffer is not None)
         await pilot.pause(0.8)
@@ -408,11 +506,13 @@ async def shoot_web(base: Path, proj: Path) -> None:
 
     ensure_global_config()
     mark_setup_done()
+    seed_demo(proj)
     port, dport = free_port(), free_port()
     server = subprocess.Popen([sys.executable, "-m", "ateam", "-C", str(proj), "web", "--port", str(port)],
                               cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     chrome = subprocess.Popen([find_chrome(), "--headless=new", f"--remote-debugging-port={dport}",
                                f"--user-data-dir={base / 'chrome'}", "--hide-scrollbars", "--no-first-run",
+                               *(["--no-sandbox"] if os.geteuid() == 0 else []),
                                "--window-size=1440,900", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -466,6 +566,31 @@ async def shoot_web(base: Path, proj: Path) -> None:
                 await c.until("document.querySelectorAll('#git .gfile').length")
                 await asyncio.sleep(1.0)
                 await c.shot("web-git")
+                await c.js("setView('team')")
+                await c.until("document.querySelectorAll('#team .ag-row').length >= 6")
+                await asyncio.sleep(0.8)
+                await c.shot("web-agents")
+                await c.js("setView('custom')")
+                await c.until("document.querySelectorAll('#custom .c-row').length >= 2")
+                await asyncio.sleep(0.6)
+                await c.shot("web-workflows")
+                await c.js("setView('todo')")
+                await asyncio.sleep(1.2)
+                await c.shot("web-todo")
+                await c.js("setView('notes')")
+                await asyncio.sleep(1.2)
+                await c.js("NotesView.openNote(1)")
+                await asyncio.sleep(1.2)
+                await c.shot("web-notes")
+                await c.js("setView('grid')")
+                await asyncio.sleep(0.5)
+                await c.js("send('grid_preset', {preset: 'cols2'})")
+                for agent in ("claude", "codex", "antigravity", "grok"):
+                    await c.js(f"send('grid_add', {{agent: {json.dumps(agent)}, resume: false}})")
+                    await asyncio.sleep(0.4)
+                await asyncio.sleep(3.0)
+                await c.js("document.querySelector('#toasts').replaceChildren()")
+                await c.shot("web-grid")
     finally:
         chrome.terminate()
         server.terminate()

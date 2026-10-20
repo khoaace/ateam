@@ -102,22 +102,28 @@ def test_tui_chat_box(env, project, monkeypatch):
             chat.insert_text_at_cursor("tie\u0302\u0301ng vie\u0302\u0323t")
             assert chat.value == "tiếng việt"
             chat.value = ""
-            # F7: chỉ còn ô của agent đang gõ, các ô khác và Timeline ẩn; Esc thu lại
-            await pilot.press("f7")
-            await pilot.pause(0.1)
+            # /chat phóng to ô của agent (log + ô chat), các ô khác, danh sách và Timeline ẩn; Esc / F7 thu lại
             assert app.focus_agent == "codex"
             assert app.pane("claude").has_class("unfocused") and not pane.has_class("unfocused")
             assert pane.region.width > 120 and app.query_one("#timeline").region.height == 0
             await pilot.press("escape")
             await pilot.pause(0.1)
             assert app.focus_agent is None and not app.pane("claude").has_class("unfocused")
+            await pilot.press("f7")  # F7 ở danh sách: phóng to trưởng nhóm
+            await pilot.pause(0.1)
+            assert app.focus_agent == "claude"
+            await pilot.press("f7")
+            await pilot.pause(0.1)
+            assert app.focus_agent is None
             app.run_command("/focus claude")
             await pilot.pause(0.1)
             assert app.focus_agent == "claude" and app.focused is app.pane("claude").query_one(".pane-chat")
             app.run_command("/focus")
             assert app.focus_agent is None
             app.query_one("#cmd").focus()
-            await pilot.press("alt+4")  # Alt+số: tới thẳng tab (1 Bảng việc, 2 Đội, 3 Lưới, 4 Terminal…)
+            # tab Agents ở dạng danh sách: chỉ còn dòng tiêu đề mỗi agent, log + ô chat ẩn tới khi phóng to
+            assert not app.pane("claude").body.display and app.pane("claude").head.region.height > 0
+            await pilot.press("alt+6")  # Alt+số: tới thẳng tab (1 Bảng việc, 2 Agents, 3 Workflows, 4 Code, 5 Git, 6 Terminal…)
             await pilot.pause(0.1)
             assert app.query_one("#tabs").active == "tab-term"
             await pilot.press("alt+1")

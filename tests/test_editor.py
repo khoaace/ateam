@@ -228,7 +228,7 @@ def test_code_tab_edit_and_save(env, project, monkeypatch):
             assert ed.text == before and not ed.dirty
             # Ctrl+T của app vẫn đổi tab khi đang ở editor
             await pilot.press("ctrl+t")
-            assert app.query_one("#tabs").active == "tab-todo"  # tab sau 📝 Code
+            assert app.query_one("#tabs").active == "tab-git"  # tab sau 📝 Code
             app.open_code()
             await pilot.pause(0.1)
             ed.focus()

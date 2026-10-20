@@ -65,7 +65,7 @@ lại bước trước, nút ✕ để đóng):
 Danh sách model được hỏi thật từ các CLI (`codex debug models`, `agy models`, `grok models`, `opencode models`)
 ngay khi wizard mở. Mở lại bất cứ lúc nào bằng `/setup` trong app hoặc `ateam setup` (wizard điền sẵn đội hiện
 tại). Agent tuỳ chỉnh bạn tự thêm ở `/custom` được giữ nguyên. Chỉ muốn đổi CLI · model · effort của vai trò thì dùng
-**`/roles`** (web: nút ⚡ ở tab Đội / Tuỳ chỉnh) — mở thẳng bảng vai trò, lưu là áp ngay, các thiết lập khác giữ nguyên.
+**`/roles`** (web: nút ⚡ ở trang Agents / Workflows) — mở thẳng bảng vai trò, lưu là áp ngay, các thiết lập khác giữ nguyên.
 
 * **Gõ một câu bình thường** → giao mục tiêu cho trưởng nhóm. Kế hoạch hiện ra ở trạng thái *nháp*
   trong khung **Duyệt kế hoạch** ngay trên ô nhập (thấy ở cả tab Bảng việc và Đội): danh sách task kèm
@@ -246,9 +246,15 @@ ateam web --public-url https://ateam.ten-mien.com   # bạn tự chạy named tu
 
 Lựa chọn lưu ở `~/.config/ateam/state.json`, dùng chung mọi dự án.
 
-## Xem tiến trình từng agent — tab "Đội" (Ctrl+T)
+## Danh sách agent — tab "🤖 Agents" (Ctrl+T)
 
-Mỗi agent một ô: model · effort đang dùng (và danh sách model/effort agent đó hỗ trợ), số task ✓ xong / ✗ lỗi / ⏳ chờ, task đang chạy kèm
+Tab Agents liệt kê mọi agent trong đội (kể cả agent tuỳ chỉnh, gắn nhãn *tuỳ chỉnh*), mỗi agent một dòng gọn; agent
+tuỳ chỉnh chưa bật nằm ở mục riêng bên dưới. Nút **+ Thêm agent tuỳ chỉnh** / **Sửa** / **Xoá** ngay tại đây
+(trước ở tab Tuỳ chỉnh). Web: mỗi dòng có model · effort (bấm để đổi), việc đang chạy, trạng thái, nút **💬 Chat**
+(mở popup chat có log trực tiếp) và **⌨** (CLI thật). TUI: mỗi dòng là phần đầu dưới đây; bấm vào agent (hoặc F7)
+để mở log + ô chat của agent đó cả tab, Esc về danh sách.
+
+Mỗi agent: model · effort đang dùng (và danh sách model/effort agent đó hỗ trợ), số task ✓ xong / ✗ lỗi / ⏳ chờ, task đang chạy kèm
 thời gian chạy, số dòng output, dòng mới nhất, cảnh báo *im lặng* nếu quá 60 giây không có output,
 và log trực tiếp (mỗi lần chạy có vạch ▶ bắt đầu / ■ kết thúc). Bên dưới là **timeline**: mỗi agent
 một hàng, mỗi task một đoạn màu (tím = đang chạy, xanh = xong, đỏ = lỗi, vàng = trưởng nhóm đang lập
@@ -256,7 +262,7 @@ kế hoạch/review). Ctrl+T để quay lại Bảng việc.
 
 ### Chat trực tiếp với một agent (💬)
 
-Mỗi ô agent có dòng **💬 Nhắn …** (web: ô chat dưới thẻ agent; hoặc `/chat <agent> [tin]` từ ô nhập chính). Mỗi tin
+Bấm vào agent ở tab Agents để mở dòng **💬 Nhắn …** (web: nút **💬 Chat** trên dòng agent; hoặc `/chat <agent> [tin]` từ ô nhập chính). Mỗi tin
 là một lượt chạy *tiếp đúng phiên CLI* của tin trước (`--resume` với claude/codex/grok; CLI không giữ phiên được thì
 ateam gửi kèm các lượt trước) — như gõ trong terminal của CLI đó. Lượt chat chạy ở thư mục dự án, không chạy lệnh kiểm
 tra, không worktree, không giao việc chéo và không hiện trên Bảng việc; trả lời hiện ngay trong ô agent.
@@ -266,8 +272,8 @@ tra, không worktree, không giao việc chéo và không hiện trên Bảng vi
   cả terminal (thoát CLI để quay lại ateam, các task khác vẫn chạy); web mở cửa sổ terminal (xterm.js) có hàng phím
   Esc · Tab · Ctrl+C · ↑↓ cho điện thoại. Ở đây dùng được mọi thứ của CLI (slash command, hỏi quyền…), nhưng ateam
   không đọc được kết quả của phần này.
-- **F7**, `/focus [agent]`, `/focus` trong ô chat hoặc nút **⛶** (web): phóng to một agent cả tab Đội để chat riêng;
-  F7 / Esc / gõ lại để thu về lưới.
+- **F7**, `/focus [agent]` hoặc bấm vào agent: mở chat riêng với agent đó (TUI: cả tab Agents; web: popup);
+  F7 / Esc để về danh sách.
 
 ## Lưới terminal — nhiều CLI thật cạnh nhau (tab 🔲 Lưới)
 
@@ -363,7 +369,7 @@ chạy đúng lệnh đã gõ. `/stop [số]` dừng lệnh. Thoát app (Ctrl+Q)
 - **Giải quyết xung đột** (như VS Code): **Enter**/**r** trên file xung đột mở màn hình từng khối `<<<<<<<` — **o** giữ
   hiện tại, **t** lấy bên đến, **b** giữ cả hai; **O**/**T** lấy nguyên cả file một phía; **e** sửa tay ở tab Code;
   **m** đánh dấu đã xong. Hết khối thì file tự được stage. **g** / 🤖 *Nhờ agent* giao các file xung đột cho agent viết
-  commit message (mặc định trưởng nhóm) sửa — xem tiến độ ở tab Đội, xong thì xem lại rồi đánh dấu đã xong.
+  commit message (mặc định trưởng nhóm) sửa — xem tiến độ ở tab Agents, xong thì xem lại rồi đánh dấu đã xong.
 - **File thay đổi** theo nhóm *Xung đột* / *Đã stage* / *Chưa stage*: **Space** stage/bỏ stage, **a** stage tất
   cả, **u** bỏ stage tất cả, **Enter**/**d** xem diff (màn hình diff hai cột như trên), **x** bỏ thay đổi (hỏi lại;
   file mới thì bị xoá), **X** / nút **↺ Bỏ tất cả** bỏ mọi thay đổi — đã stage lẫn chưa, xoá file chưa theo dõi, thư
@@ -416,7 +422,7 @@ trên 2 MB / 20 000 dòng không tô màu, trên 5 MB mở chỉ đọc, file nh
 - **＋ File mới**: nút ở cột danh sách file (hoặc `:new đường/dẫn` trên TUI, `>File mới` trong palette); gõ đường dẫn có
   thư mục thì thư mục được tạo luôn.
 - **Hỏi agent về đoạn đang chọn** / **Giao task cho agent**: chọn agent, gõ câu hỏi — agent nhận `@file (dòng a–b)`
-  kèm câu hỏi (hỏi = chat 💬 ở tab Đội; giao task = hiện trên Bảng việc).
+  kèm câu hỏi (hỏi = chat 💬 ở tab Agents; giao task = hiện trên Bảng việc).
 
 ## Rule của dự án
 
@@ -512,18 +518,18 @@ nội dung yêu cầu...
 
 ## Agent và workflow tuỳ chỉnh
 
-Gõ `/custom` để mở tab **🧩 Tuỳ chỉnh** (web: mục *Tuỳ chỉnh* ở sidebar; ở màn hình thiết lập vẫn có nút
-*Agent & workflow tuỳ chỉnh…* mở cùng nội dung dạng popup).
+Agent tuỳ chỉnh thêm / sửa / xoá ở tab **🤖 Agents**; workflow ở tab **🔀 Workflows** (`/custom`, `/workflows`; web:
+mục *Workflows* ở sidebar). Ở màn hình thiết lập vẫn có nút *Agent & workflow tuỳ chỉnh…* mở cả hai dạng popup.
 
 **Gõ mục tiêu chạy workflow nào**: nút ngay bên trái ô nhập (TUI: bấm hoặc **F4**) cho chọn *★ Trưởng nhóm lập kế
 hoạch* hay một workflow (kể cả workflow bạn tự tạo) — từ đó gõ prompt thẳng là chạy workflow đó, không cần
-`/flow <tên>`; `/goal` vẫn luôn để trưởng nhóm lập kế hoạch. Mỗi workflow ở tab Tuỳ chỉnh cũng có nút **★ Đặt mặc
+`/flow <tên>`; `/goal` vẫn luôn để trưởng nhóm lập kế hoạch. Mỗi workflow ở tab Workflows cũng có nút **★ Đặt mặc
 định** / **☆ Bỏ mặc định**. Lựa chọn dùng chung cho terminal và web.
 
-**Luồng mặc định** (`/flow-setup`, nút *⚙ Luồng mặc định* ở tab Tuỳ chỉnh, hoặc *⚙ Cấu hình luồng cố định…* ở bước
+**Luồng mặc định** (`/flow-setup`, nút *⚙ Luồng mặc định* ở tab Workflows, hoặc *⚙ Cấu hình luồng cố định…* ở bước
 *Kiểu làm việc* của `/setup`): chọn workflow chạy khi gõ mục tiêu và agent · model · effort cho từng bước (vd Thiết
 kế = trưởng nhóm, Viết code = codex `high`, Viết test = antigravity), bật/tắt trưởng nhóm review cuối. Sửa tiêu
-đề/prompt hay thêm bước thì dùng *Sửa* workflow ở tab Tuỳ chỉnh. Mọi thứ lưu ở `~/.config/ateam/custom.toml`, file này **không bị
+đề/prompt hay thêm bước thì dùng *Sửa* workflow ở tab Workflows. Mọi thứ lưu ở `~/.config/ateam/custom.toml`, file này **không bị
 thay** khi `config.toml` được nâng cấp lên bản mới.
 
 **Thêm agent**: bất kỳ CLI nào có chế độ headless (nhận prompt, in kết quả rồi thoát). Chọn *Mẫu* để điền
@@ -531,7 +537,7 @@ sẵn (claude, codex, agy, opencode, Gemini CLI, Aider, hoặc trống), rồi s
 task), vai trò (trưởng nhóm phân việc dựa vào đây), model mặc định + model gợi ý + cờ truyền model,
 các mức effort + cờ truyền effort, lệnh liệt kê model, cách nhắc file `@` (`@{path}` hay `{path}`, cờ
 đính file như `-f {path}`, cờ đính ảnh như `--image={path}`), agent dự phòng khi hết hạn mức, timeout, pty. Dòng *Lệnh sẽ chạy* ở cuối form
-cho thấy lệnh thật và CLI đã cài chưa. Lưu xong, agent vào đội ngay (ô riêng ở tab Đội, bật/tắt và chọn
+cho thấy lệnh thật và CLI đã cài chưa. Lưu xong, agent vào đội ngay (một dòng ở tab Agents, bật/tắt và chọn
 model/effort ở `/setup`, trưởng nhóm thấy nó khi lập kế hoạch).
 
 **Thêm workflow**: chuỗi bước dựng sẵn, chạy không cần trưởng nhóm lập kế hoạch. Mỗi bước gồm agent (hoặc

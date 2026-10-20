@@ -161,7 +161,7 @@ def test_tui_in_english_and_lang_switch(env, project, tmp_path):
                        timeout=120)
     assert r.returncode == 0, r.stderr[-2000:]
     out = json.loads(r.stdout.strip().splitlines()[-1])
-    assert any("Board" in t for t in out["tabs"]) and any("Team" in t for t in out["tabs"])
+    assert any("Board" in t for t in out["tabs"]) and any("Agents" in t for t in out["tabs"])
     assert "Type a goal" in out["placeholder"]
     assert "Assigning work:" in out["help"] and "/task <agent> <content>" in out["help"]
     # /lang vi: lưu rồi xin mở lại app (cli.cmd_tui exec lại tiến trình)
