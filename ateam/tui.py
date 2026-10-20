@@ -5384,7 +5384,7 @@ class TeamApp(App):
             out = []
             for cid, label, key, _web in palette.fuzzy(palette.CODE_COMMANDS, text[1:],
                                                          key=lambda c: c[1] + " " + palette.KEYWORDS.get(c[0], "")):
-                if cid in palette.NEEDS_FILE and sf is None:
+                if (cid in palette.NEEDS_FILE and sf is None) or cid in palette.TUI_SKIP:
                     continue
                 t = Text(label)
                 if key:

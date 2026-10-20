@@ -3,14 +3,25 @@
    :x :q! :e! :e <file> :bn :bp, Ctrl/⌘+S lưu. File đổi trên đĩa (agent sửa): chưa sửa → tự nạp lại, đang sửa → cảnh
    báo; lưu khi file đã đổi → hỏi ghi đè. File .md: Sửa / Chia đôi / Xem trước (mdHtml của app.js, Ctrl/⌘+Shift+V đổi
    chế độ, nhớ trong localStorage "ateam-md"). 🔍 Tìm & thay trong toàn dự án (⌘⇧F, như VS Code) ở sidebar — logic
-   ở ateam/search.py. */
+   ở ateam/search.py. Chia đôi hai khung (⌘\\, mỗi file ở một khung), ảnh / PDF xem tại chỗ, ⌥Tab đổi file vừa dùng,
+   Outline, palette # (symbol cả dự án), F12 / ⌘+click đi tới định nghĩa, ⇧⌥F format (ruff, prettier…), tự lưu. */
 "use strict";
 
 window.CodeView = (() => {
   const LIMIT = 10;
-  const C = { view: null, bufs: new Map(), order: [], cur: null, open: new Set([""]), tree: {}, filter: "",
+  const C = { panes: [{ view: null, cur: null }], act: 0, bufs: new Map(), order: [], mru: [], open: new Set([""]), tree: {}, filter: "",
     loading: null, comp: null, warned: {}, timer: null, ticks: 0, mode: "normal", wrap: false, restored: false,
-    git: {}, gitDirs: new Set(), gitKey: "", head: undefined, runKey: "" };
+    git: {}, gitDirs: new Set(), gitKey: "", head: undefined, runKey: "", side: "files", outKey: null };
+  // C.view / C.cur = editor và file của khung đang dùng (chia đôi: 2 khung, mỗi khung một EditorView)
+  for (const k of ["view", "cur"]) Object.defineProperty(C, k, { get: () => C.panes[C.act][k], set: (v) => { C.panes[C.act][k] = v; } });
+  const HOSTS = ["#code-editor", "#code-editor2"];
+  const paneOf = (path) => C.panes.findIndex((p) => p.cur === path);
+  function liveState(b) {  // trạng thái mới nhất của buffer: đang hiện ở khung nào thì lấy từ editor đó
+    const i = paneOf(b.path);
+    return i >= 0 && C.panes[i].view && !b.media ? C.panes[i].view.state : b.state;
+  }
+  const liveText = (b) => { const st = liveState(b); return st ? st.doc.toString() : b.saved; };
+  const KIND_ICON = { class: "◆", type: "◇", function: "ƒ", method: "ƒ", heading: "#" };
   const el = () => $("#code");
   async function getJSON(url) {  // mất kết nối / server lỗi → {error} thay vì lỗi không ai bắt
     try { return await (await fetch(url)).json(); } catch (e) { return { error: t("code_net_fail") }; }
@@ -42,15 +53,23 @@ window.CodeView = (() => {
     return [
       c.vim.of(vimOn() ? CM.vim() : []),  // vim trước các keymap khác
       CM.basicSetup,
-      CM.keymap.of([CM.indentWithTab, { key: "Mod-s", run: () => { save(); return true; } }]),
+      CM.keymap.of([CM.indentWithTab, { key: "Mod-s", run: () => { save(); return true; } },
+        { key: "F12", run: (v) => { gotoDef(v); return true; } }]),  // ⇧⌥F, ⌘\\: bắt ở document (vim nuốt phím ⌥)
+      CM.EditorView.domEventHandlers({ mousedown: (e, v) => {  // ⌘+click (Ctrl+click): đi tới định nghĩa
+        if (!(e.metaKey || e.ctrlKey) || e.button !== 0) return false;
+        const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
+        if (pos == null) return false;
+        e.preventDefault(); gotoDef(v, pos);
+        return true;
+      } }),
       c.theme.of(isDark() ? CM.oneDark : []),
       c.lang.of(buf.lang ? buf.lang.support : []),
       c.ro.of(CM.EditorState.readOnly.of(!!buf.ro)),
       c.wrap.of(C.wrap ? CM.EditorView.lineWrapping : []),
       gitExt(),
       CM.EditorView.updateListener.of((u) => {
-        if (u.docChanged) { buf.dirty = u.state.doc.toString() !== buf.saved; renderTabs(); schedulePreview(); scheduleGit(); }
-        if (u.docChanged || u.selectionSet) renderStatus();
+        if (u.docChanged) { buf.dirty = u.state.doc.toString() !== buf.saved; renderTabs(); schedulePreview(); scheduleGit(); scheduleAutosave(buf); }
+        if (u.docChanged || u.selectionSet) { renderStatus(); markOutline(); }
       }),
     ];
   }
@@ -86,6 +105,7 @@ window.CodeView = (() => {
         <div class="side-tabs">
           <button class="side-tab on" data-side="files" title="${esc(t("sr_files"))}"><svg viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2z"/></svg>${esc(t("sr_files"))}</button>
           <button class="side-tab" data-side="search" title="${esc(t("sr_search"))} (⌘⇧F)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>${esc(t("sr_search"))}</button>
+          <button class="side-tab" data-side="outline" title="${esc(t("sr_outline"))}"><svg viewBox="0 0 24 24"><path d="M5 6h14M8 12h11M11 18h8"/></svg>${esc(t("sr_outline"))}</button>
         </div>
         <div class="side-pane" id="side-files">
           <div class="code-filter-row"><input class="field one" id="code-filter" placeholder="${esc(t("code_filter"))}" autocomplete="off" spellcheck="false">
@@ -94,11 +114,13 @@ window.CodeView = (() => {
           <div class="tree" id="code-tree"></div>
         </div>
         <div class="side-pane hidden" id="side-search">${searchPane()}</div>
+        <div class="side-pane hidden" id="side-outline"><div class="outline" id="code-outline"></div></div>
       </aside>
       <section class="code-main">
         <div class="code-tabs" id="code-tabs"></div>
         <div class="code-body" data-md="edit">
-          <div class="code-host" id="code-editor"></div>
+          <div class="code-host" id="code-editor"><div class="code-media"></div></div>
+          <div class="code-host hidden" id="code-editor2"><div class="code-media"></div></div>
           <div class="code-preview md" id="code-preview"></div>
         </div>
         <div class="code-status" id="code-status"></div>
@@ -201,8 +223,7 @@ window.CodeView = (() => {
     if (r.oid !== C.head) {  // commit mới (tab Git, agent): so lại với HEAD mới
       const first = C.head === undefined;
       C.head = r.oid;
-      const b = C.cur && C.bufs.get(C.cur);
-      if (!first && b && window.CM) loadBase(b);
+      if (!first && window.CM) for (const p of C.panes) { const b = p.cur && C.bufs.get(p.cur); if (b && !b.media) loadBase(b); }
     }
     return changed;
   }
@@ -241,9 +262,9 @@ window.CodeView = (() => {
     }
     return CM.RangeSet.of(out, true);
   }
-  function applyGit() {
-    const b = C.cur && C.bufs.get(C.cur);
-    if (b && C.view && GIT) C.view.dispatch({ effects: GIT.set.of(gitMarks(b, C.view.state.doc)) });
+  function applyGit(pi = C.act) {
+    const p = C.panes[pi], b = p && p.cur && C.bufs.get(p.cur);
+    if (b && !b.media && p.view && GIT) p.view.dispatch({ effects: GIT.set.of(gitMarks(b, p.view.state.doc)) });
   }
   let gitTimer = null;
   function scheduleGit() { clearTimeout(gitTimer); gitTimer = setTimeout(applyGit, 300); }
@@ -251,10 +272,10 @@ window.CodeView = (() => {
     const r = await getJSON("/api/file/base?path=" + encodeURIComponent(b.path));
     if (r.error) return;
     b.base = r.repo && !r.ignored ? CM.Text.of(String(r.text || "").split("\n")) : null;
-    if (b.path === C.cur) applyGit();
+    if (paneOf(b.path) >= 0) applyGit(paneOf(b.path));
   }
   function hunkPop(view, line, ev) {  // bấm dấu ở lề: xem đoạn cũ, hoàn tác đoạn này
-    const b = C.cur && C.bufs.get(C.cur), doc = view.state.doc;
+    const pane = C.panes.find((p) => p.view === view), b = pane && C.bufs.get(pane.cur), doc = view.state.doc;
     const ch = b && (b.chunks || []).find((c) => c.fromB === c.toB ? doc.lineAt(Math.min(c.fromB, doc.length)).from === line.from
       : line.from >= c.fromB && line.from <= c.endB);
     if (!ch) return false;
@@ -288,7 +309,7 @@ window.CodeView = (() => {
     if (!box) return;
     box.innerHTML = C.order.map((p) => {
       const b = C.bufs.get(p);
-      return `<div class="ctab${p === C.cur ? " on" : ""}" data-path="${esc(p)}" title="${esc(p)}">
+      return `<div class="ctab${p === C.cur ? " on" : C.panes[1] && paneOf(p) >= 0 ? " other" : ""}" data-path="${esc(p)}" title="${esc(p)}">
         <span class="tname">${esc(p.split("/").pop())}</span>${b.dirty ? `<span class="dot-dirty">●</span>` : ""}
         <button class="ctab-x" data-close="${esc(p)}">×</button></div>`;
     }).join("") || `<div class="muted small pad">${esc(t("code_hint"))}</div>`;
@@ -299,22 +320,36 @@ window.CodeView = (() => {
     if (!box) return;
     const b = C.cur && C.bufs.get(C.cur);
     if (!b) { box.innerHTML = `<span>${esc(vimOn() ? t("code_vim_hint") : t("code_novim_hint"))}</span>`; return; }
+    if (b.media) {
+      box.innerHTML = `<span class="mono cpath">${esc(b.path)}</span><span style="flex:1"></span>${runChip()}
+        <span>${esc(b.language || "")}</span><span class="mono">${esc(fmtSize(b.size))}</span>`;
+      return;
+    }
     const st = C.view.state, pos = st.selection.main.head, line = st.doc.lineAt(pos);
     const mode = vimOn() ? `<span class="vmode m-${esc(C.mode)}">${esc(C.mode.toUpperCase())}</span>` : "";
     const sym = symAt(b.syms, line.number);
     box.innerHTML = `${mode}<span class="mono cpath">${esc(b.path)}</span>${b.dirty ? `<span class="dot-dirty">●</span>` : ""}
-      ${sym ? `<span class="mono crumb">› ${esc(sym.name)}</span>` : ""}
-      <span style="flex:1"></span>${runChip()}${b.ro ? `<span class="chip warn">${esc(t("code_readonly", { v: b.note }))}</span>` : ""}
+      ${sym ? `<span class="mono crumb" data-cact="crumb" title="${esc(t("pal_goto_symbol"))}">› ${esc(sym.name)}</span>` : ""}
+      <span style="flex:1"></span>${runChip()}${S.prefs.autosave ? `<span class="chip" title="${esc(t("code_autosave_tip"))}">${esc(t("code_autosave_chip"))}</span>` : ""}${b.ro ? `<span class="chip warn">${esc(t("code_readonly", { v: b.note }))}</span>` : ""}
       ${b.newline === "\r\n" ? `<span class="chip">CRLF</span>` : ""}<span>${esc((b.lang && b.lang.name) || b.language || t("code_plain"))}</span>
       <span class="mono">${esc(t("code_pos", { r: line.number, n: st.doc.lines, c: pos - line.from + 1 }))}</span>
-      ${isMd(b) ? `<span class="seg" title="${esc(t("code_md_title"))}">${MD_MODES.map((m) =>
+      ${isMd(b) && !C.panes[1] ? `<span class="seg" title="${esc(t("code_md_title"))}">${MD_MODES.map((m) =>
         `<button class="mini${m === C.md ? " on" : ""}" data-cact="md" data-md="${m}">${esc(t("code_md_" + m))}</button>`).join("")}</span>` : ""}
       <button class="mini" data-cact="vim" title="/vim on|off">vim ${vimOn() ? "✓" : "✗"}</button>`;
   }
 
+  function fmtSize(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : (n || 0) + " B"; }
+  function showMedia(pi, b) {  // ảnh / PDF thay cho editor của khung pi
+    const host = $(HOSTS[pi]), box = $(".code-media", host), src = `/api/raw?path=${encodeURIComponent(b.path)}&v=${b.mtime}`;
+    host.classList.add("media");
+    if (box.dataset.src === src) return;
+    box.dataset.src = src;
+    box.innerHTML = b.media === "pdf" ? `<iframe src="${esc(src)}" title="${esc(b.path)}"></iframe>` : `<img src="${esc(src)}" alt="${esc(b.path)}">`;
+  }
+
   /* ---------------------------------------------------------------- xem trước markdown */
   const isMd = (b) => !!b && /\.(md|markdown|mdx)$/i.test(b.path);
-  function mdMode() { return isMd(C.cur && C.bufs.get(C.cur)) ? C.md : "edit"; }
+  function mdMode() { return !C.panes[1] && isMd(C.cur && C.bufs.get(C.cur)) ? C.md : "edit"; }  // chia đôi editor: không xem trước
   let pvTimer = null;
   function renderPreview() {
     const box = $("#code-preview");
@@ -341,19 +376,41 @@ window.CodeView = (() => {
     box.scrollTop = r * (box.scrollHeight - box.clientHeight);
   }
   function newView(state) {
-    C.view = new CM.EditorView({ state, parent: $("#code-editor") });
+    const i = C.act;
+    C.view = new CM.EditorView({ state, parent: $(HOSTS[i]) });
     C.view.scrollDOM.addEventListener("scroll", syncScroll);
+    C.view.dom.addEventListener("focusin", () => setActive(i));
+  }
+  const blankState = () => CM.EditorState.create({ doc: "", extensions: [CM.EditorState.readOnly.of(true), comps().theme.of(isDark() ? CM.oneDark : [])] });
+  function setActive(i) {  // chia đôi: khung đang dùng (bấm / focus vào khung)
+    if (i === C.act || !C.panes[i]) return;
+    C.act = i;
+    HOSTS.forEach((h, k) => { const e = $(h); if (e) e.classList.toggle("act", k === i && !!C.panes[1]); });
+    renderTabs(); renderStatus(); renderOutline();
+    $$("#code-tree .tnode").forEach((n) => n.classList.toggle("on", n.dataset.path === C.cur));
   }
 
   function stash() {
     const b = C.cur && C.bufs.get(C.cur);
-    if (b && C.view) b.state = C.view.state;
+    if (b && C.view && !b.media) b.state = C.view.state;
   }
+  function touchMru(p) { C.mru = [p].concat(C.mru.filter((x) => x !== p && C.bufs.has(x))); }
   function activate(path, line, col, len) {
     const b = C.bufs.get(path);
     if (!b) return;
+    const other = paneOf(path);
+    if (other >= 0 && other !== C.act) setActive(other);  // mỗi file ở một khung: đang hiện ở khung kia thì sang đó
     stash();
     C.cur = path;
+    touchMru(path);
+    $(HOSTS[C.act]).classList.toggle("media", !!b.media);
+    if (b.media) {
+      showMedia(C.act, b);
+      renderTabs(); renderStatus(); renderPreview(); renderOutline();
+      revealInTree(path);
+      persist();
+      return;
+    }
     if (!b.state) b.state = CM.EditorState.create({ doc: b.saved, extensions: extensions(b) });
     if (!C.view) {
       newView(b.state);
@@ -367,17 +424,62 @@ window.CodeView = (() => {
       C.view.dispatch({ selection: { anchor: from, head: to }, effects: CM.EditorView.scrollIntoView(from, { y: "center" }) });
     }
     C.view.focus();
-    renderTabs(); renderStatus(); renderPreview();
+    renderTabs(); renderStatus(); renderPreview(); renderOutline();
     revealInTree(path);
     if (!b.syms) loadSyms(b);
     loadBase(b);
+    persist();
+  }
+  /* chia đôi: khung phải (#code-editor2) có EditorView riêng; path = file mở ở khung phải (mặc định: file vừa dùng khác) */
+  function split(path) {
+    if (!window.CM || !C.view) return;
+    if (C.panes[1]) {  // đã chia: sang khung kia (mở file ở đó nếu có)
+      setActive(C.act ? 0 : 1);
+      if (path) open(path); else if (C.view) C.view.focus();
+      return;
+    }
+    const target = path || C.mru.find((p) => p !== C.cur && C.bufs.has(p));
+    if (!target) { toast(t("split_need"), "info"); return; }
+    if (target === C.panes[0].cur) {  // chuyển file đang xem sang phải, bên trái hiện file vừa dùng khác
+      stash();
+      C.panes[0].cur = null;
+      const left = C.mru.find((p) => p !== target && C.bufs.has(p));
+      if (left) activate(left); else { C.view.setState(blankState()); $(HOSTS[0]).classList.remove("media"); }
+    }
+    C.panes.push({ view: null, cur: null });
+    $(HOSTS[1]).classList.remove("hidden");
+    $(".code-body", el()).classList.add("split2");
+    C.act = 1;
+    newView(blankState());
+    HOSTS.forEach((h, k) => $(h).classList.toggle("act", k === 1));
+    if (C.bufs.has(target)) activate(target); else open(target);
+    renderPreview();
+  }
+  function unsplit(keep = C.act) {  // gộp lại một khung, giữ file của khung `keep`
+    if (!C.panes[1]) return;
+    for (const p of C.panes) { const b = p.cur && C.bufs.get(p.cur); if (b && !b.media && p.view) b.state = p.view.state; }
+    const keepPath = C.panes[keep].cur;
+    C.panes[1].view.destroy();
+    C.panes = [C.panes[0]];
+    C.act = 0;
+    const h2 = $(HOSTS[1]);
+    h2.classList.add("hidden"); h2.classList.remove("media", "act");
+    const m2 = $(".code-media", h2); m2.innerHTML = ""; delete m2.dataset.src;
+    $(HOSTS[0]).classList.remove("act");
+    $(".code-body", el()).classList.remove("split2");
+    if (keep === 1) {
+      C.panes[0].cur = null;
+      if (keepPath) activate(keepPath); else { C.view.setState(blankState()); $(HOSTS[0]).classList.remove("media"); }
+    }
+    renderTabs(); renderStatus(); renderPreview(); renderOutline();
+    if (C.view) C.view.focus();
     persist();
   }
   /* symbol (hàm, class, heading) của file: thanh "› đang ở đâu" và palette @ — tính lại khi mở / lưu */
   async function loadSyms(b) {
     const r = await getJSON("/api/symbols?path=" + encodeURIComponent(b.path));
     b.syms = Array.isArray(r) ? r : [];
-    if (b.path === C.cur) renderStatus();
+    if (b.path === C.cur) { renderStatus(); renderOutline(); }
     return b.syms;
   }
   function symAt(syms, line) {
@@ -412,8 +514,8 @@ window.CodeView = (() => {
     if (r.new) toast(t("code_new_file"), "info");
   }
   function addBuf(r) {  // r: trả lời của /api/file
-    const lang = CM.languageFor(r.path);
-    const b = { path: r.path, saved: r.text, mtime: r.mtime, ro: r.read_only, note: r.note, newline: r.newline, lang,
+    const lang = r.media ? null : CM.languageFor(r.path);
+    const b = r.media ? { path: r.path, media: r.media, size: r.size, mtime: r.mtime, language: r.language, saved: "", dirty: false, state: null, syms: [] } : { path: r.path, saved: r.text, mtime: r.mtime, ro: r.read_only, note: r.note, newline: r.newline, lang,
       language: r.language, dirty: false, state: null };
     C.bufs.set(r.path, b);
     C.order.push(r.path);
@@ -429,10 +531,11 @@ window.CodeView = (() => {
   function persist() {
     const pos = {};
     for (const p of C.order) {
-      const st = p === C.cur && C.view ? C.view.state : C.bufs.get(p).state;
+      const st = liveState(C.bufs.get(p));
       if (st) pos[p] = st.selection.main.head;
     }
-    try { localStorage.setItem(sessKey(), JSON.stringify({ order: C.order, cur: C.cur, pos })); } catch (e) { /* chặn lưu */ }
+    const right = C.panes[1] ? C.panes[1].cur : null;
+    try { localStorage.setItem(sessKey(), JSON.stringify({ order: C.order, cur: C.panes[0].cur, right, pos })); } catch (e) { /* chặn lưu */ }
   }
   async function restore() {
     let s = null;
@@ -444,29 +547,35 @@ window.CodeView = (() => {
       const r = await getJSON("/api/file?quiet=1&path=" + encodeURIComponent(p));
       if (r.error || r.dir || r.new) continue;  // file không còn
       const b = addBuf(r);
-      b.state = CM.EditorState.create({ doc: b.saved, extensions: extensions(b), selection: { anchor: Math.min(pos[p] || 0, b.saved.length) } });
+      if (!b.media) b.state = CM.EditorState.create({ doc: b.saved, extensions: extensions(b), selection: { anchor: Math.min(pos[p] || 0, b.saved.length) } });
     }
     const cur = C.bufs.has(s.cur) ? s.cur : C.order[0];
     if (!cur) return;
     activate(cur);
-    const head = C.view.state.selection.main.head;
-    C.view.dispatch({ effects: CM.EditorView.scrollIntoView(head, { y: "center" }) });
+    const center = () => { if (!C.bufs.get(C.cur).media) C.view.dispatch({ effects: CM.EditorView.scrollIntoView(C.view.state.selection.main.head, { y: "center" }) }); };
+    center();
+    if (s.right && s.right !== cur && C.bufs.has(s.right)) { split(s.right); center(); setActive(0); }
   }
   async function close(path, force) {
     const b = path && C.bufs.get(path);
     if (!b) return;
-    if (path === C.cur) stash();
     if (b.dirty && !force) {
       if (!await confirmBox(t("code_unsaved"), t("code_unsaved_q", { path }), t("code_discard"))) return;
     }
+    const pi = paneOf(path);
+    clearTimeout(b.asTimer);
     C.bufs.delete(path);
+    C.mru = C.mru.filter((p) => p !== path);
     const i = C.order.indexOf(path);
     C.order.splice(i, 1);
-    if (path === C.cur) {
-      C.cur = null;
-      const next = C.order[Math.min(i, C.order.length - 1)];
-      if (next) activate(next);
-      else { C.view.setState(CM.EditorState.create({ doc: "", extensions: [CM.EditorState.readOnly.of(true), comps().theme.of(isDark() ? CM.oneDark : [])] })); renderStatus(); renderPreview(); }
+    if (pi >= 0) {  // đang hiện ở khung pi: thay bằng file khác chưa hiện ở khung nào, hết thì gộp khung / để trống
+      C.panes[pi].cur = null;
+      const shown = C.panes.map((p) => p.cur);
+      const next = C.mru.concat(C.order).find((p) => C.bufs.has(p) && !shown.includes(p));
+      $(HOSTS[pi]).classList.remove("media");
+      if (next) { C.act = pi; activate(next); }
+      else if (C.panes[1]) unsplit(pi ? 0 : 1);
+      else { C.view.setState(blankState()); renderStatus(); renderPreview(); renderOutline(); }
     }
     renderTabs();
     persist();
@@ -476,17 +585,27 @@ window.CodeView = (() => {
     const i = (C.order.indexOf(C.cur) + d + C.order.length) % C.order.length;
     activate(C.order[i]);
   }
-  async function save(force = false) {
+  let saving = null;  // ⌘S / :w liên tiếp: chờ lần lưu đang chạy, không gửi hai lần (lần sau sẽ báo xung đột giả)
+  function save(force = false) {
+    if (!saving) saving = doSave(force).finally(() => { saving = null; });
+    return saving;
+  }
+  async function doSave(force) {
     const b = C.cur && C.bufs.get(C.cur);
-    if (!b) return false;
-    const ok = await saveBuf(b, C.view.state.doc.toString(), force);
+    if (!b || b.media) return false;
+    if (S.prefs.fmt_save && !b.ro) await formatDoc(true);  // format khi lưu (không có công cụ: bỏ qua, im lặng)
+    const ok = await saveBuf(b, liveText(b), force);
     renderTabs(); renderStatus();
     return ok;
   }
-  /* ghi một buffer (đang xem hoặc ở tab khác); file đã đổi trên đĩa / chỉ đọc → hỏi ghi đè */
-  async function saveBuf(b, text, force = false) {
-    const r = await request("save", { path: b.path, text, mtime: b.mtime, force });
+  /* ghi một buffer (đang xem hoặc ở tab khác); file đã đổi trên đĩa / chỉ đọc → hỏi ghi đè.
+     auto (tự lưu): không toast, gặp xung đột thì tạm tắt tự lưu cho file này thay vì hỏi */
+  async function saveBuf(b, text, force = false, auto = false) {
+    b.saving = true;
+    let r;
+    try { r = await request("save", { path: b.path, text, mtime: b.mtime, force, quiet: auto }); } finally { b.saving = false; }
     const sv = r.save || {};
+    if (auto && (sv.conflict || sv.read_only)) { b.noAuto = true; toast(t("code_autosave_off", { path: b.path }), "warn"); return false; }
     if (sv.conflict) {
       return await confirmBox(t("code_conflict"), t("code_conflict_q", { path: b.path }), t("code_overwrite")) && saveBuf(b, text, true);
     }
@@ -494,8 +613,9 @@ window.CodeView = (() => {
       return await confirmBox(t("code_readonly_title"), t("code_readonly_q", { v: b.note }), t("code_write_anyway")) && saveBuf(b, text, true);
     }
     if (!sv.mtime) return false;
-    const st = b.path === C.cur && C.view ? C.view.state : b.state;
+    const st = liveState(b);
     b.saved = text; b.mtime = sv.mtime; b.dirty = !!st && st.doc.toString() !== text; C.warned[b.path] = 0;
+    if (!auto) b.noAuto = false;
     loadSyms(b);
     loadGit().then((ch) => { if (ch) renderTree(); });
     return true;
@@ -504,7 +624,14 @@ window.CodeView = (() => {
     const b = C.bufs.get(path || C.cur);
     if (!b) return;
     const r = await getJSON("/api/file?quiet=1&path=" + encodeURIComponent(b.path));
-    if (b.path !== C.cur) {  // file mở ở tab khác (vd vừa thay thế, agent sửa): nạp lại khi chuyển tới
+    const pi = paneOf(b.path);
+    if (b.media) {  // ảnh / PDF đổi trên đĩa: hiện lại
+      if (r.error) return;
+      b.mtime = r.mtime; b.size = r.size;
+      if (pi >= 0) { showMedia(pi, b); if (pi === C.act) renderStatus(); }
+      return;
+    }
+    if (pi < 0) {  // file mở ở tab khác (vd vừa thay thế, agent sửa): nạp lại khi chuyển tới
       if (r.error) return;
       const head = b.state ? Math.min(b.state.selection.main.head, r.text.length) : 0;  // giữ chỗ con trỏ
       b.saved = r.text; b.mtime = r.mtime; b.dirty = false; b.syms = null;
@@ -513,12 +640,12 @@ window.CodeView = (() => {
       return;
     }
     if (r.error) { toast(r.error, "warn"); return; }
-    const head = C.view.state.selection.main.head;
-    b.saved = r.text; b.mtime = r.mtime; b.dirty = false; b.ro = r.read_only; b.note = r.note;
+    const v = C.panes[pi].view, head = v.state.selection.main.head;
+    b.saved = r.text; b.mtime = r.mtime; b.dirty = false; b.ro = r.read_only; b.note = r.note; b.noAuto = false;
     b.state = CM.EditorState.create({ doc: r.text, extensions: extensions(b), selection: { anchor: Math.min(head, r.text.length) } });
-    C.view.setState(b.state);
-    refreshConfig();
-    applyGit();
+    v.setState(b.state);
+    if (pi === C.act) refreshConfig();
+    applyGit(pi);
     renderTabs(); renderStatus(); renderPreview();
     const run = runningAgents();
     toast(quiet !== "disk" ? t("code_reloaded") : run.length ? t("code_reloaded_by", { v: run.join(", ") }) : t("code_reloaded_disk"), "info");
@@ -528,9 +655,9 @@ window.CodeView = (() => {
     const r = await getJSON("/api/file/stat?" + C.order.map((p) => "p=" + encodeURIComponent(p)).join("&"));
     for (const [path, mtime] of Object.entries(r.mtimes || {})) {
       const b = C.bufs.get(path);
-      if (!b || !mtime || mtime === b.mtime) continue;
+      if (!b || !mtime || mtime === b.mtime || b.saving) continue;
       const cur = path === C.cur;
-      const dirty = b.dirty || (cur && C.view && C.view.state.doc.toString() !== b.saved);
+      const dirty = b.dirty || (!b.media && liveText(b) !== b.saved);
       if (!dirty) reload("disk", path);
       else if (C.warned[path] !== mtime) {
         C.warned[path] = mtime;
@@ -541,6 +668,99 @@ window.CodeView = (() => {
   function tick() {
     checkDisk();
     if (++C.ticks % 3 === 0) refreshTree();
+  }
+
+  /* ---------------------------------------------------------------- outline: symbol của file đang xem (sidebar) */
+  function renderOutline() {
+    const box = $("#code-outline");
+    if (!box || C.side !== "outline") return;
+    const b = C.cur && C.bufs.get(C.cur), syms = b && !b.media ? b.syms || [] : [];
+    box.innerHTML = syms.length ? syms.map((s, k) => `<div class="onode" data-k="${k}" data-line="${s.line}" style="padding-left:${10 + s.depth * 12}px">
+        <span class="okind k-${esc(s.kind)}">${KIND_ICON[s.kind] || "•"}</span><span class="tname">${esc(s.name)}</span><span class="oline">${s.line}</span></div>`).join("")
+      : `<div class="muted small pad">${esc(b ? t("outline_empty") : t("pal_noopen"))}</div>`;
+    C.outKey = null;
+    markOutline();
+  }
+  function markOutline() {  // tô symbol đang đứng
+    if (C.side !== "outline" || !C.view) return;
+    const b = C.cur && C.bufs.get(C.cur);
+    if (!b || b.media || !b.syms) return;
+    const s = symAt(b.syms, C.view.state.doc.lineAt(C.view.state.selection.main.head).number), k = s ? b.syms.indexOf(s) : -1;
+    if (k === C.outKey) return;
+    C.outKey = k;
+    $$("#code-outline .onode").forEach((n) => n.classList.toggle("on", +n.dataset.k === k));
+    const on = $("#code-outline .onode.on");
+    if (on) on.scrollIntoView({ block: "nearest" });
+  }
+
+  /* ---------------------------------------------------------------- ⌥Tab: đổi file theo thứ tự dùng gần nhất */
+  const SW = { m: null, i: 0, list: [] };
+  function switcher(step) {
+    if (!SW.m) {
+      SW.list = C.mru.filter((p) => C.bufs.has(p));
+      if (SW.list.length < 2) return false;
+      SW.i = 0;
+      SW.m = document.createElement("div");
+      SW.m.className = "mru-pop";
+      SW.m.addEventListener("mousedown", (e) => { const r = e.target.closest("[data-k]"); if (r) { e.preventDefault(); SW.i = +r.dataset.k; switcherDone(true); } });
+      document.body.appendChild(SW.m);
+    }
+    SW.i = (SW.i + step + SW.list.length) % SW.list.length;
+    SW.m.innerHTML = `<div class="pal-head">${esc(t("mru_title"))}</div>` + SW.list.map((p, k) =>
+      `<div class="pal-item${k === SW.i ? " on" : ""}" data-k="${k}">${icon({ name: p })} ${esc(p.split("/").pop())}<span class="pal-where">${esc(p)}</span></div>`).join("");
+    return true;
+  }
+  function switcherDone(ok) {
+    if (!SW.m) return;
+    const p = SW.list[SW.i];
+    SW.m.remove(); SW.m = null;
+    if (ok && p) activate(p);
+  }
+
+  /* ---------------------------------------------------------------- đi tới định nghĩa (F12, ⌘+click) */
+  async function gotoDef(view = C.view, pos) {
+    const b = C.cur && C.bufs.get(C.cur);
+    if (!view || !b || b.media) return;
+    if (pos == null) pos = view.state.selection.main.head;
+    const w = view.state.wordAt(pos), word = w ? view.state.sliceDoc(w.from, w.to) : "";
+    if (!/^[\p{L}_$][\p{L}\p{N}_$]*$/u.test(word)) { toast(t("def_noword"), "info"); return; }
+    const r = await getJSON("/api/wsymbols?exact=1&q=" + encodeURIComponent(word));
+    const items = r.items || [], here = items.filter((x) => x.path === b.path);
+    const hit = items.length === 1 ? items[0] : here.length === 1 ? here[0] : null;
+    if (hit) return open(hit.path, hit.line);
+    if (items.length) return palette("#" + word);
+    toast(r.error || t("def_none", { v: word }), "info");
+  }
+
+  /* ---------------------------------------------------------------- format (công cụ của dự án) + tự lưu */
+  async function formatDoc(quiet) {
+    const b = C.cur && C.bufs.get(C.cur), view = C.view;
+    if (!b || b.media || !view) return false;
+    if (b.ro) { if (!quiet) toast(t("code_readonly", { v: b.note }), "warn"); return false; }
+    const text = view.state.doc.toString();
+    const r = await request("code_format", { path: b.path, text, quiet: !!quiet }, quiet ? "" : t("busy_formatting"));
+    if (r.formatted == null || view.state.doc.toString() !== text) return false;  // lỗi (đã báo) / gõ tiếp trong lúc chờ
+    const f = r.formatted;
+    if (f === text) { if (!quiet) toast(t("fmt_same", { v: r.tool }), "info"); return true; }
+    let a = 0, z = 0;  // chỉ thay đoạn khác nhau: con trỏ / cuộn giữ nguyên chỗ
+    const n = Math.min(text.length, f.length);
+    while (a < n && text[a] === f[a]) a++;
+    while (z < n - a && text[text.length - 1 - z] === f[f.length - 1 - z]) z++;
+    view.dispatch({ changes: { from: a, to: text.length - z, insert: f.slice(a, f.length - z) }, userEvent: "input.format" });
+    if (!quiet) toast(t("fmt_done", { v: r.tool }), "ok");
+    return true;
+  }
+  function scheduleAutosave(b) {
+    if (!S.prefs.autosave || b.ro || b.noAuto || b.media) return;
+    clearTimeout(b.asTimer);
+    b.asTimer = setTimeout(async () => {
+      if (!C.bufs.has(b.path) || b.saving) return;
+      const text = liveText(b);
+      if (text === b.saved) return;
+      await saveBuf(b, text, false, true);
+      renderTabs();
+      if (b.path === C.cur) renderStatus();
+    }, 1500);
   }
 
   /* ---------------------------------------------------------------- 🔍 tìm & thay trong dự án */
@@ -596,11 +816,17 @@ window.CodeView = (() => {
     });
   }
   function sidePane(which, prefill) {
+    C.side = which;
     $$(".side-tab").forEach((b) => b.classList.toggle("on", b.dataset.side === which));
-    $("#side-files").classList.toggle("hidden", which !== "files");
-    $("#side-search").classList.toggle("hidden", which !== "search");
+    for (const k of ["files", "search", "outline"]) $("#side-" + k).classList.toggle("hidden", which !== k);
     el().classList.toggle("searching", which === "search");
-    if (which === "search") {
+    el().classList.remove("no-side");
+    if (which === "outline") {
+      const b = C.cur && C.bufs.get(C.cur);
+      if (b && !b.syms) loadSyms(b);
+      renderOutline();
+      if (C.view) C.view.focus();
+    } else if (which === "search") {
       const q = $("#sr-q");
       if (prefill && !prefill.includes("\n")) { q.value = SR.query = prefill; runSearch(); }
       q.focus(); q.select();
@@ -648,7 +874,7 @@ window.CodeView = (() => {
   async function replaceFiles(paths) {
     paths = (paths || []).filter(Boolean);
     if (!SR.query || !paths.length) return;
-    const dirty = paths.filter((p) => (C.bufs.get(p) || {}).dirty || (p === C.cur && C.view && C.view.state.doc.toString() !== C.bufs.get(p).saved));
+    const dirty = paths.filter((p) => (C.bufs.get(p) || {}).dirty || (C.bufs.has(p) && liveText(C.bufs.get(p)) !== C.bufs.get(p).saved));
     if (dirty.length) toast(t("sr_dirty", { v: dirty.join(", ") }), "warn");
     paths = paths.filter((p) => !dirty.includes(p));
     if (!paths.length) return;
@@ -707,12 +933,22 @@ window.CodeView = (() => {
         .map((c) => ({ html: `${esc(c.label)}${c.key ? `<span class="pal-key">${esc(c.key)}</span>` : ""}`, val: ["cmd", c.id] }));
       return out.length ? out : [head(t("pal_nocmd"))];
     }
+    if (text.startsWith("#")) {  // symbol trong cả dự án
+      const q = text.slice(1).trim();
+      if (!q) return [head(t("pal_ws_hint"))];
+      const r = await getJSON("/api/wsymbols?q=" + encodeURIComponent(q));
+      const out = (r.items || []).map((x) => ({
+        html: `<span class="pal-dim">${KIND_ICON[x.kind] || "•"}</span> ${esc(x.name)}<span class="pal-where">${esc(x.path)}:${x.line}</span>`,
+        val: ["sym", x.path, x.line] }));
+      if (r.partial) out.push(head(t("pal_ws_partial")));
+      return out.length ? out : [head(r.error || t("pal_ws_none"))];
+    }
     if (!b && /^[@:/]/.test(text)) return [head(t("pal_noopen"))];
+    if (b && b.media && /^[@:/]/.test(text)) return [head(t("pal_media"))];
     if (text.startsWith("@")) {
       const syms = b.syms || await loadSyms(b);
-      const icon = { class: "◆", type: "◇", function: "ƒ", method: "ƒ", heading: "#" };
       const out = fuzzy(syms, text.slice(1), (s) => s.name).map((s) => ({
-        html: `<span class="pal-dim">${"&nbsp;&nbsp;".repeat(s.depth)}${icon[s.kind] || "•"}</span> ${esc(s.name)}<span class="pal-key">:${s.line}</span>`,
+        html: `<span class="pal-dim">${"&nbsp;&nbsp;".repeat(s.depth)}${KIND_ICON[s.kind] || "•"}</span> ${esc(s.name)}<span class="pal-key">:${s.line}</span>`,
         val: ["line", s.line, 0] }));
       return out.length ? out : [head(t("pal_nosym"))];
     }
@@ -770,11 +1006,12 @@ window.CodeView = (() => {
     closeModal(P.m); P.m = null;
     if (v[0] === "file") open(v[1]);
     else if (v[0] === "line") activate(C.cur, v[1], v[2]);
+    else if (v[0] === "sym") open(v[1], v[2]);
     else if (v[0] === "cmd") runCmd(v[1]);
   }
   function selRef() {  // "@đường/dẫn (dòng a–b)" của đoạn đang chọn — để hỏi / giao việc cho agent
     const st = C.view.state, s = st.selection.main;
-    if (s.empty) return "@" + C.cur;
+    if (s.empty || C.bufs.get(C.cur).media) return "@" + C.cur;
     const a = st.doc.lineAt(s.from).number, b = st.doc.lineAt(s.to).number;
     return `@${C.cur} ` + (a === b ? t("pal_line1", { a }) : t("pal_lines", { a, b }));
   }
@@ -793,8 +1030,9 @@ window.CodeView = (() => {
     let n = 0;
     const skipped = [];
     for (const b of C.bufs.values()) {
-      if (!b.state) continue;
-      const text = b.state.doc.toString();
+      const st = liveState(b);
+      if (!st || b.media) continue;
+      const text = st.doc.toString();
       if (text === b.saved) continue;
       if (await saveBuf(b, text)) n++; else skipped.push(b.path);
     }
@@ -889,6 +1127,7 @@ window.CodeView = (() => {
     const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
     ctxMenu(e, [
       { label: t("ctx_open"), run: () => open(path) },
+      { label: t("ctx_open_right"), run: () => (C.bufs.has(path) ? split(path) : open(path).then(() => split(path))), key: "⌘\\" },
       { label: t("ctx_new_here"), run: () => newFile(dir) },
       "-",
       { label: t("ctx_rename"), run: () => renameFile(path) },
@@ -901,11 +1140,18 @@ window.CodeView = (() => {
 
   async function runCmd(id) {
     const b = C.cur && C.bufs.get(C.cur);
-    const line = b && C.view ? C.view.state.doc.lineAt(C.view.state.selection.main.head).number : 1;
-    const go = { quick_open: "", goto_symbol: "@", goto_line: ":", find: "/" };
+    const line = b && !b.media && C.view ? C.view.state.doc.lineAt(C.view.state.selection.main.head).number : 1;
+    const go = { quick_open: "", goto_symbol: "@", goto_line: ":", find: "/", workspace_symbol: "#" };
     if (id in go) return palette(go[id]);
     switch (id) {
-      case "search_project": return sidePane("search", b ? C.view.state.sliceDoc(C.view.state.selection.main.from, C.view.state.selection.main.to) : "");
+      case "search_project": return sidePane("search", b && !b.media ? C.view.state.sliceDoc(C.view.state.selection.main.from, C.view.state.selection.main.to) : "");
+      case "goto_definition": return gotoDef();
+      case "recent_buffer": if (!switcher(1)) toast(t("mru_none"), "info"); return;
+      case "format": return formatDoc(false);
+      case "toggle_fmt_save": return request("prefs", { fmt_save: !S.prefs.fmt_save });
+      case "toggle_autosave": return request("prefs", { autosave: !S.prefs.autosave });
+      case "toggle_split": return C.panes[1] ? unsplit() : split();
+      case "outline": return sidePane("outline");
       case "save": return save();
       case "save_all": return saveAll();
       case "close": return close(C.cur);
@@ -941,16 +1187,19 @@ window.CodeView = (() => {
     renderTree(); renderTabs(); renderStatus();
     loadGit().then((ch) => { if (ch) renderTree(); });
     try { await loadCM(); } catch (e) { toast(t("code_load_fail"), "error"); return; }
-    if (!C.view) {
-      newView(CM.EditorState.create({ doc: "", extensions: [CM.EditorState.readOnly.of(true), comps().theme.of(isDark() ? CM.oneDark : [])] }));
-    }
+    if (!C.view) newView(blankState());
     if (!C.restored) { C.restored = true; await restore(); }
-    if (C.cur) C.view.focus(); else $("#code-filter").focus();
+    if (C.cur && !C.bufs.get(C.cur).media) C.view.focus(); else if (!C.cur) $("#code-filter").focus();
   }
 
   document.addEventListener("click", (e) => {
     if (!e.target.closest("#code")) return;
     if (e.target.closest("#code-tree")) return onTree(e);
+    const on = e.target.closest("#code-outline .onode");
+    if (on) return activate(C.cur, +on.dataset.line);
+    const media = e.target.closest(".code-host");
+    if (media && C.panes[1]) setActive(HOSTS.indexOf("#" + media.id));
+    if (e.target.closest("[data-cact=crumb]")) return palette("@");
     const x = e.target.closest("[data-close]");
     if (x) { e.stopPropagation(); return close(x.dataset.close); }
     const tab = e.target.closest(".ctab");
@@ -963,15 +1212,31 @@ window.CodeView = (() => {
     const n = e.target.closest && e.target.closest("#code-tree .tnode");
     if (n) treeMenu(e, n);
   });
+  document.addEventListener("keydown", (e) => {  // ⌥Tab (giữ ⌥, Tab nữa để đổi, thả ⌥ để mở) — trình duyệt giữ Ctrl+Tab
+    if (SW.m) {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); switcherDone(false); return; }
+      if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); switcherDone(true); return; }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); switcher(e.key === "ArrowDown" ? 1 : -1); return; }
+    }
+    if (S.view !== "code" || !e.altKey || e.key !== "Tab" || e.metaKey || e.ctrlKey) return;
+    e.preventDefault(); e.stopPropagation();
+    if (!switcher(e.shiftKey ? -1 : 1) && !SW.m) toast(t("mru_none"), "info");
+  }, true);
+  document.addEventListener("keyup", (e) => { if (SW.m && e.key === "Alt") switcherDone(true); }, true);
   document.addEventListener("keydown", (e) => {  // ⌘⇧F ở mọi tab: sang tab Code, mở ô tìm (lấy chữ đang chọn)
     if (!((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f")) return;
     e.preventDefault(); e.stopPropagation();
     const sel = C.view ? C.view.state.sliceDoc(C.view.state.selection.main.from, C.view.state.selection.main.to) : "";
     (S.view === "code" ? Promise.resolve() : (setView("code"), show())).then(() => sidePane("search", sel));
   }, true);
+  document.addEventListener("keydown", (e) => {  // ⇧⌥F format · ⌘\\ chia đôi — trước vim (vim nuốt phím ⌥ ở normal mode)
+    if (S.view !== "code" || topModal()) return;
+    if (e.altKey && e.shiftKey && !e.metaKey && !e.ctrlKey && e.code === "KeyF") { e.preventDefault(); e.stopPropagation(); formatDoc(false); }
+    else if ((e.metaKey || e.ctrlKey) && !e.altKey && e.code === "Backslash") { e.preventDefault(); e.stopPropagation(); runCmd("toggle_split"); }
+  }, true);
   document.addEventListener("keydown", (e) => {
     if (S.view !== "code") return;
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); }  // cùng lúc với Mod-s của CodeMirror: save() chỉ chạy một lần
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "v" && isMd(C.cur && C.bufs.get(C.cur))) {
       e.preventDefault(); setMd(MD_MODES[(MD_MODES.indexOf(C.md) + 1) % MD_MODES.length]);
     }
@@ -990,7 +1255,7 @@ window.CodeView = (() => {
   window.addEventListener("beforeunload", (e) => {
     if (C.restored) persist();
     if (S.switching) return;  // đổi dự án (/open): đã hỏi bỏ thay đổi
-    if ([...C.bufs.values()].some((b) => b.dirty || (b.path === C.cur && C.view && C.view.state.doc.toString() !== b.saved))) { e.preventDefault(); e.returnValue = ""; }
+    if ([...C.bufs.values()].some((b) => b.dirty || (!b.media && liveText(b) !== b.saved))) { e.preventDefault(); e.returnValue = ""; }
   });
 
   return {

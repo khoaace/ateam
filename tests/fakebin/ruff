@@ -1,0 +1,11 @@
+#!/bin/bash
+# ruff giả lập cho test format của tab Code: `ruff format --stdin-filename <file> -` đọc stdin, in bản "đã format"
+# (nháy đơn → nháy kép, bỏ khoảng trắng cuối dòng). Chữ có "SYNTAX ERROR" → lỗi như ruff khi không parse được.
+[ "$1" = "format" ] || { echo "ruff giả lập chỉ hỗ trợ: ruff format" >&2; exit 2; }
+IN=$(cat; echo x)
+IN=${IN%x}
+if [[ "$IN" == *"SYNTAX ERROR"* ]]; then
+  echo "error: Failed to parse ${3:-stdin}:1:1: Expected an expression" >&2
+  exit 2
+fi
+printf '%s' "$IN" | sed -e "s/'/\"/g" -e 's/[[:space:]]*$//'

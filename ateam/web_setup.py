@@ -304,6 +304,10 @@ class SetupWeb:
             st["vim"] = bool(d["vim"])
             msg = tr("Phím vim trong tab 📝 Code: bật") if st["vim"] else \
                 tr("Phím vim trong tab 📝 Code: tắt (Ctrl+S lưu)")
+        for key, label in (("fmt_save", tr("Format khi lưu")), ("autosave", tr("Tự lưu"))):
+            if key in d:
+                st[key] = bool(d[key])
+                msg = tr("{v}: bật", v=label) if st[key] else tr("{v}: tắt", v=label)
         if "accent" in d:
             acc = theme.normalize_accent(str(d["accent"] or ""))
             if acc is None:

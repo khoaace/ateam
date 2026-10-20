@@ -200,3 +200,99 @@ def test_tui_new_file_button_and_ex(env, project, monkeypatch):
             assert (project / "notes/ghi-chu.md").is_file() and (app.code_cur or "").endswith("notes/ghi-chu.md")
             await pilot.press("ctrl+q")
     asyncio.run(main())
+
+
+def test_workspace_symbols_cache_and_exact(tmp_path):
+    (tmp_path / "a.py").write_text("def hello():\n    pass\n\nclass Greeter:\n    pass\n")
+    (tmp_path / "b.ts").write_text("export function helloWorld() {}\n")
+    (tmp_path / "r.md").write_text("# hello\n")
+    (tmp_path / "big.py").write_text("def huge():\n    pass\n" + "#" * palette.WS_SYMBOL_MAX_BYTES)
+    (tmp_path / "data.bin").write_bytes(b"\0\1")
+    cache: dict = {}
+    entries = ["a.py", "b.ts", "r.md", "big.py", "data.bin", "sub/"]
+    res = palette.workspace_symbols(tmp_path, entries, "hello", cache)
+    assert [(s["name"], s["path"]) for s in res["items"]][:2] == [("hello", "a.py"), ("hello", "r.md")]
+    assert ("helloWorld", "b.ts") in [(s["name"], s["path"]) for s in res["items"]]
+    assert not res["partial"] and "huge" not in [s["name"] for s in res["items"]]  # file lớn: bỏ qua
+    # đúng tên, bỏ heading markdown: F12 đi tới định nghĩa
+    exact = palette.workspace_symbols(tmp_path, entries, "hello", cache, exact=True)["items"]
+    assert exact == [{"name": "hello", "kind": "function", "line": 1, "path": "a.py"}]
+    # cache: file không đổi thì không đọc lại; file đổi thì bóc lại; file mất thì bỏ khỏi cache
+    cache["b.ts"] = (cache["b.ts"][0], [{"name": "fromCache", "kind": "function", "line": 9, "depth": 0}])
+    assert palette.workspace_symbols(tmp_path, entries, "fromCache", cache, exact=True)["items"][0]["line"] == 9
+    import os
+    os.utime(tmp_path / "b.ts", (1, 1))
+    assert not palette.workspace_symbols(tmp_path, entries, "fromCache", cache, exact=True)["items"]
+    palette.workspace_symbols(tmp_path, ["a.py"], "", cache)
+    assert set(cache) == {"a.py"}
+
+
+def test_formatter_for_prefers_project_tools(tmp_path, monkeypatch):
+    from ateam import editor
+    monkeypatch.setenv("PATH", str(Path(__file__).parent / "fakebin") + ":/usr/bin:/bin")  # ruff giả, không prettier
+    argv = editor.formatter_for(tmp_path / "x.py", tmp_path)
+    assert Path(argv[0]).name == "ruff" and argv[1:] == ["format", "--stdin-filename", str(tmp_path / "x.py"), "-"]
+    assert editor.formatter_for(tmp_path / "x.unknownext", tmp_path) is None
+    assert editor.formatter_for(tmp_path / "x.ts", tmp_path) is None  # không có prettier
+    bin_ = tmp_path / "node_modules/.bin"
+    bin_.mkdir(parents=True)
+    (bin_ / "prettier").write_text("#!/bin/sh\ncat\n")
+    (bin_ / "prettier").chmod(0o755)
+    assert editor.formatter_for(tmp_path / "x.ts", tmp_path)[0] == str(bin_ / "prettier")  # bản trong dự án
+    ok, out = asyncio.run(editor.format_text(editor.formatter_for(tmp_path / "x.py", tmp_path), "x = 'a'  \n", tmp_path))
+    assert ok and out == 'x = "a"\n'
+    ok, err = asyncio.run(editor.format_text(editor.formatter_for(tmp_path / "x.py", tmp_path), "SYNTAX ERROR", tmp_path))
+    assert not ok and "Failed to parse" in err
+
+
+def test_web_code_navigation_format_media(env, project, monkeypatch):
+    import pytest
+    pytest.importorskip("aiohttp")
+    from aiohttp.test_utils import TestClient, TestServer
+    from test_web import _web_app
+    wa = _web_app(env, project, monkeypatch)
+    (project / "src").mkdir()
+    (project / "src/app.py").write_text("def hello():\n    pass\n")
+    (project / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 8)
+    (project / "x.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>")
+    (project / "doc.pdf").write_bytes(b"%PDF-1.4\n")
+    hello = wa.hello()
+    assert not hello["prefs"]["fmt_save"] and not hello["prefs"]["autosave"]
+    ids = [c["id"] for c in hello["code_commands"]]
+    assert {"workspace_symbol", "goto_definition", "format", "toggle_split", "outline"} <= set(ids)
+
+    async def main():
+        client = TestClient(TestServer(wa.make_app(), host="127.0.0.1", port=wa.port))
+        await client.start_server()
+        try:
+            res = await (await client.get("/api/wsymbols?q=hello&exact=1")).json()
+            assert res["items"] == [{"name": "hello", "kind": "function", "line": 1, "path": "src/app.py"}]
+            # format bằng ruff (giả lập) — chạy nền như AI viết (không chặn tab)
+            assert wa.slow_op({"op": "code_format"})
+            r = await wa.handle({"op": "code_format", "path": "src/app.py", "text": "x = 'a'   \n"})
+            assert r[2] == {"formatted": 'x = "a"\n', "tool": "ruff"}
+            r = await wa.handle({"op": "code_format", "path": "src/app.py", "text": "SYNTAX ERROR"})
+            assert r[1] == "warn" and "ruff" in r[0] and r[2]["formatted"] is None
+            r = await wa.handle({"op": "code_format", "path": "a.unknownext", "text": "x"})
+            assert r[1] == "warn" and r[2]["formatted"] is None
+            assert (await wa.handle({"op": "code_format", "path": "a.unknownext", "text": "x", "quiet": True}))[1] == ""
+            # tự lưu: không toast
+            f = await (await client.get("/api/file?path=src/app.py")).json()
+            r = wa.code.save({"path": "src/app.py", "text": "y = 1\n", "mtime": f["mtime"], "quiet": True})
+            assert r[:2] == ("", "") and r[2]["save"]["mtime"]
+            # tuỳ chọn format khi lưu / tự lưu
+            assert (await wa.handle({"op": "prefs", "fmt_save": True}))[1] == "ok"
+            assert wa.hello()["prefs"]["fmt_save"] is True
+            # ảnh / PDF: /api/file báo media, byte lấy qua /api/raw
+            m = await (await client.get("/api/file?path=logo.png")).json()
+            assert m["media"] == "image" and m["size"] == 16 and "text" not in m
+            assert (await (await client.get("/api/file?path=doc.pdf")).json())["media"] == "pdf"
+            raw = await client.get("/api/raw?path=logo.png")
+            assert raw.status == 200 and raw.content_type == "image/png" and (await raw.read()).startswith(b"\x89PNG")
+            svg = await client.get("/api/raw?path=x.svg")
+            assert "sandbox" in svg.headers["Content-Security-Policy"]
+            for bad in ("src/app.py", "../ngoai.png", "khong-co.png"):
+                assert (await client.get("/api/raw?path=" + bad)).status == 404
+        finally:
+            await client.close()
+    asyncio.run(main())

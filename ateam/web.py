@@ -46,6 +46,11 @@ IMAGE_MAX = 20 * 1024 ** 2  # ảnh dán vào ô nhập
 TASK_LIMIT = 400     # bảng việc gửi tối đa ngần này task gần nhất
 
 
+def code_prefs(st: dict) -> dict:
+    """Tuỳ chọn tab Code của web (state.json): format khi lưu, tự lưu — mặc định tắt."""
+    return {"fmt_save": bool(st.get("fmt_save")), "autosave": bool(st.get("autosave"))}
+
+
 def ui_strings() -> dict[str, str]:
     """Mọi chữ hiển thị trên trang web (JS chỉ dùng các khoá này — tests/test_web.py bắt chữ viết thẳng trong JS)."""
     return {
@@ -231,9 +236,9 @@ def ui_strings() -> dict[str, str]:
         # --- tab Code
         "code_filter": tr("Tìm file… (Enter mở · ⌘P)"), "code_nofile": tr("Không có file"),
         # command palette tab Code (palette.py; chữ dùng chung với TUI)
-        "pal_ph": tr("Tên file… · > lệnh · @ symbol · :dòng · /tìm trong file"),
-        "pal_foot": tr("↑↓ chọn · Enter mở · > lệnh · @ symbol · : dòng · / tìm trong file · Esc đóng"),
-        "pal_recent": tr("Mở gần đây"), "pal_hint": tr("Gõ tên file · > lệnh · @ symbol · :dòng · /tìm trong file"),
+        "pal_ph": tr("Tên file… · > lệnh · @ symbol · # symbol dự án · :dòng · /tìm trong file"),
+        "pal_foot": tr("↑↓ chọn · Enter mở · > lệnh · @ symbol · # cả dự án · : dòng · / tìm trong file · Esc đóng"),
+        "pal_recent": tr("Mở gần đây"), "pal_hint": tr("Gõ tên file · > lệnh · @ symbol · # symbol dự án · :dòng · /tìm trong file"),
         "pal_nocmd": tr("Không có lệnh nào khớp"), "pal_nosym": tr("Không thấy symbol (hàm, class, heading) nào"),
         "pal_line": tr("Tới dòng {v}"), "pal_line_hint": tr("Gõ số dòng (1–{n})"),
         "pal_find_hint": tr("Gõ chữ cần tìm trong file"), "pal_nofind": tr("Không thấy \"{v}\" trong file"),
@@ -302,6 +307,18 @@ def ui_strings() -> dict[str, str]:
         "git_hunk_del": tr("Đã xoá — nội dung ở HEAD:"), "git_hunk_revert": tr("Hoàn tác đoạn này"),
         "code_reloaded_by": tr("File đổi trên đĩa ({v} đang chạy task) — đã nạp lại", v="{v}"),
         "code_running": tr("{v} đang chạy", v="{v}"),
+        "sr_outline": tr("Outline"), "outline_empty": tr("Không có symbol (hàm, class, heading) nào"),
+        "pal_goto_symbol": tr("Tới symbol trong file (@)"),
+        "pal_ws_hint": tr("Gõ tên hàm / class — tìm trong cả dự án"), "pal_ws_none": tr("Không thấy symbol nào khớp trong dự án"),
+        "pal_ws_partial": tr("Dự án lớn — mới quét một phần, gõ lại sau vài giây để thấy thêm"),
+        "pal_media": tr("Ảnh / PDF — không có dòng hay symbol"),
+        "def_none": tr("Không thấy định nghĩa của {v}", v="{v}"), "def_noword": tr("Đặt con trỏ vào tên hàm / class cần tìm"),
+        "split_need": tr("Mở thêm một file để chia đôi"), "ctx_open_right": tr("Mở bên phải"),
+        "mru_title": tr("File vừa dùng — giữ ⌥ và bấm Tab để đổi, thả ⌥ để mở"), "mru_none": tr("Chưa mở file nào khác"),
+        "busy_formatting": tr("Đang format…"), "fmt_same": tr("{v}: file đã gọn, không có gì đổi", v="{v}"),
+        "fmt_done": tr("Đã format bằng {v}", v="{v}"),
+        "code_autosave_off": tr("Tạm tắt tự lưu {path}: file đã đổi trên đĩa — lưu tay (:w) để ghi đè", path="{path}"),
+        "code_autosave_chip": tr("tự lưu"), "code_autosave_tip": tr("Tự lưu sau 1,5 giây ngừng gõ — ⌘⇧P › Bật/tắt tự lưu"),
         "code_running_tip": tr("Agent đang chạy task ngay trong thư mục dự án (chế độ shared) — file đang mở có thể bị sửa"),
         # --- gợi ý ô nhập
         "cmds": tr("Lệnh"), "sg_agent": tr("Agent"), "sg_agent_task": tr("Agent · thêm :model hoặc @effort"),
@@ -718,7 +735,7 @@ class WebApp:
     def broadcast_prefs(self) -> None:
         st = load_state()
         self.broadcast({"t": "prefs", "vim": st.get("vim", True) is not False, "accent": st.get("accent") or "",
-                        "accent_color": theme.ACCENTS.get(st.get("accent") or "", "")})
+                        "accent_color": theme.ACCENTS.get(st.get("accent") or "", ""), **code_prefs(st)})
 
     @staticmethod
     async def _send(ws: web.WebSocketResponse, data: str) -> None:
@@ -818,7 +835,7 @@ class WebApp:
                 "accents": [{"key": k, "label": theme.accent_label(k), "color": c} for k, c in theme.ACCENTS.items()],
                 "langs": [{"key": k, "label": LANG_NAMES[k]} for k in LANGS],
                 "prefs": {"notify": notify.mode(), "vim": st.get("vim", True) is not False, "accent": st.get("accent") or "",
-                          "accent_color": theme.ACCENTS.get(st.get("accent") or "", "")},
+                          "accent_color": theme.ACCENTS.get(st.get("accent") or "", ""), **code_prefs(st)},
                 "needs_setup": needs_setup()}
 
     # ------------------------------------------------------------------ HTTP
@@ -956,7 +973,7 @@ class WebApp:
             return d.get("action") in self.SLOW_GIT
         if op == "submit":
             return str(d.get("text") or "").strip().startswith(self.SLOW_CMDS)
-        return op == "workflow_suggest"
+        return op in ("workflow_suggest", "code_format")
 
     async def _answer(self, ws: web.WebSocketResponse, data) -> None:
         """Chạy một thao tác rồi trả lời bằng toast (kèm ref nếu trình duyệt đang chờ)."""
@@ -1181,6 +1198,8 @@ class WebApp:
             return await self.code.replace(d)
         if op == "save":
             return self.code.save(d)
+        if op == "code_format":
+            return await self.code.format(d)
         if op in ("file_new", "file_rename", "file_delete", "open_vscode"):
             return await self.code.file_op(op, d)
         if op == "setup_save":

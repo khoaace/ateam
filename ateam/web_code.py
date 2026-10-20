@@ -17,6 +17,12 @@ from . import editor, palette, search
 from .i18n import tr
 from .palette import safe_path
 
+# xem được trong tab Code thay cho "File nhị phân": ảnh (<img>) và PDF (<iframe>), gửi nguyên byte qua /api/raw
+MEDIA = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
+         ".svg": "image/svg+xml", ".ico": "image/x-icon", ".bmp": "image/bmp", ".avif": "image/avif",
+         ".pdf": "application/pdf"}
+MEDIA_MAX_BYTES = 20 * 1024 * 1024
+
 if TYPE_CHECKING:
     from .web import WebApp
 
@@ -41,11 +47,13 @@ def children(entries: list[str], d: str) -> list[dict]:
 class CodeWeb:
     def __init__(self, app: "WebApp"):
         self.app = app
+        self.sym_cache: dict = {}  # symbol toàn dự án: {rel: (mtime, [symbol])}
 
     def routes(self) -> list:
         return [web.get("/api/tree", self.api_tree), web.get("/api/file", self.api_file),
                 web.get("/api/file/stat", self.api_stat), web.get("/api/symbols", self.api_symbols),
-                web.get("/api/recent", self.api_recent), web.get("/api/file/base", self.api_base)]
+                web.get("/api/recent", self.api_recent), web.get("/api/file/base", self.api_base),
+                web.get("/api/raw", self.api_raw), web.get("/api/wsymbols", self.api_wsymbols)]
 
     async def api_tree(self, r: web.Request) -> web.Response:
         """?refresh=1: quét lại ngay (⟳); ?age=5: quét lại nếu danh sách cũ hơn 5 giây (tab Code hỏi định kỳ để
@@ -66,6 +74,13 @@ class CodeWeb:
             return web.json_response({"error": tr("Đường dẫn không hợp lệ (ngoài dự án): {path}", path=rel)})
         if p.is_dir():
             return web.json_response({"error": tr("{path} là thư mục", path=rel), "dir": True})
+        if p.suffix.lower() in MEDIA and p.is_file():  # ảnh / PDF: trang tự lấy byte qua /api/raw
+            rel = p.relative_to(self.app.root.resolve()).as_posix()
+            if not r.query.get("quiet"):
+                palette.touch_recent(self.app.root, rel)
+            kind = "pdf" if p.suffix.lower() == ".pdf" else "image"
+            return web.json_response({"path": rel, "media": kind, "size": p.stat().st_size, "mtime": editor.disk_mtime(p),
+                                      "language": "PDF" if kind == "pdf" else p.suffix.lstrip(".").upper()})
         sf = editor.read_source(p)
         if sf.error:
             return web.json_response({"error": sf.error})
@@ -101,6 +116,47 @@ class CodeWeb:
             return web.json_response({"repo": False, "tracked": False, "ignored": False, "text": ""})
         rc_ign, _ = await repo.run("check-ignore", "-q", f"./{rel}")
         return web.json_response({"repo": True, "tracked": False, "ignored": rc_ign == 0, "text": ""})
+
+    async def api_raw(self, r: web.Request) -> web.StreamResponse:
+        """Byte của ảnh / PDF trong dự án (chỉ các đuôi ở MEDIA). SVG có thể chứa script: CSP sandbox khi mở thẳng."""
+        p = safe_path(self.app.root, r.query.get("path", ""))
+        if p is None or not p.is_file() or p.suffix.lower() not in MEDIA:
+            raise web.HTTPNotFound()
+        if p.stat().st_size > MEDIA_MAX_BYTES:
+            raise web.HTTPRequestEntityTooLarge(MEDIA_MAX_BYTES, p.stat().st_size)
+        headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+        if p.suffix.lower() == ".svg":
+            headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
+        body = await asyncio.to_thread(p.read_bytes)
+        return web.Response(body=body, content_type=MEDIA[p.suffix.lower()], headers=headers)
+
+    async def api_wsymbols(self, r: web.Request) -> web.Response:
+        """Symbol trong cả dự án (palette `#`, F12): ?q=tên&exact=1."""
+        idx = self.app.index
+        if idx.stale():
+            await idx.refresh()
+        res = await asyncio.to_thread(palette.workspace_symbols, self.app.root, list(idx.entries), r.query.get("q", ""),
+                                      self.sym_cache, bool(r.query.get("exact")))
+        return web.json_response(res)
+
+    async def format(self, d: dict) -> tuple:
+        """Format chữ của editor bằng công cụ của dự án: {"path", "text", "quiet"} → {"formatted", "tool"}.
+        quiet (format khi lưu): không có công cụ thì im lặng."""
+        rel = str(d.get("path") or "")
+        p = safe_path(self.app.root, rel)
+        if p is None:
+            return tr("Đường dẫn không hợp lệ (ngoài dự án): {path}", path=rel), "error"
+        argv = editor.formatter_for(p, self.app.root)
+        if not argv:
+            if d.get("quiet"):
+                return "", "", {"formatted": None}
+            return tr("Không có công cụ format cho {v} — cài ruff/black, prettier, gofmt, rustfmt hoặc shfmt",
+                      v=p.suffix or p.name), "warn", {"formatted": None}
+        tool = Path(argv[0]).name
+        ok, out = await editor.format_text(argv, str(d.get("text") or ""), self.app.root)
+        if not ok:
+            return tr("{tool} báo lỗi: {e}", tool=tool, e=out), "warn", {"formatted": None}
+        return "", "", {"formatted": out, "tool": tool}
 
     async def api_recent(self, r: web.Request) -> web.Response:
         root = self.app.root
@@ -206,4 +262,6 @@ class CodeWeb:
             return res, "error"
         n = str(d.get("text") or "").count("\n") + 1
         self.app.index.loaded_at = 0  # file mới hiện ngay trong cây
+        if d.get("quiet"):  # tự lưu: không toast mỗi lần ngừng gõ
+            return "", "", {"save": {"path": rel, "mtime": sf.mtime}}
         return tr("Đã lưu {path} · {n} dòng", path=rel, n=n), "ok", {"save": {"path": rel, "mtime": sf.mtime}}

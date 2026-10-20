@@ -21,6 +21,9 @@ SYMBOL_MAX_BYTES = 2 * 1024 * 1024  # file lớn hơn: không bóc symbol (lexer
 CODE_COMMANDS: list[tuple[str, str, str, str]] = [
     ("quick_open", tr("Mở nhanh file…"), "Ctrl+P", "Ctrl/⌘+P"),
     ("goto_symbol", tr("Tới symbol trong file… (@)"), "F9", "Ctrl/⌘+Shift+O"),
+    ("workspace_symbol", tr("Tìm symbol trong cả dự án… (#)"), "", ""),
+    ("goto_definition", tr("Đi tới định nghĩa"), "", "F12 · ⌘+click"),
+    ("recent_buffer", tr("Đổi sang file vừa dùng"), "", "⌥Tab"),
     ("goto_line", tr("Tới dòng… (:)"), "", ""),
     ("find", tr("Tìm trong file… (/)"), "", ""),
     ("search_project", tr("Tìm & thay trong dự án"), "F3", "Ctrl/⌘+Shift+F"),
@@ -37,6 +40,11 @@ CODE_COMMANDS: list[tuple[str, str, str, str]] = [
     ("copy_path", tr("Chép đường dẫn (kèm dòng)"), "", ""),
     ("git_diff", tr("Xem thay đổi git của file"), "", ""),
     ("open_vscode", tr("Mở trong VS Code"), "", ""),
+    ("format", tr("Format file (ruff, prettier…)"), "", "Shift+⌥+F"),
+    ("toggle_fmt_save", tr("Bật/tắt format khi lưu"), "", ""),
+    ("toggle_autosave", tr("Bật/tắt tự lưu"), "", ""),
+    ("toggle_split", tr("Chia đôi / gộp khung editor"), "", "Ctrl/⌘+\\"),
+    ("outline", tr("Xem outline (symbol của file)"), "", ""),
     ("toggle_wrap", tr("Bật/tắt xuống dòng mềm"), "", ""),
     ("toggle_numbers", tr("Bật/tắt số dòng"), "", ""),
     ("toggle_vim", tr("Bật/tắt phím vim"), "", ""),
@@ -45,13 +53,21 @@ CODE_COMMANDS: list[tuple[str, str, str, str]] = [
 ]
 # từ khoá tiếng Anh để gõ kiểu VS Code (vd ">wrap", ">rename") vẫn khớp nhãn tiếng Việt
 KEYWORDS: dict[str, str] = {'quick_open': 'open file', 'goto_symbol': 'symbol outline', 'goto_line': 'goto line', 'find': 'find search', 'search_project': 'search replace', 'ask_agent': 'ask chat agent', 'task_agent': 'task agent', 'save': 'save write', 'save_all': 'save all', 'close': 'close', 'next': 'next buffer', 'prev': 'previous buffer', 'new_file': 'new file create', 'rename_file': 'rename move', 'delete_file': 'delete remove trash', 'copy_path': 'copy path', 'git_diff': 'git diff changes', 'open_vscode': 'vscode code editor', 'toggle_wrap': 'word wrap', 'toggle_numbers': 'line numbers', 'toggle_vim': 'vim', 'toggle_files': 'sidebar files explorer',
-            'open_folder': 'open folder project recent workspace switch'}
+            'open_folder': 'open folder project recent workspace switch', 'workspace_symbol': 'workspace symbol project',
+            'goto_definition': 'go to definition declaration', 'recent_buffer': 'recent buffer switch mru',
+            'format': 'format document prettier ruff black', 'toggle_fmt_save': 'format on save',
+            'toggle_autosave': 'auto save autosave', 'toggle_split': 'split editor right', 'outline': 'outline symbols'}
 # lệnh cần file đang mở
 NEEDS_FILE = {"goto_symbol", "goto_line", "find", "save", "save_all", "close", "next", "prev", "rename_file",
-              "delete_file", "copy_path", "git_diff", "open_vscode"}
+              "delete_file", "copy_path", "git_diff", "open_vscode", "goto_definition", "format", "outline"}
 
 
 WEB_SKIP = {"toggle_numbers"}  # CodeMirror của web luôn có số dòng
+TUI_SKIP = {"workspace_symbol", "goto_definition", "recent_buffer", "format", "toggle_fmt_save", "toggle_autosave",
+            "toggle_split", "outline"}  # mới có ở web
+WS_SYMBOL_MAX_BYTES = 512 * 1024  # symbol toàn dự án: bỏ qua file lớn hơn
+WS_SYMBOL_FILES = 4000
+WS_SYMBOL_SECONDS = 4.0  # lần quét đầu (chưa có cache) dừng sau bấy nhiêu giây, trả phần đã có
 
 
 def commands_json() -> list[dict]:
@@ -182,6 +198,48 @@ def symbols(path: Path, text: str) -> list[dict]:
     except Exception:
         pass
     return out or _by_rules(text, _GENERIC_RULES)
+
+
+def _symbol_file(path: Path) -> bool:
+    """File có thể bóc symbol: markdown, JS/TS, hoặc pygments nhận ra ngôn ngữ."""
+    from . import editor
+    ext = path.suffix.lower()
+    return ext in (".md", ".markdown", ".mdx") or ext in JS_EXT or editor.lexer_for(path) is not None
+
+
+def workspace_symbols(root: Path, entries: list[str], query: str, cache: dict, exact: bool = False,
+                      limit: int = 200) -> dict:
+    """Symbol của mọi file trong dự án (palette `#`, F12 đi tới định nghĩa): {"items": [{"name", "kind", "line",
+    "path"}], "partial"}. cache {rel: (mtime, [symbol])} giữ giữa các lần hỏi — chỉ bóc lại file đã đổi.
+    exact: đúng tên (bỏ heading markdown) — để tìm định nghĩa."""
+    from . import editor
+    out, partial, deadline = [], False, time.monotonic() + WS_SYMBOL_SECONDS
+    files = [e for e in entries if not e.endswith("/")][:WS_SYMBOL_FILES]
+    for rel in files:
+        p = root / rel
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        hit = cache.get(rel)
+        if hit is None or hit[0] != st.st_mtime:
+            if st.st_size > WS_SYMBOL_MAX_BYTES or not _symbol_file(p):
+                cache[rel] = (st.st_mtime, [])
+                continue
+            if time.monotonic() > deadline:
+                partial = True
+                continue
+            sf = editor.read_source(p)
+            hit = cache[rel] = (st.st_mtime, [] if sf.error else symbols(p, sf.text))
+        out.extend(dict(s, path=rel) for s in hit[1])
+    for gone in set(cache) - set(files):
+        cache.pop(gone, None)
+    if exact:
+        items = [s for s in out if s["name"] == query and s["kind"] != "heading"][:limit]
+    else:
+        items = fuzzy(out, query, key=lambda s: s["name"], limit=limit)
+    return {"items": [{"name": s["name"], "kind": s["kind"], "line": s["line"], "path": s["path"]} for s in items],
+            "partial": partial}
 
 
 def symbol_at(syms: list[dict], line: int) -> dict | None:

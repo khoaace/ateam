@@ -4046,4 +4046,80 @@ EN: dict[str, str] = {
         '{v} running',
     'Agent đang chạy task ngay trong thư mục dự án (chế độ shared) — file đang mở có thể bị sửa':
         'An agent is running a task directly in the project folder (shared mode) — open files may be changed',
+    'Tìm symbol trong cả dự án… (#)':
+        'Search symbols in the whole project… (#)',
+    'Đi tới định nghĩa':
+        'Go to definition',
+    'Đổi sang file vừa dùng':
+        'Switch to recently used file',
+    'Format file (ruff, prettier…)':
+        'Format file (ruff, prettier…)',
+    'Bật/tắt format khi lưu':
+        'Toggle format on save',
+    'Bật/tắt tự lưu':
+        'Toggle auto save',
+    'Chia đôi / gộp khung editor':
+        'Split / join editor panes',
+    'Xem outline (symbol của file)':
+        'Show outline (file symbols)',
+    'Format khi lưu':
+        'Format on save',
+    'Tự lưu':
+        'Auto save',
+    '{v}: bật':
+        '{v}: on',
+    '{v}: tắt':
+        '{v}: off',
+    'Không có công cụ format cho {v} — cài ruff/black, prettier, gofmt, rustfmt hoặc shfmt':
+        'No formatter for {v} — install ruff/black, prettier, gofmt, rustfmt or shfmt',
+    '{tool} báo lỗi: {e}':
+        '{tool} reported an error: {e}',
+    '{v} quá {n} giây — đã dừng':
+        '{v} took over {n} seconds — stopped',
+    'thoát với mã {code}':
+        'exited with code {code}',
+    'Tên file… · > lệnh · @ symbol · # symbol dự án · :dòng · /tìm trong file':
+        'File name… · > command · @ symbol · # project symbol · :line · /find in file',
+    '↑↓ chọn · Enter mở · > lệnh · @ symbol · # cả dự án · : dòng · / tìm trong file · Esc đóng':
+        '↑↓ select · Enter open · > command · @ symbol · # whole project · : line · / find in file · Esc close',
+    'Gõ tên file · > lệnh · @ symbol · # symbol dự án · :dòng · /tìm trong file':
+        'Type a file name · > command · @ symbol · # project symbol · :line · /find in file',
+    'Outline':
+        'Outline',
+    'Không có symbol (hàm, class, heading) nào':
+        'No symbols (functions, classes, headings)',
+    'Tới symbol trong file (@)':
+        'Go to symbol in file (@)',
+    'Gõ tên hàm / class — tìm trong cả dự án':
+        'Type a function / class name — searches the whole project',
+    'Không thấy symbol nào khớp trong dự án':
+        'No matching symbols in the project',
+    'Dự án lớn — mới quét một phần, gõ lại sau vài giây để thấy thêm':
+        'Large project — only partly scanned, type again in a few seconds to see more',
+    'Ảnh / PDF — không có dòng hay symbol':
+        'Image / PDF — no lines or symbols',
+    'Không thấy định nghĩa của {v}':
+        'No definition found for {v}',
+    'Đặt con trỏ vào tên hàm / class cần tìm':
+        'Put the cursor on the function / class name to look up',
+    'Mở thêm một file để chia đôi':
+        'Open another file to split the editor',
+    'Mở bên phải':
+        'Open to the side',
+    'File vừa dùng — giữ ⌥ và bấm Tab để đổi, thả ⌥ để mở':
+        'Recent files — hold ⌥ and press Tab to cycle, release ⌥ to open',
+    'Chưa mở file nào khác':
+        'No other file is open',
+    'Đang format…':
+        'Formatting…',
+    '{v}: file đã gọn, không có gì đổi':
+        '{v}: already formatted, nothing changed',
+    'Đã format bằng {v}':
+        'Formatted with {v}',
+    'Tạm tắt tự lưu {path}: file đã đổi trên đĩa — lưu tay (:w) để ghi đè':
+        'Auto save paused for {path}: the file changed on disk — save manually (:w) to overwrite',
+    'tự lưu':
+        'auto save',
+    'Tự lưu sau 1,5 giây ngừng gõ — ⌘⇧P › Bật/tắt tự lưu':
+        'Saves 1.5 s after you stop typing — ⌘⇧P › Toggle auto save',
 }

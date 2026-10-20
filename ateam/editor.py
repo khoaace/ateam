@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -105,6 +106,61 @@ def save_source(sf: SourceFile, text: str, force: bool = False) -> str:
 
 # ---------------------------------------------------------------------------------------------- tô màu
 _LEXERS: dict = {}
+
+
+# Format bằng công cụ của dự án (tab Code web: ⇧⌥F, format khi lưu): theo đuôi file, công cụ nào có trước thì dùng.
+# Tham số "{path}" = đường dẫn file (để công cụ đọc đúng cấu hình / ngôn ngữ). Đọc chữ từ stdin, in ra stdout.
+_PRETTIER = [("prettier", ["--stdin-filepath", "{path}"])]
+FORMATTERS: list[tuple[set, list]] = [
+    ({".py", ".pyi"}, [("ruff", ["format", "--stdin-filename", "{path}", "-"]),
+                       ("black", ["-q", "--stdin-filename", "{path}", "-"])]),
+    ({".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".css", ".scss", ".less", ".json", ".jsonc",
+      ".md", ".markdown", ".mdx", ".html", ".vue", ".svelte", ".yaml", ".yml", ".graphql"}, _PRETTIER),
+    ({".go"}, [("gofmt", [])]),
+    ({".rs"}, [("rustfmt", ["--emit", "stdout", "--edition", "2021"])]),
+    ({".sh", ".bash"}, [("shfmt", ["-filename", "{path}"])]),
+]
+
+
+def _find_tool(name: str, root: Path) -> str | None:
+    """Ưu tiên bản cài trong dự án (node_modules/.bin, .venv) rồi mới tới PATH."""
+    for d in (root / "node_modules" / ".bin", root / ".venv" / "bin", root / "venv" / "bin"):
+        p = d / name
+        if p.is_file() and os.access(p, os.X_OK):
+            return str(p)
+    return shutil.which(name)
+
+
+def formatter_for(path: Path, root: Path) -> list[str] | None:
+    """Lệnh format file này (argv), None nếu máy không có công cụ nào hợp."""
+    ext = path.suffix.lower()
+    for exts, tools in FORMATTERS:
+        if ext in exts:
+            for name, args in tools:
+                exe = _find_tool(name, root)
+                if exe:
+                    return [exe] + [a.replace("{path}", str(path)) for a in args]
+    return None
+
+
+async def format_text(argv: list[str], text: str, cwd: Path, timeout: float = 20.0) -> tuple[bool, str]:
+    """Chạy công cụ format: (True, chữ đã format) hoặc (False, lời báo lỗi)."""
+    import asyncio
+    try:
+        proc = await asyncio.create_subprocess_exec(*argv, cwd=str(cwd), stdin=asyncio.subprocess.PIPE,
+                                                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    except OSError as e:
+        return False, str(e)
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(text.encode("utf-8")), timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return False, tr("{v} quá {n} giây — đã dừng", v=Path(argv[0]).name, n=int(timeout))
+    if proc.returncode:
+        msg = (err or out).decode("utf-8", "replace").strip()
+        return False, msg[-600:] or tr("thoát với mã {code}", code=proc.returncode)
+    return True, out.decode("utf-8", "replace").replace("\r\n", "\n")
 
 
 def lexer_for(path: Path, sample: str = ""):
