@@ -311,7 +311,9 @@ def test_tui_grid_tab(env, project, monkeypatch):
             await pilot.press("ctrl+t")  # phím Ctrl của ateam nhường cho CLI khi đang gõ trong ô
             await pilot.pause(0.3)
             assert app.query_one("#tabs").active == "tab-grid"
-            assert await _until(lambda: "^T" in app.grid_screen(cid).text())
+            # macOS: Ctrl+T là VSTATUS của tty (in tải hệ thống, không echo) — kiểm byte tới CLI bằng Ctrl+G (^G)
+            await pilot.press("ctrl+g")
+            assert await _until(lambda: "^G" in app.grid_screen(cid).text())
             await pilot.press("enter")
             # F10: chế độ sắp xếp — Shift+← đổi chỗ với ô bên trái, 2 = bố cục "Hai cột"
             await pilot.press("f10")
