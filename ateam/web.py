@@ -105,6 +105,11 @@ def ui_strings() -> dict[str, str]:
         "grill_skip_rec": tr("(Tôi không chắc — bạn tự quyết, theo khuyến nghị: {v})"),
         "placeholder": tr("Nhập mục tiêu cho trưởng nhóm · / lệnh · ! lệnh terminal · @ nhắc file"),
         "placeholder_wf": tr("Nhập mục tiêu (chạy theo workflow '{wf}') · / lệnh · ! lệnh terminal · @ nhắc file"),
+        "mode_lead": tr("★ Trưởng nhóm"), "mode_lead_full": tr("★ Trưởng nhóm lập kế hoạch"),
+        "mode_lead_desc": tr("chia việc theo mục tiêu (mặc định)"),
+        "mode_head": tr("Gõ mục tiêu sẽ chạy theo…"), "mode_no_flows": tr("chưa có workflow — tạo ở 🧩 Tuỳ chỉnh"),
+        "mode_pick_title": tr("Gõ mục tiêu → trưởng nhóm lập kế hoạch hay chạy một workflow (đổi luồng mặc định)"),
+        "cu_make_default": tr("★ Đặt mặc định"), "cu_unset_default": tr("☆ Bỏ mặc định"),
         "placeholder_grill": tr("Trả lời câu hỏi của trưởng nhóm (Enter) · gõ số để chọn phương án"),
         "send_hint": tr("Enter gửi · Shift+Enter xuống dòng · ⌘V / kéo-thả để dán ảnh"),
         "retry": tr("Chạy lại"), "cancel": tr("Huỷ task"), "diff": tr("Xem diff"), "merge": tr("Merge"),
@@ -164,6 +169,10 @@ def ui_strings() -> dict[str, str]:
         "git_fetching": tr("⇣ Đang fetch…"), "git_pulling": tr("⬇ Đang pull…"), "git_pushing": tr("⬆ Đang push…"),
         "git_discard_title": tr("↺ Bỏ thay đổi"), "git_discard_yes": tr("Bỏ thay đổi"),
         "git_discard_q": tr("Bỏ mọi thay đổi chưa stage của {path}?"),
+        "git_discard_all": tr("↺ Bỏ tất cả"), "git_discard_all_title": tr("↺ Bỏ tất cả thay đổi"),
+        "git_discard_all_yes": tr("Bỏ tất cả"),
+        "git_discard_all_q": tr("Bỏ MỌI thay đổi ({s} file đã stage, {w} file chưa stage) và XOÁ {u} file chưa "
+                                "theo dõi? Thư mục về đúng commit cuối — không thể hoàn tác."),
         "git_discard_new": tr("XOÁ file mới {path}? (chưa từng commit — không lấy lại được)"),
         "git_revert_q": tr("Tạo commit đảo ngược {v}?"), "git_undo": tr("⎌ Bỏ commit cuối"),
         "git_undo_q": tr("Bỏ commit cuối cùng, giữ nguyên thay đổi của nó (ở trạng thái đã stage) để sửa rồi "
@@ -315,7 +324,8 @@ def ui_strings() -> dict[str, str]:
         # --- /custom
         "cu_title": tr("Agent & workflow tuỳ chỉnh"),
         "cu_hint": tr("Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc theo vai trò, bật/tắt ở "
-                      "/setup). Workflow chạy bằng /flow <tên> <mục tiêu>."),
+                      "/setup). Workflow chạy bằng /flow <tên> <mục tiêu>, hoặc ★ Đặt mặc định để gõ mục tiêu là "
+                      "chạy luôn."),
         "cu_agents": tr("Agent tuỳ chỉnh"), "cu_add_agent": tr("Thêm agent"), "cu_add_flow": tr("Thêm workflow"),
         "cu_add_custom_agent": tr("Thêm agent tuỳ chỉnh"), "cu_edit_agent": tr("Sửa agent {name}"),
         "cu_edit_flow": tr("Sửa workflow {name}"),
@@ -990,6 +1000,11 @@ class WebApp:
             return await self.setup.suggest_workflow(d)
         if op == "default_flow_save":
             return await self.setup.save_default_flow(d)
+        if op == "input_mode":  # ô chọn cạnh ô nhập / nút ★ ở mục Tuỳ chỉnh: gõ mục tiêu chạy workflow nào
+            try:
+                return wizard.set_input_mode(self.cfg, str(d.get("name") or "")), "ok", {"mode_saved": True}
+            except ValueError as e:
+                return str(e), "warn"
         if op == "custom_preview":
             return self.setup.preview_agent(d)
         if op == "prefs":

@@ -230,6 +230,7 @@ class GitWeb:
         calls = {
             "stage": lambda: g.stage(paths), "unstage": lambda: g.unstage(paths),
             "stage_all": g.stage_all, "unstage_all": lambda: g.unstage(), "discard": lambda: g.discard(paths),
+            "discard_all": g.discard_all,
             "fetch": g.fetch, "pull": g.pull, "push": lambda: g.push(force=bool(d.get("force"))),
             "abort": g.abort, "init": g.init,
             "checkout": lambda: g.checkout(d.get("name", "")),

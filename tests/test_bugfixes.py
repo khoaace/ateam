@@ -79,6 +79,18 @@ def test_runner_pipe_does_not_wait_for_background_child():
         subprocess.run(["pkill", "-f", "sleep 30"], capture_output=True)
 
 
+def test_child_pwd_follows_cwd(tmp_path):
+    """$PWD của tiến trình con = thư mục chạy, không phải PWD kế thừa (dự án cũ sau /open, gốc khi ở worktree)."""
+    from ateam.pty_session import PtySession
+    for pty in (False, True):
+        got: list[str] = []
+        run = Run(["/bin/sh", "-c", "echo $PWD"], str(tmp_path), {"PATH": "/usr/bin:/bin", "PWD": "/du-an-cu"},
+                  use_pty=pty, timeout=20, on_line=got.append)
+        assert asyncio.run(run.start()) == 0 and got[-1].strip() == str(tmp_path)
+    s = PtySession(["/bin/sh"], str(tmp_path), {"PWD": "/du-an-cu"}, on_data=lambda b: None, on_exit=lambda rc: None)
+    assert s.env["PWD"] == str(tmp_path)
+
+
 def test_claim_task_is_atomic_across_connections(project):
     from ateam.db import DB
     a, b = DB(project / ".ateam/team.db"), DB(project / ".ateam/team.db")

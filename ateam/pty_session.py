@@ -23,7 +23,7 @@ class PtySession:
 
     def __init__(self, argv: list[str], cwd: str, env: dict[str, str], *, on_data: Callable[[bytes], None],
                  on_exit: Callable[[int], None], rows: int = 30, cols: int = 100):
-        self.argv, self.cwd, self.env = argv, cwd, env
+        self.argv, self.cwd, self.env = argv, cwd, dict(env, PWD=os.path.abspath(cwd))  # như Run: $PWD đúng thư mục chạy
         self.on_data, self.on_exit = on_data, on_exit
         self.rows, self.cols = rows, cols
         self.proc: asyncio.subprocess.Process | None = None

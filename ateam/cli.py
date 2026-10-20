@@ -47,6 +47,19 @@ def with_root(argv: list[str], root: Path) -> list[str]:
     return ["-C", str(root), *out]
 
 
+def reexec(argv: list[str], root: Path | None = None) -> None:
+    """Chạy lại ateam trong chính tiến trình này (execv). root: /open — chuyển hẳn sang dự án đó: execv giữ thư mục
+    làm việc và biến môi trường, nên đổi luôn cwd, PWD và bỏ ATEAM_DB/ATEAM_ROOT của dự án cũ (không thì terminal,
+    agent và chính ateam vẫn thấy đường dẫn cũ)."""
+    if root is not None:
+        argv = with_root(argv, root)
+        os.chdir(root)
+        os.environ["PWD"] = str(root)
+        for k in ("ATEAM_DB", "ATEAM_ROOT"):
+            os.environ.pop(k, None)
+    os.execv(sys.executable, [sys.executable, "-m", "ateam", *argv])
+
+
 def open_db(root: Path) -> DB:
     env = os.environ.get("ATEAM_DB")
     return DB(Path(env) if env else root / ".ateam" / "team.db")
@@ -120,9 +133,7 @@ def cmd_tui(args) -> int:
             argv.append(a)
         if args.cmd == "setup":
             argv = [a for a in argv if a != "setup"]
-        if getattr(app, "restart_root", None):  # /open: mở dự án khác
-            argv = with_root(argv, app.restart_root)
-        os.execv(sys.executable, [sys.executable, "-m", "ateam", *argv])
+        reexec(argv, getattr(app, "restart_root", None))  # restart_root: /open mở dự án khác
     return 0
 
 
@@ -178,7 +189,7 @@ def cmd_web(args) -> int:
     if nxt:  # /open trên web: server đã dừng (khoá phiên nhả khi execv) -> chạy lại ở dự án mới, cùng cổng
         argv = [a for a in sys.argv[1:] if a not in ("--open", "--new-token")]
         print(tr("↪ Mở dự án {v}", v=nxt), flush=True)  # execv bỏ bộ đệm stdout chưa ghi
-        os.execv(sys.executable, [sys.executable, "-m", "ateam", *with_root(argv, nxt)])
+        reexec(argv, nxt)
     return 0
 
 

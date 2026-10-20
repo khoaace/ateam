@@ -1277,6 +1277,9 @@ function renderComposerMode() {
   box.classList.toggle("grill", grill);
   const wf = S.state && S.state.workflow;
   input.placeholder = grill ? t(S.state.grill ? "placeholder_grill" : "placeholder_ask") : wf ? t("placeholder_wf", { wf }) : t("placeholder");
+  const fp = $("#flow-pick");
+  fp.textContent = (wf ? "⚙ " + wf : t("mode_lead")) + " ▾";
+  fp.title = t("mode_pick_title");
   $("#hint").textContent = t("send_hint");
 }
 function submit() {
@@ -1467,6 +1470,21 @@ function showSuggest(kind, items, head) {
       ${it.args ? `<span class="args">${esc(it.args)}</span>` : ""}${it.desc ? `<span class="desc">${esc(it.desc)}</span>` : ""}</div>`).join("");
   box.classList.remove("hidden");
 }
+/* ô chọn cạnh ô nhập: gõ mục tiêu → trưởng nhóm lập kế hoạch hay chạy một workflow (cfg.default_workflow) */
+async function pickMode() {
+  if (S.suggest.kind === "mode" && S.suggest.items.length) { hideSuggest(); return; }
+  let d;
+  try { d = await (await fetch("/api/custom")).json(); } catch (e) { return; }
+  const cur = (S.state && S.state.workflow) || "";
+  const items = [{ label: t("mode_lead_full"), desc: t("mode_lead_desc"), value: "" }]
+    .concat(d.workflows.map((w) => ({ label: "⚙ " + w.name, desc: w.summary, value: w.name })))
+    .concat([{ label: "⚙ " + t("df_title") + "…", desc: d.workflows.length ? "" : t("mode_no_flows"), cfg: true }]);
+  items.forEach((it) => { if (!it.cfg && it.value === cur) it.label = "✓ " + it.label; });
+  input.focus();
+  showSuggest("mode", items, t("mode_head"));
+  S.suggest.i = Math.max(0, items.findIndex((it) => !it.cfg && it.value === cur));
+  moveSuggest(0);
+}
 function hideSuggest() { $("#suggest").classList.add("hidden"); S.suggest.items = []; }
 function moveSuggest(d) {
   const n = S.suggest.items.length;
@@ -1480,6 +1498,13 @@ function pickSuggest(i) {
   const it = S.suggest.items[i];
   if (!it) return;
   const kind = S.suggest.kind, v = input.value, caret = input.selectionStart;
+  if (kind === "mode") {
+    hideSuggest();
+    if (it.cfg) { if (window.Setup) Setup.flowModal({ onSaved: () => { if (S.view === "custom") Setup.showCustom(); } }); return; }
+    request("input_mode", { name: it.value }).then(() => { if (S.view === "custom" && window.Setup) Setup.showCustom(); });
+    input.focus();
+    return;
+  }
   if (kind === "file") {  // thay token @… (hoặc token cuối của /code, /edit @…)
     const start = Math.max(v.slice(0, caret).search(/@?"?[^\s@"]*$/), 0);
     const lead = v[start] === "@" || /^\/(task|t)\b/.test(v) || !/^\/(code|open|vi|vim|edit)\s/.test(v) ? "@" : "";
@@ -1617,6 +1642,7 @@ function setView(v) {
 }
 const ACTIONS = {
   "send": () => submit(),
+  "flow-pick": () => pickMode(),
   "pause": () => send("pause", { on: !S.state.paused }),
   "clear": () => send("clear"),
   "theme": () => themeModal(),

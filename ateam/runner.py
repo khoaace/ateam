@@ -34,7 +34,9 @@ class Run:
                  max_partial: int | None = MAX_PARTIAL):
         """keep_lines: chỉ giữ N dòng cuối trong bộ nhớ (lệnh chạy rất lâu như dev server).
         max_partial=None: không cắt dòng dài (output là JSON một dòng cần bóc nguyên vẹn, vd `codex debug models`)."""
-        self.argv, self.cwd, self.env = argv, cwd, env
+        # PWD theo cwd: env chép từ os.environ mang PWD của nơi chạy ateam (thư mục gốc khi task ở worktree, dự án
+        # cũ sau /open) — CLI/shell đọc $PWD sẽ tưởng đang ở đó
+        self.argv, self.cwd, self.env = argv, cwd, dict(env, PWD=os.path.abspath(cwd))
         self.use_pty, self.timeout, self.on_line = use_pty, timeout, on_line
         self.proc: asyncio.subprocess.Process | None = None
         self.lines: list[str] | deque[str] = deque(maxlen=keep_lines) if keep_lines else []

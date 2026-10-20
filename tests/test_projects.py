@@ -4,6 +4,7 @@ thư mục đích; TUI mở lại app với -C, web dừng server rồi cli.cmd_
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 from test_editor import _app
@@ -78,8 +79,14 @@ def test_cmd_tui_and_web_relaunch_in_new_root(tmp_path, monkeypatch):
     monkeypatch.setattr("ateam.projects.touch_project", lambda root: None)
     monkeypatch.setattr(cli.os, "execv", lambda *a: execs.append(a[1]))
     monkeypatch.setattr(cli.sys, "argv", ["ateam", "-C", str(tmp_path), "tui"])
+    # execv giữ cwd + biến môi trường: phải chuyển sang dự án mới (không thì terminal/agent thấy đường dẫn cũ)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
+    monkeypatch.setenv("ATEAM_DB", str(tmp_path / ".ateam/team.db"))
     assert cli.main(["-C", str(tmp_path), "tui"]) == 0
     assert execs[-1][-3:] == ["-C", str(other), "tui"]
+    assert Path.cwd().resolve() == other.resolve() and os.environ["PWD"] == str(other)
+    assert "ATEAM_DB" not in os.environ
     # web: serve() trả thư mục mới (/open) -> chạy lại cùng cổng, bỏ --open
     monkeypatch.setattr(ateam.web, "serve", lambda *a, **kw: other)
     monkeypatch.setattr(cli.sys, "argv", ["ateam", "-C", str(tmp_path), "web", "--port", "8123", "--open"])

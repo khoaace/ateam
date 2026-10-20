@@ -108,7 +108,7 @@ RESET = "\x00reset"  # lựa chọn "quay về mặc định" trong bảng chọ
 
 HELP = tr("""\
 Gõ một câu bình thường  → giao MỤC TIÊU cho trưởng nhóm lập kế hoạch & chia việc
-                          (hoặc chạy theo workflow mặc định nếu đã chọn trong /setup).
+                          (hoặc chạy theo workflow mặc định: F4 / nút bên trái ô nhập để chọn).
 
 Giao việc:
   /task <agent> <nội dung>          giao tay (vd: /task codex viết test cho utils.py)
@@ -200,7 +200,7 @@ Lệnh terminal (tab 💻 Terminal):
 Git (tab 🌿 Git — Ctrl+T xoay tới, hoặc /git):
   /git                              mở tab Git: file thay đổi, commit, nhánh, lịch sử, stash, pull/push
                                     trong danh sách file: Space stage/bỏ stage · a stage tất cả · u bỏ stage
-                                    tất cả · x bỏ thay đổi · Enter/d xem diff · c tới ô commit message
+                                    tất cả · x bỏ thay đổi · X bỏ tất cả · Enter/d xem diff · c tới ô commit
                                     trong lịch sử: Enter/d xem commit · r revert
   /git <lệnh>                       chạy git <lệnh> bất kỳ ở tab Terminal, vd /git tag v1.0,
                                     /git cherry-pick abc123, /git remote add origin <url>
@@ -962,6 +962,44 @@ class ChoiceScreen(BaseModal):
 
     def action_dismiss_none(self) -> None:
         self.dismiss(None)
+
+
+class InputModeScreen(BaseModal):
+    """Gõ mục tiêu (không kèm lệnh) sẽ đi đâu: trưởng nhóm lập kế hoạch hay một workflow (F4, nút cạnh ô nhập).
+    Trả tên workflow ("" = trưởng nhóm), CONFIG (mở popup Luồng mặc định) hoặc None (Esc)."""
+
+    CONFIG = "\x00config"
+    DEFAULT_CSS = """
+    InputModeScreen { align: center middle; }
+    #mode-box { width: 76; max-width: 100%; height: auto; max-height: 80%; border: round $primary 70%;
+                background: $surface; padding: 0 1; }
+    #mode-list { height: auto; max-height: 24; }
+    """
+
+    def __init__(self, cfg: Config):
+        super().__init__()
+        self.modes = wizard.input_modes(cfg)
+        self.current = cfg.default_workflow
+
+    def compose(self) -> ComposeResult:
+        opts = [Option(("● " if name == self.current else "  ") + label, id=f"m{n}")
+                for n, (name, label) in enumerate(self.modes)]
+        opts.append(Option(tr("  ⚙ Cấu hình luồng… (agent · model · effort từng bước, workflow mẫu)"), id="config"))
+        with Vertical(id="mode-box"):
+            yield self.title_bar(tr("Gõ mục tiêu sẽ chạy theo…"))
+            yield OptionList(*opts, id="mode-list")
+            yield Static(Text(tr("Enter: chọn · Esc: đóng · /goal luôn để trưởng nhóm lập kế hoạch · "
+                                 "/flow <tên> chạy workflow khác một lần"), "dim"))
+
+    def on_mount(self) -> None:
+        ol = self.query_one(OptionList)
+        ol.highlighted = next((n for n, (name, _l) in enumerate(self.modes) if name == self.current), 0)
+        ol.focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        oid = event.option.id or ""
+        self.dismiss(self.CONFIG if oid == "config" else self.modes[int(oid[1:])][0])
 
 
 class HelpScreen(BaseModal):
@@ -2023,7 +2061,7 @@ class CustomPanel(Vertical):
     def compose(self) -> ComposeResult:
         yield Static(Text(tr("Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc "
                              "theo vai trò, bật/tắt ở /setup). Workflow chạy bằng /flow <tên> "
-                             "<mục tiêu>. Lưu ở {CUSTOM_FILE}", CUSTOM_FILE=CUSTOM_FILE), "dim"), classes="c-intro")
+                             "<mục tiêu>, hoặc ★ Mặc định để gõ mục tiêu là chạy luôn. Lưu ở {CUSTOM_FILE}", CUSTOM_FILE=CUSTOM_FILE), "dim"), classes="c-intro")
         with VerticalScroll(classes="f-scroll"):
             yield Static(tr("Agent tuỳ chỉnh"), classes="f-section")
             yield Vertical(id="custom-agents")
@@ -2070,7 +2108,9 @@ class CustomPanel(Vertical):
             info = tr("{v} bước: {v2}", v=len(w.steps), v2=w.summary()) + (f" · {w.description}" if w.description else "")
             if name == self.cfg.default_workflow:
                 info = tr("★ mặc định · ") + info
+            star = tr("☆ Bỏ mặc định") if name == self.cfg.default_workflow else tr("★ Mặc định")
             rows.append(Horizontal(Static(name, classes="c-name"), Static(info, classes="c-info"),
+                                   btn(star, "default-flow", name),
                                    btn(tr("Sửa"), "edit-flow", name), btn(tr("Xoá"), "del-flow", name, "error"),
                                    classes="c-row"))
         if not rows:
@@ -2128,6 +2168,9 @@ class CustomPanel(Vertical):
                 self.notify(tr("'{name}' nằm trong file cấu hình — lưu sẽ tạo bản sao với tên mới.", name=name))
             self.app.push_screen(WorkflowEditScreen(self.cfg, old, raw),
                                  lambda r: self._saved("workflows", r))
+        elif action == "default-flow":  # gõ mục tiêu chạy workflow này (bấm lại: về trưởng nhóm)
+            self.notify(wizard.set_input_mode(self.cfg, "" if name == self.cfg.default_workflow else name))
+            await self.changed()
         elif action in ("del-agent", "del-flow"):
             kind = "agents" if action == "del-agent" else "workflows"
             if kind == "agents" and name == self.cfg.lead:
@@ -3925,13 +3968,14 @@ class PaletteScreen(BaseModal):
 
 class GitFileList(OptionList):
     """Danh sách file thay đổi ở tab Git. Space stage/bỏ stage, a stage tất cả, u bỏ stage tất cả,
-    x bỏ thay đổi, Enter/d xem diff; file xung đột: Enter/r giải quyết, g nhờ agent giải quyết mọi xung đột."""
+    x bỏ thay đổi, X bỏ tất cả, Enter/d xem diff; file xung đột: Enter/r giải quyết, g nhờ agent giải quyết mọi xung đột."""
 
     BINDINGS = [
         Binding("space", "app.git_toggle", tr("Stage/bỏ stage"), show=False),
         Binding("a", "app.git_stage_all", tr("Stage tất cả"), show=False),
         Binding("u", "app.git_unstage_all", tr("Bỏ stage tất cả"), show=False),
         Binding("x", "app.git_discard", tr("Bỏ thay đổi"), show=False),
+        Binding("X", "app.git_discard_all", tr("Bỏ tất cả thay đổi"), show=False),
         Binding("d", "app.git_diff", tr("Xem diff"), show=False),
         Binding("c", "app.git_focus_msg", "Commit", show=False),
         Binding("e", "app.git_edit", tr("Sửa file"), show=False),
@@ -4688,7 +4732,9 @@ class TeamApp(App):
     #team-grid.focused .agentpane.unfocused { display: none; }
     #team.focused #timeline { display: none; }
     #timeline { height: auto; max-height: 14; padding: 0 1; border-top: solid $primary-darken-2; }
-    #cmd { dock: bottom; margin: 0 0 2 0; }
+    #cmd-row { dock: bottom; height: 3; margin: 0 0 2 0; }
+    #cmd-mode { width: auto; max-width: 30%; margin-top: 1; text-wrap: nowrap; text-overflow: ellipsis; }
+    #cmd { width: 1fr; }
     /* Footer, thanh trạng thái, ô nhập cùng dock dưới: chồng nhau nên đẩy bằng margin */
     #statusbar { dock: bottom; height: 1; margin: 0 0 1 0; padding: 0 1; background: $boost;
                  overflow: hidden hidden; }
@@ -4731,6 +4777,7 @@ class TeamApp(App):
         Binding("ctrl+y", "merge", "Merge", priority=True),
         Binding("ctrl+l", "syslog", tr("Log hệ thống"), priority=True),
         Binding("f3", "search", tr("Tìm trong dự án"), priority=True),
+        Binding("f4", "pick_mode", tr("Luồng"), priority=True),
         Binding("f7", "focus_agent", tr("Phóng to agent"), show=False, priority=True),
         # Command palette (tab 📝 Code) như VS Code; terminal thường không phân biệt Ctrl+Shift+P với Ctrl+P
         # nên lệnh / symbol có thêm F8 / F9
@@ -4842,6 +4889,8 @@ class TeamApp(App):
                                 yield Btn(tr("+ Tất cả"), id="git-stage-all")
                                 yield Btn(tr("↺ Bỏ thay đổi"), id="git-discard", variant="error")
                                 yield Btn("Δ Diff", id="git-diff")
+                            with Horizontal(classes="git-row"):
+                                yield Btn(tr("↺ Bỏ tất cả"), id="git-discard-all", variant="error")
                             with Horizontal(classes="git-row", id="git-cf-row"):
                                 yield Btn(tr("⇄ Giải quyết"), id="git-resolve", variant="warning")
                                 yield Btn(tr("🤖 Nhờ agent"), id="git-ai-resolve")
@@ -4896,8 +4945,11 @@ class TeamApp(App):
         yield PlanBar(id="plan")
         yield Static(id="continue-hint")
         yield MentionList(id="mention")
-        yield CommandInput(self.root, id="cmd",
-                           placeholder=tr("Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file"))
+        with Horizontal(id="cmd-row"):
+            # gõ mục tiêu đi đâu: trưởng nhóm hay workflow mặc định — bấm (hoặc F4) để đổi
+            yield Btn(wizard.mode_label(self.cfg) + " ▾", id="cmd-mode")
+            yield CommandInput(self.root, id="cmd",
+                               placeholder=tr("Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file"))
         yield StatusBar(id="statusbar")
         yield Footer()
 
@@ -6050,6 +6102,23 @@ class TeamApp(App):
                 self.git_do(lambda: self.git.discard([path]))
         self.push_screen(ConfirmScreen(tr("↺ Bỏ thay đổi"), tr("{v} {path}?\nKhông thể hoàn tác.", v=what.capitalize(), path=path), tr("Bỏ thay đổi")), done)
 
+    def action_git_discard_all(self) -> None:
+        """↺ Bỏ tất cả: đã stage, chưa stage, file mới — thư mục về đúng commit cuối (GitRepo.discard_all)."""
+        st = self.git_status
+        if not st or not st.files:
+            self.notify(tr("Không có thay đổi nào để bỏ"))
+            return
+        u = len([f for f in st.files if f.untracked])
+
+        def done(yes) -> None:
+            if yes:
+                self.git_do(self.git.discard_all)
+        self.push_screen(ConfirmScreen(
+            tr("↺ Bỏ tất cả thay đổi"),
+            tr("Bỏ MỌI thay đổi ({s} file đã stage, {w} file chưa stage) và XOÁ {u} file chưa theo dõi? Thư mục "
+               "về đúng commit cuối — không thể hoàn tác.", s=len(st.staged), w=len(st.unstaged), u=u),
+            tr("Bỏ tất cả")), done)
+
     async def action_git_diff(self) -> None:
         sel = self.git_selected()
         if not sel:
@@ -6239,6 +6308,9 @@ class TeamApp(App):
             self.action_git_stage_all()
         elif bid == "git-discard":
             self.action_git_discard()
+        elif bid == "git-discard-all":
+            self.action_git_discard_all()
+
         elif bid == "git-diff":
             self.run_worker(self.action_git_diff(), exclusive=False)
         elif bid == "git-commit":
@@ -6816,6 +6888,10 @@ class TeamApp(App):
             event.stop()
             self.clear_log()
             return
+        if bid == "cmd-mode":
+            event.stop()
+            self.action_pick_mode()
+            return
         if bid.startswith("git-"):
             event.stop()
             self.git_button(bid)
@@ -7186,6 +7262,9 @@ class TeamApp(App):
     def _show_input_mode(self) -> None:
         """Ô nhập cho biết gõ mục tiêu sẽ đi đâu: workflow mặc định hay trưởng nhóm."""
         wf = self.cfg.default_workflow
+        mode = self.query_one("#cmd-mode", Button)
+        mode.label = Btn.wrap(wizard.mode_label(self.cfg) + " ▾")
+        mode.refresh(layout=True)  # width auto: tính lại theo nhãn mới
         bar = self.query_one("#grill", GrillBar)
         if bar.question is not None:
             self.query_one("#cmd", Input).placeholder = (
@@ -7197,6 +7276,22 @@ class TeamApp(App):
             tr("Nhập mục tiêu (chạy theo workflow '{wf}') · /goal: trưởng nhóm lập kế hoạch · "
                "/help · @ nhắc file", wf=wf)
             if wf else tr("Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file"))
+
+    def action_pick_mode(self) -> None:
+        """F4 / nút cạnh ô nhập: gõ mục tiêu → trưởng nhóm lập kế hoạch hay chạy một workflow."""
+        if isinstance(self.screen, InputModeScreen):
+            return
+
+        def done(name) -> None:
+            if name is None:
+                return
+            if name == InputModeScreen.CONFIG:
+                self.open_default_flow()
+                return
+            self.notify(wizard.set_input_mode(self.cfg, name))
+            self._show_input_mode()
+            self.query_one("#cmd", Input).focus()
+        self.push_screen(InputModeScreen(self.cfg), done)
 
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id != "git-ai-agent" or event.value is Select.BLANK:

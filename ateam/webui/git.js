@@ -65,7 +65,8 @@ window.GitView = (() => {
     const sync = st.upstream ? [st.ahead ? `↑${st.ahead}` : "", st.behind ? `↓${st.behind}` : ""].filter(Boolean).join(" ") || "✓ " + t("git_synced") : t("git_no_remote");
     const head = st.branch || (st.oid ? "detached @" + st.oid.slice(0, 8) : t("git_no_commit"));
     const files = groups().map(([code, title, list]) => `<div class="ggroup"><div class="ghead">${esc(title)} <span class="n">${list.length}</span>
-        ${code === "s" ? `<button class="mini" data-gact="unstage_all" title="u">${esc(t("git_unstage_all"))}</button>` : code === "w" ? `<button class="mini" data-gact="stage_all" title="a">${esc(t("git_stage_all"))}</button>` : code === "c" ? `<button class="mini" data-gact="ai_resolve">🤖 ${esc(t("cf_ai_all"))}</button>` : ""}</div>
+        ${code === "s" ? `<button class="mini" data-gact="unstage_all" title="u">${esc(t("git_unstage_all"))}</button>` : code === "w" ? `<button class="mini" data-gact="stage_all" title="a">${esc(t("git_stage_all"))}</button>` : code === "c" ? `<button class="mini" data-gact="ai_resolve">🤖 ${esc(t("cf_ai_all"))}</button>` : ""}
+        ${code !== "c" && st.oid && !st.state && !st.groups.c.length ? `<button class="mini danger" data-gact="discard_all" title="X">${esc(t("git_discard_all"))}</button>` : ""}</div>
         ${list.map((f) => fileRow(code, f)).join("")}</div>`).join("") || `<div class="gclean">✓ ${esc(t("git_clean"))}</div>`;
     const nStaged = st.groups.s.length;
     const ph = G.amend ? t("git_msg_amend") : nStaged ? t("git_msg_staged", { n: nStaged }) : t("git_msg_all");
@@ -126,6 +127,12 @@ window.GitView = (() => {
     const untracked = f && f.icon === "U";
     if (await confirmBox(t("git_discard_title"), untracked ? t("git_discard_new", { path: sel.path }) : t("git_discard_q", { path: sel.path }), t("git_discard_yes"))) await act("discard", { path: sel.path });
   }
+  async function discardAll() {  // ↺ Bỏ tất cả: đã stage + chưa stage + file mới, về đúng commit cuối
+    const g = G.st && G.st.groups;
+    if (!g || !(g.s.length || g.w.length)) return;
+    const u = g.w.filter((f) => f.icon === "U").length;
+    if (await confirmBox(t("git_discard_all_title"), t("git_discard_all_q", { s: g.s.length, w: g.w.length - u, u }), t("git_discard_all_yes"))) await act("discard_all");
+  }
   function diff(sel) {
     if (!sel) return;
     DiffView.git({ kind: sel.code === "s" ? "staged" : sel.code === "c" ? "conflict" : "unstaged", path: sel.path });
@@ -156,6 +163,7 @@ window.GitView = (() => {
     switch (a) {
       case "toggle": return toggle(sel);
       case "discard": return discard(sel);
+      case "discard_all": return discardAll();
       case "diff": return diff(sel);
       case "resolve": return resolve(sel.path);
       case "ai_resolve": return act("ai_resolve");
@@ -212,6 +220,7 @@ window.GitView = (() => {
     else if (k === "a") act("stage_all");
     else if (k === "u") act("unstage_all");
     else if (k === "x") discard(G.sel);
+    else if (k === "X") discardAll();
     else if ((k === "r" || k === "Enter") && G.sel && G.sel.code === "c") resolve(G.sel.path);
     else if (k === "g" && G.st && G.st.groups.c.length) act("ai_resolve");
     else if (k === "d" || k === "Enter") diff(G.sel);

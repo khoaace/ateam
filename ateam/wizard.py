@@ -370,6 +370,30 @@ def suggestion_form(cfg: Config, raw: dict) -> dict:
             "review": raw.get("review") is not False, "steps": steps}
 
 
+# ---------------------------------------------------------------------------- gõ mục tiêu đi đâu (ô chọn cạnh ô nhập)
+def input_modes(cfg: Config) -> list[tuple[str, str]]:
+    """(tên workflow, nhãn) cho ô chọn cạnh ô nhập: "" = trưởng nhóm lập kế hoạch, rồi từng workflow."""
+    return [("", tr("★ Trưởng nhóm lập kế hoạch"))] + [
+        (n, f"⚙ {n} · {w.summary()}") for n, w in cfg.workflows.items()]
+
+
+def mode_label(cfg: Config) -> str:
+    """Nhãn ngắn trên nút cạnh ô nhập."""
+    return f"⚙ {cfg.default_workflow}" if cfg.default_workflow else tr("★ Trưởng nhóm")
+
+
+def set_input_mode(cfg: Config, name: str) -> str:
+    """Gõ mục tiêu (không kèm lệnh) sẽ chạy workflow `name`, "" = trưởng nhóm lập kế hoạch. Lưu state.json (dùng
+    chung TUI ↔ web). Trả lời nhắn; tên lạ → ValueError."""
+    name = (name or "").strip()
+    if name and name not in cfg.workflows:
+        raise ValueError(tr("Không có workflow '{name}'", name=name))
+    save_default_workflow(name)
+    cfg.default_workflow = name
+    return (tr("Gõ mục tiêu → chạy workflow '{name}' (/goal: trưởng nhóm lập kế hoạch)", name=name) if name
+            else tr("Gõ mục tiêu → trưởng nhóm lập kế hoạch"))
+
+
 # ---------------------------------------------------------------------------- popup "Luồng mặc định"
 def flow_names(cfg: Config) -> list[tuple[str, str]]:
     """(tên, nhãn) cho ô chọn workflow: workflow đã có, rồi mẫu chưa tạo (lưu sẽ tạo từ mẫu)."""

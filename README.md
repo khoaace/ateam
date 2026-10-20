@@ -345,7 +345,8 @@ chạy đúng lệnh đã gõ. `/stop [số]` dừng lệnh. Thoát app (Ctrl+Q)
   commit message (mặc định trưởng nhóm) sửa — xem tiến độ ở tab Đội, xong thì xem lại rồi đánh dấu đã xong.
 - **File thay đổi** theo nhóm *Xung đột* / *Đã stage* / *Chưa stage*: **Space** stage/bỏ stage, **a** stage tất
   cả, **u** bỏ stage tất cả, **Enter**/**d** xem diff (màn hình diff hai cột như trên), **x** bỏ thay đổi (hỏi lại;
-  file mới thì bị xoá), **c** tới ô commit.
+  file mới thì bị xoá), **X** / nút **↺ Bỏ tất cả** bỏ mọi thay đổi — đã stage lẫn chưa, xoá file chưa theo dõi, thư
+  mục về đúng commit cuối (hỏi lại, nêu số file; file trong `.gitignore` giữ nguyên), **c** tới ô commit.
 - **Commit**: gõ message rồi Enter (chưa stage gì thì commit mọi thay đổi). **✨ AI viết** (hoặc `/commit`
   không kèm message): agent chọn ở ô bên cạnh (mặc định trưởng nhóm; lựa chọn dùng chung terminal và web) đọc diff
   và viết message theo ngôn ngữ/kiểu các commit trước, bạn sửa rồi Enter. Commit xong ô message được xoá.
@@ -492,6 +493,11 @@ nội dung yêu cầu...
 
 Gõ `/custom` để mở tab **🧩 Tuỳ chỉnh** (web: mục *Tuỳ chỉnh* ở sidebar; ở màn hình thiết lập vẫn có nút
 *Agent & workflow tuỳ chỉnh…* mở cùng nội dung dạng popup).
+
+**Gõ mục tiêu chạy workflow nào**: nút ngay bên trái ô nhập (TUI: bấm hoặc **F4**) cho chọn *★ Trưởng nhóm lập kế
+hoạch* hay một workflow (kể cả workflow bạn tự tạo) — từ đó gõ prompt thẳng là chạy workflow đó, không cần
+`/flow <tên>`; `/goal` vẫn luôn để trưởng nhóm lập kế hoạch. Mỗi workflow ở tab Tuỳ chỉnh cũng có nút **★ Đặt mặc
+định** / **☆ Bỏ mặc định**. Lựa chọn dùng chung cho terminal và web.
 
 **Luồng mặc định** (`/flow-setup`, nút *⚙ Luồng mặc định* ở tab Tuỳ chỉnh, hoặc *⚙ Cấu hình luồng cố định…* ở bước
 *Kiểu làm việc* của `/setup`): chọn workflow chạy khi gõ mục tiêu và agent · model · effort cho từng bước (vd Thiết

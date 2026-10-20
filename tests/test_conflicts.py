@@ -187,3 +187,52 @@ def test_tui_conflict_screen(env, project, monkeypatch):
             assert await wait(lambda: app.git_status.state == "")
             await pilot.press("ctrl+q")
     asyncio.run(main())
+
+
+def test_discard_all(tmp_path):
+    """↺ Bỏ tất cả (tab Git): đã stage, chưa stage, file mới đều về commit cuối; file .gitignore giữ nguyên."""
+    g = gitops.GitRepo(tmp_path)
+
+    async def empty():
+        git(tmp_path, "init", "-q")
+        (tmp_path / "a.txt").write_text("x\n")
+        ok, msg = await g.discard_all()
+        assert not ok and "Chưa có commit" in msg and (tmp_path / "a.txt").exists()
+    asyncio.run(empty())
+    (tmp_path / ".gitignore").write_text("build/\n")
+    (tmp_path / "b.txt").write_text("b\n")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-qm", "gốc")
+
+    async def main():
+        assert not (await g.discard_all())[0]  # không có gì để bỏ
+        (tmp_path / "a.txt").write_text("sửa\n")
+        (tmp_path / "b.txt").write_text("đã stage\n")
+        git(tmp_path, "add", "b.txt")
+        (tmp_path / "moi").mkdir()
+        (tmp_path / "moi" / "c.txt").write_text("mới\n")
+        (tmp_path / "build").mkdir()
+        (tmp_path / "build" / "out.bin").write_text("giữ\n")
+        ok, msg = await g.discard_all()
+        assert ok and "3 file" in msg, msg
+        assert not (await g.status()).files
+        assert (tmp_path / "a.txt").read_text() == "x\n" and (tmp_path / "b.txt").read_text() == "b\n"
+        assert not (tmp_path / "moi").exists() and (tmp_path / "build" / "out.bin").exists()
+    asyncio.run(main())
+
+
+def test_discard_all_refused_during_merge_and_via_web(env, project, monkeypatch):
+    import pytest
+    pytest.importorskip("aiohttp")
+    from test_web import _web_app
+    wa = _web_app(env, project, monkeypatch)
+    make_conflict(project, init=False)
+
+    async def main():
+        r = await wa.handle({"op": "git", "action": "discard_all"})
+        assert r[1] == "warn" and "Huỷ merge" in r[0]
+        await wa.handle({"op": "git", "action": "abort"})
+        (project / "a.txt").write_text("sửa\n")
+        r = await wa.handle({"op": "git", "action": "discard_all"})
+        assert r[1] == "ok" and not (await wa.git.repo.status()).files
+    asyncio.run(main())

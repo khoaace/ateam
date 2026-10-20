@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.27.0 — 20/10/2026
+
+- **Chọn luồng ngay cạnh ô nhập** (TUI: nút bên trái ô nhập hoặc **F4**; web: nút trong ô nhập): gõ mục tiêu sẽ do
+  *trưởng nhóm lập kế hoạch* hay chạy thẳng một workflow (kể cả workflow tự tạo) — không cần gõ `/flow <tên>` nữa.
+  Tab 🧩 Tuỳ chỉnh có nút **★ Đặt mặc định** / **☆ Bỏ mặc định** cho từng workflow. Trước đây chỉ đặt được qua popup
+  ⚙ Luồng mặc định, khó tìm và khó đổi qua lại.
+- Tab 🌿 Git có **↺ Bỏ tất cả** (phím `X`): bỏ mọi thay đổi đã stage lẫn chưa stage, xoá file chưa theo dõi — thư mục
+  về đúng commit cuối; hỏi lại kèm số file, giữ file trong `.gitignore` (kể cả `.ateam/`), không chạy khi đang
+  merge/rebase hoặc chưa có commit.
+- Sau `/open`, tiến trình ateam chạy lại **ở đúng thư mục dự án mới**: trước đây nó giữ thư mục làm việc, `$PWD` (và
+  `ATEAM_DB`/`ATEAM_ROOT` nếu có) của dự án cũ, nên terminal / CLI agent đọc `$PWD` thấy đường dẫn cũ. Mọi tiến trình
+  con (task, chat, ⌨ terminal, tab Terminal) nhận `$PWD` đúng thư mục chạy — kể cả task trong worktree. Dữ liệu
+  `/api/*` của web không được trình duyệt cache.
+
 ## 0.26.1 — 20/10/2026
 
 - Sửa màn hình diff trên web bị lệch hàng (cả 2 cột lẫn 1 cột): class `.drow` của tab Thống kê trùng tên và ghi đè

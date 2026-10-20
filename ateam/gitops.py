@@ -452,6 +452,24 @@ class GitRepo:
                     return False, short_error(out)
         return True, tr("Đã bỏ thay đổi của {v} file", v=len(tracked) + len(untracked))
 
+    async def discard_all(self) -> tuple[bool, str]:
+        """Bỏ MỌI thay đổi (đã stage lẫn chưa) và xoá file chưa theo dõi — thư mục về đúng commit cuối. File bị
+        .gitignore (.ateam/, node_modules…) giữ nguyên. Không thể hoàn tác."""
+        st = await self.status()
+        if st.state or st.conflicts:
+            return False, tr("Đang {v} dở — dùng ✗ Huỷ merge (hoặc giải quyết xong) trước khi bỏ mọi thay đổi",
+                             v=st.state or "merge")
+        if not st.oid:
+            return False, tr("Chưa có commit nào — không có bản nào để quay về")
+        if not st.files:
+            return False, tr("Không có thay đổi nào để bỏ")
+        async with self.lock:
+            for args in (("reset", "--hard", "-q", "HEAD"), ("clean", "-fd", "-q")):
+                rc, out = await self.run(*args)
+                if rc != 0:
+                    return False, short_error(out)
+        return True, tr("Đã bỏ mọi thay đổi ({v} file)", v=len(st.files))
+
     async def commit(self, message: str, amend: bool = False, all_changes: bool = False,
                      no_verify: bool = False) -> tuple[bool, str]:
         """no_verify: `git commit --no-verify` — bỏ qua hook pre-commit/commit-msg (husky, lint-staged…)."""

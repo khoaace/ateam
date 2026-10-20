@@ -215,7 +215,9 @@ def auth_middleware(remote: Remote, port: int):
     return guard
 
 
-async def security_headers(_request: web.Request, response: web.StreamResponse) -> None:
+async def security_headers(request: web.Request, response: web.StreamResponse) -> None:
+    if request.path.startswith("/api/"):  # dữ liệu của dự án đang mở: không dùng lại bản cũ (sau /open cùng cổng)
+        response.headers.setdefault("Cache-Control", "no-store")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")

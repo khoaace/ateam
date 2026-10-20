@@ -481,6 +481,9 @@ select.agent-select:focus { border-color: var(--accent); }
 .composer-box.grill::before { color: var(--review); }
 .composer-mode { align-self: center; font: 650 11px var(--mono); padding: 1px 6px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text-2); white-space: nowrap; }
 .composer-mode:empty { display: none; }
+.composer-flow { align-self: center; max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 11px var(--mono); padding: 2px 7px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text-2); cursor: pointer; }
+.composer-flow:hover { border-color: var(--accent); color: var(--text); }
+.composer-flow:empty { display: none; }
 .composer-mode.cmd { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .composer-mode.sh { color: var(--done); border-color: color-mix(in srgb, var(--done) 45%, var(--border)); }
 .composer-mode.ans { color: var(--review); border-color: color-mix(in srgb, var(--review) 45%, var(--border)); }
