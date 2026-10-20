@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.29.0 — 20/10/2026
 
 - **Tab 🔲 Lưới (`/grid`) trên TUI và web**: chia màn hình thành lưới, mỗi ô là CLI tương tác thật của một agent
   (chọn model/effort, phiên mới hoặc tiếp tục phiên gần nhất). Kéo tiêu đề ô để đổi chỗ / đặt cạnh ô khác, 5 bố cục
