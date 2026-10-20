@@ -23,9 +23,14 @@ Nguồn cấu hình, ưu tiên tăng dần:
    chạy lại wizard thì các agent này được xoá và tạo lại.
 6. Riêng từng task: cột `model`/`effort` (`/task agent:model@effort`, `/set`, kế hoạch của trưởng nhóm).
 
-Tab ✅ To-do của web lưu ở `~/.config/ateam/todos/<tên thư mục>-<10 ký tự sha1 của đường dẫn>.json` (mảng
-`{id, text, done, created}`, `ateam/todos.py`) — cố ý **ngoài** dự án để không phải `.gitignore`; đổi tên/chuyển thư
-mục dự án thì danh sách cũ nằm lại ở file theo đường dẫn cũ.
+Tab ✅ To-do lưu ở `~/.config/ateam/todos/<tên thư mục>-<10 ký tự sha1 của đường dẫn>.json` (mảng
+`{id, text, done, created, tags?, due?, priority?, desc?, updated?, done_at?}`, `ateam/todos.py`) — cố ý **ngoài** dự
+án để không phải `.gitignore`; đổi tên/chuyển thư mục dự án thì danh sách cũ nằm lại ở file theo đường dẫn cũ.
+`tags` là mảng id tag; `due` là `YYYY-MM-DD` hoặc `YYYY-MM-DDTHH:MM` (giờ máy); `priority` 0–3 (không · thấp · vừa · cao).
+Tag dùng chung cho To-do và Ghi chú ở `~/.config/ateam/tags/<cùng tên file>.json` (mảng `{id, name, color}`, thứ tự
+trong mảng = thứ tự hiển thị; xoá / gộp tag thì sửa luôn cả hai file). Ghi chú (tab 🗒 Ghi chú, `ateam/notes.py`) ở
+`~/.config/ateam/notes/<cùng tên file>.json`: mảng `{id, title, body, tags, pinned, created, updated}`; lưu kèm
+`updated` đã đọc nên hai nơi cùng sửa không đè mất nhau.
 
 Rule của dự án (`/rules`, `ateam/rules.py`) lưu cùng kiểu, ở `~/.config/ateam/rules/<cùng tên file>.json`: mảng
 `{id, title, text, enabled, targets, created}`; `targets` rỗng = mọi agent, `"agent:<tên>"` / `"role:<vai trò>"`

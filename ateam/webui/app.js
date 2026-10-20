@@ -102,7 +102,7 @@ function onHello(m) {
   // màn hình hẹp chỉ còn icon: nút vẫn có tên cho trình đọc màn hình và tooltip (kèm phím Alt+số)
   $$(".nav-item").forEach((b) => {
     const lbl = $("[data-t]", b), i = $$("#nav .nav-item").indexOf(b);
-    if (lbl) { b.setAttribute("aria-label", lbl.textContent); b.title = lbl.textContent + (i >= 0 ? `  (Alt+${i + 1})` : ""); }
+    if (lbl) { b.setAttribute("aria-label", lbl.textContent); b.title = lbl.textContent + (i >= 0 && i < 10 ? `  (Alt+${(i + 1) % 10})` : ""); }
   });
   renderSideToggle();
   $("#btn-theme").title = t("theme");
@@ -145,7 +145,9 @@ function onToast(m) {
   if (o.plan != null) planModal(o.plan);
   if (o.search != null) { setView("code"); CodeView.search(o.search); }
   if (o.task != null) openTask(o.task);
+  if (o.view === "notes" && o.note != null && window.NotesView) NotesView.openNote(o.note);
   if (o.view) setView(o.view);
+  if (o.modal === "tags" && window.TD) TD.tagModal();
   if (o.chat) setTimeout(() => focusChat(o.chat), 50);
   if (o.focus != null) setTimeout(() => focusAgent(o.focus || S.focusAgent || (S.state.agents.find((a) => a.lead) || {}).name), 50);
   if (o.pty != null) ptyModal(o.pty, o.title || "");  // /chat <agent>: tới ô 💬 của agent đó
@@ -357,12 +359,13 @@ function render() {
   if (S.view === "team") renderTeam();
   if (S.view === "term") renderTerm();
   if (window.TodoView) TodoView.render();  // cả số việc chưa xong trên thanh bên
+  if (window.NotesView) NotesView.render();
   if (S.openTask != null) renderDrawer(false);
   renderContinueHint();
 }
 function renderTop() {
   const st = S.state, c = counts();
-  const titles = { board: t("board"), team: t("team"), grid: t("grid"), term: t("terminal"), git: t("git"), code: t("code"), todo: t("todo"), custom: t("custom"), dash: t("dash") };
+  const titles = { board: t("board"), team: t("team"), grid: t("grid"), term: t("terminal"), git: t("git"), code: t("code"), todo: t("todo"), notes: t("notes"), custom: t("custom"), dash: t("dash") };
   $("#view-title").textContent = titles[S.view];
   const chips = [];
   if (c.running) chips.push(`<span class="chip s-running" style="color:var(--running)"><span class="dot"></span>${c.running} ${esc(t("running"))}</span>`);
@@ -1655,7 +1658,7 @@ input.addEventListener("keydown", (e) => {
 input.addEventListener("blur", () => setTimeout(hideSuggest, 150));
 
 /* ------------------------------------------------------------------ hành động (bấm) */
-const VIEWS = ["board", "team", "grid", "term", "git", "code", "todo", "dash", "custom"];
+const VIEWS = ["board", "team", "grid", "term", "git", "code", "todo", "notes", "dash", "custom"];
 function setView(v) {
   if (!VIEWS.includes(v)) return;
   const prev = S.view;
@@ -1671,6 +1674,8 @@ function setView(v) {
   if (v === "custom" && window.Setup) Setup.showCustom();
   if (v === "dash" && window.DashView) DashView.show();
   if (v === "todo" && window.TodoView) TodoView.show();
+  if (v === "notes" && window.NotesView) NotesView.show();
+  if (prev === "notes" && v !== "notes" && window.NotesView) NotesView.hide();
   if (v === "grid" && window.GridView) GridView.show();
   if (prev === "grid" && v !== "grid") document.documentElement.classList.remove("grid-full");
 }
@@ -1749,8 +1754,8 @@ document.addEventListener("change", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.target.closest && e.target.closest(".xterm")) return;  // phím gõ trong terminal là của CLI (Esc, Ctrl+K…)
-  if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-9]$/.test(e.code)) {  // Alt+1…9: tới thẳng tab (như TUI)
-    const b = $$("#nav .nav-item")[+e.code.slice(5) - 1];
+  if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[0-9]$/.test(e.code)) {  // Alt+1…9, 0: tới thẳng tab (như TUI)
+    const b = $$("#nav .nav-item")[(+e.code.slice(5) || 10) - 1];
     if (b) { e.preventDefault(); setView(b.dataset.view); }
     return;
   }
@@ -1769,6 +1774,8 @@ document.addEventListener("keydown", (e) => {
     if (e.target.closest && e.target.closest(".cm-editor")) return;  // Esc trong editor là của vim
     if (topModal()) { e.preventDefault(); closeModal(); }
     else if (window.Lofi && Lofi.popOpen()) Lofi.hidePop();
+    else if (S.view === "todo" && window.TodoView && TodoView.escape()) e.preventDefault();
+    else if (S.view === "notes" && window.NotesView && NotesView.escape()) e.preventDefault();
     else if (S.openTask != null) closeDrawer();
     else if (S.focusAgent && S.view === "team") focusAgent(null);
   }

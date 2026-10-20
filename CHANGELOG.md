@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.30.0 — 20/10/2026
+
+- **✅ To-do thành trình quản lý việc** (web và TUI): **tag** có màu (lọc theo tag, popup **Quản lý tag** / `/tags`:
+  thêm, đổi tên, đổi màu, gộp, xoá, đổi thứ tự), **hạn** (nhóm Quá hạn · Hôm nay · Tuần này · Sau này, lịch chọn ngày
+  và giờ, việc quá hạn tô đỏ), **ưu tiên** và **mô tả markdown**. Ô thêm nhanh hiểu `#tag !cao @mai 17:00`, có gợi ý
+  tag và xem trước. Web có ngăn chi tiết bên phải (sửa mọi trường, giao việc cho trưởng nhóm) và thẻ tổng quan;
+  TUI có phím t/u/p/g/f/h/T và popup chi tiết. Trước đây To-do chỉ là danh sách chữ, không phân loại hay đặt hạn được.
+- **🗒 Ghi chú** (tab mới ở web và TUI, `/notes [tiêu đề]`): ghi chú markdown theo dự án, dùng chung tag với To-do —
+  ghim, tìm, soạn / xem trước / chia đôi, tự lưu khi gõ, hai nơi cùng sửa thì hỏi tải lại hay ghi đè; chọn dòng để
+  tạo to-do hoặc gửi trưởng nhóm. Lưu ngoài repo như To-do (`~/.config/ateam/notes/`).
+- TUI: Alt+0 tới tab thứ 10.
+
 ## 0.29.0 — 20/10/2026
 
 - **Tab 🔲 Lưới (`/grid`) trên TUI và web**: chia màn hình thành lưới, mỗi ô là CLI tương tác thật của một agent
