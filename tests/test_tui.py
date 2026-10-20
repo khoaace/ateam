@@ -155,7 +155,7 @@ def test_tui_model_effort_picker(env, project, monkeypatch):
             await pilot.pause(0.2)
             assert not isinstance(app.screen, ChoiceScreen) and claude.effort == "max"
             # tab Đội hiện danh sách model/effort, mục đang dùng nằm trong đó
-            await pilot.press("ctrl+t")
+            await pilot.press("ctrl+t", "ctrl+t")  # Bảng việc → Lưới → Agents
             await pilot.pause(0.8)
             head = str(app.pane("claude").head.render())
             assert "effort:" in head and "sonnet" in head and "haiku" in head

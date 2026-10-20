@@ -123,7 +123,7 @@ def test_tui_chat_box(env, project, monkeypatch):
             app.query_one("#cmd").focus()
             # tab Agents ở dạng danh sách: chỉ còn dòng tiêu đề mỗi agent, log + ô chat ẩn tới khi phóng to
             assert not app.pane("claude").body.display and app.pane("claude").head.region.height > 0
-            await pilot.press("alt+6")  # Alt+số: tới thẳng tab (1 Bảng việc, 2 Agents, 3 Workflows, 4 Code, 5 Git, 6 Terminal…)
+            await pilot.press("alt+7")  # Alt+số: tới thẳng tab (1 Bảng việc, 2 Lưới, 3 Agents, 4 Workflows, 5 Code, 6 Git, 7 Terminal…)
             await pilot.pause(0.1)
             assert app.query_one("#tabs").active == "tab-term"
             await pilot.press("alt+1")

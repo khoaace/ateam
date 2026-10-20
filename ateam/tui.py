@@ -4759,6 +4759,9 @@ class TeamApp(App):
                             yield Btn(tr("🗑 Xoá log"), id="log-clear")
                         yield ReflowLog(id="log", wrap=True, markup=False, highlight=False,
                                       max_lines=5000, min_width=1)
+            with TabPane(tr("🔲 Lưới"), id="tab-grid"):
+                from .tui_grid import GridPanel
+                yield GridPanel(id="grid-panel")
             with TabPane(tr("🤖 Agents"), id="tab-team"):
                 with Vertical(id="team"):
                     with VerticalScroll(id="team-list"):
@@ -4844,9 +4847,6 @@ class TeamApp(App):
                         yield Static(id="job-head")
                         yield ReflowLog(id="job-log", wrap=True, markup=False, highlight=False,
                                       max_lines=5000, min_width=1)
-            with TabPane(tr("🔲 Lưới"), id="tab-grid"):
-                from .tui_grid import GridPanel
-                yield GridPanel(id="grid-panel")
             with TabPane(tr("✅ To-do"), id="tab-todo"):
                 from .tui_todo import NotesPanel, TodoPanel
                 yield TodoPanel(self.root, id="todo-tab")
@@ -7081,7 +7081,7 @@ class TeamApp(App):
             return
         self.push_screen(PlanViewScreen(g, self.db.tasks(goal_id=g.id)))
 
-    TAB_ORDER = ["tab-board", "tab-team", "tab-custom", "tab-code", "tab-git", "tab-term", "tab-grid", "tab-todo", "tab-notes",
+    TAB_ORDER = ["tab-board", "tab-grid", "tab-team", "tab-custom", "tab-code", "tab-git", "tab-term", "tab-todo", "tab-notes",
                  "tab-dash"]
 
     def action_toggle_tab(self) -> None:
