@@ -128,6 +128,12 @@ thì là mục tiêu đó); task không thuộc mục tiêu thì `continue_task`
   `author = "compact"` mới nhất. `/compact` (`Orchestrator.compact`) gửi ghi chú + mục tiêu từ lần thu gọn
   trước + 60 dòng cuối `system.log` cho trưởng nhóm (`compact_prompt`), lấy phần sau `SUMMARY:` làm ghi
   chú `compact` mới; ghi chú cũ vẫn nằm trong DB nhưng không còn vào prompt.
+- Bản tổng quan dự án (`/init`, `overview.py`): `Orchestrator.init_overview` gửi `init_prompt` cho trưởng nhóm (đã có
+  bản cũ thì kèm nó + file đổi từ commit trong meta + `git status`, để chỉ cập nhật), bóc khối
+  `<<<OVERVIEW>>>…<<<END>>>` (`extract_overview`) ghi vào `.ateam/project.md`. `overview_block()` đọc file, thêm danh
+  sách file đã đổi kể từ commit đó và được truyền `overview=` vào `plan_prompt`, `followup_plan_prompt`, `grill_prompt`
+  (chỉ câu đầu — các câu sau tiếp phiên) và `task_prompt`; có overview thì luật "khám phá vừa đủ" đổi thành "dựa vào
+  PROJECT OVERVIEW". `_plan` nhắc `/init` một lần mỗi lần mở app khi chưa có file hoặc đã ≥ `STALE_COMMITS` commit.
 - `runs`: mỗi lượt gọi agent/test một dòng (`kind` = `task` | `fix` | `lead` | `test`, `status` =
   `ok` | `failed` | `timeout` | `empty` | `ratelimit` | `cancelled`), dùng cho `/usage` và dashboard. Cột
   `goal_id` (lượt lập kế hoạch/review/hỏi đáp của trưởng nhóm), `cwd`, `model`; sau mỗi lượt

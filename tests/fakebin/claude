@@ -48,6 +48,14 @@ if [[ "$P" == *"you INTERVIEW the user"* ]]; then
     q=$((n + 1))
     echo '{"question": "Câu hỏi số '"$q"'?", "why": "để rõ phạm vi", "options": ["Phương án A", "Phương án B"], "recommended": "Phương án A"}'
   fi
+elif [[ "$P" == *"WRITE THE PROJECT OVERVIEW"* ]]; then
+  # /init: không đụng file, trả bản tổng quan giữa <<<OVERVIEW>>> … <<<END>>>; có bản cũ thì "cập nhật"
+  echo "Đang đọc README..."
+  echo "<<<OVERVIEW>>>"
+  echo "- Purpose: dự án demo"
+  echo "- Test: pytest -q"
+  [[ "$P" == *"CURRENT OVERVIEW"* ]] && echo "- Updated: đã cập nhật"
+  echo "<<<END>>>"
 elif [[ "$P" == *"git COMMIT MESSAGE"* ]]; then
   # Viết commit message (tab Git): trả lời sau SUMMARY:
   echo "Đang đọc diff..."

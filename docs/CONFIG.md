@@ -36,6 +36,10 @@ Rule của dự án (`/rules`, `ateam/rules.py`) lưu cùng kiểu, ở `~/.conf
 `{id, title, text, enabled, targets, created}`; `targets` rỗng = mọi agent, `"agent:<tên>"` / `"role:<vai trò>"`
 (`role:lead` = trưởng nhóm, gồm mọi lượt lập kế hoạch / review / viết commit message của ai làm thay).
 
+Bản tổng quan dự án (`/init`, `ateam/overview.py`) ở `<dự án>/.ateam/project.md` (trong `.ateam/` nên git bỏ qua):
+dòng đầu `<!-- ateam:init commit=<sha> date=<YYYY-MM-DD> -->`, còn lại là markdown — sửa tay được, `/init` lần sau
+giữ phần người dùng sửa. Xoá file = thôi gửi kèm prompt.
+
 `XDG_CONFIG_HOME` đổi được vị trí thư mục `~/.config`.
 
 ## Khoá cấp cao

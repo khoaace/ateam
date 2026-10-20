@@ -154,3 +154,15 @@ hỏi đáp / ASK / NOTE / SUMMARY; `extract_json` vá dấu `]`/`}` còn thiế
 hỏng giữa dòng như `[<ids>]` của mẫu); `question_from` bỏ câu hỏi không có chữ; `parse_delegations` bỏ `MEMBER_NAME`
 (đọc lại từ file log khi merge). Agent giả lập `codex` in lại prompt như bản thật để test bắt được lỗi loại này.
 **Xem lại nếu**: thêm CLI in lại prompt theo kiểu khác (cắt ngắn, đổi định dạng) — khi đó chỉ còn lớp lọc mẫu bảo vệ.
+
+## 18. Bản tổng quan dự án (`/init`) ở `.ateam/project.md`, tiếng Anh, gửi kèm prompt, cập nhật bằng tay
+
+**Lý do**: mỗi kế hoạch và mỗi task, trưởng nhóm / thành viên lại đọc repo để biết code ở đâu, lệnh test là gì — tốn
+token lặp lại. `/init` cho trưởng nhóm tìm hiểu một lần, ghi bản đồ gọn; ateam gửi kèm prompt (như rule ở #15) nên agent
+nào cũng nhận, kể cả agent tuỳ chỉnh không đọc `AGENTS.md`. Lưu trong `.ateam/` (đã gitignore) thay vì ghi `AGENTS.md`:
+không đụng file người dùng tự viết, không lẫn vào commit, mở sửa được ở tab Code. Viết tiếng Anh: chỉ agent đọc, tốn ít
+token hơn tiếng Việt. Không tự cập nhật sau mỗi mục tiêu (tốn thêm một lượt trưởng nhóm): meta giữ commit lúc viết, prompt
+kèm danh sách file đã đổi từ đó, `/init` lại chỉ cập nhật theo các thay đổi; quá `STALE_COMMITS` commit thì nhắc.
+`/grill` chỉ gửi ở câu đầu, review không gửi (đều tiếp phiên lập kế hoạch). Người dùng chọn cách này (21/10/2026).
+**Xem lại nếu**: người dùng muốn bản tổng quan có tác dụng khi mở CLI ngoài ateam / chia sẻ qua git (xuất ra
+`AGENTS.md`), hoặc thấy nó cũ quá nhanh (khi đó cho trưởng nhóm cập nhật sau review).

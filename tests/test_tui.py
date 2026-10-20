@@ -764,6 +764,14 @@ def test_tui_missing_args_show_usage_and_compact(env, project, monkeypatch):
                 if app.db.recent_notes()[0][0] == "compact":
                     break
             assert [a for a, _ in app.db.recent_notes()] == ["compact"]
+            seen.clear()
+            app.run_command("/init")  # /init: trưởng nhóm viết .ateam/project.md
+            for _ in range(80):
+                await pilot.pause(0.1)
+                if seen:
+                    break
+            assert seen and seen[-1][0] == "information" and ".ateam/project.md" in seen[-1][1], seen
+            assert "- Test: pytest -q" in (project / ".ateam/project.md").read_text()
             await pilot.press("ctrl+q")
 
     asyncio.run(main())

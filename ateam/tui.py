@@ -191,6 +191,8 @@ Khác:
   /notes [tiêu đề]   /tags          tab 🗒 Ghi chú (markdown, tự lưu) / quản lý tag dùng chung
   /clear                            dọn task & mục tiêu đã kết thúc khỏi bảng (nút 🗑 trên bảng)
   /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn
+  /init [trọng tâm]                 trưởng nhóm tìm hiểu dự án 1 lần, viết .ateam/project.md gửi kèm mọi kế
+                                    hoạch & task để agent đỡ đọc lại code (gõ lại để cập nhật)
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
   /team  /board  /term  /git  /code chuyển tab Agents / Bảng việc / Terminal / Git / Code (Ctrl+T xoay vòng)
   /grid [agent]                     tab 🔲 Lưới: mỗi ô là CLI thật của một agent (F10 sắp xếp, kéo tiêu đề đổi chỗ)
@@ -316,6 +318,8 @@ COMMANDS = [
     ("update", "", tr("cập nhật ateam lên bản mới nhất")),
     ("cooldown", tr("<agent> <phút|off>"), tr("cho agent tạm nghỉ")),
     ("compact", tr("[trọng tâm]"), tr("tóm tắt ngữ cảnh chung cho prompt gọn lại")),
+    ("init", tr("[trọng tâm]"), tr("trưởng nhóm tìm hiểu dự án 1 lần, viết bản tổng quan gửi kèm mọi kế hoạch "
+                                    "& task")),
     ("clear", "", tr("dọn task & mục tiêu đã kết thúc khỏi bảng việc")),
     ("pause", "", tr("tạm dừng nhận task mới")),
     ("resume", "", tr("tiếp tục nhận task")),
@@ -7786,6 +7790,12 @@ class TeamApp(App):
                 self.notify(msg, severity="information" if ok else "warning")
                 self.refresh_view()
             self.run_worker(_c(), exclusive=False)
+        elif cmd == "init":
+            async def _i(focus=rest):
+                ok, msg = await o.init_overview(focus)
+                self.notify(msg, severity="information" if ok else "warning")
+                self.refresh_view()
+            self.run_worker(_i(), exclusive=False)
         elif cmd == "pause":
             o.paused = True
             o.log(tr("⏸ Tạm dừng: không bắt đầu task mới (task đang chạy vẫn tiếp tục)."))

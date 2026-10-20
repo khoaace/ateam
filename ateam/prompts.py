@@ -28,10 +28,13 @@ SUMMARY_RULE = ("End your answer with a line starting with 'SUMMARY:' followed b
                 " changed (files), the result, and anything teammates need to know.")
 
 
-def _plan_rules(cfg: Config, language_of: str) -> str:
+def _plan_rules(cfg: Config, language_of: str, has_overview: bool = False) -> str:
     """Luật chia việc chung cho lập kế hoạch và kế hoạch tiếp: ít task, prompt ngắn, khám phá vừa đủ."""
-    return f"""Explore the project only as much as you need to split the work and name the right files — members
-read the code themselves, so do not read the whole codebase.
+    explore = ("""Rely on the PROJECT OVERVIEW above instead of re-exploring the project; open files only to confirm
+the specific places you name — members read the code themselves.""" if has_overview else
+               """Explore the project only as much as you need to split the work and name the right files — members
+read the code themselves, so do not read the whole codebase.""")
+    return f"""{explore}
 Use as FEW tasks as possible (usually 1-3, at most 6) and assign each to the best member (you may assign
 tasks to yourself, "{cfg.lead}"). If one member can do it, make ONE task. Split only when parts can run in
 parallel on different files or need different strengths. Do NOT create separate tasks for testing,
@@ -55,8 +58,9 @@ QUESTION_SCHEMA = ('{"question": "...", "why": "why this matters, one line", "op
                    '"recommended": "..."}')
 
 
-def plan_prompt(cfg: Config, goal: str, cwd: str, notes: str, can_ask: bool = False) -> str:
-    """can_ask: được hỏi lại người dùng (một câu, như /grill) thay vì lập kế hoạch khi có điểm quan trọng chưa rõ."""
+def plan_prompt(cfg: Config, goal: str, cwd: str, notes: str, can_ask: bool = False, overview: str = "") -> str:
+    """can_ask: được hỏi lại người dùng (một câu, như /grill) thay vì lập kế hoạch khi có điểm quan trọng chưa rõ;
+    overview: khối PROJECT OVERVIEW của /init (overview.block)."""
     ask = f"""
 
 If — and only if — something ESSENTIAL is unclear (it changes what to build or how, exploring the codebase
@@ -73,17 +77,17 @@ Team members (name: strengths):
 GOAL from the user:
 {goal}
 
-{('Shared team notes:' + chr(10) + notes) if notes else ''}
+{(overview + chr(10) + chr(10)) if overview else ''}{('Shared team notes:' + chr(10) + notes) if notes else ''}
 
 Break the goal into concrete tasks.
-{_plan_rules(cfg, "goal")}
+{_plan_rules(cfg, "goal", bool(overview))}
 
 Reply with ONLY a JSON array, no other text:
 {TASK_SCHEMA}{ask}"""
 
 
 def followup_plan_prompt(cfg: Config, goal: str, history: str, prev_summary: str, followup: str,
-                         cwd: str, notes: str, earlier: list[str] | None = None) -> str:
+                         cwd: str, notes: str, earlier: list[str] | None = None, overview: str = "") -> str:
     """Kế hoạch cho yêu cầu "tiếp tục" một mục tiêu đã làm xong."""
     prior = "".join(f"\nEarlier follow-up {i}: {f}" for i, f in enumerate(earlier or [], 1))
     return f"""You are the TEAM LEAD of a team of AI coding agents working in: {cwd}
@@ -98,13 +102,13 @@ ORIGINAL GOAL:
 WORK DONE SO FAR (task results):
 {history or '(no task results kept)'}
 {('Your previous assessment: ' + prev_summary + chr(10)) if prev_summary else ''}
-{('Shared team notes:' + chr(10) + notes + chr(10)) if notes else ''}
+{(overview + chr(10) + chr(10)) if overview else ''}{('Shared team notes:' + chr(10) + notes + chr(10)) if notes else ''}
 NEW FOLLOW-UP REQUEST from the user:
 {followup}
 
 Plan ONLY what this new request needs, building on the work already done (do not redo finished
 work); include in each prompt the context it needs from the work done so far.
-{_plan_rules(cfg, "follow-up request")}
+{_plan_rules(cfg, "follow-up request", bool(overview))}
 
 Reply with ONLY a JSON array, no other text:
 {TASK_SCHEMA}"""
@@ -125,7 +129,7 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
                 goal: str | None, deps: list[tuple[int, str, str, str]], notes: str,
                 cwd: str, can_delegate: bool, qa: list[dict] | None = None,
                 can_ask: bool = True, siblings: list[tuple[int, str, str]] | None = None,
-                verify_cmd: str = "") -> str:
+                verify_cmd: str = "", overview: str = "") -> str:
     """siblings: các task khác cùng mục tiêu (id, agent, tiêu đề) — để không làm chồng việc của nhau;
     verify_cmd: lệnh kiểm tra ateam tự chạy sau task — agent chỉ cần chạy test liên quan."""
     others = [n for n in cfg.active_agents() if n != agent]
@@ -143,6 +147,8 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
     if siblings:
         parts.append("\nOTHER TASKS IN THIS GOAL (teammates handle these — do not do them):")
         parts += [f"- #{sid} {sagent}: {stitle}" for sid, sagent, stitle in siblings]
+    if overview:
+        parts.append("\n" + overview)
     if notes:
         parts.append(f"\nSHARED TEAM NOTES:\n{notes}")
     if qa:
@@ -152,7 +158,9 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
         "- Do your task yourself and stay within its scope. Make the smallest change that completes it: do not"
         " refactor, reformat or rename unrelated code, and do not add features, dependencies or docs nobody"
         " asked for.",
-        "- Read only the files you need for this task; do not explore the whole repository.",
+        ("- Use the PROJECT OVERVIEW to find the right files; read only the files you need for this task and do"
+         " not explore the whole repository." if overview else
+         "- Read only the files you need for this task; do not explore the whole repository."),
         (f"- After you finish, ateam automatically runs `{verify_cmd}` and sends you any failure — run only the"
          " tests related to your change, do not run the full suite repeatedly." if verify_cmd else
          "- Check your change (e.g. run the relevant tests) before finishing."),
@@ -302,8 +310,47 @@ Do NOT modify any files.
 End your answer with a line 'SUMMARY:' followed by the bullet points (nothing after them)."""
 
 
+def init_prompt(*, cwd: str, current: str = "", changes: str = "", focus: str = "") -> str:
+    """/init: trưởng nhóm tìm hiểu dự án một lần và viết bản tổng quan (overview.py) — hoặc cập nhật bản cũ theo các
+    thay đổi kể từ lần trước. Viết tiếng Anh: chỉ agent đọc, ít token hơn."""
+    if current:
+        task = f"""UPDATE the CURRENT OVERVIEW below. Re-check only the areas touched by the changes listed after it;
+keep the parts that are still correct (and anything the user edited by hand), fix or drop what is stale, add
+what is new.
+
+CURRENT OVERVIEW:
+{current}
+
+CHANGES SINCE IT WAS WRITTEN:
+{changes or '(unknown — check the parts most likely to change: layout, commands)'}"""
+    else:
+        task = """Explore the project: start from README / AGENTS.md / CLAUDE.md / package manifests and the directory
+tree, then open only the main entry points. Summarize — do not copy those files verbatim."""
+    return f"""You are the TEAM LEAD of a team of AI coding agents working in: {cwd}
+
+WRITE THE PROJECT OVERVIEW: a dense reference that ateam sends with every future planning and task prompt,
+so that you and the team members do not have to re-explore the codebase each time.
+{task}
+{(chr(10) + 'Focus from the user (cover this well): ' + focus + chr(10)) if focus else ''}
+Cover, as short bullet points with paths in backticks:
+- Purpose: what the project is, in 1-2 lines.
+- Stack: languages, frameworks, key libraries.
+- Commands: exact commands to install, run, test (one test file / the whole suite), lint, build.
+- Layout: directory / module -> responsibility, and the key files (entry points, where X is implemented).
+- Architecture: the main data flow and how the parts talk to each other.
+- Conventions: code style, naming, error handling, tests, i18n, anything a contributor must follow.
+- Gotchas: constraints, generated or vendored files not to edit, slow or flaky things.
+Skip what changes often (dependency versions, TODO lists) and anything a member can guess. At most ~800
+words. Write in English. DO NOT modify any files.
+
+Reply with the overview in Markdown between these markers (nothing after them):
+<<<OVERVIEW>>>
+...
+<<<END>>>"""
+
+
 def grill_prompt(cfg: Config, goal: str, qa: list[dict], cwd: str, notes: str, *, finish: bool,
-                 max_questions: int, essential_only: bool = False) -> str:
+                 max_questions: int, essential_only: bool = False, overview: str = "") -> str:
     """/grill: trưởng nhóm phỏng vấn người dùng từng câu một trước khi lập kế hoạch.
     essential_only: câu hỏi bắt nguồn từ lúc lập kế hoạch (người dùng không gọi /grill) — chỉ hỏi tiếp điểm
     thiết yếu, không phỏng vấn cả cây thiết kế."""
@@ -341,7 +388,7 @@ GOAL from the user:
 
 INTERVIEW SO FAR:
 {history}
-{('Shared team notes:' + chr(10) + notes + chr(10)) if notes else ''}
+{(overview + chr(10)) if overview else ''}{('Shared team notes:' + chr(10) + notes + chr(10)) if notes else ''}
 {task}
 
 Reply with ONLY a JSON object, no other text. Either the next question:
@@ -512,6 +559,19 @@ def extract_code_block(text: str) -> str | None:
     if len(lines) >= 2 and lines[0].strip().startswith("```") and lines[-1].strip() == "```":
         lines = lines[1:-1]
     return "\n".join(lines)
+
+
+def extract_overview(text: str) -> str | None:
+    """Bản tổng quan của /init: giữa <<<OVERVIEW>>> cuối cùng và <<<END>>> sau nó. None nếu không có / chỉ là mẫu."""
+    i = text.rfind("<<<OVERVIEW>>>")
+    if i < 0:
+        return None
+    body = text[i + len("<<<OVERVIEW>>>"):]
+    j = body.find("<<<END>>>")
+    body = body[:j].strip() if j >= 0 else ""
+    if body.startswith("```") and body.endswith("```"):
+        body = "\n".join(body.splitlines()[1:-1]).strip()
+    return body if body and body != "..." else None
 
 
 def extract_answer(text: str) -> str:

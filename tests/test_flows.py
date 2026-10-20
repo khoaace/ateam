@@ -318,6 +318,39 @@ def test_compact_replaces_notes_with_lead_summary(env, project, tmp_path):
     assert "Mục tiêu đã xong" in last and "ghi chú mới" in last and "đừng sửa vendor/" not in last
 
 
+def test_init_overview_sent_with_plans_and_tasks(env, project, tmp_path):
+    """/init (ateam init --overview): trưởng nhóm viết .ateam/project.md; prompt lập kế hoạch và task sau đó mang
+    bản tổng quan; chạy lại thì trưởng nhóm cập nhật bản cũ theo các file đã đổi kể từ lần trước."""
+    git_init(project)
+    env = dict(env, ATEAM_FAKE_FULL_LOG=str(tmp_path / "full.log"))
+    r = ateam(env, project, "goal", "-y", "tạo a và b")
+    assert "Chưa có bản tổng quan dự án" in (project / ".ateam/logs/system.log").read_text()
+    assert "PROJECT OVERVIEW" not in (tmp_path / "full.log").read_text()
+    r = ateam(env, project, "init", "--overview", "chú", "ý", "test")
+    assert "Đã viết bản tổng quan" in r.stdout, r.stdout + r.stderr
+    prompt = (tmp_path / "full.log").read_text().split("<<claude>>")[-1]
+    assert "WRITE THE PROJECT OVERVIEW" in prompt and "chú ý test" in prompt and "CURRENT OVERVIEW" not in prompt
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=project, capture_output=True, text=True).stdout.strip()
+    text = (project / ".ateam/project.md").read_text()
+    assert text.startswith(f"<!-- ateam:init commit={head} ") and "- Test: pytest -q" in text
+    (tmp_path / "full.log").unlink()
+    ateam(env, project, "goal", "-y", "tạo a")
+    full = (tmp_path / "full.log").read_text()
+    plan = [c for c in full.split("<<claude>>") if "Reply with ONLY a JSON array" in c][-1]
+    assert "PROJECT OVERVIEW" in plan and "- Test: pytest -q" in plan and "Rely on the PROJECT OVERVIEW" in plan
+    task = full.split("<<codex>>")[-1]
+    assert "PROJECT OVERVIEW" in task and "Use the PROJECT OVERVIEW" in task
+    # lần 2: gửi bản cũ + file đã đổi, ghi bản mới
+    (project / "moi.py").write_text("x = 1\n")
+    subprocess.run(["git", "add", "moi.py"], cwd=project, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "moi"], cwd=project,
+                   check=True)
+    ateam(env, project, "init", "--overview")
+    prompt = (tmp_path / "full.log").read_text().split("<<claude>>")[-1]
+    assert "CURRENT OVERVIEW" in prompt and "- Purpose: dự án demo" in prompt and "moi.py" in prompt
+    assert "- Updated: đã cập nhật" in (project / ".ateam/project.md").read_text()
+
+
 def test_usage_asks_each_cli(env, project):
     """ateam usage: thống kê của ateam + hạn mức do CLI từng agent báo (claude/agy: -p /usage,
     opencode stats rút gọn, codex đọc rate_limits trong file phiên)."""

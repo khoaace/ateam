@@ -1618,6 +1618,9 @@ class WebApp:
         if cmd == "compact":
             ok, msg = await o.compact(rest)
             return msg, "ok" if ok else "warn"
+        if cmd == "init":
+            ok, msg = await o.init_overview(rest)
+            return msg, "ok" if ok else "warn"
         if cmd == "clear":
             return await self.handle({"op": "clear"})
         if cmd in ("pause", "resume"):

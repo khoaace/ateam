@@ -15,6 +15,7 @@ from typing import Callable
 from . import limits
 from . import mentions
 from . import usage_logs
+from . import overview
 from . import prompts as P
 from . import rules
 from .config import EFFORT_REJECTED_RE, AgentConfig, Config
@@ -78,6 +79,8 @@ class Orchestrator:
         self.lead_runs: dict[int, Run] = {}  # lượt trưởng nhóm đang chạy theo mục tiêu (huỷ khi bỏ /grill)
         self._lead_stop: set[int] = set()  # mục tiêu người dùng huỷ lúc đang lập kế hoạch: không thử agent dự phòng
         self.compacting = False  # /compact đang chạy
+        self.initing = False  # /init đang chạy
+        self._overview_hinted = False  # đã nhắc /init trong lần mở app này
         self.paused = False
         self.auto_answer = False  # chạy không tương tác (ateam goal -y / run): tự trả lời <<<ASK>>>
         self.use_worktree = False
@@ -257,6 +260,33 @@ class Orchestrator:
     def notes_text(self) -> str:
         return "\n".join(f"- [{a}] {t}" for a, t in self.db.recent_notes())
 
+    async def overview_changes(self, commit: str) -> tuple[int, list[str]]:
+        """(số commit, file đã đổi) kể từ commit lúc viết bản tổng quan; (0, []) nếu không biết (không có git,
+        commit không còn sau rebase…)."""
+        if not commit:
+            return 0, []
+        rc, n = await self._git("rev-list", "--count", f"{commit}..HEAD")
+        if rc != 0 or not n.strip().isdigit():
+            return 0, []
+        rc, names = await self._git("diff", "--name-only", commit, "HEAD")
+        return int(n.strip()), names.split() if rc == 0 else []
+
+    async def overview_block(self, hint: bool = False) -> str:
+        """Khối PROJECT OVERVIEW (/init) gửi kèm prompt. hint: lượt lập kế hoạch — nhắc chạy /init (một lần mỗi
+        lần mở app) khi chưa có bản tổng quan hoặc nó đã cũ."""
+        text, meta = overview.load(self.root)
+        commits, changed = await self.overview_changes(meta.get("commit", "")) if text else (0, [])
+        if hint and not self._overview_hinted:
+            if not text:
+                self._overview_hinted = True
+                self.log(tr("💡 Chưa có bản tổng quan dự án — gõ /init để trưởng nhóm tìm hiểu dự án một lần, "
+                            "các kế hoạch sau đỡ phải đọc lại code."))
+            elif commits >= overview.STALE_COMMITS:
+                self._overview_hinted = True
+                self.log(tr("💡 Bản tổng quan dự án đã cũ ({n} commit từ lần /init) — gõ /init để cập nhật.",
+                            n=commits))
+        return overview.block(text, meta, changed, commits)
+
     # ------------------------------------------------------------------ khởi động
     async def setup(self, cleanup: bool = True) -> None:
         """cleanup=False: phiên giao diện khác đang chạy trên dự án — task RUNNING/mục tiêu đang lập
@@ -424,13 +454,14 @@ class Orchestrator:
             # hoặc không ai trả lời (ateam goal -y)
             can_ask = not followup and not goal.spec and not (goal.grill or {}).get("closed") \
                 and not self.auto_answer
+            ov = await self.overview_block(hint=not followup)
             if followup:
                 prompt = P.followup_plan_prompt(self.cfg, goal.base_text(), followup[1], followup[2],
                                                 followup[0], str(self.root), self.notes_text(),
-                                                earlier=(goal.followups or [])[:-1])
+                                                earlier=(goal.followups or [])[:-1], overview=ov)
             else:
                 prompt = P.plan_prompt(self.cfg, goal.base_text(), str(self.root), self.notes_text(),
-                                       can_ask=can_ask)
+                                       can_ask=can_ask, overview=ov)
             out = await self._call_lead(prompt, tr("Lập kế hoạch mục tiêu #{gid}", gid=gid), goal_id=gid,
                                         keep_session=True)
             if gid in self._lead_stop:  # người dùng đã huỷ (cancel_planning đã đổi trạng thái mục tiêu)
@@ -566,8 +597,10 @@ class Orchestrator:
             essential = bool(data.get("from_plan"))  # hỏi lại khi lập kế hoạch: chỉ điểm thiết yếu, ít câu
             limit = PLAN_ASK_MAX if essential else GRILL_MAX
             finish = finish or len(answered) >= limit
+            # bản tổng quan chỉ gửi ở câu đầu: các câu sau tiếp phiên trưởng nhóm nên đã có
             prompt = P.grill_prompt(self.cfg, g.text, answered, str(self.root), self.notes_text(),
-                                    finish=finish, max_questions=limit, essential_only=essential)
+                                    finish=finish, max_questions=limit, essential_only=essential,
+                                    overview="" if answered else await self.overview_block())
             # tiếp phiên trưởng nhóm của mục tiêu: không khám phá lại dự án mỗi câu, lượt lập kế hoạch sau đó
             # cũng nhớ những gì đã đọc. Lịch sử hỏi đáp vẫn nằm trong prompt (mất phiên / CLI không resume được).
             out = await self._call_lead(prompt, tr("Hỏi đáp mục tiêu #{gid}", gid=gid), goal_id=gid,
@@ -1293,6 +1326,38 @@ class Orchestrator:
             self.compacting = False
             self.emit("changed")
 
+    async def init_overview(self, focus: str = "") -> tuple[bool, str]:
+        """/init: trưởng nhóm tìm hiểu dự án và viết .ateam/project.md (đã có thì cập nhật theo các thay đổi kể từ
+        lần trước — rẻ hơn viết lại). Trả về (thành công, lời nhắn)."""
+        if self.initing:
+            return False, tr("Trưởng nhóm đang tìm hiểu dự án rồi, chờ chút…")
+        self.initing = True
+        try:
+            current, meta = overview.load(self.root)
+            changes = ""
+            if current:
+                commits, changed = await self.overview_changes(meta.get("commit", ""))
+                rc, status = await self._git("status", "--short")
+                changes = "\n".join(filter(None, [
+                    f"{commits} commits; files changed: " + ", ".join(changed[:200]) if changed else "",
+                    "Uncommitted changes:\n" + status.strip() if rc == 0 and status.strip() else ""]))
+            self.log(tr("🔎 {lead} đang tìm hiểu dự án (/init)…", lead=self.cfg.lead))
+            out = await self._call_lead(P.init_prompt(cwd=str(self.root), current=current, changes=changes,
+                                                      focus=focus), tr("Tìm hiểu dự án (/init)"))
+            text = P.extract_overview(out or "")
+            if not text:
+                self.log(tr("✗ /init: trưởng nhóm không trả về bản tổng quan (xem .ateam/logs/lead.log)."))
+                return False, tr("Trưởng nhóm không trả về bản tổng quan (xem .ateam/logs/lead.log)")
+            rc, head = await self._git("rev-parse", "HEAD")
+            overview.save(self.root, text, head.strip() if rc == 0 else "")
+            self._overview_hinted = False
+            self.log(tr("🔎 Đã viết bản tổng quan dự án .ateam/project.md (~{n} ký tự) — mọi kế hoạch & task sau "
+                        "sẽ dùng nó.", n=len(text)))
+            return True, tr("Đã viết bản tổng quan dự án .ateam/project.md (~{n} ký tự)", n=len(text))
+        finally:
+            self.initing = False
+            self.emit("changed")
+
     def commit_agent(self) -> str:
         """Agent viết commit message: chọn ở tab Git (cfg.commit_agent), mặc định trưởng nhóm."""
         a = self.cfg.agents.get(self.cfg.commit_agent)
@@ -1723,7 +1788,8 @@ class Orchestrator:
                     qa=qa, can_ask=can_ask,
                     siblings=[(o.id, o.agent, o.title) for o in self.db.tasks(goal_id=t.goal_id)
                               if o.id != t.id and o.status != CANCELLED] if t.goal_id else None,
-                    verify_cmd=v.command if v.command and agent.verify else "")
+                    verify_cmd=v.command if v.command and agent.verify else "",
+                    overview=await self.overview_block())
             prompt = t.resume if sess else full
             gate = bool(v.command) and agent.verify and not chat
             before = await self._fingerprint(workdir) if gate and v.only_when_changed else None

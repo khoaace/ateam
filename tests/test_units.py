@@ -900,3 +900,38 @@ def test_extract_code_block_and_answer():
     assert P.extract_code_block(P.strip_echo("user\n" + p + "\n", p)) is None  # chỉ có prompt in lại: không bóc nhầm mẫu
     assert P.extract_answer("đọc...\nSUMMARY:\n**A**\n- b\n") == "**A**\n- b"
     assert P.extract_answer("chỉ có chữ") == "chỉ có chữ"
+
+
+def test_overview_file_block_and_parser(tmp_path):
+    """/init: .ateam/project.md có dòng meta; khối PROJECT OVERVIEW cắt dài, liệt kê file đã đổi; parser lấy khối cuối."""
+    from ateam import overview
+    assert overview.load(tmp_path) == ("", {}) and overview.block("", {}) == ""
+    overview.save(tmp_path, "- Purpose: demo\n", "abc123")
+    text, meta = overview.load(tmp_path)
+    assert text == "- Purpose: demo" and meta["commit"] == "abc123" and meta["date"]
+    b = overview.block(text, meta, [f"f{i}.py" for i in range(45)], 7)
+    assert b.startswith("PROJECT OVERVIEW") and "(7 commits): f0.py" in b and "f39.py … (+5 more)" in b
+    assert "truncated" in overview.block("x" * (overview.MAX_CHARS + 5), {})
+    (tmp_path / ".ateam/project.md").write_text("người dùng tự viết\n")  # không có meta vẫn đọc được
+    assert overview.load(tmp_path) == ("người dùng tự viết", {})
+    p = P.init_prompt(cwd="/x")
+    assert P.extract_overview(P.strip_echo("user\n" + p + "\n", p)) is None  # chỉ có prompt in lại: không lấy mẫu "..."
+    assert P.extract_overview("đọc...\n<<<OVERVIEW>>>\n```markdown\n- a\n```\n<<<END>>>") == "- a"
+    assert P.extract_overview("<<<OVERVIEW>>>\nchưa xong") is None
+    assert "CURRENT OVERVIEW:\n- a" in P.init_prompt(cwd="/x", current="- a", changes="1 commits")
+
+
+def test_prompts_use_overview_only_when_present():
+    from ateam.config import Config
+    cfg = Config()
+    ov = "PROJECT OVERVIEW (x):\n- Test: pytest"
+    assert P.plan_prompt(cfg, "G", "/x", "", overview="") == P.plan_prompt(cfg, "G", "/x", "")
+    plan = P.plan_prompt(cfg, "G", "/x", "", overview=ov)
+    assert "- Test: pytest" in plan and "Rely on the PROJECT OVERVIEW" in plan and "do not read the whole" not in plan
+    assert "Rely on the PROJECT" in P.followup_plan_prompt(cfg, "G", "", "", "thêm", "/x", "", overview=ov)
+    assert "- Test: pytest" in P.grill_prompt(cfg, "G", [], "/x", "", finish=False, max_questions=5, overview=ov)
+    kw = dict(agent="codex", task_id=1, title="t", prompt="p", goal="G", deps=[], notes="", cwd="/x",
+              can_delegate=False)
+    t = P.task_prompt(cfg, overview=ov, **kw)
+    assert "- Test: pytest" in t and "Use the PROJECT OVERVIEW" in t
+    assert "PROJECT OVERVIEW" not in P.task_prompt(cfg, **kw)

@@ -250,6 +250,11 @@ def cmd_init(args) -> int:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(DEFAULT_CONFIG, encoding="utf-8")
             print(tr("Đã tạo cấu hình dự án: {p}", p=p))
+    if args.overview:
+        o = _orch(args)
+        ok, msg = asyncio.run(o.init_overview(" ".join(args.focus)))
+        print(msg)
+        return 0 if ok else 1
     return 0
 
 
@@ -630,8 +635,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("code", nargs="?")
     sub.add_parser("setup", help=tr("mở giao diện ở màn hình thiết lập: agent, trưởng nhóm, model, "
                                     "effort"))
-    s = sub.add_parser("init", help=tr("tạo file cấu hình"))
+    s = sub.add_parser("init", help=tr("tạo file cấu hình; --overview: trưởng nhóm viết bản tổng quan dự án"))
     s.add_argument("--project", action="store_true", help=tr("tạo thêm .ateam/config.toml cho dự án"))
+    s.add_argument("--overview", action="store_true",
+                   help=tr("trưởng nhóm tìm hiểu dự án, viết .ateam/project.md gửi kèm mọi kế hoạch & task "
+                           "(như /init trong giao diện)"))
+    s.add_argument("focus", nargs="*", help=tr("điều cần tìm hiểu kỹ (tuỳ chọn, cùng --overview)"))
     sub.add_parser("doctor", help=tr("kiểm tra các agent đã cài chưa"))
     s = sub.add_parser("goal", help=tr("giao mục tiêu và chạy không cần giao diện"))
     s.add_argument("text", nargs="+")

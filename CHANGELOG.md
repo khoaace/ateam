@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.35.0 — 21/10/2026
+
+- **`/init`** (hoặc `ateam init --overview [trọng tâm]`): trưởng nhóm tìm hiểu dự án một lần, viết bản tổng quan
+  `.ateam/project.md` (lệnh, thư mục → trách nhiệm, quy ước, bẫy). ateam gửi kèm nó khi lập kế hoạch, `/grill`, kế hoạch
+  tiếp và mỗi task để agent đỡ đọc lại code — tiết kiệm token mỗi kế hoạch. Gõ `/init` lại để cập nhật theo các file đã
+  đổi; app nhắc khi chưa có hoặc đã cũ (≥ 20 commit).
+
 ## 0.34.0 — 20/10/2026
 
 Tab 📝 Code của `ateam web`:
