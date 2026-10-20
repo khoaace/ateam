@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.26.0 — 20/10/2026
+
+- **Giải quyết xung đột git** ở tab 🌿 Git (TUI và web), như VS Code:
+  - Mở file xung đột (Enter / `r`, hoặc nút ⇄): từng khối `<<<<<<<` hiện *Hiện tại* và *Bên đến* (cả *Bản gốc* nếu
+    dùng diff3) kèm vài dòng xung quanh, nút **Giữ hiện tại / Lấy bên đến / Giữ cả hai**. Hết khối thì file tự stage.
+  - Lấy nguyên cả file một phía (cả khi một bên đã xoá file), sửa tay ở tab Code, **Đánh dấu đã xong**.
+  - 🤖 **Nhờ agent** giải quyết một file hoặc mọi file xung đột — chạy như một lượt chat (xem ở tab Đội); agent không
+    tự stage/commit để bạn xem lại trước.
+  - **▶ Tiếp tục merge / rebase / cherry-pick / revert** khi đã hết xung đột.
+- Lệnh git do ateam chạy không bao giờ mở trình soạn thảo (`GIT_EDITOR=true`), kể cả khi máy đặt sẵn `GIT_EDITOR`.
+
 ## 0.25.0 — 20/10/2026
 
 - **Agent bớt lan man, chạy nhanh hơn** — viết lại prompt của trưởng nhóm và thành viên:

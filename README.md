@@ -337,7 +337,12 @@ chạy đúng lệnh đã gõ. `/stop [số]` dừng lệnh. Thoát app (Ctrl+Q)
 
 - **Thanh trên**: nhánh hiện tại, upstream, `↑N` chưa push / `↓N` chưa pull, số stash, cảnh báo merge dở; nút
   **⇣ Fetch**, **⬇ Pull** (fast-forward, không được thì merge), **⬆ Push** (lần đầu tự tạo nhánh trên remote),
-  **⎇ Nhánh**, **📦 Stash**, **✗ Huỷ merge** khi đang xung đột.
+  **⎇ Nhánh**, **📦 Stash**, **✗ Huỷ merge** khi đang xung đột, **▶ Tiếp tục** (commit merge / `rebase --continue` /
+  `cherry-pick --continue`) khi đã hết xung đột.
+- **Giải quyết xung đột** (như VS Code): **Enter**/**r** trên file xung đột mở màn hình từng khối `<<<<<<<` — **o** giữ
+  hiện tại, **t** lấy bên đến, **b** giữ cả hai; **O**/**T** lấy nguyên cả file một phía; **e** sửa tay ở tab Code;
+  **m** đánh dấu đã xong. Hết khối thì file tự được stage. **g** / 🤖 *Nhờ agent* giao các file xung đột cho agent viết
+  commit message (mặc định trưởng nhóm) sửa — xem tiến độ ở tab Đội, xong thì xem lại rồi đánh dấu đã xong.
 - **File thay đổi** theo nhóm *Xung đột* / *Đã stage* / *Chưa stage*: **Space** stage/bỏ stage, **a** stage tất
   cả, **u** bỏ stage tất cả, **Enter**/**d** xem diff (màn hình diff hai cột như trên), **x** bỏ thay đổi (hỏi lại;
   file mới thì bị xoá), **c** tới ô commit.

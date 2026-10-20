@@ -3290,4 +3290,107 @@ EN: dict[str, str] = {
         '❓ The lead has a question',
     '❓ Trưởng nhóm cần làm rõ trước khi lập kế hoạch #{gid}: {question}':
         '❓ The lead needs a clarification before planning #{gid}: {question}',
+    # giải quyết xung đột git
+    'hiện tại':
+        'current',
+    'bên đến':
+        'incoming',
+    'Đã lấy bản {who} cho {v} file':
+        'Took the {who} version for {v} file(s)',
+    'Hết xung đột — bấm Tiếp tục {state} để hoàn tất':
+        'No conflicts left — press Continue {state} to finish',
+    'Không đọc được {path}':
+        'Cannot read {path}',
+    'Còn {v} khối xung đột trong {path}':
+        '{v} conflict block(s) left in {path}',
+    '{path} vẫn còn dấu xung đột <<<<<<< — sửa hết rồi đánh dấu xong':
+        '{path} still has <<<<<<< conflict markers — fix them all, then mark as resolved',
+    'Đã giải quyết {v} — còn {n} file xung đột':
+        'Resolved {v} — {n} conflicted file(s) left',
+    'Còn {v} file xung đột — giải quyết hết trước':
+        '{v} conflicted file(s) left — resolve them first',
+    'Đã hoàn tất {state}':
+        'Finished the {state}',
+    '{state} dừng ở commit tiếp theo: {n} file xung đột':
+        '{state} stopped at the next commit: {n} conflicted file(s)',
+    'File đã đổi — mở lại để xem các khối xung đột còn lại':
+        'The file changed — reopen it to see the remaining conflict blocks',
+    'Đã tiếp tục {state}':
+        'Continued the {state}',
+    '🤖 {agent} đang giải quyết xung đột {v} file — xem ở tab Đội; xong thì xem lại rồi Đánh dấu đã xong':
+        '🤖 {agent} is resolving conflicts in {v} file(s) — follow it in the Team tab; when done, review and Mark as resolved',
+    'Không có file nào đang xung đột':
+        'No conflicted files',
+    '▶ Tiếp tục {state}':
+        '▶ Continue {state}',
+    'Giải quyết xung đột':
+        'Resolve conflicts',
+    'Nhờ agent giải quyết xung đột':
+        'Ask an agent to resolve conflicts',
+    'Giữ hiện tại':
+        'Keep current',
+    'Lấy bên đến':
+        'Take incoming',
+    'Giữ cả hai':
+        'Keep both',
+    'Cả file: hiện tại':
+        'Whole file: current',
+    'Cả file: bên đến':
+        'Whole file: incoming',
+    'Đánh dấu đã xong':
+        'Mark as resolved',
+    'Sửa trong Code':
+        'Edit in Code',
+    'Nhờ agent':
+        'Ask agent',
+    'Đã giải quyết xong {path}':
+        'Resolved {path}',
+    'Đang rebase: "hiện tại" là nhánh đích, "bên đến" là commit của bạn đang được áp lại.':
+        'Rebasing: "current" is the target branch, "incoming" is your commit being replayed.',
+    'Phía hiện tại đã xoá file này, bên đến sửa nó — O xoá, T giữ bản bên đến.':
+        'The current side deleted this file and the incoming side changed it — O deletes, T keeps the incoming version.',
+    '⇄ Giải quyết xung đột · {path}':
+        '⇄ Resolve conflicts · {path}',
+    'Bên đến đã xoá file này, phía hiện tại sửa nó — O giữ bản hiện tại, T xoá.':
+        'The incoming side deleted this file and the current side changed it — O keeps the current version, T deletes.',
+    'Xung đột {i}/{n} · dòng {line}':
+        'Conflict {i}/{n} · line {line}',
+    'Hiện tại':
+        'Current',
+    'Bản gốc':
+        'Base',
+    'Bên đến':
+        'Incoming',
+    'o giữ hiện tại · t lấy bên đến · b giữ cả hai (khối đang chọn) · O/T cả file · e sửa trong Code · g nhờ agent · m đánh dấu đã xong · Esc đóng':
+        'o keep current · t take incoming · b keep both (selected block) · O/T whole file · e edit in Code · g ask agent · m mark as resolved · Esc close',
+    'File nhị phân hoặc không phải UTF-8 — chỉ chọn được nguyên bản một phía (O/T).':
+        'Binary or non-UTF-8 file — you can only take one side as a whole (O/T).',
+    '(trống)':
+        '(empty)',
+    'Không còn dấu xung đột trong file — xem lại rồi m (đánh dấu đã xong).':
+        'No conflict markers left in the file — review it, then m (mark as resolved).',
+    '▶ Tiếp tục':
+        '▶ Continue',
+    '⇄ Giải quyết':
+        '⇄ Resolve',
+    '🤖 Nhờ agent':
+        '🤖 Ask agent',
+    'Tiếp tục {v}':
+        'Continue {v}',
+    'Nhờ agent giải quyết tất cả':
+        'Ask an agent to resolve all',
+    'Không còn dấu xung đột trong file — xem lại rồi Đánh dấu đã xong.':
+        'No conflict markers left in the file — review it, then Mark as resolved.',
+    'Phía hiện tại đã xoá file này, bên đến sửa nó.':
+        'The current side deleted this file and the incoming side changed it.',
+    'Bên đến đã xoá file này, phía hiện tại sửa nó.':
+        'The incoming side deleted this file and the current side changed it.',
+    'File nhị phân hoặc không phải UTF-8 — chỉ chọn được nguyên bản một phía.':
+        'Binary or non-UTF-8 file — you can only take one side as a whole.',
+    'Khối đang chọn: o giữ hiện tại · t lấy bên đến · b giữ cả hai  —  cả file: O hiện tại · T bên đến  —  e sửa · g nhờ agent · m đã xong · Esc đóng':
+        'Selected block: o keep current · t take incoming · b keep both  —  whole file: O current · T incoming  —  e edit · g ask agent · m resolved · Esc close',
+    '✎ Sửa trong Code':
+        '✎ Edit in Code',
+    '✓ Đánh dấu đã xong':
+        '✓ Mark as resolved',
 }

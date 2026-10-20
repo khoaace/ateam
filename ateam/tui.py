@@ -3925,7 +3925,7 @@ class PaletteScreen(BaseModal):
 
 class GitFileList(OptionList):
     """Danh sách file thay đổi ở tab Git. Space stage/bỏ stage, a stage tất cả, u bỏ stage tất cả,
-    x bỏ thay đổi, Enter/d xem diff."""
+    x bỏ thay đổi, Enter/d xem diff; file xung đột: Enter/r giải quyết, g nhờ agent giải quyết mọi xung đột."""
 
     BINDINGS = [
         Binding("space", "app.git_toggle", tr("Stage/bỏ stage"), show=False),
@@ -3935,6 +3935,8 @@ class GitFileList(OptionList):
         Binding("d", "app.git_diff", tr("Xem diff"), show=False),
         Binding("c", "app.git_focus_msg", "Commit", show=False),
         Binding("e", "app.git_edit", tr("Sửa file"), show=False),
+        Binding("r", "app.git_resolve", tr("Giải quyết xung đột"), show=False),
+        Binding("g", "app.git_ai_resolve", tr("Nhờ agent giải quyết xung đột"), show=False),
     ]
 
 
@@ -3945,6 +3947,138 @@ class GitLogList(OptionList):
         Binding("r", "app.git_revert", "Revert", show=False),
         Binding("d", "app.git_show_commit", tr("Xem commit"), show=False),
     ]
+
+
+class ConflictScreen(BaseModal):
+    """Giải quyết xung đột một file (như VS Code): mỗi khối <<<<<<< chọn giữ hiện tại / lấy bên đến / giữ cả hai;
+    hết khối thì tự stage. Trả "edit" (mở ở tab Code), "ai" (nhờ agent) hoặc None."""
+
+    DEFAULT_CSS = """
+    ConflictScreen { align: center middle; }
+    #cf-box { width: 120; max-width: 100%; height: 90%; border: round $warning; background: $surface; padding: 0 1; }
+    #cf-note { height: auto; color: $warning; }
+    #cf-list { height: 1fr; }
+    #cf-hint { height: auto; color: $text-muted; }
+    .cf-buttons { height: auto; }
+    #cf-box .cf-buttons Button { margin-right: 1; }
+    """
+    BINDINGS = [
+        Binding("o", "pick('ours')", tr("Giữ hiện tại"), show=False),
+        Binding("t", "pick('theirs')", tr("Lấy bên đến"), show=False),
+        Binding("b", "pick('both')", tr("Giữ cả hai"), show=False),
+        Binding("O", "side('ours')", tr("Cả file: hiện tại"), show=False),
+        Binding("T", "side('theirs')", tr("Cả file: bên đến"), show=False),
+        Binding("m", "done", tr("Đánh dấu đã xong"), show=False),
+        Binding("e", "dismiss_with('edit')", tr("Sửa trong Code"), show=False),
+        Binding("g", "dismiss_with('ai')", tr("Nhờ agent"), show=False),
+    ]
+
+    def __init__(self, repo, path: str):
+        super().__init__()
+        self.repo, self.path = repo, path
+        self.info: dict = {}
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="cf-box"):
+            yield self.title_bar(tr("⇄ Giải quyết xung đột · {path}", path=self.path))
+            yield Static(id="cf-note")
+            yield OptionList(id="cf-list")
+            yield Static(Text(tr("Khối đang chọn: o giữ hiện tại · t lấy bên đến · b giữ cả hai  —  cả file: O hiện tại · "
+                                 "T bên đến  —  e sửa · g nhờ agent · m đã xong · Esc đóng"), "dim"), id="cf-hint")
+            with Horizontal(classes="cf-buttons"):
+                yield Btn(tr("Giữ hiện tại"), id="cf-ours")
+                yield Btn(tr("Lấy bên đến"), id="cf-theirs")
+                yield Btn(tr("Giữ cả hai"), id="cf-both")
+                yield Btn(tr("✎ Sửa trong Code"), id="cf-edit")
+            with Horizontal(classes="cf-buttons"):
+                yield Btn(tr("Cả file: hiện tại"), id="cf-take-ours")
+                yield Btn(tr("Cả file: bên đến"), id="cf-take-theirs")
+                yield Btn(tr("🤖 Nhờ agent"), id="cf-ai")
+                yield Btn(tr("✓ Đánh dấu đã xong"), id="cf-done", variant="success")
+
+    def on_mount(self) -> None:
+        self.run_worker(self.load(), exclusive=True)
+
+    async def load(self) -> None:
+        self.info = info = await self.repo.conflict_info(self.path)
+        if not info["conflicted"]:
+            self.notify(tr("Đã giải quyết xong {path}", path=self.path))
+            self.dismiss(None)
+            return
+        n = len(info["blocks"])
+        notes = []
+        if info["state"] == "rebase":
+            notes.append(tr("Đang rebase: \"hiện tại\" là nhánh đích, \"bên đến\" là commit của bạn đang được áp lại."))
+        if info["ours_deleted"]:
+            notes.append(tr("Phía hiện tại đã xoá file này, bên đến sửa nó — O xoá, T giữ bản bên đến."))
+        elif info["theirs_deleted"]:
+            notes.append(tr("Bên đến đã xoá file này, phía hiện tại sửa nó — O giữ bản hiện tại, T xoá."))
+        elif info["binary"]:
+            notes.append(tr("File nhị phân hoặc không phải UTF-8 — chỉ chọn được nguyên bản một phía (O/T)."))
+        elif not n:
+            notes.append(tr("Không còn dấu xung đột trong file — xem lại rồi m (đánh dấu đã xong)."))
+        self.query_one("#cf-note", Static).update("\n".join(notes))
+        ol = self.query_one("#cf-list", OptionList)
+        keep = ol.highlighted
+        ol.clear_options()
+        for i, b in enumerate(info["blocks"]):
+            t = Text()
+            t.append(tr("Xung đột {i}/{n} · dòng {line}", i=i + 1, n=n, line=b["line"]) + "\n", "bold")
+            for ln in b["before"]:
+                t.append(f"  {ln}\n", "dim")
+            for label, tag, body, style in ((tr("Hiện tại"), b["ours_label"], b["ours"], "green"),
+                                            (tr("Bản gốc"), "", b["base"], "dim"),
+                                            (tr("Bên đến"), b["theirs_label"], b["theirs"], "cyan")):
+                if body is None:
+                    continue
+                t.append(f"▌ {label}" + (f" · {tag}" if tag else "") + "\n", f"bold {style}")
+                for ln in body.splitlines() or [tr("(trống)")]:
+                    t.append(f"▌ {ln}\n", style)
+            for ln in b["after"]:
+                t.append(f"  {ln}\n", "dim")
+            t.rstrip()
+            ol.add_option(Option(t, id=str(i)))
+        if n:
+            ol.highlighted = min(keep or 0, n - 1)
+            ol.focus()
+
+    def _run(self, make) -> None:
+        async def go() -> None:
+            ok, msg = await make()
+            self.notify(msg, severity="information" if ok else "warning", timeout=4 if ok else 8)
+            await self.load()
+        self.run_worker(go(), exclusive=True)
+
+    def action_pick(self, choice: str) -> None:
+        ol = self.query_one("#cf-list", OptionList)
+        if ol.highlighted is None or not self.info.get("blocks"):
+            return
+        idx = ol.highlighted
+        self._run(lambda: self.repo.resolve_block(self.path, idx, choice))
+
+    def action_side(self, side: str) -> None:
+        self._run(lambda: self.repo.take_side([self.path], side))
+
+    def action_done(self) -> None:
+        self._run(lambda: self.repo.mark_resolved([self.path]))
+
+    def action_dismiss_with(self, what: str) -> None:
+        self.dismiss(what)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()  # Enter trên khối: không làm gì (chọn bằng o/t/b), tránh lan lên app
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        bid = event.button.id or ""
+        if bid in ("cf-ours", "cf-theirs", "cf-both"):
+            self.action_pick(bid[3:])
+        elif bid in ("cf-take-ours", "cf-take-theirs"):
+            self.action_side(bid[8:])
+        elif bid == "cf-done":
+            self.action_done()
+        elif bid in ("cf-edit", "cf-ai"):
+            self.dismiss(bid[3:])
 
 
 class GitBranchScreen(BaseModal):
@@ -4661,6 +4795,7 @@ class TeamApp(App):
                     with Horizontal(id="git-top"):
                         yield Static(id="git-head")
                         with Horizontal(id="git-actions"):
+                            yield Btn(tr("▶ Tiếp tục"), id="git-continue", variant="success")
                             yield Btn(tr("✗ Huỷ merge"), id="git-abort", variant="error")
                             yield Btn("⇣ Fetch", id="git-fetch")
                             yield Btn("⬇ Pull", id="git-pull")
@@ -4677,6 +4812,9 @@ class TeamApp(App):
                                 yield Btn(tr("+ Tất cả"), id="git-stage-all")
                                 yield Btn(tr("↺ Bỏ thay đổi"), id="git-discard", variant="error")
                                 yield Btn("Δ Diff", id="git-diff")
+                            with Horizontal(classes="git-row", id="git-cf-row"):
+                                yield Btn(tr("⇄ Giải quyết"), id="git-resolve", variant="warning")
+                                yield Btn(tr("🤖 Nhờ agent"), id="git-ai-resolve")
                             yield TextInput(id="git-msg", placeholder=tr("Commit message — Enter để commit"))
                             with Horizontal(classes="git-row"):
                                 yield Btn("✓ Commit", id="git-commit", variant="success")
@@ -5763,6 +5901,10 @@ class TeamApp(App):
             head.append(tr("   ⚠ đang {state} dở", state=st.state), "bold red")
         self.query_one("#git-head", Static).update(head)
         self.query_one("#git-abort").display = bool(st.state)
+        cont = self.query_one("#git-continue", Button)
+        cont.display = bool(st.state) and not st.conflicts
+        cont.label = tr("▶ Tiếp tục {state}", state=st.state)
+        self.query_one("#git-cf-row").display = bool(st.conflicts)
 
         rows = self._git_rows(st)
         ids = [r[0] for r in rows]
@@ -5916,6 +6058,29 @@ class TeamApp(App):
         self.push_screen(ConfirmScreen("↶ Revert", tr("Tạo commit mới đảo ngược {short} · {subject}?", short=c.short, subject=c.subject),
                                        "Revert"), done)
 
+    def action_git_resolve(self) -> None:
+        """Mở màn hình giải quyết xung đột cho file đang chọn (không chọn file xung đột: file xung đột đầu tiên)."""
+        st = self.git_status
+        sel = self.git_selected()
+        path = sel[1] if sel and sel[0] == "c" else (st.conflicts[0].path if st and st.conflicts else "")
+        if not path:
+            self.notify(tr("Không có file nào đang xung đột"))
+            return
+
+        def done(res) -> None:
+            if res == "edit":
+                self.open_code(path)
+            elif res == "ai":
+                self.action_git_ai_resolve([path])
+            self.run_worker(self.refresh_git(), exclusive=False)
+        self.push_screen(ConflictScreen(self.git, path), done)
+
+    def action_git_ai_resolve(self, paths: list[str] | None = None) -> None:
+        async def go() -> None:
+            ok, msg = await self.orch.resolve_conflicts(paths)
+            self.notify(msg, severity="information" if ok else "warning", timeout=8)
+        self.run_worker(go(), exclusive=False)
+
     def action_git_focus_msg(self) -> None:
         self.query_one("#git-msg", Input).focus()
 
@@ -6030,6 +6195,12 @@ class TeamApp(App):
             self.git_stash()
         elif bid == "git-abort":
             self.git_do(g.abort)
+        elif bid == "git-continue":
+            self.git_do(g.continue_op, busy_check=True)
+        elif bid == "git-resolve":
+            self.action_git_resolve()
+        elif bid == "git-ai-resolve":
+            self.action_git_ai_resolve()
         elif bid == "git-init":
             self.git_do(g.init)
         elif bid == "git-stage":
@@ -6694,7 +6865,11 @@ class TeamApp(App):
             return
         if event.option_list.id == "git-files":
             event.stop()
-            self.run_worker(self.action_git_diff(), exclusive=False)
+            sel = self.git_selected()
+            if sel and sel[0] == "c":
+                self.action_git_resolve()
+            else:
+                self.run_worker(self.action_git_diff(), exclusive=False)
             return
         if event.option_list.id == "git-log":
             event.stop()

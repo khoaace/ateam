@@ -38,6 +38,7 @@ window.GitView = (() => {
       <span class="grow-acts">
         <button class="mini" data-gact="diff" title="d">Δ</button>
         <button class="mini" data-gact="edit" title="e">✎</button>
+        ${code === "c" ? `<button class="mini" data-gact="resolve" title="Enter">⇄</button>` : ""}
         ${code === "w" ? `<button class="mini danger" data-gact="discard" title="x">↺</button>` : ""}
         ${code !== "c" ? `<button class="mini" data-gact="toggle" title="space">${code === "s" ? "−" : "+"}</button>` : ""}
       </span></div>`;
@@ -64,7 +65,7 @@ window.GitView = (() => {
     const sync = st.upstream ? [st.ahead ? `↑${st.ahead}` : "", st.behind ? `↓${st.behind}` : ""].filter(Boolean).join(" ") || "✓ " + t("git_synced") : t("git_no_remote");
     const head = st.branch || (st.oid ? "detached @" + st.oid.slice(0, 8) : t("git_no_commit"));
     const files = groups().map(([code, title, list]) => `<div class="ggroup"><div class="ghead">${esc(title)} <span class="n">${list.length}</span>
-        ${code === "s" ? `<button class="mini" data-gact="unstage_all" title="u">${esc(t("git_unstage_all"))}</button>` : code === "w" ? `<button class="mini" data-gact="stage_all" title="a">${esc(t("git_stage_all"))}</button>` : ""}</div>
+        ${code === "s" ? `<button class="mini" data-gact="unstage_all" title="u">${esc(t("git_unstage_all"))}</button>` : code === "w" ? `<button class="mini" data-gact="stage_all" title="a">${esc(t("git_stage_all"))}</button>` : code === "c" ? `<button class="mini" data-gact="ai_resolve">🤖 ${esc(t("cf_ai_all"))}</button>` : ""}</div>
         ${list.map((f) => fileRow(code, f)).join("")}</div>`).join("") || `<div class="gclean">✓ ${esc(t("git_clean"))}</div>`;
     const nStaged = st.groups.s.length;
     const ph = G.amend ? t("git_msg_amend") : nStaged ? t("git_msg_staged", { n: nStaged }) : t("git_msg_all");
@@ -81,7 +82,7 @@ window.GitView = (() => {
         <div class="gbranch"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="9" r="2.4"/><path d="M6 8.4v7.2M18 11.4c0 3-3 3.6-6 4.2-2 .4-4 1-5.6 2.4"/></svg>
           <b>${esc(head)}</b>${st.upstream ? `<span class="muted">→ ${esc(st.upstream)}</span>` : ""}<span class="chip">${esc(sync)}</span>
           ${st.stashes ? `<span class="chip">📦 ${st.stashes} stash</span>` : ""}
-          ${st.state ? `<span class="chip warn">⚠ ${esc(t("git_state", { v: st.state }))}</span><button class="btn sm danger" data-gact="abort">${esc(t("git_abort"))}</button>` : ""}</div>
+          ${st.state ? `<span class="chip warn">⚠ ${esc(t("git_state", { v: st.state }))}</span>${st.groups.c.length ? "" : `<button class="btn sm primary" data-gact="continue">▶ ${esc(t("git_continue", { v: st.state }))}</button>`}<button class="btn sm danger" data-gact="abort">${esc(t("git_abort"))}</button>` : ""}</div>
         <div class="panel-actions">
           <button class="btn sm ghost" data-gact="fetch">⇣ Fetch</button>
           <button class="btn sm ghost" data-gact="pull">⬇ Pull</button>
@@ -156,6 +157,9 @@ window.GitView = (() => {
       case "toggle": return toggle(sel);
       case "discard": return discard(sel);
       case "diff": return diff(sel);
+      case "resolve": return resolve(sel.path);
+      case "ai_resolve": return act("ai_resolve");
+      case "continue": return act("continue");
       case "edit": setView("code"); return CodeView.open(sel.path);
       case "stage_all": case "unstage_all": case "init": case "abort": return act(a);
       case "fetch": return act("fetch", {}, t("git_fetching"));
@@ -208,11 +212,61 @@ window.GitView = (() => {
     else if (k === "a") act("stage_all");
     else if (k === "u") act("unstage_all");
     else if (k === "x") discard(G.sel);
+    else if ((k === "r" || k === "Enter") && G.sel && G.sel.code === "c") resolve(G.sel.path);
+    else if (k === "g" && G.st && G.st.groups.c.length) act("ai_resolve");
     else if (k === "d" || k === "Enter") diff(G.sel);
     else if (k === "c") $("#git-msg").focus();
     else if (k === "e" && G.sel) { setView("code"); CodeView.open(G.sel.path); }
     else return;
     e.preventDefault();
+  }
+
+  /* ---------------------------------------------------------------- giải quyết xung đột */
+  // Như VS Code: mỗi khối <<<<<<< có nút Giữ hiện tại / Lấy bên đến / Giữ cả hai; hết khối thì server tự stage.
+  async function resolve(path) {
+    if (!path) return;
+    const m = openModal(`${modalHead("⇄ " + esc(t("cf_title")) + ` <span class="muted mono">· ${esc(path)}</span>`)}
+      <div class="modal-pad cf-body"></div>`, { box: "lg" });
+    const side = (cls, label, tag, text) => `<div class="cf-side ${cls}"><div class="cf-label">${esc(label)}${tag ? ` <span class="muted">· ${esc(tag)}</span>` : ""}</div>
+      <pre class="mono">${esc(text) || `<span class="muted">${esc(t("cf_empty"))}</span>`}</pre></div>`;
+    const ctx = (lines) => lines.length ? `<pre class="mono cf-ctx">${esc(lines.join("\n"))}</pre>` : "";
+    async function load() {
+      const info = await (await fetch("/api/git/conflict?path=" + encodeURIComponent(path))).json();
+      if (!info.conflicted) { closeModal(m); toast(t("cf_resolved", { path }), "ok"); return; }
+      const n = info.blocks.length;
+      const note = info.ours_deleted ? t("cf_ours_deleted") : info.theirs_deleted ? t("cf_theirs_deleted")
+        : info.binary ? t("cf_binary") : n ? "" : t("cf_none");
+      const blocks = info.blocks.map((b, i) => `<div class="cf-block" data-i="${i}">
+          <div class="cf-head"><b>${esc(t("cf_block", { i: i + 1, n, line: b.line }))}</b><span style="flex:1"></span>
+            <button class="btn sm" data-cf="ours">${esc(t("cf_keep_current"))}</button>
+            <button class="btn sm" data-cf="theirs">${esc(t("cf_keep_incoming"))}</button>
+            <button class="btn sm ghost" data-cf="both">${esc(t("cf_keep_both"))}</button></div>
+          ${ctx(b.before)}${side("cur", t("cf_current"), b.ours_label, b.ours)}
+          ${b.base !== null ? side("base", t("cf_base"), "", b.base) : ""}
+          ${side("inc", t("cf_incoming"), b.theirs_label, b.theirs)}${ctx(b.after)}</div>`).join("");
+      $(".cf-body", m).innerHTML = `
+        ${info.state === "rebase" ? `<div class="muted small">${esc(t("cf_rebase"))}</div>` : ""}
+        ${note ? `<div class="cf-note">${esc(note)}</div>` : ""}
+        <div class="row-actions">
+          <button class="btn sm" data-cf="take_ours">${esc(t("cf_all_current"))}</button>
+          <button class="btn sm" data-cf="take_theirs">${esc(t("cf_all_incoming"))}</button>
+          <button class="btn sm ghost" data-cf="ai">🤖 ${esc(t("cf_ai"))}</button>
+          <button class="btn sm ghost" data-cf="edit">✎ ${esc(t("cf_edit"))}</button>
+          <span style="flex:1"></span>
+          <button class="btn sm primary" data-cf="done">✓ ${esc(t("cf_done"))}</button></div>
+        <div class="cf-list">${blocks}</div>`;
+    }
+    m.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-cf]");
+      if (!b) return;
+      const a = b.dataset.cf, blk = b.closest(".cf-block");
+      if (a === "edit") { closeModal(m); setView("code"); return CodeView.open(path); }
+      if (a === "ai") { closeModal(m); return act("ai_resolve", { path }); }
+      const r = blk ? await act("resolve_block", { path, index: +blk.dataset.i, choice: a })
+        : await act(a === "done" ? "mark_resolved" : a, { path });
+      if (r.level !== "warn") await load();
+    });
+    await load();
   }
 
   /* ---------------------------------------------------------------- nhánh */
@@ -288,6 +342,6 @@ window.GitView = (() => {
     show() { refresh(); clearInterval(G.timer); G.timer = setInterval(() => { if (!document.hidden && !topModal()) refresh(); }, 3000); },
     hide() { clearInterval(G.timer); G.timer = null; },
     aiMessage() { setTimeout(aiMessage, 300); },
-    branches, stash,
+    branches, stash, resolve,
   };
 })();

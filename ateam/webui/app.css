@@ -977,3 +977,17 @@ body.readonly .card-actions { display: none !important; }
 .code-filter-row { display: flex; align-items: center; gap: 6px; margin: 8px; }
 .code-side .code-filter-row .field { margin: 0; flex: 1; min-width: 0; }
 .code-filter-row .icon-btn { flex: none; font-size: 16px; }
+
+/* giải quyết xung đột git (git.js: resolve) */
+.cf-body { display: flex; flex-direction: column; gap: 10px; max-height: 75vh; overflow: auto; }
+.cf-note { padding: 6px 10px; border-left: 2px solid var(--review); background: var(--surface-2); }
+.cf-list { display: flex; flex-direction: column; gap: 12px; }
+.cf-block { border: 1px solid var(--border); border-radius: var(--radius); }
+.cf-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 8px; background: var(--surface-2); }
+.cf-side { border-left: 3px solid var(--border-strong); }
+.cf-side.cur { border-left-color: var(--done); background: var(--diff-add); }
+.cf-side.inc { border-left-color: var(--term-link); background: rgba(142, 200, 255, .10); }
+.cf-side.base { border-left-color: var(--muted); }
+.cf-label { padding: 3px 8px; font-size: 11px; font-weight: 650; color: var(--text-2); }
+.cf-side pre, .cf-ctx { margin: 0; padding: 2px 8px 6px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+.cf-ctx { color: var(--muted); padding-top: 4px; }

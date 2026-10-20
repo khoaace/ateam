@@ -343,6 +343,27 @@ Do NOT modify any files and do NOT run git yourself.
 End your answer with a line 'SUMMARY:' followed by the commit message only (nothing after it)."""
 
 
+def conflict_prompt(*, files: list[str], state: str, cwd: str) -> str:
+    """Nhờ agent giải quyết xung đột git (tab Git): sửa file, không stage/commit — người dùng xem lại rồi đánh dấu xong."""
+    side = ("During a rebase, the <<<<<<< side is the branch being rebased onto and the >>>>>>> side is the commit "
+            "being replayed." if state == "rebase" else
+            "The <<<<<<< side is the current branch (HEAD) and the >>>>>>> side is the incoming change.")
+    return f"""Resolve the git {state or 'merge'} conflicts in the repository at: {cwd}
+
+CONFLICTED FILES:
+{chr(10).join('- ' + f for f in files)}
+
+{side}
+For each conflict block, look at both sides (and the surrounding code / git log if needed) and write the
+correct combined result: keep the intent of BOTH changes unless one clearly replaces the other. Remove every
+conflict marker (<<<<<<<, |||||||, =======, >>>>>>>). Change only the conflicted regions; do not refactor or
+touch other files. Make sure the result still compiles / parses.
+Do NOT run git add, git commit, git merge/rebase --continue or --abort — the user reviews your result first.
+
+End your answer with a line starting with 'SUMMARY:' followed by one short line per file: how you resolved it,
+and anything the user should double-check."""
+
+
 def workflow_suggest_prompt(cfg: Config, description: str, cwd: str) -> str:
     return f"""You are designing a reusable ateam WORKFLOW (a fixed chain of steps the team runs for a goal)
 for the repository at: {cwd}

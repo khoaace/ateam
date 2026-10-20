@@ -128,7 +128,8 @@ class GitWeb:
     def routes(self) -> list:
         return [web.get("/api/git/status", self.api_status), web.get("/api/git/log", self.api_log),
                 web.get("/api/git/branches", self.api_branches), web.get("/api/git/stashes", self.api_stashes),
-                web.get("/api/git/diff", self.api_diff), web.get("/api/diff/{tid}", self.api_task_diff)]
+                web.get("/api/git/diff", self.api_diff), web.get("/api/diff/{tid}", self.api_task_diff),
+                web.get("/api/git/conflict", self.api_conflict)]
 
     async def api_status(self, _r: web.Request) -> web.Response:
         st = await self.repo.status()
@@ -178,6 +179,10 @@ class GitWeb:
         start = next((i for i, f in enumerate(ds.files) if f.path == path), 0)
         return web.json_response(await asyncio.to_thread(diffset_json, ds, start))
 
+    async def api_conflict(self, r: web.Request) -> web.Response:
+        """Các khối xung đột của một file (popup giải quyết xung đột)."""
+        return web.json_response(await self.repo.conflict_info(r.query.get("path", "")))
+
     async def api_task_diff(self, r: web.Request) -> web.Response:
         res = await self.app.orch.diff_files(int(r.match_info["tid"]))
         if isinstance(res, str):
@@ -188,7 +193,7 @@ class GitWeb:
 
     # ------------------------------------------------------------------ thao tác
     BUSY = {"pull", "checkout", "create_branch", "merge", "stash_push", "stash_apply", "stash_pop", "revert",
-            "undo"}
+            "undo", "continue"}
 
     async def op(self, d: dict) -> tuple:
         """Một thao tác git. Trả (lời nhắn, mức[, thêm]) — mức ok/warn như TUI (git_do)."""
@@ -209,6 +214,9 @@ class GitWeb:
             ok, msg = await self.app.orch.commit_message()
             return (tr("✨ Đã điền commit message — sửa nếu cần rồi commit"), "ok", {"git_msg": msg}) if ok \
                 else (msg, "warn")
+        if act == "ai_resolve":
+            ok, msg = await self.app.orch.resolve_conflicts(paths or None)
+            return msg, "ok" if ok else "warn"
         if act == "last_message":
             return "", "", {"git_msg": await g.last_message()}
         if act == "commit":
@@ -234,6 +242,10 @@ class GitWeb:
             "stash_pop": lambda: g.stash_apply(d.get("ref") or "stash@{0}", pop=True),
             "stash_drop": lambda: g.stash_drop(d.get("ref") or "stash@{0}"),
             "revert": lambda: g.revert(d.get("sha", "")), "undo": g.reset_soft,
+            "resolve_block": lambda: g.resolve_block(d.get("path", ""), int(d.get("index", -1)),
+                                                     str(d.get("choice") or "")),
+            "take_ours": lambda: g.take_side(paths, "ours"), "take_theirs": lambda: g.take_side(paths, "theirs"),
+            "mark_resolved": lambda: g.mark_resolved(paths), "continue": g.continue_op,
         }
         if act not in calls:
             return tr("Không hiểu thao tác {op}", op=f"git {act}"), "warn"

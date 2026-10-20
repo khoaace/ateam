@@ -278,6 +278,11 @@ stash/revert có cờ `-c user.*` dự phòng như `Orchestrator.git_ident`. M�
 - Trạng thái: `git status --porcelain=v2 --branch --show-stash -z --untracked-files=all` → `parse_status` →
   `RepoStatus` (nhánh, upstream, ahead/behind, file theo nhóm đã stage / chưa stage / chưa theo dõi / xung đột,
   số stash) + `_op_state()` đọc `MERGE_HEAD`/`rebase-*`/`CHERRY_PICK_HEAD`/`REVERT_HEAD` (`git rev-parse --git-path`).
+- Xung đột: `parse_conflicts`/`resolve_conflict_text` (khối `<<<<<<<`, cả diff3 `|||||||`), `conflict_info` (khối +
+  ngữ cảnh, phía nào xoá file), `resolve_block` (hết khối → `mark_resolved` = `add -A`), `take_side` (`checkout
+  --ours/--theirs` + add, phía đã xoá → `rm`), `continue_op` (`commit --no-edit` / `<state> --continue`; `run` luôn
+  đặt `GIT_EDITOR=true`). Nhờ agent: `Orchestrator.resolve_conflicts` → lượt chat mới (`conflict_prompt`) với
+  `commit_agent()`. UI: `ConflictScreen` (TUI), `GitView.resolve` + `/api/git/conflict` (web).
 - Pull: `--ff-only`, hai bên đã rẽ nhánh thì `--no-rebase` (merge; không viết lại lịch sử). Push lần đầu tự
   `-u <origin|remote đầu tiên> <nhánh>`; `/push -f` = `--force-with-lease`. Checkout `origin/x` tạo nhánh local
   theo dõi. "Bỏ commit cuối" = `reset --soft HEAD~1`, chặn khi commit đã có trên upstream (dùng Revert).

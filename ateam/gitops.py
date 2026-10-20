@@ -158,6 +158,71 @@ def parse_status(text: str) -> RepoStatus:
     return st
 
 
+@dataclass
+class ConflictBlock:
+    """Một khối `<<<<<<< … ======= … >>>>>>>` trong file xung đột (start/end: chỉ số dòng của hai dấu ngoài)."""
+    start: int
+    end: int
+    ours: list[str]
+    theirs: list[str]
+    base: list[str] | None = None    # có khi merge.conflictStyle = diff3/zdiff3
+    ours_label: str = ""
+    theirs_label: str = ""
+
+
+CONFLICT_CHOICES = ("ours", "theirs", "both")
+
+
+def _marker(line: str, mark: str) -> str | None:
+    """Nhãn sau dấu xung đột (vd "HEAD"), None nếu dòng không phải dấu đó."""
+    body = line.rstrip("\r\n")
+    if body == mark or body.startswith(mark + " "):
+        return body[len(mark):].strip()
+    return None
+
+
+def parse_conflicts(text: str) -> list[ConflictBlock]:
+    """Các khối xung đột trong nội dung file (dòng giữ nguyên ký tự xuống dòng)."""
+    lines = text.splitlines(keepends=True)
+    out: list[ConflictBlock] = []
+    i = 0
+    while i < len(lines):
+        label = _marker(lines[i], "<<<<<<<")
+        if label is None:
+            i += 1
+            continue
+        blk = ConflictBlock(start=i, end=-1, ours=[], theirs=[], ours_label=label)
+        part, j = "ours", i + 1
+        while j < len(lines):
+            ln = lines[j]
+            if part == "ours" and _marker(ln, "|||||||") is not None:
+                part, blk.base = "base", []
+            elif part in ("ours", "base") and ln.rstrip("\r\n") == "=======":
+                part = "theirs"
+            elif part == "theirs" and _marker(ln, ">>>>>>>") is not None:
+                blk.theirs_label, blk.end = _marker(ln, ">>>>>>>") or "", j
+                break
+            else:
+                (blk.ours if part == "ours" else blk.base if part == "base" else blk.theirs).append(ln)
+            j += 1
+        if blk.end < 0:  # khối không đóng: không phải xung đột thật
+            break
+        out.append(blk)
+        i = blk.end + 1
+    return out
+
+
+def resolve_conflict_text(text: str, index: int, choice: str) -> str:
+    """Thay khối thứ `index` bằng phía đã chọn: ours (hiện tại), theirs (đến) hoặc both (hiện tại rồi đến)."""
+    blocks = parse_conflicts(text)
+    if not 0 <= index < len(blocks) or choice not in CONFLICT_CHOICES:
+        raise ValueError(choice)
+    b = blocks[index]
+    keep = b.ours if choice == "ours" else b.theirs if choice == "theirs" else b.ours + b.theirs
+    lines = text.splitlines(keepends=True)
+    return "".join(lines[:b.start] + keep + lines[b.end + 1:])
+
+
 def parse_log(text: str) -> list[Commit]:
     out = []
     for line in text.splitlines():
@@ -224,7 +289,7 @@ class GitRepo:
                   stdin: bytes | None = None) -> tuple[int, str]:
         env = dict(os.environ)
         env["GIT_TERMINAL_PROMPT"] = "0"     # không hỏi user/mật khẩu trong terminal của TUI (sẽ treo)
-        env.setdefault("GIT_EDITOR", "true")  # merge/revert không mở trình soạn thảo
+        env["GIT_EDITOR"] = "true"  # merge/revert/rebase --continue không mở trình soạn thảo (treo app)
         env["LANGUAGE"] = "C"  # thông báo của git bằng tiếng Anh, ổn định để dò (CONFLICT, rejected…)
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -490,6 +555,113 @@ class GitRepo:
             n = out.count("CONFLICT")
             return False, (tr("Merge {name} có {n} file xung đột — sửa file rồi stage và commit, "
                               "hoặc 'Huỷ merge'", name=name, n=n))
+        return False, short_error(out)
+
+    # ------------------------------------------------------------------ xung đột
+    def _read(self, path: str) -> str | None:
+        """Nội dung file trong repo (None: không có / file nhị phân)."""
+        p = self.root / path
+        try:
+            data = p.read_bytes()
+        except OSError:
+            return None
+        if b"\0" in data[:8000]:
+            return None
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:  # mã hoá khác: chỉ lấy cả file được, không sửa từng khối (ghi lại sẽ hỏng)
+            return None
+
+    async def conflict_info(self, path: str) -> dict:
+        """Dữ liệu cho màn hình giải quyết xung đột một file: các khối (kèm vài dòng ngữ cảnh), phía nào đã xoá file."""
+        st = await self.status()
+        f = next((x for x in st.conflicts if x.path == path), None)
+        text = self._read(path)
+        lines = text.splitlines() if text is not None else []
+        found = parse_conflicts(text or "")
+        blocks = []
+        for k, b in enumerate(found):
+            prev_end = found[k - 1].end + 1 if k else 0
+            next_start = found[k + 1].start if k + 1 < len(found) else len(lines)
+            blocks.append({"line": b.start + 1, "ours": "".join(b.ours), "theirs": "".join(b.theirs),
+                           "base": None if b.base is None else "".join(b.base),
+                           "ours_label": b.ours_label, "theirs_label": b.theirs_label,
+                           "before": lines[max(prev_end, b.start - 3):b.start],
+                           "after": lines[b.end + 1:min(next_start, b.end + 4)]})
+        return {"path": path, "conflicted": f is not None, "state": st.state,
+                "binary": text is None and (self.root / path).exists(),
+                "ours_deleted": bool(f and f.index == "D"), "theirs_deleted": bool(f and f.work == "D"),
+                "blocks": blocks}
+
+    async def resolve_block(self, path: str, index: int, choice: str) -> tuple[bool, str]:
+        """Giữ một phía cho một khối xung đột; hết khối thì stage file (đánh dấu đã giải quyết)."""
+        text = self._read(path)
+        if text is None:
+            return False, tr("Không đọc được {path}", path=path)
+        try:
+            new = resolve_conflict_text(text, index, choice)
+        except ValueError:
+            return False, tr("File đã đổi — mở lại để xem các khối xung đột còn lại")
+        async with self.lock:
+            (self.root / path).write_bytes(new.encode("utf-8"))
+        left = len(parse_conflicts(new))
+        if left:
+            return True, tr("Còn {v} khối xung đột trong {path}", v=left, path=path)
+        return await self.mark_resolved([path])
+
+    async def take_side(self, paths: list[str], side: str) -> tuple[bool, str]:
+        """Lấy nguyên bản một phía cho cả file (ours = hiện tại, theirs = đến), rồi stage. Phía đó đã xoá file
+        thì xoá theo."""
+        st = await self.status()
+        files = {f.path: f for f in st.conflicts}
+        async with self.lock:
+            for p in paths:
+                f = files.get(p)
+                if not f:
+                    continue
+                if (f.index if side == "ours" else f.work) == "D":
+                    rc, out = await self.run("rm", "-q", "--", p)
+                else:
+                    rc, out = await self.run("checkout", f"--{side}", "--", p)
+                    if rc == 0:
+                        rc, out = await self.run("add", "--", p)
+                if rc != 0:
+                    return False, short_error(out)
+        who = tr("hiện tại") if side == "ours" else tr("bên đến")
+        return True, tr("Đã lấy bản {who} cho {v} file", who=who, v=len(paths))
+
+    async def mark_resolved(self, paths: list[str]) -> tuple[bool, str]:
+        """Stage file đã sửa xong xung đột. Từ chối khi còn dấu <<<<<<< trong file."""
+        left = [p for p in paths if parse_conflicts(self._read(p) or "")]
+        if left:
+            return False, tr("{path} vẫn còn dấu xung đột <<<<<<< — sửa hết rồi đánh dấu xong", path=left[0])
+        ok, msg = await self._do("", "add", "-A", "--", *paths)
+        if not ok:
+            return ok, msg
+        st = await self.status()
+        if st.conflicts:
+            return True, tr("Đã giải quyết {v} — còn {n} file xung đột", v=", ".join(paths), n=len(st.conflicts))
+        return True, tr("Hết xung đột — bấm Tiếp tục {state} để hoàn tất", state=st.state or "merge")
+
+    async def continue_op(self) -> tuple[bool, str]:
+        """Hoàn tất merge/rebase/cherry-pick/revert đang dở sau khi hết xung đột."""
+        st = await self.status()
+        if not st.state:
+            return False, tr("Không có merge/rebase nào đang dở")
+        if st.conflicts:
+            return False, tr("Còn {v} file xung đột — giải quyết hết trước", v=len(st.conflicts))
+        pre = await self.ident()
+        args = ["commit", "--no-edit", "-q"] if st.state == "merge" else [st.state, "--continue"]
+        async with self.lock:
+            rc, out = await self.run(*pre, *args)
+        if rc == 0:
+            nxt = await self._op_state()
+            if nxt:  # rebase còn commit tiếp theo (đã áp được) — vẫn đang dở
+                return True, tr("Đã tiếp tục {state}", state=st.state)
+            return True, tr("Đã hoàn tất {state}", state=st.state)
+        if "CONFLICT" in out:
+            return False, tr("{state} dừng ở commit tiếp theo: {n} file xung đột", state=st.state.capitalize(),
+                             n=out.count("CONFLICT"))
         return False, short_error(out)
 
     async def abort(self) -> tuple[bool, str]:
