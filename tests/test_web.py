@@ -642,6 +642,61 @@ def test_web_todos_outside_repo(env, project, monkeypatch):
     asyncio.run(cmds())
 
 
+def test_web_continue_does_not_open_drawer(env, project, monkeypatch):
+    """/continue t<id> …: báo bằng toast có nút "Xem" (open.task_link) — không tự bật ngăn chi tiết che bảng việc."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    wa = _web_app(env, project, monkeypatch)
+
+    async def main():
+        tid = wa.db.add_task("codex", "x", "x")
+        wa.db.update_task(tid, status="done")
+        r = await wa.command(f"/continue t{tid} làm tiếp")
+        assert r[1] == "ok" and "task" not in r[2]["open"]
+        assert r[2]["open"]["task_link"] > tid
+        assert (await wa.command(f"/continue t{tid}"))[2]["open"] == {"prefill": f"/continue t{tid} "}
+        assert (await wa.command(f"/log {tid}"))[2]["open"] == {"task": tid}  # lệnh xem tường minh vẫn mở
+
+    asyncio.run(main())
+    assert {"view_task", "side_collapse", "side_expand"} <= set(wa.hello()["T"])
+
+
+def test_web_grill_answer_skip_and_finish(env, project, monkeypatch):
+    """/grill trên web: gõ số ở ô nhập = phương án, nút "tự quyết" (op grill skip) do server soạn câu trả lời,
+    /grill xong chốt và lập kế hoạch; ảnh chụp trạng thái mang câu hỏi đang chờ."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    from ateam import prompts as P
+    wa = _web_app(env, project, monkeypatch)
+    o = wa.orch
+
+    async def idle():
+        for _ in range(200):
+            await asyncio.sleep(0.05)
+            if not o.lead_busy:
+                return
+
+    async def main():
+        assert await wa.command("/grill Thêm trang đăng nhập") is None
+        await idle()
+        st = wa.snapshot()
+        gid = st["grill"]["goal"]
+        assert st["grill"]["question"]["q"] == "Câu hỏi số 1?" and st["ask"] is None
+        assert "Đã trả lời" in (await wa.submit("2"))[0]  # gõ số = chọn phương án, không thành mục tiêu mới
+        await idle()
+        assert o.db.goal(gid).answered()[0]["a"] == "Phương án B" and len(o.db.goals()) == 1
+        await wa.handle({"op": "grill", "action": "skip", "goal": gid})
+        await idle()
+        assert o.db.goal(gid).answered()[1]["a"] == P.skip_answer("Phương án A")
+        gid2 = o.start_grill("Thêm trang hồ sơ")
+        await idle()
+        assert "đang chốt" in (await wa.command("/grill xong"))[0]
+        await idle()
+        assert o.db.goal(gid2).status in ("awaiting", "running")
+
+    asyncio.run(main())
+
+
 def test_web_goal_plan_after_run(env, project, monkeypatch):
     """📋 Xem lại kế hoạch sau khi đã duyệt: mọi task của mục tiêu, kèm nguồn, prompt, phụ thuộc."""
     import pytest

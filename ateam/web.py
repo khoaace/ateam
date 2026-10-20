@@ -26,7 +26,7 @@ from aiohttp import WSMsgType, web
 from . import (__version__, clipboard, mentions, notify, palette, projects, reports, rules, shell, theme, todos,
                update, wizard)
 from .config import Config, found_models, load_config, load_state, needs_setup, save_project_setting, save_state
-from .db import ASKING, DB, GOAL_ENDED, Goal, Task
+from .db import DB, GOAL_ENDED, Goal, Task
 from .qr import QR
 from .web_auth import Remote, auth_middleware, security_headers
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, tr
@@ -101,8 +101,6 @@ def ui_strings() -> dict[str, str]:
         "recommended": tr("khuyên dùng"), "grill_done": tr("Đủ rồi — chốt & lập kế hoạch"),
         "grill_skip": tr("Để trưởng nhóm tự quyết"), "grill_retry": tr("Hỏi tiếp"),
         "grill_cancel": tr("Bỏ mục tiêu"),
-        "grill_skip_answer": tr("(Tôi không chắc — bạn tự quyết)"),
-        "grill_skip_rec": tr("(Tôi không chắc — bạn tự quyết, theo khuyến nghị: {v})"),
         "placeholder": tr("Nhập mục tiêu cho trưởng nhóm · / lệnh · ! lệnh terminal · @ nhắc file"),
         "placeholder_wf": tr("Nhập mục tiêu (chạy theo workflow '{wf}') · / lệnh · ! lệnh terminal · @ nhắc file"),
         "mode_lead": tr("★ Trưởng nhóm"), "mode_lead_full": tr("★ Trưởng nhóm lập kế hoạch"),
@@ -295,11 +293,13 @@ def ui_strings() -> dict[str, str]:
         "sr_confirm_q": tr("Thay {n} kết quả trong {f} file bằng \"{r}\"? App không hoàn tác được — xem lại bằng git diff."),
         "sr_dirty": tr("Bỏ qua file đang sửa dở (chưa lưu): {v}"),
         "lofi": tr("Nhạc lofi"), "lofi_play": tr("Phát"), "lofi_pause": tr("Tạm dừng"), "lofi_hide": tr("Thu gọn"),
-        "lofi_show": tr("Mở rộng"), "lofi_close": tr("Tắt nhạc"), "lofi_custom": tr("Link của bạn"),
+        "lofi_close": tr("Tắt nhạc"), "lofi_custom": tr("Link của bạn"),
         "lofi_custom_ph": tr("Dán link YouTube hoặc stream mp3/aac rồi Enter…"),
         "lofi_bad_url": tr("Link không phát được — dùng link YouTube hoặc link stream http(s)"),
         "lofi_blocked": tr("Video này không cho phát nhúng ngoài YouTube — thử đài hoặc link khác"),
         "lofi_hint": tr("Radio online (cần mạng). Đài và âm lượng lưu riêng cho trình duyệt này."),
+        "view_task": tr("Xem"),
+        "side_collapse": tr("Thu gọn thanh bên"), "side_expand": tr("Mở rộng thanh bên"),
         "sound_local": tr("Mỗi loại có âm riêng: kế hoạch / diff chờ duyệt, agent hỏi, task lỗi, mục tiêu xong. Lưu riêng cho trình duyệt này."),
         # --- /setup
         "ob_title": tr("Thiết lập đội AI · Bước {v}/{n} — {title}"), "ob_back": tr("Quay lại"), "ob_next": tr("Tiếp"),
@@ -675,21 +675,13 @@ class WebApp:
                            "models": a.model_choices()[:12], "efforts": a.efforts_for(),
                            "cooldown": o.cooldown_label(name) if o.in_cooldown(name) else "",
                            "activities": acts})
-        grill = None
-        g = o.grill_active(goals_all)
-        if g:
-            busy = g.id in o.lead_busy
-            q = None if busy else o.grill_question(g)
-            qa = (g.grill or {}).get("qa") or []
-            grill = {"goal": g.id, "text": _first_line(g.text, 300), "busy": busy, "question": q,
-                     "n": len(qa), "answered": sum(1 for x in qa if x.get("a") is not None),
-                     "error": "" if busy else str((g.grill or {}).get("error") or "")}
-        ask = None
-        at = o.ask_active(tasks_all) if not grill else None
-        if at:
-            ask = {"task": at.id, "agent": at.agent, "title": at.title, "question": at.question(),
-                   "n": len((at.ask or {}).get("qa") or []),
-                   "more": sum(1 for t in tasks_all if t.status == ASKING) - 1}
+        # khung hỏi đáp: câu /grill chờ trả lời > câu <<<ASK>>> của agent > trạng thái /grill (đang nghĩ / lỗi)
+        wv = o.waiting_view(goals_all, tasks_all)
+        grill = ask = None
+        if wv and wv["kind"] == "grill":
+            grill = dict(wv, text=_first_line(wv["text"], 300))
+        elif wv:
+            ask = dict(wv, more=wv["others"])
         jobs = [{"id": j.id, "cmd": j.cmd, "status": j.status, "started": j.started, "finished": j.finished,
                  "rc": j.rc, "ports": j.ports} for j in self.shell.jobs.values()]
         return {"t": "state", "goals": goals, "tasks": [task_json(t, full=False) for t in tasks], "agents": agents,
@@ -918,6 +910,8 @@ class WebApp:
             act, gid = d.get("action"), d.get("goal")
             if act == "answer":
                 return o.answer_grill(gid, str(d.get("text") or "")), "info"
+            if act == "skip":  # để trưởng nhóm tự quyết (theo khuyến nghị)
+                return o.answer_grill(gid, None), "info"
             if act == "done":
                 return o.finish_grill(gid), "info"
             if act == "retry":
@@ -1036,19 +1030,11 @@ class WebApp:
             return None
         if text.startswith("!"):
             return self.run_shell(text[1:])
-        g = self.orch.grill_active()
-        if not text.startswith("/") and g and self.orch.grill_question(g):
-            q = self.orch.grill_question(g) or {}
-            opts = q.get("options") or []
-            if text.isdigit() and 1 <= int(text) <= len(opts):
-                text = opts[int(text) - 1]  # gõ số = chọn phương án đó
-            return self.orch.answer_grill(g.id, text), "info"
-        at = self.orch.ask_active() if not g else None
-        if not text.startswith("/") and at:
-            opts = (at.question() or {}).get("options") or []
-            if text.isdigit() and 1 <= int(text) <= len(opts):
-                text = opts[int(text) - 1]
-            return self.orch.answer_task(at.id, text), "info"
+        wv = self.orch.waiting_view()  # đang chờ người dùng trả lời: câu gõ vào là câu trả lời (số = phương án)
+        if not text.startswith("/") and wv and wv["question"]:
+            if wv["kind"] == "grill":
+                return self.orch.answer_grill(wv["goal"], text), "info"
+            return self.orch.answer_task(wv["task"], text), "info"
         if not text.startswith("/"):
             return self.start_goal(text, self.cfg.default_workflow)
         return await self.command(text)
@@ -1159,13 +1145,9 @@ class WebApp:
                 return tr("Không có kế hoạch nháp nào để bỏ"), "warn"
             return tr("Đã bỏ kế hoạch #{gid} ({v} task nháp)", gid=g.id, v=o.discard_plan(g.id)), "info"
         if cmd == "grill":
-            sub = rest.lower()
-            if sub in ("xong", "done", "chot", "chốt"):
-                return o.finish_grill(None), "info"
-            if sub in ("bỏ", "bo", "huỷ", "huy", "cancel"):
-                return o.cancel_grill(None), "info"
-            if sub in ("tiếp", "tiep", "retry"):
-                return o.retry_grill(None), "info"
+            msg = o.grill_command(rest)
+            if msg is not None:
+                return msg, "info"
             if not cfg.agents.get(cfg.lead):
                 return tr("Không có trưởng nhóm '{lead}' trong cấu hình", lead=cfg.lead), "error"
             o.start_grill(rest)
@@ -1235,7 +1217,7 @@ class WebApp:
             o.log(tr("Đang kiểm tra bản mới…"))
             self._spawn(self._bg_log(update.run_update(lambda line: o.log("  " + line)),
                                      lambda res: ("✓ " if res[0] else "ℹ ") + res[1]))
-            return tr("Đang kiểm tra bản mới…"), "info", {"open": {"task": SYSTEM}}
+            return tr("Đang kiểm tra bản mới…"), "info", {"open": {"task_link": SYSTEM}}  # nút "Xem" trên toast, không tự mở ngăn log
         if cmd == "setup":
             return "", "", {"open": {"modal": "setup"}}
         if cmd == "roles":
@@ -1317,7 +1299,8 @@ class WebApp:
             kind, i = res
             if kind == "goal":
                 return tr("↪ Trưởng nhóm đang lập kế hoạch tiếp cho mục tiêu #{i}", i=i), "ok"
-            return tr("↪ Task #{i}: hỏi tiếp {agent}", i=i, agent=self.db.task(i).agent), "ok", {"open": {"task": i}}
+            return (tr("↪ Task #{i}: hỏi tiếp {agent}", i=i, agent=self.db.task(i).agent), "ok",
+                    {"open": {"task_link": i}})  # đang gõ thì đừng che bảng việc: toast có nút "Xem"
         if cmd == "note":
             o.note(rest)
             return tr("Đã ghi chú."), "ok"

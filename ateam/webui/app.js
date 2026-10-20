@@ -101,6 +101,7 @@ function onHello(m) {
     const lbl = $("[data-t]", b), i = $$("#nav .nav-item").indexOf(b);
     if (lbl) { b.setAttribute("aria-label", lbl.textContent); b.title = lbl.textContent + (i >= 0 ? `  (Alt+${i + 1})` : ""); }
   });
+  renderSideToggle();
   $("#btn-theme").title = t("theme");
   $("#btn-rules").title = t("rules_title");
   $("#btn-rules").setAttribute("aria-label", t("rules_title"));
@@ -128,10 +129,14 @@ function applyPrefs(p) {
 }
 function onToast(m) {
   if (m.ref != null && S.pending[m.ref]) { S.pending[m.ref](m); delete S.pending[m.ref]; }
-  if (m.text) toast(m.text, m.level || "info");
+  const o = m.open || {};
+  // Ngăn chi tiết / popup chỉ mở khi người dùng chủ động (bấm, /log, /plan…). Kết quả của lệnh "làm việc"
+  // (/continue, /update) chỉ báo bằng toast kèm nút "Xem" — đang gõ thì không bị che bảng việc.
+  const link = o.task_link != null ? { label: t("view_task"), run: () => openTask(o.task_link) } : null;
+  if (m.text) toast(m.text, m.level || "info", link);
+  else if (link) toast("#" + o.task_link, "info", link);
   if (m.reload) setTimeout(() => location.reload(), 600);
   if (m.notify) { S.prefs = Object.assign({}, S.prefs, { notify: m.notify }); askNotifyPermission(); }
-  const o = m.open || {};
   if (o.job != null) { setView("term"); openJob(o.job); }
   if (o.diff != null) DiffView.task(o.diff);
   if (o.plan != null) planModal(o.plan);
@@ -1129,6 +1134,19 @@ async function openProject(path) {
 }
 
 /* ------------------------------------------------------------------ giao diện sáng/tối + màu nhấn */
+/* thanh bên thu gọn (chỉ icon): lưu theo trình duyệt; script đầu index.html áp trước khi vẽ để không nháy */
+function setSideMin(on) {
+  document.documentElement.classList.toggle("side-min", on);
+  try { on ? localStorage.setItem("ateam-side", "min") : localStorage.removeItem("ateam-side"); } catch (e) { /* chặn lưu */ }
+  renderSideToggle();
+}
+function renderSideToggle() {
+  const b = $("#side-toggle");
+  if (!b) return;
+  const lbl = t(document.documentElement.classList.contains("side-min") ? "side_expand" : "side_collapse");
+  b.title = lbl;
+  b.setAttribute("aria-label", lbl);
+}
 function themeMode() { try { return localStorage.getItem("ateam-theme") || "system"; } catch (e) { return "system"; } }
 function setThemeMode(mode) {
   try { mode === "system" ? localStorage.removeItem("ateam-theme") : localStorage.setItem("ateam-theme", mode); } catch (e) { /* chặn lưu */ }
@@ -1255,13 +1273,24 @@ function pendingCount() {  // việc chờ người dùng: kế hoạch chờ du
   if (!S.state) return 0;
   return S.state.goals.filter((g) => g.status === "awaiting").length + S.state.tasks.filter((x) => ["review", "conflict", "asking"].includes(x.status)).length;
 }
-function toast(text, level = "info") {
+function toast(text, level = "info", action = null) {  // action = {label, run}: nút trên toast (vd "Xem" task vừa tạo)
   const el = document.createElement("div");
   el.className = "toast " + level;
-  el.textContent = text;
+  const msg = document.createElement("span");
+  msg.className = "toast-msg";
+  msg.textContent = text;
+  el.appendChild(msg);
+  const gone = () => { el.classList.add("out"); setTimeout(() => el.remove(), 250); };
+  if (action) {
+    const b = document.createElement("button");
+    b.className = "toast-act";
+    b.textContent = action.label;
+    b.addEventListener("click", () => { gone(); action.run(); });
+    el.appendChild(b);
+  }
   $("#toasts").appendChild(el);
-  const ms = level === "error" || level === "warn" ? 6000 : 3800;
-  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 250); }, ms);
+  const ms = action ? 8000 : level === "error" || level === "warn" ? 6000 : 3800;
+  setTimeout(gone, ms);
   while ($("#toasts").childElementCount > 5) $("#toasts").firstElementChild.remove();
 }
 
@@ -1651,6 +1680,7 @@ const ACTIONS = {
   "open-project": () => projectModal(),
   "rules": () => RulesView.open(),
   "lofi": () => Lofi.open(),
+  "side-toggle": () => setSideMin(!document.documentElement.classList.contains("side-min")),
   "roles": () => Setup.rolesModal(),
   "goal-plan": (el, e) => { e.stopPropagation(); planModal(+el.dataset.goal); },
   "copy-url": (el) => { navigator.clipboard.writeText(el.dataset.url).then(() => toast(t("copied"), "ok")); },
@@ -1662,10 +1692,7 @@ const ACTIONS = {
   "goal-continue": (el) => prefill(`/continue m${el.dataset.goal} `),
   "task-continue": (el) => prefill(`/continue t${el.dataset.task} `),
   "grill-pick": (el) => { const q = S.state.grill.question; send("grill", { action: "answer", goal: S.state.grill.goal, text: q.options[+el.dataset.i] }); },
-  "grill-skip": () => {
-    const g = S.state.grill, q = g.question || {};
-    send("grill", { action: "answer", goal: g.goal, text: q.rec ? t("grill_skip_rec", { v: q.rec }) : t("grill_skip_answer") });
-  },
+  "grill-skip": () => send("grill", { action: "skip", goal: S.state.grill.goal }),
   "ask-pick": (el) => { const a = S.state.ask; send("ask", { action: "answer", task: a.task, text: a.question.options[+el.dataset.i] }); },
   "ask-skip": () => send("ask", { action: "skip", task: S.state.ask.task }),
   "ask-cancel": () => send("cancel", { task: S.state.ask.task }),
@@ -1736,6 +1763,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (e.target.closest && e.target.closest(".cm-editor")) return;  // Esc trong editor là của vim
     if (topModal()) { e.preventDefault(); closeModal(); }
+    else if (window.Lofi && Lofi.popOpen()) Lofi.hidePop();
     else if (S.openTask != null) closeDrawer();
     else if (S.focusAgent && S.view === "team") focusAgent(null);
   }

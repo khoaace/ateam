@@ -87,22 +87,33 @@ Review (`_review`) tiếp tục phiên CLI của lượt lập kế hoạch (`ke
 (`round >= max_rounds`) báo trưởng nhóm không viết task mới (`review_prompt(final=True)`).
 
 **Hỏi đáp trước** (`/grill`, "grill me"): `start_grill` tạo mục tiêu ở trạng thái `grilling`, cột `grill`
-(JSON `{"qa": [{"q", "why", "options", "rec", "a"}], "spec", "error"}`). Mỗi lượt `_grill_step` gửi
-`grill_prompt` (mục tiêu + các cặp hỏi–đáp đã có) qua `_call_lead` — mỗi lần gọi CLI là một phiên riêng nên
-lịch sử nằm trong prompt, chạy được với mọi CLI. Trưởng nhóm trả object JSON: `{"question", "why", "options",
-"recommended"}` (thêm câu hỏi, `a = null`, chờ người dùng) hoặc `{"done": true, "spec"}` → lưu `spec`,
-`planning`, `_plan` ngay (`lead_busy` giữ suốt). `answer_grill` điền `a` rồi hỏi tiếp; `finish_grill` gửi
-`finish=True` ("STOP the interview", bỏ câu chưa trả lời); quá `GRILL_MAX` (15) câu cũng vậy. Không có `spec`
-thì dùng chính các cặp hỏi–đáp. `Goal.base_text()` = text + `CLARIFIED REQUIREMENTS:` + spec, dùng cho mọi
-prompt lập kế hoạch/review (qua `full_text()`). TUI: `GrillBar` (`#grill`) hiện câu hỏi của mục tiêu
-`grilling` mới nhất; khi đang chờ trả lời, câu gõ ở ô nhập (không bắt đầu bằng `/` `!`) là câu trả lời, gõ số
-= chọn phương án. Mở lại app khi trưởng nhóm đang nghĩ: `setup()` ghi `error`, người dùng bấm "↻ Hỏi tiếp".
+(JSON `{"qa": [{"q", "why", "options", "rec", "a"}], "spec", "error", "from_plan"?, "closed"?}`; câu đang chờ /
+đã trả lời: `Goal.question()` / `Goal.answered()`, như `Task.question()`). Mỗi lượt `_grill_step` gửi `grill_prompt`
+(mục tiêu + các cặp hỏi–đáp đã có) qua `_call_lead(keep_session=True)`: tiếp phiên trưởng nhóm của mục tiêu nên không
+khám phá lại dự án mỗi câu, và `_plan` sau đó tiếp đúng phiên này; lịch sử vẫn nằm trong prompt nên mất phiên / CLI
+không resume được vẫn chạy. Trưởng nhóm trả object JSON: `{"question", "why", "options", "recommended"}` (chuẩn hoá
+bằng `prompts.question_from`, dùng chung với `<<<ASK>>>`; thêm câu hỏi, `a = null`, chờ người dùng) hoặc
+`{"done": true, "spec"}` → lưu `spec`, `closed`, `planning`, `_plan` ngay (`lead_busy` giữ suốt). `answer_grill`
+điền `a` (số 1…n = phương án — `pick_option`, cả `answer_task`; `None` = "để trưởng nhóm tự quyết" →
+`prompts.skip_answer(rec)`) rồi hỏi tiếp; `finish_grill` gửi `finish=True` ("STOP the interview", bỏ câu chưa trả
+lời); quá `GRILL_MAX` (15) câu cũng vậy. Không có `spec` thì dùng chính các cặp hỏi–đáp; chốt mà chưa trả lời câu
+nào thì lập kế hoạch với mục tiêu gốc. `closed` = đã chốt: `_plan` không hỏi lại. Lượt không ra câu hỏi/đặc tả (JSON
+hỏng, không còn trưởng nhóm nào chạy được, `AttachmentError`, lỗi khác) → `_grill_error` ghi `error`, khung hỏi đáp
+hiện nút "↻ Hỏi tiếp" (`retry_grill`). `cancel_grill` dừng luôn lượt trưởng nhóm đang chạy (`lead_runs`).
+`grill_command` bóc `/grill xong|bỏ|tiếp` cho TUI và web. `Goal.base_text()` = text + `CLARIFIED REQUIREMENTS:` +
+spec, dùng cho mọi prompt lập kế hoạch/review (qua `full_text()`). Khung hỏi đáp (TUI `GrillBar`, web
+`renderGrill`/`renderAsk`) vẽ theo `Orchestrator.waiting_view()`: câu `/grill` đang chờ trả lời > câu `<<<ASK>>>`
+của agent > trạng thái `/grill` (đang nghĩ / lỗi) — một `/grill` bỏ dở không che câu hỏi của agent; khi đang chờ trả
+lời, câu gõ ở ô nhập (không bắt đầu bằng `/` `!`) là câu trả lời. Mở lại app khi trưởng nhóm đang nghĩ: `setup()`
+ghi `error`, người dùng bấm "↻ Hỏi tiếp".
 
 **Hỏi lại khi lập kế hoạch**: `plan_prompt(can_ask=True)` (mục tiêu mới, chưa có `spec`, không `auto_answer`) cho
 trưởng nhóm trả `{"question", …}` (`QUESTION_SCHEMA`, như `/grill`) thay cho mảng task khi có điểm quan trọng chưa
 rõ. `_plan` thấy câu hỏi → `grill = {"qa": [câu đó], "from_plan": true}`, trạng thái `planning` → `grilling` (notify
 báo "❓ Trưởng nhóm hỏi bạn"), rồi đi đúng luồng `/grill`: trả lời → `_grill_step` hỏi tiếp hoặc chốt `spec` → `_plan`
-lại, lần này có `spec` nên không được hỏi nữa.
+lại, lần này đã `closed` nên không được hỏi nữa. Câu hỏi bắt nguồn từ lúc lập kế hoạch (`from_plan`) dùng
+`grill_prompt(essential_only=True)`: chỉ hỏi tiếp điểm thiết yếu, tối đa `PLAN_ASK_MAX` (3) câu — người dùng không gọi
+`/grill` nên không phỏng vấn cả cây thiết kế.
 
 **Tiếp tục** (`/continue`, F6, nút "↪ Tiếp tục", `ateam continue`): `continue_goal` mở lại mục tiêu đã
 kết thúc (`GOAL_ENDED`) → `planning` với `round = 1` (giới hạn `max_rounds` tính lại), yêu cầu mới thêm vào

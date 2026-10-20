@@ -221,6 +221,22 @@ def answer_prompt(question: str, answer: str, can_ask: bool) -> str:
 SKIP_ANSWER = "(The user did not decide — choose the option you think is best and state your assumption.)"
 
 
+def skip_answer(rec: str = "") -> str:
+    """Người dùng bấm "để trưởng nhóm/agent tự quyết": theo khuyến nghị nếu có (tiếng Anh vì gửi agent)."""
+    return f"(The user did not decide — go with your recommendation: {rec})" if rec else SKIP_ANSWER
+
+
+def question_from(d: dict) -> dict | None:
+    """JSON câu hỏi (question/why/options/recommended — /grill, hỏi lại khi lập kế hoạch, <<<ASK>>>) -> mục
+    {"q", "why", "options", "rec"} hiển thị cho người dùng; None nếu không có câu hỏi."""
+    question = str(d.get("question") or "").strip() if isinstance(d, dict) else ""
+    if not question:
+        return None
+    return {"q": question, "why": str(d.get("why") or "").strip(),
+            "options": [str(x).strip() for x in d.get("options") or [] if str(x).strip()][:6],
+            "rec": str(d.get("recommended") or "").strip()}
+
+
 def fix_resume_prompt(*, command: str, rc: int, output: str, attempt: int, max_attempts: int) -> str:
     """Vòng sửa verify trong cùng phiên: agent nhớ task, chỉ gửi lỗi."""
     return f"""The project's verification command fails after your change. Fix attempt {attempt} of {max_attempts}.
@@ -287,8 +303,10 @@ End your answer with a line 'SUMMARY:' followed by the bullet points (nothing af
 
 
 def grill_prompt(cfg: Config, goal: str, qa: list[dict], cwd: str, notes: str, *, finish: bool,
-                 max_questions: int) -> str:
-    """/grill: trưởng nhóm phỏng vấn người dùng từng câu một trước khi lập kế hoạch."""
+                 max_questions: int, essential_only: bool = False) -> str:
+    """/grill: trưởng nhóm phỏng vấn người dùng từng câu một trước khi lập kế hoạch.
+    essential_only: câu hỏi bắt nguồn từ lúc lập kế hoạch (người dùng không gọi /grill) — chỉ hỏi tiếp điểm
+    thiết yếu, không phỏng vấn cả cây thiết kế."""
     lines = []
     for i, x in enumerate(qa, 1):
         lines.append(f"Q{i}: {x.get('q', '')}")
@@ -297,14 +315,21 @@ def grill_prompt(cfg: Config, goal: str, qa: list[dict], cwd: str, notes: str, *
     if finish:
         task = ("The user wants to STOP the interview now. Do not ask anything else: write the spec from "
                 "what you know, and mark open points as your best assumptions.")
+    elif essential_only:
+        task = (f"The user did not ask for an interview: you asked because something essential was unclear. "
+                f"Ask another question ONLY if something ESSENTIAL is still unclear (it changes what to build, "
+                f"the codebase cannot answer it, guessing risks building the wrong thing); otherwise finish now. "
+                f"You have asked {len(qa)} of at most {max_questions} questions.")
     else:
         task = (f"Ask the NEXT single most important question, or finish if you already have enough to "
                 f"plan well. You have asked {len(qa)} of at most {max_questions} questions.")
+    scope = ("Keep it short: only resolve what is essential to plan correctly." if essential_only else
+             "Walk down each branch of the design tree (scope, user flows, data, edge cases, UX, constraints,\n"
+             "acceptance criteria), resolving dependencies between decisions one at a time.")
     return f"""You are the TEAM LEAD of a team of AI coding agents working in: {cwd}
 
 Before planning this GOAL, you INTERVIEW the user to reach a shared understanding of what to build.
-Walk down each branch of the design tree (scope, user flows, data, edge cases, UX, constraints,
-acceptance criteria), resolving dependencies between decisions one at a time. Ask ONE question per
+{scope} Ask ONE question per
 turn. If a question can be answered by exploring the codebase, explore it instead of asking — briefly,
 only what that question needs. Never
 ask something already answered below. Give 2-4 short concrete options and your recommended answer.
@@ -447,11 +472,10 @@ def parse_ask(text: str) -> dict | None:
         return None
     body = found[-1].strip()
     d = extract_json(body, dict) if body.startswith("{") or "```" in body else None
-    if not isinstance(d, dict) or not str(d.get("question") or "").strip():
+    q = question_from(d) if isinstance(d, dict) else None
+    if not q:
         return {"q": body, "why": "", "options": [], "rec": ""} if body else None
-    opts = [str(o).strip() for o in (d.get("options") or []) if str(o).strip()][:6]
-    return {"q": str(d["question"]).strip(), "why": str(d.get("why") or "").strip(), "options": opts,
-            "rec": str(d.get("recommended") or "").strip()}
+    return q
 
 
 def parse_delegations(text: str) -> list[tuple[str, str, str]]:

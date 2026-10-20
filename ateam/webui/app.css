@@ -118,7 +118,22 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* ---------------------------------------------------------------- khung */
-.app { display: grid; grid-template-columns: 220px 1fr; height: 100vh; }
+.app { display: grid; grid-template-columns: 220px 1fr; height: 100vh; transition: grid-template-columns .15s linear; }
+.side-toggle { margin-left: auto; flex: none; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; cursor: pointer;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius); color: var(--muted); }
+.side-toggle:hover { color: var(--text); background: var(--surface-2); }
+/* thanh bên thu gọn (html.side-min, nút ở .brand): chỉ còn icon, tên mục hiện ở tooltip; số đếm thành badge góc icon */
+@media (min-width: 901px) {
+  .side-min .app { grid-template-columns: 56px 1fr; }
+  .side-min .side { padding-left: 6px; padding-right: 6px; }
+  .side-min .brand { justify-content: center; padding: 2px 0 8px; }
+  .side-min .brand-text, .side-min .side .ver, .side-min .conn span:last-child, .side-min .nav-item span[data-t], .side-min .soon { display: none; }
+  .side-min .side-toggle { margin: 0; }
+  .side-min .side-toggle .chev { transform: scaleX(-1); transform-origin: 14.5px 12px; }
+  .side-min .nav-item { justify-content: center; padding: 8px 0; position: relative; }
+  .side-min .nav-count { position: absolute; top: 1px; right: 2px; min-width: 14px; padding: 0 3px; font-size: 9px; line-height: 12px; background: var(--side); }
+  .side-min .conn { justify-content: center; padding: 4px 0 0; }
+}
 .side {
   background: var(--side); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 12px 8px 10px; gap: 14px; min-height: 0;
@@ -795,6 +810,10 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 }
 .toast.ok { --c: var(--done); } .toast.warn { --c: var(--review); } .toast.error { --c: var(--failed); } .toast.info { --c: var(--accent); }
 .toast.out { opacity: 0; transition: opacity .15s linear; }
+.toast-msg { flex: 1; min-width: 0; }
+.toast-act { flex: none; font: inherit; font-weight: 600; padding: 1px 8px; border-radius: var(--radius); cursor: pointer;
+  background: transparent; color: var(--c, var(--accent)); border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 55%, var(--border)); }
+.toast-act:hover { background: color-mix(in srgb, var(--c, var(--accent)) 14%, transparent); }
 .banner { position: fixed; left: 50%; top: 0; transform: translateX(-50%); z-index: 60; padding: 6px 12px; border-radius: 0 0 var(--radius) var(--radius); background: var(--failed); color: #fff; font-weight: 600; border: 1px solid var(--failed); }
 
 /* ---------------------------------------------------------------- màn hình hẹp */
@@ -802,6 +821,7 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
   .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .side { flex-direction: row; align-items: center; padding: 6px 8px; gap: 8px; border-right: 0; border-bottom: 1px solid var(--border); overflow-x: auto; }
   .brand { border-bottom: 0; padding: 0 4px; }
+  .side-toggle { display: none; }
   .brand-proj, .side-foot .ver, .side-foot .conn span:last-child, .soon, .nav-item span[data-t] { display: none; }
   .nav { flex-direction: row; }
   .side-foot { margin: 0 0 0 auto; flex-direction: row; align-items: center; border-top: 0; padding-top: 0; }
@@ -919,16 +939,27 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 .todo-edit { height: 26px; }
 @media (hover: none) { .todo-x { opacity: 1; } }
 
-/* nhạc lofi (lofi.js): khung nổi góc dưới phải, trên ô nhập lệnh */
-.lofi { position: fixed; right: 16px; bottom: 96px; z-index: 40; width: 320px; max-width: calc(100vw - 32px); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,.35); overflow: hidden; }
+/* nhạc lofi (lofi.js): nút tròn góc dưới phải (trên ô nhập), bấm mới hiện popup điều khiển phía trên nút.
+   Popup đóng chỉ ẩn đi (1px, trong suốt) — iframe YouTube vẫn nằm trong DOM nên nhạc không bị ngắt. */
+.lofi { position: fixed; right: 16px; bottom: 96px; z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.lofi-pop { width: 320px; max-width: calc(100vw - 32px); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,.35); overflow: hidden; }
+.lofi:not(.pop) .lofi-pop { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; box-shadow: none; }
+.lofi-fab {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0;
+  background: var(--surface); color: var(--text-2); border: 1px solid var(--border-strong); box-shadow: 0 6px 18px rgba(0,0,0,.3);
+}
+.lofi-fab:hover { color: var(--text); border-color: var(--accent); }
+.lofi.playing .lofi-fab { border-color: var(--accent); color: var(--accent); }
+.lofi.pop .lofi-fab { background: var(--accent-soft); }
+.lofi-fab .lofi-eq { height: 14px; width: 15px; }
+.lofi-fab svg { width: 18px; height: 18px; }
+.lofi.playing .lofi-fab svg, .lofi:not(.playing) .lofi-fab .lofi-eq { display: none; }
 .lofi-media { aspect-ratio: 16 / 9; background: #000; }
 .lofi-media iframe { width: 100%; height: 100%; border: 0; display: block; }
 .lofi-media audio { display: none; }
 .lofi-media:not(:has(iframe)) { display: none; }
-.lofi.min .lofi-media { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.lofi.min .lofi-more { display: none; }
 .lofi-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
-.lofi-bar input[type=range] { width: 56px; accent-color: var(--accent); }
+.lofi-bar input[type=range] { width: 72px; accent-color: var(--accent); }
 .lofi-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
 .lofi-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; width: 14px; }
 .lofi-eq i { width: 3px; height: 3px; background: var(--accent); border-radius: 1px; }
@@ -942,7 +973,7 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 .lofi-st:hover { color: var(--text); background: var(--surface-2); }
 .lofi-st.on { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .nav-item.playing svg { color: var(--accent); }
-@media (max-width: 480px) { .lofi { right: 8px; left: 8px; bottom: 96px; width: auto; max-width: none; } }
+@media (max-width: 480px) { .lofi { right: 8px; } .lofi-pop { max-width: calc(100vw - 16px); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 /* mở trên điện thoại + chế độ chỉ xem */

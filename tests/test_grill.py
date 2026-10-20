@@ -165,7 +165,10 @@ def test_plan_asks_user_when_unclear(env, project, monkeypatch, tmp_path):
         assert [n.kind for n in w.diff(o.db.tasks(), o.db.goals())] == ["ask"]  # báo người dùng
         assert "Đã trả lời" in o.answer_grill(gid, "Email")
         await idle()
-        assert o.grill_question(o.db.goal(gid))["q"] == "Câu hỏi số 2?"  # hỏi tiếp như /grill
+        assert o.grill_question(o.db.goal(gid))["q"] == "Câu hỏi số 2?"  # hỏi tiếp, chỉ điểm thiết yếu
+        grills = [x for x in full.read_text().split("<<claude>>") if "you INTERVIEW the user" in x]
+        assert "ESSENTIAL is still unclear" in grills[-1] and "at most 3 questions" in grills[-1]
+        assert "Walk down each branch" not in grills[-1]
         o.answer_grill(gid, "B")
         await idle()
         g = o.db.goal(gid)
@@ -178,4 +181,149 @@ def test_plan_asks_user_when_unclear(env, project, monkeypatch, tmp_path):
         gid2 = o.new_goal("CAN_HOI việc khác")
         await idle()
         assert o.db.goal(gid2).status in ("awaiting", "running")
+    asyncio.run(main())
+
+
+def _orch(env, project, monkeypatch, tmp_path):
+    import importlib
+
+    full = tmp_path / "full.log"
+    for k, v in dict(env, ATEAM_FAKE_FULL_LOG=str(full)).items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+    importlib.reload(importlib.import_module("ateam.config"))
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.orchestrator import Orchestrator
+    ensure_global_config()
+    return Orchestrator(project, load_config(project), DB(project / ".ateam/team.db")), full
+
+
+async def _idle(o):
+    for _ in range(200):
+        await asyncio.sleep(0.05)
+        if not o.lead_busy:
+            return
+
+
+def test_grill_session_skip_digit_and_errors(env, project, monkeypatch, tmp_path):
+    """Hỏi đáp tiếp đúng phiên trưởng nhóm; số = phương án; "tự quyết" theo khuyến nghị; lỗi hiện kèm ↻ Hỏi tiếp."""
+    from ateam import mentions
+    from ateam import prompts as P
+    o, full = _orch(env, project, monkeypatch, tmp_path)
+
+    async def main():
+        await o.setup()
+        gid = o.start_grill("Thêm trang đăng nhập")
+        await _idle(o)
+        g = o.db.goal(gid)
+        sid = g.lead_session
+        assert g.question()["q"] == "Câu hỏi số 1?" and sid
+        assert "Walk down each branch" in full.read_text()  # /grill: phỏng vấn đầy đủ
+        o.answer_grill(gid, "2")  # gõ số = chọn phương án
+        await _idle(o)
+        g = o.db.goal(gid)
+        assert g.answered()[0]["a"] == "Phương án B" and g.question()["q"] == "Câu hỏi số 2?"
+        assert g.lead_session == sid  # tiếp phiên cũ, không mở phiên mới mỗi câu
+        assert not o.lead_runs
+
+        # lỗi: không còn trưởng nhóm nào / JSON hỏng / ngoại lệ → ghi lỗi, không kẹt "đang nghĩ"
+        real = o._call_lead
+
+        async def none(*a, **k):
+            return None
+        monkeypatch.setattr(o, "_call_lead", none)
+        o.answer_grill(gid, None)  # để trưởng nhóm tự quyết
+        await _idle(o)
+        g = o.db.goal(gid)
+        assert g.answered()[1]["a"] == P.skip_answer("Phương án A") and "Phương án A" in g.answered()[1]["a"]
+        assert "Không có trưởng nhóm nào" in g.grill["error"] and g.status == "grilling"
+
+        async def garbage(*a, **k):
+            return "không phải JSON"
+        monkeypatch.setattr(o, "_call_lead", garbage)
+        o.retry_grill(gid)
+        await _idle(o)
+        assert "không trả về câu hỏi" in o.db.goal(gid).grill["error"]
+
+        def boom(*a, **k):
+            raise mentions.AttachmentError("tệp quá lớn")
+        orig = P.grill_prompt
+        monkeypatch.setattr(P, "grill_prompt", boom)
+        o.retry_grill(gid)
+        await _idle(o)
+        assert o.db.goal(gid).grill["error"] == "tệp quá lớn" and gid not in o.lead_busy
+        monkeypatch.setattr(P, "grill_prompt", orig)
+        monkeypatch.setattr(o, "_call_lead", real)
+        o.retry_grill(gid)  # hỏi lại được: đủ 2 câu → chốt đặc tả → lập kế hoạch
+        await _idle(o)
+        g = o.db.goal(gid)
+        assert g.spec and g.grill["closed"] and g.status in ("awaiting", "running") and not g.grill["error"]
+
+    asyncio.run(main())
+
+
+def test_grill_finish_without_answers_plans_without_asking(env, project, monkeypatch, tmp_path):
+    """Bấm "Đủ rồi" khi chưa trả lời câu nào, trưởng nhóm không viết đặc tả: lập kế hoạch luôn, không hỏi lại."""
+    o, full = _orch(env, project, monkeypatch, tmp_path)
+
+    async def main():
+        await o.setup()
+        gid = o.start_grill("CAN_HOI trang hồ sơ")
+        await _idle(o)
+        real = o._call_lead
+
+        async def no_spec(prompt, *a, **k):
+            return "{}" if "STOP the interview" in prompt else await real(prompt, *a, **k)
+        monkeypatch.setattr(o, "_call_lead", no_spec)
+        o.finish_grill(gid)
+        await _idle(o)
+        g = o.db.goal(gid)
+        assert g.status in ("awaiting", "running") and g.grill["closed"] and not g.answered()
+        plans = [x for x in full.read_text().split("<<claude>>") if "Reply with ONLY a JSON array" in x]
+        assert plans and "To ask the user first" not in plans[-1]
+
+    asyncio.run(main())
+
+
+def test_waiting_view_stale_grill_does_not_hide_agent_question(env, project, monkeypatch, tmp_path):
+    """/grill bị bỏ dở (lỗi) không che câu hỏi <<<ASK>>> của agent; câu /grill đang chờ thì ưu tiên trước."""
+    from ateam.db import ASKING
+    o, _ = _orch(env, project, monkeypatch, tmp_path)
+    gid = o.db.add_goal("x")
+    o.db.update_goal(gid, status="grilling")
+    o.db.set_grill(gid, {"qa": [], "spec": "", "error": "hỏng"})
+    assert o.waiting_view()["kind"] == "grill" and o.waiting_view()["error"] == "hỏng"
+    tid = o.db.add_task("codex", "t", "t")
+    o.db.update_task(tid, status=ASKING, ask={"qa": [{"q": "Màu gì?", "why": "", "options": ["Đỏ", "Xanh"],
+                                                     "rec": "", "a": None}]})
+    v = o.waiting_view()
+    assert v["kind"] == "ask" and v["task"] == tid and v["question"]["q"] == "Màu gì?"
+    assert "Đã trả lời" in o.answer_task(tid, "2") and o.db.task(tid).ask["qa"][0]["a"] == "Xanh"
+    o.db.update_task(tid, status=ASKING, ask={"qa": [{"q": "Cỡ?", "why": "", "options": [], "rec": "", "a": None}]})
+    o.db.set_grill(gid, {"qa": [{"q": "Ai dùng?", "why": "", "options": [], "rec": "", "a": None}], "spec": ""})
+    assert o.waiting_view()["kind"] == "grill"  # câu /grill đang chờ trả lời: hiện trước
+    assert o.grill_command("bỏ").startswith("Đã bỏ") and o.db.goal(gid).status == "cancelled"
+    assert o.grill_command("Thêm trang") is None  # không phải lệnh con: mục tiêu mới
+
+
+def test_cancel_grill_stops_lead_run(env, project, monkeypatch, tmp_path):
+    """Bỏ mục tiêu khi trưởng nhóm đang nghĩ câu hỏi: dừng luôn tiến trình (khỏi tốn token)."""
+    import time
+    o, _ = _orch(env, project, monkeypatch, tmp_path)
+
+    async def main():
+        await o.setup()
+        gid = o.start_grill("CHAM_HOI thêm trang")
+        for _ in range(100):
+            await asyncio.sleep(0.05)
+            if gid in o.lead_runs:
+                break
+        assert gid in o.lead_runs
+        t0 = time.time()
+        assert "Đã bỏ" in o.cancel_grill(gid)
+        await _idle(o)
+        assert time.time() - t0 < 10 and not o.lead_busy and not o.lead_runs
+        assert o.db.goal(gid).status == "cancelled"
+
     asyncio.run(main())

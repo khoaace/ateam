@@ -41,6 +41,7 @@ fi
 if [[ "$P" == *"you INTERVIEW the user"* ]]; then
   # /grill: hỏi 2 câu (đếm dòng "A<số>:" đã trả lời), rồi chốt đặc tả; người dùng dừng thì chốt ngay
   n=$(printf '%s\n' "$P" | grep -cE '^A[0-9]+:' || true)
+  [[ "$P" == *"CHAM_HOI"* ]] && sleep 30  # trưởng nhóm nghĩ lâu: test bỏ /grill giữa chừng phải dừng được
   if [[ "$P" == *"wants to STOP the interview"* ]] || [ "$n" -ge 2 ]; then
     echo '{"done": true, "spec": "- Đăng nhập bằng email\n- Đã trả lời '"$n"' câu"}'
   else

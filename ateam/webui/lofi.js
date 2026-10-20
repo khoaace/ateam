@@ -1,4 +1,4 @@
-/* Nhạc lofi khi vibe code: khung nổi góc dưới phải, phát radio online — YouTube live (iframe, điều khiển bằng
+/* Nhạc lofi khi vibe code: nút tròn góc dưới phải, bấm mới hiện popup điều khiển phía trên nút; phát radio online — YouTube live (iframe, điều khiển bằng
    postMessage của enablejsapi, không nạp script ngoài) hoặc link stream mp3/aac (<audio>). Đài, âm lượng, link
    riêng lưu theo trình duyệt (localStorage "ateam-lofi"). Trang đặt Referrer-Policy: no-referrer nên iframe tự
    khai referrerpolicy — YouTube từ chối embed không có referrer (lỗi 153). */
@@ -14,7 +14,7 @@ window.Lofi = (() => {
   const L = Object.assign({ station: "lofi", vol: 50, url: "" }, (() => {
     try { return JSON.parse(localStorage.getItem("ateam-lofi") || "{}"); } catch (e) { return {}; }
   })());
-  let playing = false, min = false;
+  let playing = false, popOpen = false;
   const save = () => { try { localStorage.setItem("ateam-lofi", JSON.stringify(L)); } catch (e) { /* chặn lưu */ } };
   const box = () => $("#lofi");
 
@@ -72,35 +72,43 @@ window.Lofi = (() => {
     if (nav) nav.classList.toggle("playing", playing);
     if (!b) return;
     const s = current() || { name: t("lofi_custom") };
-    b.classList.toggle("min", min);
+    b.classList.toggle("pop", popOpen);
     b.classList.toggle("playing", playing);
     $(".lofi-name", b).textContent = s.name;
     $("[data-lf=play]", b).textContent = playing ? "❚❚" : "▶";
     $("[data-lf=play]", b).title = t(playing ? "lofi_pause" : "lofi_play");
-    $("[data-lf=min]", b).textContent = min ? "▴" : "▾";
-    $("[data-lf=min]", b).title = t(min ? "lofi_show" : "lofi_hide");
+    const fab = $(".lofi-fab", b);
+    fab.title = t("lofi") + " · " + s.name;
+    fab.setAttribute("aria-expanded", popOpen ? "true" : "false");
     $$(".lofi-st", b).forEach((x) => x.classList.toggle("on", x.dataset.st === L.station));
   }
+  function setPop(on) { popOpen = on; render(); }
 
   function open() {
     const d = document.createElement("div");
     d.className = "lofi";
     d.id = "lofi";
     d.innerHTML = `
-      <div class="lofi-media" id="lofi-media"></div>
-      <div class="lofi-bar">
-        <span class="lofi-eq" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="lofi-name"></span>
-        <button class="mini" data-lf="play"></button>
-        <input type="range" min="0" max="100" step="5" value="${L.vol}" aria-label="${esc(t("sound_volume"))}">
-        <button class="mini" data-lf="min"></button>
-        <button class="mini" data-lf="close" title="${esc(t("lofi_close"))}">✕</button>
+      <div class="lofi-pop" role="dialog" aria-label="${esc(t("lofi"))}">
+        <div class="lofi-media" id="lofi-media"></div>
+        <div class="lofi-bar">
+          <span class="lofi-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="lofi-name"></span>
+          <button class="mini" data-lf="play"></button>
+          <input type="range" min="0" max="100" step="5" value="${L.vol}" aria-label="${esc(t("sound_volume"))}">
+          <button class="mini" data-lf="hide" title="${esc(t("lofi_hide"))}">▾</button>
+          <button class="mini" data-lf="close" title="${esc(t("lofi_close"))}">✕</button>
+        </div>
+        <div class="lofi-more">
+          <div class="lofi-sts">${STATIONS.map((s) => `<button class="lofi-st" data-st="${s.key}">${esc(s.name)}</button>`).join("")}</div>
+          <input class="field one" id="lofi-url" placeholder="${esc(t("lofi_custom_ph"))}" value="${esc(L.url)}" spellcheck="false" autocomplete="off">
+          <div class="muted small">${esc(t("lofi_hint"))}</div>
+        </div>
       </div>
-      <div class="lofi-more">
-        <div class="lofi-sts">${STATIONS.map((s) => `<button class="lofi-st" data-st="${s.key}">${esc(s.name)}</button>`).join("")}</div>
-        <input class="field one" id="lofi-url" placeholder="${esc(t("lofi_custom_ph"))}" value="${esc(L.url)}" spellcheck="false" autocomplete="off">
-        <div class="muted small">${esc(t("lofi_hint"))}</div>
-      </div>`;
+      <button class="lofi-fab" data-lf="fab" aria-label="${esc(t("lofi"))}">
+        <svg viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg>
+        <span class="lofi-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+      </button>`;
     document.body.appendChild(d);
     $("input[type=range]", d).addEventListener("input", (e) => setVolume(+e.target.value));
     $("#lofi-url", d).addEventListener("keydown", (e) => {
@@ -114,11 +122,18 @@ window.Lofi = (() => {
       if (st) { L.station = st.dataset.st; save(); load(); return; }
       if (!b) return;
       if (b.dataset.lf === "play") toggle();
-      else if (b.dataset.lf === "min") { min = !min; render(); }
+      else if (b.dataset.lf === "fab") setPop(!popOpen);
+      else if (b.dataset.lf === "hide") setPop(false);
       else if (b.dataset.lf === "close") close();
     });
+    popOpen = true;
     load();
   }
+  /* bấm ra ngoài → thu về nút tròn (nhạc vẫn phát); bỏ qua nút ở thanh bên vì nó tự bật/tắt popup */
+  window.addEventListener("pointerdown", (e) => {
+    if (!popOpen || !box() || box().contains(e.target) || e.target.closest("[data-action=lofi]")) return;
+    setPop(false);
+  });
   function toggle() {
     const a = $("#lofi-media audio");
     if (!$("#lofi-media").childElementCount) return load();
@@ -130,10 +145,13 @@ window.Lofi = (() => {
   function close() {
     const b = box();
     if (b) b.remove();
-    playing = false; min = false;
+    playing = false; popOpen = false;
     render();
   }
 
-  /* nút ở thanh bên: chưa mở → mở và phát; đang mở → thu gọn / mở rộng (tắt hẳn bằng ✕) */
-  return { open: () => { if (!box()) open(); else { min = !min; render(); } }, STATIONS, parse };
+  /* nút ở thanh bên: chưa mở → hiện nút tròn, phát và mở popup; đã có → bật/tắt popup (tắt nhạc hẳn bằng ✕) */
+  return {
+    open: () => { if (!box()) open(); else setPop(!popOpen); },
+    popOpen: () => popOpen && !!box(), hidePop: () => setPop(false), STATIONS, parse,
+  };
 })();

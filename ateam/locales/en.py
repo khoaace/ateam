@@ -1918,8 +1918,6 @@ EN: dict[str, str] = {
         "  · its tasks wait for the quota",
     "\n○ rảnh":
         "\n○ idle",
-    "(Tôi không chắc — bạn tự quyết":
-        "(I'm not sure — you decide",
     "Đang chạy — Dừng trước rồi mới xoá":
         "Running — stop it before removing",
     "Dùng: /{cmd} <agent> <giá trị|->  — agent: {v}":
@@ -1944,8 +1942,6 @@ EN: dict[str, str] = {
         "  · {v} lines",
     "  · gần nhất #{id} ":
         "  · last #{id} ",
-    ", theo khuyến nghị: {v})":
-        ", per your recommendation: {v})",
     "Dùng: /models [agent] [làm mới] — agent: {v}":
         "Usage: /models [agent] [refresh] — agents: {v}",
     "🗑 Dọn task đã xong":
@@ -2175,10 +2171,6 @@ EN: dict[str, str] = {
         'Ask more',
     'Bỏ mục tiêu':
         'Drop goal',
-    '(Tôi không chắc — bạn tự quyết)':
-        "(I'm not sure — you decide)",
-    '(Tôi không chắc — bạn tự quyết, theo khuyến nghị: {v})':
-        "(I'm not sure — you decide, going with the recommendation: {v})",
     'Nhập mục tiêu cho trưởng nhóm · / lệnh · ! lệnh terminal · @ nhắc file':
         'Type a goal for the lead · / commands · ! terminal command · @ mention a file',
     "Nhập mục tiêu (chạy theo workflow '{wf}') · / lệnh · ! lệnh terminal · @ nhắc file":
@@ -3447,4 +3439,14 @@ EN: dict[str, str] = {
         "Typing a goal → runs workflow '{name}' (/goal: the lead plans)",
     'Gõ mục tiêu → trưởng nhóm lập kế hoạch':
         'Typing a goal → the lead plans it',
+    "Xem":
+        "View",
+    "Thu gọn thanh bên":
+        "Collapse sidebar",
+    "Mở rộng thanh bên":
+        "Expand sidebar",
+    "Không có trưởng nhóm nào chạy được lúc này (hết hạn mức hoặc chưa cài — xem log hệ thống) — bấm ↻ Hỏi tiếp để thử lại":
+        "No lead can run right now (rate-limited or not installed — see the system log) — press ↻ Ask again to retry",
+    "Lỗi khi hỏi đáp: {e!r}":
+        "Error during Q&A: {e!r}",
 }

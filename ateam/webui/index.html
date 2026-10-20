@@ -9,6 +9,7 @@
 <script>
   // theme trước khi vẽ: không nháy trắng
   try { var th = localStorage.getItem("ateam-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
+  try { if (localStorage.getItem("ateam-side") === "min") document.documentElement.classList.add("side-min"); } catch (e) {}
 </script>
 </head>
 <body>
@@ -20,6 +21,9 @@
         <div class="brand-name">ateam</div>
         <button class="brand-proj" id="proj" type="button" data-action="open-project"></button>
       </div>
+      <button class="side-toggle" id="side-toggle" type="button" data-action="side-toggle">
+        <svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/><path class="chev" d="M15.5 10l-2 2 2 2"/></svg>
+      </button>
     </div>
     <nav class="nav" id="nav">
       <button class="nav-item active" data-view="board">

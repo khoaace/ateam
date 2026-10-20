@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.28.0 — 20/10/2026
+
+- **/grill gọn và chắc hơn**: các lượt hỏi tiếp đúng phiên trưởng nhóm (không khám phá lại dự án mỗi câu, lập kế
+  hoạch sau đó nhớ những gì đã đọc); trưởng nhóm hỏi lại lúc lập kế hoạch thì chỉ hỏi điểm thiết yếu, tối đa 3 câu
+  (trước đây chuyển sang phỏng vấn đầy đủ tới 15 câu); lỗi giữa chừng (không còn trưởng nhóm nào chạy được, JSON hỏng,
+  tệp đính kèm quá lớn) hiện rõ kèm nút ↻ Hỏi tiếp thay vì khung trống; bỏ mục tiêu khi trưởng nhóm đang nghĩ thì dừng
+  luôn tiến trình; "Để trưởng nhóm tự quyết" do ateam soạn câu trả lời theo khuyến nghị (như câu hỏi của agent);
+  bấm "Đủ rồi" khi chưa trả lời câu nào thì lập kế hoạch luôn, không hỏi lại.
+- Một `/grill` bỏ dở (đang lỗi / đang nghĩ) **không còn che câu hỏi của agent** (`<<<ASK>>>`) ở khung hỏi đáp và ô nhập.
+- Web: sidebar thu gọn được (chỉ còn icon, nhớ theo trình duyệt); nhạc lofi thành nút tròn, bấm mới hiện popup điều
+  khiển (nhạc vẫn phát khi đóng popup); `/continue t<id> …` và `/update` không tự bật ngăn chi tiết che bảng việc nữa
+  — thông báo có nút **Xem**.
+
 ## 0.27.0 — 20/10/2026
 
 - **Chọn luồng ngay cạnh ô nhập** (TUI: nút bên trái ô nhập hoặc **F4**; web: nút trong ô nhập): gõ mục tiêu sẽ do

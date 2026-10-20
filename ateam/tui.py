@@ -3223,64 +3223,56 @@ class GrillBar(Vertical):
                     "dim")
         return body
 
-    def update_ask(self, app: "TeamApp") -> bool:
+    def update_ask(self, v: dict) -> bool:
         """Câu hỏi của agent giữa task (<<<ASK>>>). True khi vừa có câu hỏi mới."""
-        t = app.orch.ask_active(app.snap_tasks())
-        q = t.question() if t else None
-        if not q:
-            self.task_id, self.question, self._sig = None, None, ()
-            self.display = False
-            return False
-        is_new = self.task_id != t.id or self.question is None or self.question.get("q") != q.get("q")
-        self.goal_id, self.task_id, self.question = None, t.id, q
+        q = v["question"]
+        is_new = self.task_id != v["task"] or self.question is None or self.question.get("q") != q.get("q")
+        self.goal_id, self.task_id, self.question = None, v["task"], q
         self.display = True
-        sig = ("ask", t.id, q.get("q"), self.size.width)
+        sig = ("ask", v["task"], q.get("q"), self.size.width)
         if sig == self._sig:
             return False
         self._sig = sig
         head = Text()
-        head.append(tr("❓ {agent} hỏi · task #{tid} ", agent=t.agent, tid=t.id), "bold")
-        head.append(t.title[:160])
-        others = sum(1 for x in app.snap_tasks() if x.status == ASKING) - 1
-        if others > 0:
-            head.append(tr(" · còn {others} task khác đang hỏi", others=others), "dim")
+        head.append(tr("❓ {agent} hỏi · task #{tid} ", agent=v["agent"], tid=v["task"]), "bold")
+        head.append(v["title"][:160])
+        if v["others"] > 0:
+            head.append(tr(" · còn {others} task khác đang hỏi", others=v["others"]), "dim")
         self.query_one("#grill-head", Static).update(head)
         width = max(40, (self.size.width or 120) - 4)
-        n = len((t.ask or {}).get("qa") or [])
-        self.query_one("#grill-q", Static).update(self._question(q, tr("❓ Câu {v}: ", v=n), width))
+        self.query_one("#grill-q", Static).update(self._question(q, tr("❓ Câu {v}: ", v=v["n"]), width))
         self._buttons(True)
         return is_new
 
     def update_grill(self, app: "TeamApp") -> bool:
-        """Vẽ lại theo DB. Trả về True khi vừa có câu hỏi MỚI (để app báo và đưa con trỏ về ô nhập)."""
-        g = app.orch.grill_active(app.snap_goals())
-        if not g:
-            self.goal_id = None
-            return self.update_ask(app)
+        """Vẽ lại theo DB (Orchestrator.waiting_view: câu /grill chờ trả lời > câu <<<ASK>>> > trạng thái /grill).
+        Trả về True khi vừa có câu hỏi MỚI (để app báo và đưa con trỏ về ô nhập)."""
+        v = app.orch.waiting_view(app.snap_goals(), app.snap_tasks())
+        if not v:
+            self.goal_id = self.task_id = self.question = None
+            self._sig = ()
+            self.display = False
+            return False
+        if v["kind"] == "ask":
+            return self.update_ask(v)
         self.task_id = None
         self._buttons(False)
-        busy = g.id in app.orch.lead_busy
-        q = None if busy else app.orch.grill_question(g)
-        data = g.grill or {}
-        qa = data.get("qa") or []
-        err = "" if busy else str(data.get("error") or "")
-        sig = (g.id, len(qa), q is None, err, busy, app._frame if busy else 0, self.size.width)
-        is_new = q is not None and (self.question is None or self.goal_id != g.id
+        busy, q, err = v["busy"], v["question"], v["error"]
+        sig = (v["goal"], v["n"], q is None, err, busy, app._frame if busy else 0, self.size.width)
+        is_new = q is not None and (self.question is None or self.goal_id != v["goal"]
                                     or self.question.get("q") != q.get("q"))
-        self.goal_id, self.question = g.id, q
+        self.goal_id, self.question = v["goal"], q
         self.display = True
         if sig == self._sig:
             return False
         self._sig = sig
-        n_answered = sum(1 for x in qa if x.get("a") is not None)
         head = Text()
-        head.append(f"🎯 #{g.id} ", "bold")
-        head.append(g.text.splitlines()[0][:160] if g.text else "")
-        head.append(tr("   · đã trả lời {n_answered} câu", n_answered=n_answered), "dim")
-        others = sum(1 for x in app.snap_goals() if x.status == "grilling") - 1
-        if others > 0:
+        head.append(f"🎯 #{v['goal']} ", "bold")
+        head.append(v["text"].splitlines()[0][:160] if v["text"] else "")
+        head.append(tr("   · đã trả lời {n_answered} câu", n_answered=v["answered"]), "dim")
+        if v["others"] > 0:
             head.append(tr(" · còn {others} mục tiêu khác đang hỏi đáp (hiện sau khi xong mục tiêu "
-                           "này)", others=others), "dim")
+                           "này)", others=v["others"]), "dim")
         self.query_one("#grill-head", Static).update(head)
         body = Text()
         if busy:
@@ -3288,7 +3280,7 @@ class GrillBar(Vertical):
         elif err:
             body.append(f"⚠ {err}", "bold red")
         elif q:
-            body = self._question(q, tr("❓ Câu {v}: ", v=len(qa)), max(40, (self.size.width or 120) - 4))
+            body = self._question(q, tr("❓ Câu {v}: ", v=v["n"]), max(40, (self.size.width or 120) - 4))
         self.query_one("#grill-q", Static).update(body)
         self.query_one("#grill-done", Button).disabled = busy
         self.query_one("#grill-skip", Button).display = q is not None
@@ -6850,12 +6842,9 @@ class TeamApp(App):
             if bar.task_id is None:  # câu hỏi của agent đã có thông báo riêng (notify.Watcher)
                 self.notify(tr("❓ Trưởng nhóm hỏi — trả lời ở ô nhập (hoặc gõ số phương án)"), timeout=5)
 
-    def answer_grill(self, text: str) -> None:
+    def answer_grill(self, text: str | None) -> None:
+        """Trả lời câu đang hiện ở khung hỏi đáp (số 1…n = chọn phương án; None = để trưởng nhóm tự quyết)."""
         bar = self.query_one("#grill", GrillBar)
-        q = bar.question
-        opts = (q or {}).get("options") or []
-        if text.strip().isdigit() and 1 <= int(text.strip()) <= len(opts):
-            text = opts[int(text.strip()) - 1]  # gõ số = chọn phương án đó
         if bar.task_id is not None:
             self.notify(self.orch.answer_task(bar.task_id, text))
         else:
@@ -6907,9 +6896,7 @@ class TeamApp(App):
             if bid == "grill-done":
                 self.notify(o.finish_grill(bar.goal_id))
             elif bid == "grill-skip":
-                q = bar.question or {}
-                self.answer_grill(tr("(Tôi không chắc — bạn tự quyết")
-                                  + (tr(", theo khuyến nghị: {v})", v=q['rec']) if q.get("rec") else ")"))
+                self.answer_grill(None)
             elif bid == "grill-retry":
                 self.notify(o.retry_grill(bar.goal_id))
             elif bid == "grill-cancel":
@@ -7817,13 +7804,9 @@ class TeamApp(App):
             self.call_later(self.action_quit)
             return
         elif cmd in ("grill", "grill-me", "hoi"):
-            sub = rest.strip().lower()
-            if sub in ("xong", "done", "chot", "chốt"):
-                self.notify(o.finish_grill(None))
-            elif sub in ("bỏ", "bo", "huỷ", "huy", "cancel"):
-                self.notify(o.cancel_grill(None))
-            elif sub in ("tiếp", "tiep", "retry"):
-                self.notify(o.retry_grill(None))
+            msg = o.grill_command(rest)
+            if msg is not None:
+                self.notify(msg)
             elif not self.cfg.agents.get(self.cfg.lead):
                 self.notify(tr("Không có trưởng nhóm '{lead}' trong cấu hình", lead=self.cfg.lead), severity="error")
                 return

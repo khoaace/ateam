@@ -169,6 +169,15 @@ class Goal:
     def spec(self) -> str:
         return str((self.grill or {}).get("spec") or "")
 
+    def question(self) -> dict | None:
+        """Câu hỏi /grill đang chờ người dùng trả lời (None: trưởng nhóm đang nghĩ / chưa hỏi) — như Task.question."""
+        qa = (self.grill or {}).get("qa") or []
+        return qa[-1] if qa and qa[-1].get("a") is None else None
+
+    def answered(self) -> list[dict]:
+        """Các cặp hỏi–đáp /grill người dùng đã trả lời."""
+        return [x for x in (self.grill or {}).get("qa") or [] if x.get("a") is not None]
+
     def base_text(self) -> str:
         """Text gốc + bản đặc tả chốt sau khi hỏi đáp (/grill), nếu có."""
         if not self.spec:
