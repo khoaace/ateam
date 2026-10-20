@@ -43,6 +43,8 @@ from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, T
                      save_project_setting, workflow_to_dict)
 from .db import ACTIVE, ASKING, DB, GOAL_ENDED
 from .orchestrator import CHAT, SYSTEM, Orchestrator
+from .grid import GridHub
+from . import vterm
 from .logtail import LOG_TAIL_BYTES, read_log_tail  # noqa: F401 (test import từ tui)
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, tr
 
@@ -189,7 +191,8 @@ Khác:
   /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
   /team  /board  /term  /git  /code chuyển tab Đội / Bảng việc / Terminal / Git / Code (Ctrl+T xoay vòng)
-  Alt+1 … Alt+8                     tới thẳng tab theo thứ tự (Mac: bật "Use Option as Meta" trong terminal)
+  /grid [agent]                     tab 🔲 Lưới: mỗi ô là CLI thật của một agent (F10 sắp xếp, kéo tiêu đề đổi chỗ)
+  Alt+1 … Alt+9                     tới thẳng tab theo thứ tự (Mac: bật "Use Option as Meta" trong terminal)
 
 Lệnh terminal (tab 💻 Terminal):
   !<lệnh>                           chạy lệnh trong thư mục dự án, vd !yarn dev, !make test
@@ -288,6 +291,7 @@ COMMANDS = [
     ("search", tr("[từ khoá]"), tr("tìm & thay trong toàn dự án (F3), như VS Code")),
     ("plan", tr("[mục tiêu]"), tr("xem lại kế hoạch của mục tiêu, kể cả đã duyệt / đã xong")),
     ("todo", tr("[việc cần làm]"), tr("mở tab To-do (lưu ngoài repo); kèm nội dung thì thêm việc")),
+    ("grid", tr("[agent]"), tr("mở tab 🔲 Lưới: mỗi ô là CLI thật của một agent; kèm agent thì thêm ô")),
     ("continue", tr("<m12|t40> <yêu cầu>"), tr("tiếp tục mục tiêu / thread đã xong (F6)")),
     ("note", tr("<nội dung>"), tr("ghi chú chung cho cả đội")),
     ("diff", "<task>", tr("xem thay đổi của task")),
@@ -4776,7 +4780,8 @@ class TeamApp(App):
         Binding("ctrl+p", "palette('')", tr("Mở nhanh file"), show=False, priority=True),
         Binding("f8,ctrl+shift+p", "palette('>')", tr("Lệnh"), show=False, priority=True),
         Binding("f9,ctrl+shift+o", "palette('@')", tr("Symbol"), show=False, priority=True),
-        *[Binding(f"alt+{i + 1}", f"goto_tab({i})", show=False, priority=True) for i in range(8)],
+        Binding("f10", "grid_arrange", tr("Sắp xếp lưới"), show=False, priority=True),
+        *[Binding(f"alt+{i + 1}", f"goto_tab({i})", show=False, priority=True) for i in range(9)],
     ]
 
     def __init__(self, root: Path, cfg: Config, db: DB, setup: bool = False):
@@ -4819,6 +4824,15 @@ class TeamApp(App):
         self.notices = notify.Watcher()  # báo khi task lỗi / chờ duyệt (so trạng thái giữa các lượt vẽ)
         self._refresh_pending = False
         self._row_timer = None  # hẹn nạp log của dòng đang chọn (lướt bảng)
+        # tab 🔲 Lưới: CLI thật của agent trong từng ô (grid.GridHub dùng chung với web), màn hình vterm theo ô
+        self.grid = GridHub(root, lambda: self.cfg, lambda a: self.orch.terminal_session(a))
+        self.grid.listen(self._on_grid)
+        self.grid_screens: dict[str, vterm.Screen] = {}
+        self.grid_focused: str | None = None
+        self.grid_zoom: str | None = None
+        self.grid_arrange = False  # F10: phím mũi tên… sắp xếp ô thay vì gửi vào CLI
+        self.grid_drag: str | None = None
+        self._last_key = ""
 
     # ------------------------------------------------------------------ layout
     def compose(self) -> ComposeResult:
@@ -4846,6 +4860,9 @@ class TeamApp(App):
                             if a.enabled:
                                 yield AgentPane(name)
                     yield Timeline(id="timeline")
+            with TabPane(tr("🔲 Lưới"), id="tab-grid"):
+                from .tui_grid import GridPanel
+                yield GridPanel(id="grid-panel")
             with TabPane("💻 Terminal", id="tab-term"):
                 with Horizontal(id="term"):
                     with Vertical(id="jobs-side"):
@@ -5160,12 +5177,68 @@ class TeamApp(App):
         for line in text.splitlines():
             log.write(line)
 
+    # ------------------------------------------------------------------ lưới (tab 🔲 Lưới)
+    def grid_screen(self, cid: str) -> vterm.Screen:
+        scr = self.grid_screens.get(cid)
+        if scr is None:
+            t = self.grid.terms.get(cid)
+
+            def reply(b: bytes, cid=cid) -> None:  # trả lời truy vấn của CLI (vị trí con trỏ…)
+                t2 = self.grid.terms.get(cid)
+                if t2 and t2.alive:
+                    t2.session.write(b)
+            scr = self.grid_screens[cid] = vterm.Screen(24, 80, reply=reply)
+            if t and t.buf:
+                scr.feed(bytes(t.buf))
+        return scr
+
+    def _on_grid(self, cid: str, kind: str, payload) -> None:
+        if kind == "data":
+            if cid in self.grid_screens:
+                self.grid_screens[cid].feed(payload)
+            else:
+                self.grid_screen(cid)  # màn hình mới nạp cả bộ đệm (đã gồm payload)
+        elif kind == "layout":
+            for k in [k for k in self.grid_screens if not self.grid.layout.find(k)]:
+                del self.grid_screens[k]  # ô đã đóng
+
+    def grid_tab_shown(self) -> None:
+        from .tui_grid import GridCell, GridPanel
+        panel = self.query_one("#grid-panel", GridPanel)
+        cells = list(panel.query(GridCell))
+        target = next((g for g in cells if g.cell_id == self.grid_focused), cells[0] if cells else None)
+        if target:
+            target.focus_term()
+
+    def action_grid_arrange(self) -> None:
+        from .tui_grid import GridPanel
+        self.grid_arrange = not self.grid_arrange
+        self.query_one("#grid-panel", GridPanel).set_hint("")
+        if self.grid_arrange:
+            self.grid_tab_shown()
+
+    def grid_arrange_key(self, key: str) -> None:
+        from .tui_grid import GridPanel
+        self.query_one("#grid-panel", GridPanel).arrange_key(key)
+
     # ------------------------------------------------------------------ code (tab 📝 Code)
     CODE_LIMIT = 10  # số buffer giữ cùng lúc
     # phím tắt của app trùng phím vim (Ctrl+D/U/R…): nhường cho editor khi đang gõ trong đó
     CODE_YIELD = {"diff", "cancel_task", "retry", "approve", "continue", "merge", "syslog"}
 
+    async def on_event(self, event) -> None:
+        if isinstance(event, events.Key):
+            self._last_key = event.key  # check_action: phím Ctrl khi đang gõ trong ô của tab Lưới là của CLI
+        await super().on_event(event)
+
     def check_action(self, action: str, parameters: tuple) -> bool | None:
+        if action == "grid_arrange":
+            return self.query_one("#tabs", TabbedContent).active == "tab-grid" and not isinstance(
+                self.screen, ModalScreen)
+        if self._last_key.startswith("ctrl+") and action != "quit":
+            from .tui_grid import TermView
+            if isinstance(self.focused, TermView):
+                return False  # Ctrl+R, Ctrl+T, Ctrl+O… trong CLI: nhường cho CLI
         if action == "palette" and isinstance(self.screen, ModalScreen):
             return False  # đang mở popup khác (kể cả chính palette): để phím cho popup đó
         if action == "retry" and isinstance(self.screen, SearchScreen):
@@ -6598,6 +6671,8 @@ class TeamApp(App):
                 self.run_worker(self.query_one("#custom-tab", CustomPanel).refill(), exclusive=False)
             elif event.pane.id == "tab-code":
                 self.code_tab_shown()
+            elif event.pane.id == "tab-grid":
+                self.grid_tab_shown()
             elif event.pane.id == "tab-todo":
                 panel = self.query_one("#todo-tab", TodoPanel)
                 panel.reload()
@@ -7076,7 +7151,7 @@ class TeamApp(App):
             return
         self.push_screen(PlanViewScreen(g, self.db.tasks(goal_id=g.id)))
 
-    TAB_ORDER = ["tab-board", "tab-team", "tab-term", "tab-git", "tab-code", "tab-todo", "tab-custom", "tab-dash"]
+    TAB_ORDER = ["tab-board", "tab-team", "tab-grid", "tab-term", "tab-git", "tab-code", "tab-todo", "tab-custom", "tab-dash"]
 
     def action_toggle_tab(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
@@ -7085,7 +7160,7 @@ class TeamApp(App):
         self.refresh_view()
 
     def action_goto_tab(self, i: int) -> None:
-        """Alt+1…8: tới thẳng tab theo thứ tự trên thanh tab."""
+        """Alt+1…9: tới thẳng tab theo thứ tự trên thanh tab."""
         if 0 <= i < len(self.TAB_ORDER):
             self.query_one("#tabs", TabbedContent).active = self.TAB_ORDER[i]
             self.refresh_view()
@@ -7149,6 +7224,7 @@ class TeamApp(App):
                                            yes=tr("Thoát, bỏ thay đổi")), done)
             return
         self.shell.stop_all()  # không để lại dev server mồ côi sau khi thoát
+        self.grid.shutdown()  # CLI trong các ô của tab 🔲 Lưới
         for run in list(self.orch.runs.values()):
             if run is not None:
                 run.cancel()
@@ -7754,6 +7830,14 @@ class TeamApp(App):
                 todos.apply(self.root, "add", {"text": rest})
                 self.notify(tr("✅ Đã thêm vào To-do"))
             self.query_one("#tabs", TabbedContent).active = "tab-todo"
+            return
+        elif cmd == "grid":
+            self.query_one("#tabs", TabbedContent).active = "tab-grid"
+            agent = rest.strip()
+            if agent:
+                from .tui_grid import GridPanel
+                panel = self.query_one("#grid-panel", GridPanel)
+                self.run_worker(panel._add({"agent": agent, "resume": True}), group="grid-add")
             return
         elif cmd == "flow-setup":
             self.open_default_flow()

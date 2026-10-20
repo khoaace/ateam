@@ -267,6 +267,24 @@ terminal điều khiển (`TIOCSCTTY` sau `setsid`) để đổi kích thước 
 khi thoát; tab đóng / server tắt thì đóng hết. Trình duyệt: `xterm.js` + addon fit ở `webui/vendor/` (chép từ
 `scripts/editor`, `npm run term`), nạp khi mở lần đầu.
 
+## Lưới terminal (tab 🔲 Lưới, `/grid`)
+
+Mỗi ô là CLI tương tác thật của một agent (`AgentConfig.interactive_argv(session, model=, effort=)`; agent tuỳ chỉnh
+không có chế độ tương tác nên không thêm được). `grid.py`:
+- `Layout` = danh sách `Column` (độ rộng tương đối `w`), mỗi cột nhiều `Cell` (độ cao tương đối `h`). `move(src, dst,
+  where)` với `where ∈ WHERE` (`center` đổi chỗ, `left/right` cột mới cạnh ô đích, `top/bottom` chèn vào cột đích);
+  `apply(preset)` xếp lại theo `PRESET_SHAPES` (stack, cols2, auto, lead, row). Lưu `.ateam/grid.json` (ghi atomic)
+  — mở lại ateam thì ô hiện "chưa mở", Enter/⟲ mới chạy CLI (tiếp tục phiên nếu `resume`).
+- `GridHub` dùng chung TUI ↔ web: mỗi ô một `PtySession` + buffer output (256KB) để vẽ lại khi màn hình/tab mới
+  gắn vào; `write` với ô `bcast` thì gửi cho mọi ô bật "gửi tất cả"; sự kiện `data|exit|layout` qua `listen()`.
+- TUI (`tui_grid.py`): `TermView` vẽ `vterm.Screen` (giả lập VT100/xterm thuần Python: CSI/SGR/OSC, alt screen,
+  scroll region, ký tự rộng, lịch sử cuộn) bằng `render_line`, làm mới 30fps khi `Screen.version` đổi; phím →
+  `vterm.encode`. Khi ô đang focus, `App.check_action` trả False cho mọi binding Ctrl (trừ thoát) để Ctrl+C/Ctrl+R…
+  tới CLI. F10 = chế độ sắp xếp bằng phím; kéo tiêu đề ô (`GridHead`) thả lên ô khác, vùng thả theo mép 25%.
+- Web: op `grid_attach|add|start|in|size|close|move|preset|sizes|bcast|cell` (chỉ `grid_attach` được ở
+  `--readonly`); tin `grid` (bố cục + trạng thái), `gpty` (base64), `gpty_exit`. `grid.js` giữ một xterm mỗi ô qua
+  các lần dựng lại, kéo thả HTML5 tiêu đề ô, kéo khe đổi `w`/`h` (`grid_sizes`).
+
 ## Lệnh terminal (`!lệnh`)
 
 `shell.ShellManager` (một instance trong `TeamApp`, tách khỏi Orchestrator — lệnh của người dùng không phải
@@ -488,6 +506,7 @@ thấy `tui.BusyApp`; dưới web driver `/lang` chỉ thoát app (không `execv
 | `<dự án>/.ateam/state.json` | `verify_command` đặt bằng `/verify` |
 | `<dự án>/.ateam/team.db` | bảng việc |
 | `<dự án>/.ateam/logs/` | `system.log`, `lead.log`, `t<id>.log` |
+| `<dự án>/.ateam/grid.json` | bố cục tab 🔲 Lưới (ô, agent, model/effort, kích thước) |
 | `<dự án>/.ateam/tui.lock` | khoá chỉ-1-phiên giao diện (flock, tự nhả khi tiến trình thoát) |
 | `<dự án>/.ateam/worktrees/` | worktree tạm của task (chế độ worktree) |
 | `<dự án>/.ateam/.gitignore` | `*` — cả thư mục không vào git |

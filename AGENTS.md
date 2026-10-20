@@ -32,6 +32,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/wizard.py`, `ateam/reports.py` | Logic dùng chung TUI ↔ web: wizard /setup, form /custom, popup Luồng mặc định (`wizard`); /usage, dashboard + lịch sử mục tiêu, /agents, /flow, /models, gợi ý /continue (`reports`) |
 | `ateam/orchestrator.py` | Lõi: lập kế hoạch, `tick()` lập lịch, `_run_task`, verify, worktree/merge, hạn mức, review |
 | `ateam/runner.py` | `Run`: chạy 1 tiến trình (pipe hoặc pty), stream từng dòng, timeout, huỷ theo process group |
+| `ateam/grid.py`, `ateam/vterm.py`, `ateam/tui_grid.py`, `ateam/webui/grid.js` | Tab 🔲 Lưới (`/grid`): mỗi ô là CLI tương tác thật của một agent trong pty. `grid.py`: bố cục cột/ô, preset, lưu `.ateam/grid.json`, `GridHub` giữ phiên pty + buffer cho cả TUI lẫn web; `vterm.py`: giả lập terminal VT100/xterm thuần Python cho TUI; `tui_grid.py`: `GridPanel`, `TermView`, `GridAddScreen`; `grid.js`: lưới xterm.js, kéo thả, kéo khe đổi kích thước |
 | `ateam/pty_session.py`, `ateam/logtail.py` | `PtySession`: tiến trình tương tác trong pty nối hai chiều với xterm.js ("Mở trong terminal" ở web, chat 💬); `read_tail`/`read_log_tail`: đọc phần cuối file log |
 | `ateam/config.py` | `DEFAULT_CONFIG` (TOML), dataclass `Config`/`AgentConfig`/`VerifyConfig`/`Workflow`, `AgentConfig.argv()`, state.json, custom.toml (agent/workflow tuỳ chỉnh, mẫu) |
 | `ateam/db.py` | Schema SQLite + migration cột, `Task`/`Goal`, thống kê `runs` |

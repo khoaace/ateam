@@ -18,5 +18,20 @@ fi
 if [ -n "${ATEAM_FAKE_FULL_LOG:-}" ]; then
   echo "<<$fake_name>> $*" >> "$ATEAM_FAKE_FULL_LOG"
 fi
+# Chế độ tương tác (tab 🔲 Lưới, ⌨ Mở trong terminal): stdin là terminal và không có cờ headless → REPL nhỏ:
+# in lại dòng gõ vào; "size" in kích thước pty; "exit" thoát
+fake_headless=0
+for a in "$@"; do case "$a" in -p|--print|exec|run) fake_headless=1 ;; esac; done
+if [ "$fake_headless" = 0 ] && [ -t 0 ]; then
+  printf '\033[1;35m* %s (gia lap tuong tac)\033[0m args: %s\n' "$fake_name" "$*"
+  while IFS= read -r line; do
+    case "$line" in
+      exit) exit 0 ;;
+      size) stty size ;;
+      *) printf '\033[36m%s>\033[0m %s\n' "$fake_name" "$line" ;;
+    esac
+  done
+  exit 0
+fi
 fake_limited() { [ -n "${ATEAM_FAKE_LIMIT_DIR:-}" ] && [ -f "$ATEAM_FAKE_LIMIT_DIR/$1" ]; }
 fake_sleep() { sleep "${ATEAM_FAKE_SLOW:-0}"; }

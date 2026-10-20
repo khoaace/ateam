@@ -1,5 +1,12 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Tab 🔲 Lưới (`/grid`) trên TUI và web**: chia màn hình thành lưới, mỗi ô là CLI tương tác thật của một agent
+  (chọn model/effort, phiên mới hoặc tiếp tục phiên gần nhất). Kéo tiêu đề ô để đổi chỗ / đặt cạnh ô khác, 5 bố cục
+  nhanh, web kéo khe đổi kích thước, TUI có chế độ sắp xếp bằng phím (F10); **⇉ Gửi tất cả** gõ cùng lúc vào nhiều ô.
+  Bố cục lưu theo dự án (`.ateam/grid.json`). Trước đây mỗi lần chỉ mở được CLI của một agent (⌨ / `/term`).
+
 ## 0.28.0 — 20/10/2026
 
 - **/grill gọn và chắc hơn**: các lượt hỏi tiếp đúng phiên trưởng nhóm (không khám phá lại dự án mỗi câu, lập kế

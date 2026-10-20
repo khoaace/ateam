@@ -261,6 +261,19 @@ tra, không worktree, không giao việc chéo và không hiện trên Bảng vi
 - **F7**, `/focus [agent]`, `/focus` trong ô chat hoặc nút **⛶** (web): phóng to một agent cả tab Đội để chat riêng;
   F7 / Esc / gõ lại để thu về lưới.
 
+## Lưới terminal — nhiều CLI thật cạnh nhau (tab 🔲 Lưới)
+
+`/grid` (hoặc `/grid codex`) mở tab **🔲 Lưới**: mỗi ô là CLI tương tác thật của một agent (claude, codex, agy, grok,
+opencode…) chạy trong thư mục dự án, gõ trực tiếp như terminal thường. **＋ Thêm agent** chọn CLI, model, effort, phiên
+mới hay tiếp tục phiên gần nhất (`--resume`) và chỗ đặt ô.
+
+- **Sắp xếp**: kéo tiêu đề ô thả lên ô khác (giữa = đổi chỗ, sát cạnh = đặt bên đó); bố cục nhanh: một cột, hai
+  cột, lưới đều, lead + đội, một hàng. Web: kéo khe giữa các ô để đổi kích thước (đúp-click: chia đều), ⛶ toàn
+  màn hình. TUI: **F10** vào chế độ sắp xếp bằng phím (←↑→↓ chọn, Shift+mũi tên đổi chỗ, `+/-` rộng, `[/]` cao).
+- **⇉ Gửi tất cả**: phím gõ đi tới mọi ô đang bật "nhận phím khi gửi tất cả" — hỏi nhiều agent cùng một câu.
+- Trong TUI, khi một ô đang được chọn thì phím Ctrl thuộc về CLI đó (Ctrl+Q vẫn thoát ateam).
+- Bố cục lưu ở `.ateam/grid.json`; mở lại ateam thì ô hiện "chưa mở", bấm Enter / ⟲ để chạy lại CLI.
+
 ## Model & effort từng agent
 
 Trong app (được lưu lại cho lần sau, ở `~/.config/ateam/state.json`):

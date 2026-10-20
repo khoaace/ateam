@@ -46,7 +46,7 @@ function elapsedHtml(start, end) {
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
   S.ws = ws;
-  ws.onopen = () => { S.retry = 0; setConn(true); };
+  ws.onopen = () => { S.retry = 0; setConn(true); if (window.GridView) GridView.reset(); };
   ws.onclose = () => {
     setConn(false);
     setTimeout(connect, Math.min(5000, 500 * 2 ** S.retry++));
@@ -59,6 +59,9 @@ function connect() {
     else if (m.t === "lines") onLines(m.items);
     else if (m.t === "pty") ptyData(m);
     else if (m.t === "pty_exit") ptyExit(m);
+    else if (m.t === "grid" && window.GridView) GridView.onState(m);
+    else if (m.t === "gpty" && window.GridView) GridView.onData(m);
+    else if (m.t === "gpty_exit" && window.GridView) GridView.onExit(m);
     else if (m.t === "live") { S.live = m.last || {}; if (S.state && S.view === "board") renderKanban(); }
     else if (m.t === "toast") onToast(m);
     else if (m.t === "notice") onNotice(m);
@@ -359,7 +362,7 @@ function render() {
 }
 function renderTop() {
   const st = S.state, c = counts();
-  const titles = { board: t("board"), team: t("team"), term: t("terminal"), git: t("git"), code: t("code"), todo: t("todo"), custom: t("custom"), dash: t("dash") };
+  const titles = { board: t("board"), team: t("team"), grid: t("grid"), term: t("terminal"), git: t("git"), code: t("code"), todo: t("todo"), custom: t("custom"), dash: t("dash") };
   $("#view-title").textContent = titles[S.view];
   const chips = [];
   if (c.running) chips.push(`<span class="chip s-running" style="color:var(--running)"><span class="dot"></span>${c.running} ${esc(t("running"))}</span>`);
@@ -1652,7 +1655,7 @@ input.addEventListener("keydown", (e) => {
 input.addEventListener("blur", () => setTimeout(hideSuggest, 150));
 
 /* ------------------------------------------------------------------ hành động (bấm) */
-const VIEWS = ["board", "team", "term", "git", "code", "todo", "dash", "custom"];
+const VIEWS = ["board", "team", "grid", "term", "git", "code", "todo", "dash", "custom"];
 function setView(v) {
   if (!VIEWS.includes(v)) return;
   const prev = S.view;
@@ -1668,6 +1671,8 @@ function setView(v) {
   if (v === "custom" && window.Setup) Setup.showCustom();
   if (v === "dash" && window.DashView) DashView.show();
   if (v === "todo" && window.TodoView) TodoView.show();
+  if (v === "grid" && window.GridView) GridView.show();
+  if (prev === "grid" && v !== "grid") document.documentElement.classList.remove("grid-full");
 }
 const ACTIONS = {
   "send": () => submit(),
@@ -1744,7 +1749,7 @@ document.addEventListener("change", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.target.closest && e.target.closest(".xterm")) return;  // phím gõ trong terminal là của CLI (Esc, Ctrl+K…)
-  if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-8]$/.test(e.code)) {  // Alt+1…8: tới thẳng tab (như TUI)
+  if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-9]$/.test(e.code)) {  // Alt+1…9: tới thẳng tab (như TUI)
     const b = $$("#nav .nav-item")[+e.code.slice(5) - 1];
     if (b) { e.preventDefault(); setView(b.dataset.view); }
     return;
