@@ -213,6 +213,10 @@ select:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .btn.ghost { background: transparent; }
 .btn.ghost:hover { background: var(--surface-2); }
 .btn:disabled { opacity: .5; cursor: default; }
+/* nút đang chạy (busyBtn / tab Git): spinner trước chữ, mờ nhẹ hơn nút bị khoá thường */
+.btn.busy { opacity: .8; cursor: progress; position: relative; padding-left: 26px; }
+.btn.busy::before { content: ""; position: absolute; left: 8px; top: 50%; margin-top: -6px; width: 12px; height: 12px; box-sizing: border-box;
+  border-radius: 50%; border: 1.5px solid currentColor; border-top-color: transparent; animation: spin .8s linear infinite; }
 .btn kbd { font: 600 10.5px var(--mono); opacity: .8; padding: 0 4px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; }
 .icon-btn {
   width: 30px; height: 30px; display: grid; place-items: center; border-radius: var(--radius); cursor: pointer;
@@ -831,6 +835,8 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 }
 .toast.ok { --c: var(--done); } .toast.warn { --c: var(--review); } .toast.error { --c: var(--failed); } .toast.info { --c: var(--accent); }
 .toast.out { opacity: 0; transition: opacity .15s linear; }
+.toast.busy { align-items: center; }
+.toast.busy .spin { width: 11px; height: 11px; }
 .toast-msg { flex: 1; min-width: 0; }
 .toast-act { flex: none; font: inherit; font-weight: 600; padding: 1px 8px; border-radius: var(--radius); cursor: pointer;
   background: transparent; color: var(--c, var(--accent)); border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 55%, var(--border)); }

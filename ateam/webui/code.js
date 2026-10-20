@@ -482,7 +482,7 @@ window.CodeView = (() => {
     const n = SR.res.files.filter((f) => paths.includes(f.path)).reduce((a, f) => a + f.matches.length, 0);
     if (!await confirmBox(t("sr_replace_all"), t("sr_confirm_q", { n, f: paths.length, r: SR.replace }), t("sr_replace_all"), false)) return;
     const r = await request("code_replace", { query: SR.query, replacement: SR.replace, case: SR.case, word: SR.word,
-      regex: SR.regex, files: paths });
+      regex: SR.regex, files: paths }, t("busy_replacing"));
     const done = (r.replaced || {}).files || {};
     for (const p of Object.keys(done)) if (C.bufs.has(p)) await reload("disk", p);
     runSearch();

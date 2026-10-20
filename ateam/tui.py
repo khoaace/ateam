@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import difflib
 import inspect
 import json
@@ -1846,11 +1847,14 @@ class WorkflowEditScreen(BaseModal):
         if btn.disabled:
             return
         btn.disabled = True
-        self.notify(tr("✨ {lead} đang thiết kế workflow…", lead=self.cfg.lead))
+        label = btn.label
+        btn.label = tr("⏳ Đang thiết kế…")
         try:
-            ok, form = await self.app.orch.suggest_workflow(self.query_one("#wf-ai-desc", Input).value)
+            with self.app.busy(tr("✨ {lead} đang thiết kế workflow…", lead=self.cfg.lead)):
+                ok, form = await self.app.orch.suggest_workflow(self.query_one("#wf-ai-desc", Input).value)
         finally:
             btn.disabled = False
+            btn.label = label
         if not self.is_attached:  # đã đóng popup trong lúc chờ
             return
         if not ok:
@@ -3013,6 +3017,9 @@ class StatusBar(Static):
     def build(self, app: "TeamApp") -> Text:
         t = Text()
         sep = ("  │  ", "dim")
+        if app.busy_ops:  # đầu thanh cho dễ thấy; mất khi thao tác xong
+            t.append(f"{SPIN[app._frame]} " + "  ·  ".join(app.busy_ops.values()), f"bold {RUNNING}")
+            t.append(*sep)
         st = app.git_status
         if st is not None and st.is_repo:
             t.append("⎇ ", "bold")
@@ -4709,6 +4716,8 @@ class TeamApp(App):
         self.git_commits: list = []
         self._git_loading = self._git_again = False
         self._git_at = 0.0
+        self.busy_ops: dict[int, str] = {}  # thao tác chạy lâu (commit, push, AI viết…): hiện ⠋ ở thanh trạng thái
+        self._busy_seq = 0
         self._git_ids: list = []
         self._git_log_ids: list = []
         self._git_body = ""  # phần thân commit message do trưởng nhóm viết (ô nhập chỉ một dòng)
@@ -6034,17 +6043,18 @@ class TeamApp(App):
             return None
         return self.git_commits[min(log.highlighted, len(self.git_commits) - 1)]
 
-    def git_do(self, make, busy_check: bool = False, then=None) -> None:
+    def git_do(self, make, busy_check: bool = False, then=None, label: str = "") -> None:
         """Chạy một thao tác git (make() trả coroutine → (ok, lời nhắn)), báo kết quả, vẽ lại tab Git.
         busy_check: thao tác đổi nhánh/HEAD — từ chối khi agent đang chạy (chúng đang sửa hoặc sắp merge
-        vào nhánh hiện tại)."""
+        vào nhánh hiện tại). label: thao tác có thể lâu (commit, push…) — hiện "đang chạy" tới khi xong."""
         if busy_check and self.orch.runs:
             self.notify(tr("Đang có {v} task chạy — đợi xong (hoặc Ctrl+K huỷ) rồi hẵng đổi "
                            "nhánh/pull/stash", v=len(self.orch.runs)), severity="warning", timeout=6)
             return
 
         async def go() -> None:
-            ok, msg = await make()
+            with self.busy(label) if label else contextlib.nullcontext():
+                ok, msg = await make()
             self.notify(msg, severity="information" if ok else "warning", timeout=4 if ok else 10)
             if ok and then:
                 then()
@@ -6154,7 +6164,8 @@ class TeamApp(App):
 
     def action_git_ai_resolve(self, paths: list[str] | None = None) -> None:
         async def go() -> None:
-            ok, msg = await self.orch.resolve_conflicts(paths)
+            with self.busy(tr("🤖 AI đang giải xung đột…")):
+                ok, msg = await self.orch.resolve_conflicts(paths)
             self.notify(msg, severity="information" if ok else "warning", timeout=8)
         self.run_worker(go(), exclusive=False)
 
@@ -6179,18 +6190,21 @@ class TeamApp(App):
             self.query_one("#git-amend", Checkbox).value = False
         # ô "Bỏ qua hook" giữ nguyên sau khi commit (hook hỏng thường hỏng cho nhiều lần commit liền)
         self.git_do(lambda: self.git.commit(msg, amend=amend, all_changes=all_changes, no_verify=skip),
-                    then=clear)
+                    then=clear, label=tr("⏳ Đang commit… (hook có thể chạy lâu)"))
 
     async def git_ai_message(self) -> None:
         btn = self.query_one("#git-ai", Button)
         if btn.disabled:
             return
         btn.disabled = True
-        self.notify(tr("✨ {lead} đang viết commit message…", lead=self.orch.commit_agent()))
+        label = btn.label
+        btn.label = tr("⏳ Đang viết…")
         try:
-            ok, msg = await self.orch.commit_message()
+            with self.busy(tr("✨ {lead} đang viết commit message…", lead=self.orch.commit_agent())):
+                ok, msg = await self.orch.commit_message()
         finally:
             btn.disabled = False
+            btn.label = label
         if not ok:
             self.notify(msg, severity="warning", timeout=8)
             return
@@ -6215,11 +6229,11 @@ class TeamApp(App):
             return
         action, name, new = res
         if action == "checkout":
-            self.git_do(lambda: self.git.checkout(name), busy_check=True)
+            self.git_do(lambda: self.git.checkout(name), busy_check=True, label=tr("⏳ Đang chuyển nhánh…"))
         elif action == "create":
             self.git_do(lambda: self.git.create_branch(name), busy_check=True)
         elif action == "merge":
-            self.git_do(lambda: self.git.merge(name), busy_check=True)
+            self.git_do(lambda: self.git.merge(name), busy_check=True, label=tr("⏳ Đang merge…"))
         elif action == "rename":
             self.git_do(lambda: self.git.rename_branch(name, new))
         elif action == "delete":
@@ -6258,14 +6272,11 @@ class TeamApp(App):
         if bid == "git-refresh":
             self.run_worker(self.refresh_git(), exclusive=False)
         elif bid == "git-fetch":
-            self.notify(tr("⇣ Đang fetch…"), timeout=2)
-            self.git_do(g.fetch)
+            self.git_do(g.fetch, label=tr("⇣ Đang fetch…"))
         elif bid == "git-pull":
-            self.notify(tr("⬇ Đang pull…"), timeout=2)
-            self.git_do(g.pull, busy_check=True)
+            self.git_do(g.pull, busy_check=True, label=tr("⬇ Đang pull…"))
         elif bid == "git-push":
-            self.notify(tr("⬆ Đang push…"), timeout=2)
-            self.git_do(g.push)
+            self.git_do(g.push, label=tr("⬆ Đang push…"))
         elif bid == "git-branches":
             self.git_branches()
         elif bid == "git-stash":
@@ -6273,7 +6284,7 @@ class TeamApp(App):
         elif bid == "git-abort":
             self.git_do(g.abort)
         elif bid == "git-continue":
-            self.git_do(g.continue_op, busy_check=True)
+            self.git_do(g.continue_op, busy_check=True, label=tr("⏳ Đang tiếp tục…"))
         elif bid == "git-resolve":
             self.action_git_resolve()
         elif bid == "git-ai-resolve":
@@ -6333,18 +6344,18 @@ class TeamApp(App):
                 return
             self.git_commit(msg, no_verify=True if skip else None)
         elif cmd == "push":
-            self.git_do(lambda: g.push(force=rest in ("-f", "--force", "force")))
+            self.git_do(lambda: g.push(force=rest in ("-f", "--force", "force")), label=tr("⬆ Đang push…"))
         elif cmd == "pull":
-            self.git_do(g.pull, busy_check=True)
+            self.git_do(g.pull, busy_check=True, label=tr("⬇ Đang pull…"))
         elif cmd == "fetch":
-            self.git_do(g.fetch)
+            self.git_do(g.fetch, label=tr("⇣ Đang fetch…"))
         elif cmd == "branch":
             if rest:
                 self.git_do(lambda: g.create_branch(rest), busy_check=True)
             else:
                 self.git_branches()
         elif cmd == "checkout":
-            self.git_do(lambda: g.checkout(rest), busy_check=True)
+            self.git_do(lambda: g.checkout(rest), busy_check=True, label=tr("⏳ Đang chuyển nhánh…"))
         elif cmd == "stash":
             if rest in ("pop", "apply"):
                 self.git_do(lambda: g.stash_apply(pop=rest == "pop"), busy_check=True)
@@ -6518,6 +6529,24 @@ class TeamApp(App):
     def _refresh_statusbar(self) -> None:
         bar = self.query_one("#statusbar", StatusBar)
         set_static(bar, bar.build(self))
+
+    @contextlib.contextmanager
+    def busy(self, label: str):
+        """Đánh dấu một thao tác đang chạy (thanh trạng thái hiện spinner + nhãn) tới khi khối with kết thúc."""
+        self._busy_seq += 1
+        key = self._busy_seq
+        self.busy_ops[key] = label
+        self._busy_redraw()
+        try:
+            yield
+        finally:
+            self.busy_ops.pop(key, None)
+            self._busy_redraw()
+
+    def _busy_redraw(self) -> None:
+        bars = self.screen_stack[0].query("#statusbar") if self.screen_stack else []
+        for bar in bars:  # popup đang mở: vẫn vẽ thanh ở màn hình chính
+            set_static(bar, bar.build(self))
 
     # ------------------------------------------------------------------ theme / ngôn ngữ
     def theme_choice(self) -> tuple:

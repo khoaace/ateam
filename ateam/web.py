@@ -192,6 +192,18 @@ def ui_strings() -> dict[str, str]:
         "git_ai_lead": tr("Trưởng nhóm ({lead})"), "git_ai_wait": tr("✨ {lead} đang viết commit message…"),
         "git_need_msg": tr("Gõ commit message trước (hoặc bấm ✨ để trưởng nhóm viết)"),
         "git_fetching": tr("⇣ Đang fetch…"), "git_pulling": tr("⬇ Đang pull…"), "git_pushing": tr("⬆ Đang push…"),
+        "busy_cmd": tr("⏳ Đang chạy {v}…"),
+        "busy_saving": tr("⏳ Đang lưu…"),
+        "busy_loading": tr("⏳ Đang tải…"),
+        "busy_replacing": tr("⏳ Đang thay thế…"),
+        "busy_opening": tr("⏳ Đang mở {v}…"),
+        "busy_opening_proj": tr("⏳ Đang mở dự án…"),
+        "git_committing": tr("⏳ Đang commit… (hook có thể chạy lâu)"),
+        "git_ai_resolving": tr("🤖 AI đang giải xung đột…"),
+        "git_merging": tr("⏳ Đang merge…"),
+        "git_checking_out": tr("⏳ Đang chuyển nhánh…"),
+        "git_continuing": tr("⏳ Đang tiếp tục…"),
+        "git_working": tr("⏳ Đang chạy git…"),
         "git_discard_title": tr("↺ Bỏ thay đổi"), "git_discard_yes": tr("Bỏ thay đổi"),
         "git_discard_q": tr("Bỏ mọi thay đổi chưa stage của {path}?"),
         "git_discard_all": tr("↺ Bỏ tất cả"), "git_discard_all_title": tr("↺ Bỏ tất cả thay đổi"),
@@ -903,18 +915,12 @@ class WebApp:
                 data: dict = {}
                 try:
                     data = json.loads(msg.data)
-                    op = str(data.get("op") or "")
-                    reply = (await self.pty_op(ws, data) if op.startswith("pty_") else
-                             await self.grid_op(ws, data) if op.startswith("grid_") else await self.handle(data))
-                except Exception as e:  # thao tác lỗi không làm rớt kết nối
-                    reply = (tr("Lỗi: {e}", e=e), "error")
-                # (thông báo, mức) hoặc (thông báo, mức, {"open": …, …} cho trình duyệt mở khung/tab)
-                out = {"t": "toast", "text": reply[0] if reply else "", "level": reply[1] if reply else "",
-                       "ref": data.get("ref") if isinstance(data, dict) else None}
-                if reply and len(reply) > 2:
-                    out.update(reply[2])
-                if reply or out["ref"] is not None:
-                    await ws.send_str(json.dumps(out, ensure_ascii=False))
+                except ValueError:
+                    continue
+                if self.slow_op(data):  # AI viết commit, push…: chạy riêng, tab vẫn gõ/bấm được trong lúc chờ
+                    self._spawn(self._answer(ws, data))
+                else:
+                    await self._answer(ws, data)
         finally:
             self.clients.discard(ws)
             self.grid_ws.discard(ws)
@@ -923,6 +929,36 @@ class WebApp:
                     sess.close()
                     self.ptys.pop(pid, None)
         return ws
+
+    SLOW_GIT = ("ai_message", "ai_resolve", "commit", "push", "pull", "fetch")
+    SLOW_CMDS = ("/commit ", "/push", "/pull", "/fetch")
+
+    def slow_op(self, d) -> bool:
+        """Thao tác có thể chạy hàng chục giây (gọi AI, mạng, git hook). Còn lại chạy tuần tự để giữ thứ tự."""
+        if not isinstance(d, dict):
+            return False
+        op = d.get("op")
+        if op == "git":
+            return d.get("action") in self.SLOW_GIT
+        if op == "submit":
+            return str(d.get("text") or "").strip().startswith(self.SLOW_CMDS)
+        return op == "workflow_suggest"
+
+    async def _answer(self, ws: web.WebSocketResponse, data) -> None:
+        """Chạy một thao tác rồi trả lời bằng toast (kèm ref nếu trình duyệt đang chờ)."""
+        try:
+            op = str(data.get("op") or "")
+            reply = (await self.pty_op(ws, data) if op.startswith("pty_") else
+                     await self.grid_op(ws, data) if op.startswith("grid_") else await self.handle(data))
+        except Exception as e:  # thao tác lỗi không làm rớt kết nối
+            reply = (tr("Lỗi: {e}", e=e), "error")
+        # (thông báo, mức) hoặc (thông báo, mức, {"open": …, …} cho trình duyệt mở khung/tab)
+        out = {"t": "toast", "text": reply[0] if reply else "", "level": reply[1] if reply else "",
+               "ref": data.get("ref") if isinstance(data, dict) else None}
+        if reply and len(reply) > 2:
+            out.update(reply[2])
+        if reply or out["ref"] is not None:
+            await self._send(ws, json.dumps(out, ensure_ascii=False))
 
     async def pty_op(self, ws: web.WebSocketResponse, d: dict) -> tuple | None:
         """Terminal tương tác trong trình duyệt: pty_open {agent, rows, cols} → mở CLI thật của agent tiếp tục phiên

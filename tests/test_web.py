@@ -346,6 +346,44 @@ def test_web_git_ops_and_diff(env, project, monkeypatch):
     asyncio.run(main())
 
 
+def test_web_slow_op_does_not_block_tab(env, project, monkeypatch):
+    """AI viết commit message (chạy lâu) chạy riêng: tab vẫn nhận trả lời cho thao tác khác; trả lời đúng ref khi xong."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    from aiohttp.test_utils import TestClient, TestServer
+    wa = _web_app(env, project, monkeypatch)
+
+    async def main():
+        gate = asyncio.Event()
+
+        async def slow_message():
+            await gate.wait()
+            return True, "feat: chậm mà chắc"
+        monkeypatch.setattr(wa.orch, "commit_message", slow_message)
+        client = TestClient(TestServer(wa.make_app(), host="127.0.0.1", port=wa.port))
+        await client.start_server()
+        try:
+            ws = await client.ws_connect("/ws", headers={"Origin": f"http://127.0.0.1:{wa.port}"})
+
+            async def reply(ref):
+                while True:
+                    m = await ws.receive_json(timeout=10)
+                    if m.get("t") == "toast" and m.get("ref") == ref:
+                        return m
+            await ws.send_json({"op": "git", "action": "ai_message", "ref": 1})
+            await ws.send_json({"op": "git", "action": "commit_agent", "name": "", "ref": 2})
+            assert (await reply(2))["level"] == ""  # không phải chờ AI viết xong
+            gate.set()
+            assert (await reply(1))["git_msg"] == "feat: chậm mà chắc"
+            assert wa.slow_op({"op": "submit", "text": "/push"}) and not wa.slow_op({"op": "submit", "text": "Làm X"})
+            assert not wa.slow_op({"op": "git", "action": "stage"})
+            await ws.close()
+        finally:
+            await client.close()
+
+    asyncio.run(main())
+
+
 def test_web_code_files(env, project, monkeypatch):
     import pytest
     pytest.importorskip("aiohttp")

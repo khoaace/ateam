@@ -4,7 +4,7 @@
 "use strict";
 
 window.GitView = (() => {
-  const G = { st: null, log: [], sel: null, timer: null, busy: false, amend: false, noVerify: false };
+  const G = { st: null, log: [], sel: null, timer: null, ops: new Set(), amend: false, noVerify: false };  // ops: thao tác đang chạy
   const box = () => $("#git");
 
   async function refresh() {
@@ -16,13 +16,27 @@ window.GitView = (() => {
       render();
     } catch (e) { /* server đang khởi động lại */ }
   }
-  async function act(action, data = {}, busyMsg = "") {
-    if (busyMsg) toast(busyMsg, "info");
+  // toast "đang chạy…" (chỉ hiện nếu quá 300ms) cho từng thao tác; còn lại dùng chữ chung
+  const BUSY = { commit: "git_committing", fetch: "git_fetching", pull: "git_pulling", push: "git_pushing",
+    ai_resolve: "git_ai_resolving", merge: "git_merging", checkout: "git_checking_out", continue: "git_continuing" };
+  const BTN = { ai_message: "ai", commit: "commit_now" };  // thao tác → nút (data-gact) hiện spinner
+  async function act(action, data = {}) {
     G.sig = "";
-    const r = await request("git", Object.assign({ action }, data));
+    G.ops.add(action); markBusy();
+    const r = await request("git", Object.assign({ action }, data), t(BUSY[action] || "git_working"));
+    G.ops.delete(action);
     S.branches = null;  // gợi ý /checkout đọc lại
+    G.sig = "";
     await refresh();
+    markBusy();
     return r;
+  }
+  function markBusy() {  // nút của thao tác đang chạy: khoá + spinner (gọi lại sau mỗi lần vẽ)
+    $$("[data-gact].busy", box()).forEach((b) => { b.classList.remove("busy"); b.disabled = false; });
+    for (const op of G.ops) {
+      const b = $(`[data-gact="${BTN[op] || op}"]`, box());
+      if (b) { b.classList.add("busy"); b.disabled = true; }
+    }
   }
 
   function groups() {
@@ -103,7 +117,7 @@ window.GitView = (() => {
               <label class="chk"><input type="checkbox" id="git-noverify" ${G.noVerify ? "checked" : ""}> ${esc(t("git_noverify"))}</label>
               <span style="flex:1"></span>
               <select class="agent-select" id="git-ai-agent" title="${esc(t("git_ai_agent"))}">${aiAgents()}</select>
-              <button class="btn sm" data-gact="ai" ${G.busy ? "disabled" : ""}>✨ ${esc(t("git_ai"))}</button>
+              <button class="btn sm" data-gact="ai">✨ ${esc(t("git_ai"))}</button>
               <button class="btn sm primary" data-gact="commit_now">✓ Commit <kbd>⌘↵</kbd></button>
             </div>
           </div>
@@ -111,6 +125,7 @@ window.GitView = (() => {
         <div class="gright panel"><div class="ghead">${esc(t("git_history"))}</div><div class="glog">${log}</div></div>
       </div>`;
     if (focused) { const m = $("#git-msg"); m.focus(); m.setSelectionRange(m.value.length, m.value.length); }
+    markBusy();
   }
 
   function selPath(el) {
@@ -138,6 +153,7 @@ window.GitView = (() => {
     DiffView.git({ kind: sel.code === "s" ? "staged" : sel.code === "c" ? "conflict" : "unstaged", path: sel.path });
   }
   async function commit() {
+    if (G.ops.has("commit")) return;
     const box = $("#git-msg"), msg = box.value.trim();
     if (!msg && !G.amend) { toast(t("git_need_msg"), "warn"); box.focus(); return; }
     const r = await act("commit", { message: msg, amend: G.amend, no_verify: G.noVerify });
@@ -145,11 +161,11 @@ window.GitView = (() => {
     if (r.committed) { $("#git-msg").value = ""; G.amend = false; render(); }
   }
   async function aiMessage() {
-    if (G.busy) return;
-    G.busy = true; render();
-    toast(t("git_ai_wait", { lead: commitAgent() || (S.state && S.state.lead) || "lead" }), "info");
-    const r = await request("git", { action: "ai_message" });
-    G.busy = false; render();
+    if (G.ops.has("ai_message")) return;
+    G.ops.add("ai_message"); markBusy();
+    const r = await request("git", { action: "ai_message" }, t("git_ai_wait", { lead: commitAgent() || (S.state && S.state.lead) || "lead" }));
+    G.ops.delete("ai_message");
+    markBusy();
     if (r.git_msg) { $("#git-msg").value = r.git_msg; $("#git-msg").focus(); }
   }
   async function onClick(e) {
@@ -170,9 +186,9 @@ window.GitView = (() => {
       case "continue": return act("continue");
       case "edit": setView("code"); return CodeView.open(sel.path);
       case "stage_all": case "unstage_all": case "init": case "abort": return act(a);
-      case "fetch": return act("fetch", {}, t("git_fetching"));
-      case "pull": return act("pull", {}, t("git_pulling"));
-      case "push": return act("push", {}, t("git_pushing"));
+      case "fetch": case "pull": case "push":
+        if (G.ops.has(a)) return;
+        return act(a);
       case "refresh": G.sig = ""; return refresh();
       case "branches": return branches();
       case "stash": return stash();

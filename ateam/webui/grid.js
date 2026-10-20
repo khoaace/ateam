@@ -230,8 +230,8 @@ window.GridView = (() => {
     const cEl = b.closest(".gcell"), id = cEl && cEl.dataset.id;
     const act = b.dataset.g;
     if (act === "add") addModal();
-    else if (act === "quick") request("grid_add", { agent: b.dataset.agent, resume: true }).then(focusNew);
-    else if (act === "shell") request("grid_add", { agent: SHELL }).then(focusNew);
+    else if (act === "quick") request("grid_add", { agent: b.dataset.agent, resume: true }, t("busy_opening", { v: b.dataset.agent })).then(focusNew);
+    else if (act === "shell") request("grid_add", { agent: SHELL }, t("busy_opening", { v: "Terminal" })).then(focusNew);
     else if (act === "preset") { G.zoom = null; send("grid_preset", { preset: b.dataset.preset }); }
     else if (act === "bcast") send("grid_bcast", { on: !G.state.bcast });
     else if (act === "full") { document.documentElement.classList.toggle("grid-full"); render(); setTimeout(() => cells().forEach((c) => refit(c.id)), 50); }
@@ -415,7 +415,8 @@ window.GridView = (() => {
     const go = () => {
       const where = ($("input[name=ga-where]:checked", m) || {}).value || "";
       request("grid_add", { agent: pick.name, model: $("#ga-model", m).value, effort: $("#ga-effort", m).value,
-        resume: ($("input[name=ga-sess]:checked", m) || {}).value !== "new", near: where ? near : "", where })
+        resume: ($("input[name=ga-sess]:checked", m) || {}).value !== "new", near: where ? near : "", where },
+        t("busy_opening", { v: pick === shell ? "Terminal" : pick.name }))
         .then(focusNew);
       closeModal(m);
     };

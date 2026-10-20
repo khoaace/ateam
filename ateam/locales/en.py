@@ -3960,4 +3960,32 @@ EN: dict[str, str] = {
         'Pick another agent — the task reruns right away with it (full prompt, new session)',
     'Dùng: /assign <task> <agent> — hoặc mở task rồi bấm ⇄ Đổi agent':
         'Usage: /assign <task> <agent> — or open the task and click ⇄ Change agent',
+    "⏳ Đang chạy {v}…":
+        "⏳ Running {v}…",
+    "⏳ Đang lưu…":
+        "⏳ Saving…",
+    "⏳ Đang tải…":
+        "⏳ Loading…",
+    "⏳ Đang thay thế…":
+        "⏳ Replacing…",
+    "⏳ Đang mở {v}…":
+        "⏳ Opening {v}…",
+    "⏳ Đang mở dự án…":
+        "⏳ Opening project…",
+    "⏳ Đang commit… (hook có thể chạy lâu)":
+        "⏳ Committing… (hooks may take a while)",
+    "🤖 AI đang giải xung đột…":
+        "🤖 AI is resolving conflicts…",
+    "⏳ Đang merge…":
+        "⏳ Merging…",
+    "⏳ Đang chuyển nhánh…":
+        "⏳ Switching branch…",
+    "⏳ Đang tiếp tục…":
+        "⏳ Continuing…",
+    "⏳ Đang chạy git…":
+        "⏳ Running git…",
+    "⏳ Đang viết…":
+        "⏳ Writing…",
+    "⏳ Đang thiết kế…":
+        "⏳ Designing…",
 }

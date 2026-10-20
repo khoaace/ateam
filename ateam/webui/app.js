@@ -49,6 +49,8 @@ function connect() {
   ws.onopen = () => { S.retry = 0; setConn(true); if (window.GridView) GridView.reset(); };
   ws.onclose = () => {
     setConn(false);
+    // thao tác đang chờ sẽ không bao giờ được trả lời: tắt toast "đang chạy…", mở khoá nút
+    for (const ref of Object.keys(S.pending)) { S.pending[ref]({ level: "error" }); delete S.pending[ref]; }
     setTimeout(connect, Math.min(5000, 500 * 2 ** S.retry++));
   };
   ws.onmessage = (ev) => {
@@ -74,13 +76,21 @@ function send(op, data = {}) {
   S.ws.send(JSON.stringify(Object.assign({ op }, data)));
   return true;
 }
-/* gửi thao tác và chờ trả lời (toast cùng ref) — dùng khi cần kết quả: lưu file, commit… */
-function request(op, data = {}) {
+/* gửi thao tác và chờ trả lời (toast cùng ref) — dùng khi cần kết quả: lưu file, commit…
+   busy: chữ cho toast "đang chạy…" (spinner) — chỉ hiện khi chưa xong sau 300ms, tắt đúng lúc có kết quả */
+function request(op, data = {}, busy = "") {
   const ref = ++S.refSeq;
+  let bt = null;
+  const timer = busy ? setTimeout(() => { bt = busyToast(busy); }, 300) : 0;
   return new Promise((resolve) => {
-    S.pending[ref] = resolve;
-    if (!send(op, Object.assign({ ref }, data))) { delete S.pending[ref]; resolve({ level: "error" }); }
+    S.pending[ref] = (m) => { clearTimeout(timer); if (bt) bt.done(); resolve(m); };
+    if (!send(op, Object.assign({ ref }, data))) { const f = S.pending[ref]; delete S.pending[ref]; f({ level: "error" }); }
   });
+}
+/* nút đang chạy: khoá + spinner tới khi promise xong (nút không bị vẽ lại trong lúc chờ) */
+async function busyBtn(btn, promise) {
+  if (btn) { btn.disabled = true; btn.classList.add("busy"); }
+  try { return await promise; } finally { if (btn) { btn.disabled = false; btn.classList.remove("busy"); } }
 }
 function setConn(ok) {
   S.connected = ok;
@@ -556,7 +566,7 @@ function renderGoals() {
    nhóm (bảng các bước, bấm để nhảy tới kết quả) → kết quả từng agent (markdown đầy đủ, prompt thu gọn) → tổng kết */
 const PLAN_SOURCES = ["plan", "workflow", "review", "followup", "delegate", "user"];
 async function planModal(gid) {
-  const r = await request("goal_plan", { goal: gid });
+  const r = await request("goal_plan", { goal: gid }, t("busy_loading"));
   const p = r.goal_plan;
   if (!p) return;
   const g = p.goal, ts = p.tasks;
@@ -1148,10 +1158,10 @@ function projectModal(q = "") {
 async function openProject(path) {
   const unsaved = window.CodeView ? CodeView.unsaved() : [];
   if (unsaved.length && !await confirmBox(t("proj_open"), t("proj_unsaved_q", { v: unsaved.join(", ") }), t("proj_unsaved_yes"))) return;
-  let r = await request("open_project", { path });
+  let r = await request("open_project", { path }, t("busy_opening_proj"));
   if (r.busy) {
     if (!await confirmBox(t("proj_busy"), t("proj_busy_q", { n: r.busy, v: r.path }), t("proj_busy_yes"))) return;
-    r = await request("open_project", { path, force: true });
+    r = await request("open_project", { path, force: true }, t("busy_opening_proj"));
   }
   if (r.switching) S.switching = true;
 }
@@ -1296,6 +1306,17 @@ function pendingCount() {  // việc chờ người dùng: kế hoạch chờ du
   if (!S.state) return 0;
   return S.state.goals.filter((g) => g.status === "awaiting").length + S.state.tasks.filter((x) => ["review", "conflict", "asking"].includes(x.status)).length;
 }
+function busyToast(text) {  // toast "đang chạy…": spinner, không tự tắt — gọi done() khi có kết quả
+  const el = document.createElement("div");
+  el.className = "toast info busy";
+  el.innerHTML = '<span class="spin"></span>';
+  const msg = document.createElement("span");
+  msg.className = "toast-msg";
+  msg.textContent = text;
+  el.appendChild(msg);
+  $("#toasts").appendChild(el);
+  return { done: () => { el.classList.add("out"); setTimeout(() => el.remove(), 250); } };
+}
 function toast(text, level = "info", action = null) {  // action = {label, run}: nút trên toast (vd "Xem" task vừa tạo)
   const el = document.createElement("div");
   el.className = "toast " + level;
@@ -1314,7 +1335,8 @@ function toast(text, level = "info", action = null) {  // action = {label, run}:
   $("#toasts").appendChild(el);
   const ms = action ? 8000 : level === "error" || level === "warn" ? 6000 : 3800;
   setTimeout(gone, ms);
-  while ($("#toasts").childElementCount > 5) $("#toasts").firstElementChild.remove();
+  const olds = $$(".toast:not(.busy)", $("#toasts"));  // toast "đang chạy…" giữ tới khi xong
+  while (olds.length > 5) olds.shift().remove();
 }
 
 /* ------------------------------------------------------------------ ô nhập + gợi ý */
@@ -1337,7 +1359,9 @@ function renderComposerMode() {
 function submit() {
   const text = input.value.trim();
   if (!text) return;
-  send("submit", { text });
+  // lệnh /… có thể chạy lâu (/commit, /push…): toast "đang chạy…" tới khi server trả lời
+  if (text.startsWith("/")) request("submit", { text }, t("busy_cmd", { v: text.split(/\s/)[0] }));
+  else send("submit", { text });
   input.value = "";
   hideSuggest();
   autosize();

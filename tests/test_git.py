@@ -314,6 +314,47 @@ def test_tui_git_tab(env, project, monkeypatch):
     asyncio.run(main())
 
 
+def test_tui_busy_indicator_until_done(env, project, monkeypatch):
+    """Thao tác git lâu (push, commit…): thanh trạng thái hiện spinner + nhãn tới khi xong, rồi mất."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import TeamApp
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        gate = asyncio.Event()
+
+        async def slow_push():
+            await gate.wait()
+            return True, "pushed"
+
+        def bar() -> str:
+            return str(app.query_one("#statusbar").render())
+
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.3)
+            app.git_do(slow_push, label="⬆ Đang push…")
+            await pilot.pause(0.3)
+            assert "Đang push" in bar() and app.busy_ops
+            gate.set()
+            for _ in range(20):
+                await pilot.pause(0.1)
+                if not app.busy_ops:
+                    break
+            assert not app.busy_ops and "Đang push" not in bar()
+
+    asyncio.run(main())
+
+
 def test_commit_no_verify_skips_hooks(env, project, monkeypatch):
     # hook pre-commit luôn chặn (như husky/lint-staged lỗi): commit thường bị chặn kèm gợi ý,
     # --no-verify thì qua — cả qua GitRepo, ô tick ở tab Git và /commit --no-verify

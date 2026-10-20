@@ -124,9 +124,10 @@ window.Setup = (() => {
     if (key === "roles") readRoles(m, W);
     return null;
   }
-  async function save() {
+  async function save(btn) {
+    if (btn && btn.disabled) return;
     collect();
-    const r = await request("setup_save", { providers: W.providers, style: W.style, tier: W.tier, assign: W.assign, access: W.access, apply: W.apply, verify: W.verify, flow_name: W.flowName });
+    const r = await busyBtn(btn, request("setup_save", { providers: W.providers, style: W.style, tier: W.tier, assign: W.assign, access: W.access, apply: W.apply, verify: W.verify, flow_name: W.flowName }, t("busy_saving")));
     if (r.setup_saved) { W.saved = true; closeModal(W.modal); }
   }
   async function onClick(e) {
@@ -139,7 +140,7 @@ window.Setup = (() => {
     const a = b.dataset.ob;
     if (a === "back") { collect(); step(Math.max(0, W.step - 1)); }
     if (a === "next") {
-      if (W.data.steps[W.step].key === "review") return save();
+      if (W.data.steps[W.step].key === "review") return save(b);
       const err = collect();
       if (err) { toast(err, "warn"); return; }
       step(W.step + 1);
@@ -185,8 +186,9 @@ window.Setup = (() => {
       if (!b) return;
       if (b.dataset.rq === "cancel") return closeModal(m);
       if (b.dataset.rq === "setup") { closeModal(m); return open(false); }
+      if (b.disabled) return;
       collect();
-      const r = await request("roles_save", { assign: W.assign });
+      const r = await busyBtn(b, request("roles_save", { assign: W.assign }, t("busy_saving")));
       if (r.setup_saved) closeModal(m);
     });
   }
@@ -212,8 +214,9 @@ window.Setup = (() => {
       if (!b) return;
       if (b.dataset.rp === "setup") return open(false);
       if (b.dataset.rp === "cancel") return rolesPanel(head, box, onDraw, true);
+      if (b.disabled) return;
       readRoles(box, R);
-      const r = await request("roles_save", { assign: R.assign });
+      const r = await busyBtn(b, request("roles_save", { assign: R.assign }, t("busy_saving")));
       if (r.setup_saved) rolesPanel(head, box, onDraw, true);
     };
     onDraw();
@@ -335,7 +338,8 @@ window.Setup = (() => {
       if (b.dataset.dfa === "cancel") { closeModal(m); return; }
       const steps = $$(".df-row", m).map((r) => ({ agent: $("[data-df=agent]", r).value, model: $("[data-df=model]", r).value, effort: $("[data-df=effort]", r).value }));
       const def = $("#df-default", m);
-      const r = await request("default_flow_save", { name: d.form.name, steps, review: $("#df-review", m).checked, make_default: def ? def.checked : null });
+      if (b.disabled) return;
+      const r = await busyBtn(b, request("default_flow_save", { name: d.form.name, steps, review: $("#df-review", m).checked, make_default: def ? def.checked : null }, t("busy_saving")));
       if (r.flow_saved) { closeModal(m); if (opts.onSaved) opts.onSaved(r.flow_saved); }
     });
   }
@@ -380,7 +384,7 @@ window.Setup = (() => {
       const b = e.target.closest("[data-q]");
       if (!b) return;
       if (b.dataset.q === "cancel") closeModal(m);
-      if (b.dataset.q === "save") { const r = await request("custom_save", body()); if (r.custom_saved) { closeModal(m); done(); } }
+      if (b.dataset.q === "save" && !b.disabled) { const r = await busyBtn(b, request("custom_save", body(), t("busy_saving"))); if (r.custom_saved) { closeModal(m); done(); } }
       if (b.dataset.q === "advanced") {
         const r = await request("custom_preview", body());
         closeModal(m);
@@ -431,7 +435,7 @@ window.Setup = (() => {
       const b = e.target.closest("[data-q]");
       if (!b) return;
       if (b.dataset.q === "cancel") closeModal(m);
-      if (b.dataset.q === "save") { const r = await request("custom_save", body()); if (r.custom_saved) { closeModal(m); done(); } }
+      if (b.dataset.q === "save" && !b.disabled) { const r = await busyBtn(b, request("custom_save", body(), t("busy_saving"))); if (r.custom_saved) { closeModal(m); done(); } }
     });
     preview();
   }
@@ -501,10 +505,7 @@ window.Setup = (() => {
     const suggest = async () => {
       const b = $('[data-wf="ai"]', m);
       if (b.disabled) return;
-      b.disabled = true;
-      toast(t("cu_ai_wait", { lead: d.lead }));
-      const r = await request("workflow_suggest", { description: $("#wf-ai-desc", m).value });
-      b.disabled = false;
+      const r = await busyBtn(b, request("workflow_suggest", { description: $("#wf-ai-desc", m).value }, t("cu_ai_wait", { lead: d.lead })));
       const f = r.wf_suggest;
       if (!f) return;
       $("#wf-desc", m).value = f.description;
@@ -522,10 +523,10 @@ window.Setup = (() => {
       if (a === "add") { $("#wf-steps", m).insertAdjacentHTML("beforeend", stepRow({ agent: "lead" })); renumber(); }
       if (a === "del") { if ($$(".wf-step", m).length > 1) { b.closest(".wf-step").remove(); renumber(); } else toast(t("cu_one_step"), "warn"); }
       if (a === "cancel") closeModal(m);
-      if (a === "save") {
+      if (a === "save" && !b.disabled) {
         const stepsOut = $$(".wf-step", m).map((row) => Object.fromEntries($$("[data-sf]", row).map((x) => [x.dataset.sf, x.value])));
-        const r = await request("custom_save", { kind: "workflows", name: $("#wf-name", m).value, old: w && w.in_file ? w.name : null,
-          description: $("#wf-desc", m).value, review: $("#wf-review", m).checked, steps: stepsOut });
+        const r = await busyBtn(b, request("custom_save", { kind: "workflows", name: $("#wf-name", m).value, old: w && w.in_file ? w.name : null,
+          description: $("#wf-desc", m).value, review: $("#wf-review", m).checked, steps: stepsOut }, t("busy_saving")));
         if (r.custom_saved) { closeModal(m); done(); }
       }
     });
