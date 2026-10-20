@@ -902,8 +902,8 @@ def test_tui_plan_approval_bar(env, project, monkeypatch):
 
 
 def test_tui_team_tab_layout_stays_fixed(env, project, monkeypatch):
-    """Tab Đội: cuộn chuột chỉ cuộn log trong từng ô; màn hình, tiêu đề và ô agent đứng yên,
-    log tự xuống dòng theo bề rộng ô (không có cuộn ngang)."""
+    """Tab Agents, đang chat với 1 agent (phóng to): cuộn chuột chỉ cuộn log của ô; màn hình, tiêu đề và ô agent
+    đứng yên, log tự xuống dòng theo bề rộng ô (không có cuộn ngang)."""
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     git_init(project)
@@ -933,7 +933,10 @@ def test_tui_team_tab_layout_stays_fixed(env, project, monkeypatch):
             await pilot.pause(0.3)
             await pilot.press("ctrl+t")
             await pilot.pause(0.2)
-            panes = list(app.query(AgentPane))
+            assert app.query_one("#team-list").scroll_x == 0  # danh sách: không cuộn ngang
+            app.set_focus_agent(app.cfg.lead)
+            await pilot.pause(0.2)
+            panes = [app.pane(app.cfg.lead)]
             for p in panes:
                 for i in range(200):
                     p.body.write('{"prompt": "' + "dòng log rất dài không xuống dòng " * 6 + f'{i}"}}')

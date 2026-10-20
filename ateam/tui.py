@@ -1,4 +1,4 @@
-"""Giao diện terminal (Textual): tab Bảng việc + tab Đội (log từng agent & timeline)."""
+"""Giao diện terminal (Textual): tab Bảng việc + tab Agents (log từng agent & timeline)."""
 
 from __future__ import annotations
 
@@ -131,7 +131,7 @@ Giao việc:
                                     lập task bổ sung dựa trên việc đã làm / agent nhận kèm các lượt trước.
                                     F6 (Ctrl+O) với task đang chọn, hoặc bấm "↪ Tiếp tục" ở khung mục tiêu
   /note <nội dung>                  ghi chú chung cho cả đội
-  /chat <agent> [tin]               chat trực tiếp với 1 agent, giữ phiên CLI (ô 💬 ở tab Đội; /new: cuộc
+  /chat <agent> [tin]               chat trực tiếp với 1 agent, giữ phiên CLI (ô 💬 ở tab Agents; /new: cuộc
                                     mới · /term: mở CLI thật của agent tiếp tục phiên đó)
   F7   /focus [agent]               phóng to 1 agent (chat riêng, cả màn hình); F7 / Esc thu lại
 
@@ -161,7 +161,7 @@ Hạn mức:
 Model & effort của từng agent (được lưu lại cho lần sau):
   /model <agent> <tên model>        vd: /model claude opus   ·   /model grok grok-4.7-build-fast
   /effort <agent> <mức>             vd: /effort codex xhigh  ·   /effort claude high
-  /model <agent>   /effort <agent>  mở bảng chọn từ danh sách agent hỗ trợ (hoặc bấm vào ô agent ở tab Đội)
+  /model <agent>   /effort <agent>  mở bảng chọn từ danh sách agent hỗ trợ (hoặc bấm vào ô agent ở tab Agents)
   /model <agent> -                  quay về mặc định trong config (tương tự /effort <agent> -)
   /models [agent]                   xem model & effort mỗi agent hỗ trợ
   /models <agent> làm mới           hỏi CLI danh sách model thật (opencode models, agy models)
@@ -191,7 +191,7 @@ Khác:
   /clear                            dọn task & mục tiêu đã kết thúc khỏi bảng (nút 🗑 trên bảng)
   /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn
   /log <task>   /log sys            xem log 1 task / log hệ thống (Ctrl+L)
-  /team  /board  /term  /git  /code chuyển tab Đội / Bảng việc / Terminal / Git / Code (Ctrl+T xoay vòng)
+  /team  /board  /term  /git  /code chuyển tab Agents / Bảng việc / Terminal / Git / Code (Ctrl+T xoay vòng)
   /grid [agent]                     tab 🔲 Lưới: mỗi ô là CLI thật của một agent (F10 sắp xếp, kéo tiêu đề đổi chỗ)
   Alt+1 … Alt+9, Alt+0              tới thẳng tab theo thứ tự (Mac: bật "Use Option as Meta" trong terminal)
 
@@ -252,12 +252,12 @@ WELCOME = tr("""\
   • !yarn dev → chạy lệnh terminal (gõ ! để xem gợi ý) · tab 💻 Terminal
   • /git → tab 🌿 Git: stage, commit (trưởng nhóm viết message), nhánh, pull/push, stash, lịch sử
   • /code @file → tab 📝 Code: xem & sửa code với phím vim (:w lưu, /vim off để sửa kiểu thường)
-  • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: đổi tab (Bảng việc / Đội / Terminal / Git / Code)""")
+  • F1 hoặc /help: toàn bộ lệnh & phím tắt · Ctrl+T: đổi tab (Bảng việc / Agents / Workflows / Code / Git / …)""")
 
 # lệnh cho bảng gợi ý khi gõ "/" (tên, tham số, mô tả ngắn) — giữ khớp với TeamApp.run_command
 COMMANDS = [
     ("task", tr("<agent> <nội dung>"), tr("giao tay cho 1 agent, gửi nguyên văn")),
-    ("chat", tr("<agent> [tin nhắn]"), tr("chat trực tiếp với 1 agent như trong terminal (giữ phiên, ô 💬 ở tab Đội)")),
+    ("chat", tr("<agent> [tin nhắn]"), tr("chat trực tiếp với 1 agent như trong terminal (giữ phiên, ô 💬 ở tab Agents)")),
     ("focus", tr("[agent]"), tr("phóng to 1 agent cả màn hình để chat riêng (F7; gõ lại / Esc để thu)")),
     ("go", tr("[mục tiêu]"), tr("duyệt kế hoạch nháp và chạy")),
     ("drop", tr("[mục tiêu]"), tr("bỏ kế hoạch nháp (huỷ mọi task nháp của nó)")),
@@ -308,7 +308,7 @@ COMMANDS = [
     ("agents", "", tr("cấu hình, lệnh chạy của từng agent")),
     ("setup", "", tr("màn hình thiết lập đội")),
     ("roles", "", tr("sửa nhanh vai trò · CLI · model · effort của đội")),
-    ("custom", "", tr("agent & workflow tuỳ chỉnh")),
+    ("custom", "", tr("tab Workflows (agent tuỳ chỉnh ở tab Agents)")),
     ("dash", "", tr("thống kê: token, cost, lịch sử mục tiêu")),
     ("flow-setup", "", tr("luồng mặc định: agent · model · effort từng bước")),
     ("usage", "", tr("thống kê lượt chạy + hạn mức còn lại báo bởi từng CLI")),
@@ -319,13 +319,13 @@ COMMANDS = [
     ("pause", "", tr("tạm dừng nhận task mới")),
     ("resume", "", tr("tiếp tục nhận task")),
     ("log", "[task|sys]", tr("xem log 1 task / log hệ thống")),
-    ("team", "", tr("chuyển sang tab Đội")),
+    ("team", "", tr("chuyển sang tab Agents")),
     ("board", "", tr("chuyển sang tab Bảng việc")),
     ("help", "", tr("toàn bộ lệnh & phím tắt")),
     ("quit", "", tr("thoát")),
 ]
 COMMAND_ALIASES = {"tim": "search", "find": "search", "grep": "search", "vaitro": "roles", "role": "roles", "grill-me": "grill", "hoi": "grill", "h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
-                   "workflows": "custom", "agent-moi": "custom", "exit": "quit", "q": "quit"}
+                   "workflows": "custom", "agent-moi": "team", "exit": "quit", "q": "quit"}
 
 
 def suggest_command(cmd: str) -> str | None:
@@ -757,7 +757,8 @@ class TextInput(Input):
 
 
 class AgentPane(Vertical):
-    """Một ô trong tab Đội: tiêu đề trạng thái + log trực tiếp của 1 agent."""
+    """Một agent ở tab Agents: tiêu đề trạng thái (dòng trong danh sách) + log trực tiếp và ô chat (hiện khi phóng
+    to — F7, /focus, bấm vào agent)."""
 
     def __init__(self, agent: str):
         super().__init__(id=safe_id(agent), classes="agentpane")
@@ -770,7 +771,7 @@ class AgentPane(Vertical):
         # sinh thanh cuộn ngang, chữ bị cắt và vuốt trackpad làm log trôi sang ngang
         yield ReflowLog(classes="pane-log", wrap=True, markup=False, highlight=False,
                       max_lines=3000, min_width=1)
-        yield TextInput(placeholder=tr("💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: mở CLI thật · F7: phóng to)",
+        yield TextInput(placeholder=tr("💬 Nhắn {agent}… (Enter gửi · /new: cuộc mới · /term: mở CLI thật · Esc: về danh sách)",
                                        agent=self.agent), classes="pane-chat")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -796,8 +797,11 @@ class AgentPane(Vertical):
     def on_click(self, event) -> None:
         if event.style.meta.get("@click"):  # bấm vào chip model/effort: đã đổi ngay (choice_line)
             return
-        if event.widget is self.head:  # bấm vào tiêu đề ô -> chọn model rồi effort
-            self.app.open_picker(self.agent, "model", then_effort=True)
+        if event.widget is self.head:  # danh sách: bấm vào agent -> chat riêng; đang chat: chọn model rồi effort
+            if self.app.focus_agent == self.agent:
+                self.app.open_picker(self.agent, "model", then_effort=True)
+            else:
+                self.app.set_focus_agent(self.agent)
 
 
 def choice_line(label: str, items: list[str], current: str, limit: int = 0, agent: str = "") -> Text:
@@ -859,7 +863,7 @@ class ReflowLog(RichLog):
         if not self._reflowing:
             self._items.append(content)
             if not self._size_known:
-                # ô chưa từng hiện (tab Đội chưa mở): RichLog sẽ hoãn vào hàng đợi không giới hạn rồi phát lại qua
+                # ô chưa từng hiện (tab Agents chưa mở): RichLog sẽ hoãn vào hàng đợi không giới hạn rồi phát lại qua
                 # write() (thành dòng đôi trong _items). Chỉ giữ ở _items (có giới hạn), vẽ một lần khi có kích thước.
                 return self
         return super().write(content, *args, **kw)
@@ -1936,7 +1940,7 @@ class DefaultFlowScreen(BaseModal):
             yield self.title_bar(tr("⚙ Luồng mặc định"))
             yield Static(Text(tr("Gõ mục tiêu (không kèm /goal) là chạy workflow này: mỗi bước một task, bước sau "
                                  "chờ bước trước. Chọn agent, model, effort cho từng bước — sửa tiêu đề/prompt hay "
-                                 "thêm bước ở tab 🧩 Tuỳ chỉnh."), "dim"))
+                                 "thêm bước ở tab 🔀 Workflows."), "dim"))
             yield form_row("Workflow", Select([(lbl, n) for n, lbl in wizard.flow_names(self.cfg)],
                                               value=self.form["name"], allow_blank=False, id="df-name",
                                               classes="f-input"))
@@ -2036,8 +2040,9 @@ class DefaultFlowScreen(BaseModal):
 
 
 class CustomPanel(Vertical):
-    """Danh sách agent & workflow tuỳ chỉnh + nút Thêm/Sửa/Xoá — dùng trong tab 🧩 Tuỳ chỉnh và popup /custom.
-    Mỗi lần lưu ghi ngay vào custom.toml rồi gửi `CustomPanel.Changed` (bên chứa nạp lại cấu hình)."""
+    """Danh sách agent & workflow tuỳ chỉnh + nút Thêm/Sửa/Xoá. `show`: "agents" (tab 🤖 Agents), "flows"
+    (tab 🔀 Workflows), "all" (popup /custom). Mỗi lần lưu ghi ngay vào custom.toml rồi gửi `CustomPanel.Changed`
+    (bên chứa nạp lại cấu hình)."""
 
     DEFAULT_CSS = """
     CustomPanel { height: auto; }
@@ -2056,29 +2061,45 @@ class CustomPanel(Vertical):
     """
 
     class Changed(Message):
-        pass
+        def __init__(self, panel: "CustomPanel"):
+            super().__init__()
+            self.panel = panel
 
-    def __init__(self, root: Path, cfg: Config, **kw):
+        @property
+        def control(self) -> "CustomPanel":
+            return self.panel
+
+    def __init__(self, root: Path, cfg: Config, show: str = "all", **kw):
         super().__init__(**kw)
-        self.root, self.cfg = root, cfg
+        self.root, self.cfg, self.show = root, cfg, show
         self.ids: dict[str, tuple[str, str]] = {}  # id nút -> (hành động, tên)
         self.armed: str | None = None  # nút xoá đang chờ bấm lần 2
         self._n = 0
 
     def compose(self) -> ComposeResult:
-        yield Static(Text(tr("Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc "
-                             "theo vai trò, bật/tắt ở /setup). Workflow chạy bằng /flow <tên> "
-                             "<mục tiêu>, hoặc ★ Mặc định để gõ mục tiêu là chạy luôn. Lưu ở {CUSTOM_FILE}", CUSTOM_FILE=CUSTOM_FILE), "dim"), classes="c-intro")
+        if self.show == "agents":
+            intro = tr("Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc theo vai trò, bật/tắt ở "
+                       "/setup). Lưu ở {CUSTOM_FILE}", CUSTOM_FILE=CUSTOM_FILE)
+        elif self.show == "flows":
+            intro = tr("Workflow chạy bằng /flow <tên> <mục tiêu>, hoặc ★ Mặc định để gõ mục tiêu là chạy luôn. "
+                       "Agent tuỳ chỉnh nằm ở tab 🤖 Agents. Lưu ở {CUSTOM_FILE}", CUSTOM_FILE=CUSTOM_FILE)
+        else:
+            intro = tr("Agent mới tham gia đội như agent có sẵn (trưởng nhóm phân việc "
+                       "theo vai trò, bật/tắt ở /setup). Workflow chạy bằng /flow <tên> "
+                       "<mục tiêu>, hoặc ★ Mặc định để gõ mục tiêu là chạy luôn. Lưu ở {CUSTOM_FILE}", CUSTOM_FILE=CUSTOM_FILE)
+        yield Static(Text(intro, "dim"), classes="c-intro")
         with VerticalScroll(classes="f-scroll"):
-            yield Static(tr("Agent tuỳ chỉnh"), classes="f-section")
-            yield Vertical(id="custom-agents")
-            with Horizontal(classes="c-adds"):
-                yield Btn(tr("+ Thêm agent"), id="custom-add-agent")
-            yield Static("Workflow", classes="f-section")
-            yield Vertical(id="custom-flows")
-            with Horizontal(classes="c-adds"):
-                yield Btn(tr("+ Thêm workflow"), id="custom-add-flow")
-                yield Btn(tr("⚙ Luồng mặc định"), id="custom-default-flow")
+            if self.show != "flows":
+                yield Static(tr("Agent tuỳ chỉnh"), classes="f-section")
+                yield Vertical(id="custom-agents")
+                with Horizontal(classes="c-adds"):
+                    yield Btn(tr("+ Thêm agent"), id="custom-add-agent")
+            if self.show != "agents":
+                yield Static("Workflow", classes="f-section")
+                yield Vertical(id="custom-flows")
+                with Horizontal(classes="c-adds"):
+                    yield Btn(tr("+ Thêm workflow"), id="custom-add-flow")
+                    yield Btn(tr("⚙ Luồng mặc định"), id="custom-default-flow")
 
     async def on_mount(self) -> None:
         await self.refill()
@@ -2106,9 +2127,9 @@ class CustomPanel(Vertical):
             rows = [Static(tr("Chưa có. Bấm '+ Thêm agent' để thêm CLI bất kỳ (Gemini, Aider, "
                               "script riêng…)."),
                            classes="c-empty")]
-        box = self.query_one("#custom-agents", Vertical)
-        await box.remove_children()
-        await box.mount_all(rows)
+        for box in self.query("#custom-agents").results(Vertical):
+            await box.remove_children()
+            await box.mount_all(rows)
 
         rows = []
         for name, w in self.cfg.workflows.items():
@@ -2124,9 +2145,9 @@ class CustomPanel(Vertical):
             rows = [Static(tr("Chưa có. Bấm '+ Thêm workflow' (có mẫu: tính năng mới, sửa lỗi, "
                               "review)."),
                            classes="c-empty")]
-        box = self.query_one("#custom-flows", Vertical)
-        await box.remove_children()
-        await box.mount_all(rows)
+        for box in self.query("#custom-flows").results(Vertical):
+            await box.remove_children()
+            await box.mount_all(rows)
 
     async def _saved(self, kind: str, result) -> None:
         if not result:
@@ -2141,7 +2162,7 @@ class CustomPanel(Vertical):
         await self.changed()
 
     async def changed(self) -> None:
-        self.post_message(self.Changed())
+        self.post_message(self.Changed(self))
         await self.refill()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -4589,20 +4610,28 @@ class TeamApp(App):
     #log-tools { height: 1; align: right top; }
     #log-clear { margin: 0 1 0 0; }
     #log { height: 1fr; padding: 0 1; overflow-x: hidden; }
-    #team-grid { layout: grid; grid-size: 2; grid-gutter: 0 1; height: 1fr; }
-    .agentpane { border: round $panel-lighten-2; height: 1fr; }
-    .agentpane.busy { border: heavy $accent; }
-    .agentpane.missing { border: round $error 50%; }
-    .agentpane.cooling { border: round $warning; }
-    .agentpane.failed { border: round $error; }
+    /* tab Agents: danh sách gọn (chỉ phần đầu mỗi ô); chat = phóng to 1 ô (F7 / bấm vào agent) */
+    #team-list { height: 1fr; }
+    #team-hint { height: auto; padding: 0 1; margin-bottom: 1; }
+    #team-grid { height: auto; }
+    #agents-custom { margin-top: 1; padding: 0 1; }
+    .agentpane { height: auto; margin-bottom: 1; border: none; border-left: tall $panel-lighten-2; }
+    .agentpane.busy { border-left: tall $accent; }
+    .agentpane.missing { border-left: tall $error 50%; }
+    .agentpane.cooling { border-left: tall $warning; }
+    .agentpane.failed { border-left: tall $error; }
+    .agentpane .pane-log, .agentpane .pane-chat { display: none; }
     .pane-head { height: auto; padding: 0 1; background: $boost; }
     .pane-log { height: 1fr; padding: 0 1; overflow-x: hidden; }
     .pane-chat { height: 1; margin: 0; padding: 0 1; border: none; background: $boost; }
     .pane-chat:focus { border: none; background: $accent 25%; }
-    /* F7 / /focus: chỉ còn 1 ô agent chiếm cả tab Đội */
-    #team-grid.focused { grid-size: 1; }
+    /* F7 / /focus: chỉ còn 1 ô agent (có log + ô chat) chiếm cả tab Agents */
+    #team.focused #team-list { overflow: hidden hidden; }
+    #team.focused #team-hint, #team.focused #agents-custom, #team.focused #timeline { display: none; }
+    #team-grid.focused { height: 1fr; }
     #team-grid.focused .agentpane.unfocused { display: none; }
-    #team.focused #timeline { display: none; }
+    #team-grid.focused .agentpane { height: 1fr; margin: 0; border: round $accent; }
+    #team-grid.focused .pane-log, #team-grid.focused .pane-chat { display: block; }
     #timeline { height: auto; max-height: 14; padding: 0 1; border-top: solid $primary-darken-2; }
     #cmd-row { dock: bottom; height: 3; margin: 0 0 2 0; }
     #cmd-mode { width: auto; max-width: 30%; margin-top: 1; text-wrap: nowrap; text-overflow: ellipsis; }
@@ -4664,7 +4693,7 @@ class TeamApp(App):
     def __init__(self, root: Path, cfg: Config, db: DB, setup: bool = False):
         super().__init__()
         self.root, self.cfg, self.db = root, cfg, db
-        self.focus_agent: str | None = None  # agent đang phóng to ở tab Đội (F7, /focus)
+        self.focus_agent: str | None = None  # agent đang phóng to ở tab Agents (F7, /focus)
         self.start_setup = setup
         # tắt hiệu ứng chuyển động (gạch chân tab trượt, cuộn mượt): mỗi lần đổi tab/cuộn phải vẽ lại nhiều
         # khung hình — trên terminal là giật, lag
@@ -4730,29 +4759,29 @@ class TeamApp(App):
                             yield Btn(tr("🗑 Xoá log"), id="log-clear")
                         yield ReflowLog(id="log", wrap=True, markup=False, highlight=False,
                                       max_lines=5000, min_width=1)
-            with TabPane(tr("👥 Đội"), id="tab-team"):
+            with TabPane(tr("🤖 Agents"), id="tab-team"):
                 with Vertical(id="team"):
-                    with Vertical(id="team-grid"):
-                        for name, a in self.cfg.agents.items():
-                            if a.enabled:
-                                yield AgentPane(name)
+                    with VerticalScroll(id="team-list"):
+                        yield Static(Text(tr("Bấm vào một agent (hoặc F7) để chat riêng · bấm model/effort để đổi "
+                                             "ngay · Esc về danh sách"), "dim"), id="team-hint")
+                        with Vertical(id="team-grid"):
+                            for name, a in self.cfg.agents.items():
+                                if a.enabled:
+                                    yield AgentPane(name)
+                        yield CustomPanel(self.root, self.cfg, show="agents", id="agents-custom")
                     yield Timeline(id="timeline")
-            with TabPane(tr("🔲 Lưới"), id="tab-grid"):
-                from .tui_grid import GridPanel
-                yield GridPanel(id="grid-panel")
-            with TabPane("💻 Terminal", id="tab-term"):
-                with Horizontal(id="term"):
-                    with Vertical(id="jobs-side"):
-                        yield OptionList(id="jobs")
-                        yield Static(id="jobs-empty")
-                        with Horizontal(id="jobs-buttons"):
-                            yield Btn(tr("■ Dừng"), id="job-stop", variant="error")
-                            yield Btn(tr("↻ Chạy lại"), id="job-restart")
-                            yield Btn(tr("✗ Xoá"), id="job-remove")
-                    with Vertical(id="job-view"):
-                        yield Static(id="job-head")
-                        yield ReflowLog(id="job-log", wrap=True, markup=False, highlight=False,
-                                      max_lines=5000, min_width=1)
+            with TabPane(tr("🔀 Workflows"), id="tab-custom"):
+                yield CustomPanel(self.root, self.cfg, show="flows", id="custom-tab")
+            with TabPane("📝 Code", id="tab-code"):
+                with Horizontal(id="code"):
+                    with Vertical(id="code-side"):
+                        yield TextInput(id="code-filter", placeholder=tr("Tìm file… (Enter mở)"))
+                        yield Btn(tr("＋ File mới"), id="code-new")
+                        yield CodeFileList(id="code-files")
+                    with Vertical(id="code-main"):
+                        yield Static(id="code-head")
+                        yield CodeEditor(id="code-editor")
+                        yield Static(id="code-status")
             with TabPane("🌿 Git", id="tab-git"):
                 with Vertical(id="git"):
                     with Horizontal(id="git-top"):
@@ -4802,23 +4831,27 @@ class TeamApp(App):
                             tr("Tạo repo để theo dõi thay đổi, commit, và dùng chế độ worktree "
                                "(mỗi task một nhánh riêng).\n")))
                         yield Btn(tr("＋ Tạo git repo (git init)"), id="git-init", variant="success")
-            with TabPane("📝 Code", id="tab-code"):
-                with Horizontal(id="code"):
-                    with Vertical(id="code-side"):
-                        yield TextInput(id="code-filter", placeholder=tr("Tìm file… (Enter mở)"))
-                        yield Btn(tr("＋ File mới"), id="code-new")
-                        yield CodeFileList(id="code-files")
-                    with Vertical(id="code-main"):
-                        yield Static(id="code-head")
-                        yield CodeEditor(id="code-editor")
-                        yield Static(id="code-status")
+            with TabPane("💻 Terminal", id="tab-term"):
+                with Horizontal(id="term"):
+                    with Vertical(id="jobs-side"):
+                        yield OptionList(id="jobs")
+                        yield Static(id="jobs-empty")
+                        with Horizontal(id="jobs-buttons"):
+                            yield Btn(tr("■ Dừng"), id="job-stop", variant="error")
+                            yield Btn(tr("↻ Chạy lại"), id="job-restart")
+                            yield Btn(tr("✗ Xoá"), id="job-remove")
+                    with Vertical(id="job-view"):
+                        yield Static(id="job-head")
+                        yield ReflowLog(id="job-log", wrap=True, markup=False, highlight=False,
+                                      max_lines=5000, min_width=1)
+            with TabPane(tr("🔲 Lưới"), id="tab-grid"):
+                from .tui_grid import GridPanel
+                yield GridPanel(id="grid-panel")
             with TabPane(tr("✅ To-do"), id="tab-todo"):
                 from .tui_todo import NotesPanel, TodoPanel
                 yield TodoPanel(self.root, id="todo-tab")
             with TabPane(tr("🗒 Ghi chú"), id="tab-notes"):
                 yield NotesPanel(self.root, id="notes-tab")
-            with TabPane(tr("🧩 Tuỳ chỉnh"), id="tab-custom"):
-                yield CustomPanel(self.root, self.cfg, id="custom-tab")
             with TabPane(tr("📊 Thống kê"), id="tab-dash"):
                 with VerticalScroll(id="dash"):
                     yield Static(id="dash-cards")
@@ -5631,7 +5664,7 @@ class TeamApp(App):
                     self.notify(tr("Đã giao cho {agent}: {v}", agent=agent, v=msg[:80]))
                 else:
                     self.send_chat(agent, msg)
-                    self.notify(tr("Đã hỏi {agent} — xem trả lời ở tab 👥 Đội", agent=agent))
+                    self.notify(tr("Đã hỏi {agent} — xem trả lời ở tab 🤖 Agents", agent=agent))
             title = (tr("Giao task cho {agent} về {v}", agent=agent, v=ref) if as_task
                      else tr("Hỏi {agent} về {v}", agent=agent, v=ref))
             self.push_screen(PromptScreen(title, placeholder=tr("vd: giải thích đoạn này / viết test cho hàm này")),
@@ -6551,6 +6584,8 @@ class TeamApp(App):
                 self._refresh_dash(force=True)
             elif event.pane.id == "tab-custom":
                 self.run_worker(self.query_one("#custom-tab", CustomPanel).refill(), exclusive=False)
+            elif event.pane.id == "tab-team":
+                self.run_worker(self.query_one("#agents-custom", CustomPanel).refill(), exclusive=False)
             elif event.pane.id == "tab-code":
                 self.code_tab_shown()
             elif event.pane.id == "tab-grid":
@@ -6637,7 +6672,7 @@ class TeamApp(App):
     def _refresh_table(self) -> None:
         table = self.query_one("#tasks", DataTable)
         now = time.time()
-        tasks = [t for t in self.snap_tasks() if t.source != CHAT]  # lượt chat hiện ở ô agent (tab Đội)
+        tasks = [t for t in self.snap_tasks() if t.source != CHAT]  # lượt chat hiện ở ô agent (tab Agents)
         empty = self.query_one("#tasks-empty", Static)
         table.display, empty.display = bool(tasks), not tasks
         alive = {t.id for t in tasks}
@@ -6687,7 +6722,7 @@ class TeamApp(App):
         d = self.query_one("#detail", Static)
         if self.view_task == SYSTEM:
             t = Text(tr("📜 Log hệ thống"), "bold")
-            t.append(tr("  ·  chọn 1 task trong bảng để xem log riêng · Ctrl+T: tab Đội"), "dim")
+            t.append(tr("  ·  chọn 1 task trong bảng để xem log riêng · Ctrl+T: tab Agents"), "dim")
             set_static(d, t)
             return
         task = self.db.task(self.view_task)
@@ -6739,6 +6774,8 @@ class TeamApp(App):
             if name == self.cfg.lead:
                 t.append("★ ", "yellow")
             t.append(name, "bold")
+            if name in self.cfg.custom_agents:
+                t.append(tr(" [tuỳ chỉnh]"), PAL["info"])
             t.append(f"  {a.label()}", PAL["info"])
             t.append(f"   ✓{n_done}", PAL["ok"])
             t.append(f" ✗{n_fail}", PAL["err"] if n_fail else "dim")
@@ -7035,7 +7072,7 @@ class TeamApp(App):
             return
         self.push_screen(PlanViewScreen(g, self.db.tasks(goal_id=g.id)))
 
-    TAB_ORDER = ["tab-board", "tab-team", "tab-grid", "tab-term", "tab-git", "tab-code", "tab-todo", "tab-notes", "tab-custom",
+    TAB_ORDER = ["tab-board", "tab-team", "tab-custom", "tab-code", "tab-git", "tab-term", "tab-grid", "tab-todo", "tab-notes",
                  "tab-dash"]
 
     def action_toggle_tab(self) -> None:
@@ -7326,7 +7363,7 @@ class TeamApp(App):
         return reports.models_text(self.cfg, only)
 
     def action_set_agent_opt(self, agent: str, key: str, value: str) -> None:
-        """Bấm chip model/effort trên ô agent (tab Đội): đổi ngay, không mở bảng chọn."""
+        """Bấm chip model/effort trên ô agent (tab Agents): đổi ngay, không mở bảng chọn."""
         a = self.cfg.agents.get(agent)
         if a and value != (a.model if key == "model" else a.current_effort()):
             self.notify(self.orch.set_agent_option(agent, key, value))
@@ -7395,10 +7432,13 @@ class TeamApp(App):
         self.push_screen(CustomScreen(self.root, self.cfg), done)
 
     async def on_custom_panel_changed(self, event: CustomPanel.Changed) -> None:
-        await self.reload_custom()  # sửa ở tab 🧩 Tuỳ chỉnh: có hiệu lực ngay
+        await self.reload_custom()  # sửa ở tab Agents / Workflows: có hiệu lực ngay
+        for panel in self.screen.query(CustomPanel):  # tab còn lại cũng thấy thay đổi
+            if panel is not event.control:
+                self.run_worker(panel.refill(), exclusive=False)
 
     def open_default_flow(self, after=None) -> None:
-        """Popup "Luồng mặc định" (/flow-setup, nút ở tab 🧩 Tuỳ chỉnh)."""
+        """Popup "Luồng mặc định" (/flow-setup, nút ở tab 🔀 Workflows)."""
         async def done(name) -> None:
             if not name:
                 return
@@ -7469,7 +7509,7 @@ class TeamApp(App):
         self.refresh_view()
 
     def set_focus_agent(self, agent: str | None) -> None:
-        """Phóng to ô của `agent` cả tab Đội (ẩn các ô khác và Timeline), None = về lưới như cũ."""
+        """Phóng to ô của `agent` cả tab Agents (log + ô chat, ẩn danh sách và Timeline), None = về danh sách."""
         self.focus_agent = agent if agent and self.pane(agent) else None
         self.query_one("#team-grid", Vertical).set_class(self.focus_agent is not None, "focused")
         self.query_one("#team", Vertical).set_class(self.focus_agent is not None, "focused")
@@ -7494,7 +7534,7 @@ class TeamApp(App):
         self.set_focus_agent(agent)
 
     def send_chat(self, agent: str, text: str) -> None:
-        """Ô 💬 của ô agent (tab Đội) và /chat: mỗi tin là một lượt chạy tiếp phiên CLI của agent."""
+        """Ô 💬 của ô agent (tab Agents) và /chat: mỗi tin là một lượt chạy tiếp phiên CLI của agent."""
         pane = self.pane(agent)
         if text in ("/term", "/terminal"):
             self.open_agent_terminal(agent)
@@ -7547,12 +7587,10 @@ class TeamApp(App):
                 self.notify(tr("Dùng: /chat <agent> <tin nhắn>  — agent: {v}", v=", ".join(agents)), severity="warning")
                 return
             self.query_one("#tabs", TabbedContent).active = "tab-team"
+            if self.focus_agent != agent:
+                self.set_focus_agent(agent)  # tab Agents là danh sách: chat = phóng to ô của agent
             if msg.strip():
                 self.send_chat(agent, msg.strip())
-            else:
-                p = self.pane(agent)
-                if p:
-                    p.query_one(".pane-chat", Input).focus()
         elif cmd == "rules":
             if rest:
                 err = rules.apply(self.root, "add", {"text": rest})
@@ -7690,7 +7728,7 @@ class TeamApp(App):
         elif cmd == "log":
             self.query_one("#tabs", TabbedContent).active = "tab-board"
             self.show_task(SYSTEM if rest in ("", "sys", "0") else num(rest))
-        elif cmd == "team":
+        elif cmd in ("team", "agent-moi"):
             self.query_one("#tabs", TabbedContent).active = "tab-team"
         elif cmd == "board":
             self.query_one("#tabs", TabbedContent).active = "tab-board"
@@ -7740,7 +7778,7 @@ class TeamApp(App):
         elif cmd == "flow-setup":
             self.open_default_flow()
             return
-        elif cmd in ("custom", "agent-moi", "workflow", "workflows"):
+        elif cmd in ("custom", "workflow", "workflows"):
             self.query_one("#tabs", TabbedContent).active = "tab-custom"  # popup vẫn mở từ /setup
             return
         elif cmd == "goal":

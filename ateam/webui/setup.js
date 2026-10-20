@@ -184,8 +184,8 @@ window.Setup = (() => {
     });
   }
 
-  /* ================================================================ /custom — mục 🧩 Tuỳ chỉnh + popup */
-  function customHtml(d) {
+  /* ================================================================ /custom — trang Workflows + popup (agent tuỳ chỉnh ở trang Agents) */
+  function customHtml(d, flowsOnly) {
     const agentRows = d.agents.map((a) => `<div class="c-row"><b>${esc(a.name)}</b>
         <span class="muted mono small c-info">${a.installed ? "✓" : "✗ " + esc(t("not_installed"))} · ${esc(a.argv)}</span>
         <button class="btn sm" data-cu="edit-agent" data-name="${esc(a.name)}">${esc(t("edit"))}</button>
@@ -197,9 +197,9 @@ window.Setup = (() => {
         <button class="btn sm" data-cu="edit-flow" data-name="${esc(w.name)}">${esc(t("edit"))}</button>
         <button class="btn sm danger" data-cu="del-flow" data-name="${esc(w.name)}">${esc(t("remove"))}</button></div>`).join("")
       || `<div class="muted small pad">${esc(t("cu_no_flows"))}</div>`;
-    return `<div class="muted small">${esc(t("cu_hint"))}</div>
-      <div class="sec-title" style="margin-top:14px">${esc(t("cu_agents"))}</div>${agentRows}
-      <button class="btn sm" data-cu="add-agent">+ ${esc(t("cu_add_agent"))}</button>
+    const agents = flowsOnly ? "" : `<div class="sec-title" style="margin-top:14px">${esc(t("cu_agents"))}</div>${agentRows}
+      <button class="btn sm" data-cu="add-agent">+ ${esc(t("cu_add_agent"))}</button>`;
+    return `<div class="muted small">${esc(t(flowsOnly ? "wf_hint" : "cu_hint"))}</div>${agents}
       <div class="sec-title" style="margin-top:18px">Workflow</div>${flowRows}
       <div class="row-actions"><button class="btn sm" data-cu="add-flow">+ ${esc(t("cu_add_flow"))}</button>
         <button class="btn sm" data-cu="default-flow">⚙ ${esc(t("df_title"))}</button>
@@ -236,12 +236,24 @@ window.Setup = (() => {
     const reopen = () => { onDone = null; closeModal(m); custom(); if (S.view === "custom") showCustom(); };
     m.addEventListener("click", customClick(d, reopen));
   }
-  async function showCustom() {  // mục 🧩 Tuỳ chỉnh ở sidebar
+  async function showCustom() {  // trang Workflows ở sidebar
     const el = $("#custom");
     if (!el) return;
     const d = await (await fetch("/api/custom")).json();
-    el.innerHTML = `<div class="panel custom-page">${customHtml(d)}</div>`;
+    el.innerHTML = `<div class="panel custom-page">${customHtml(d, true)}</div>`;
     el.onclick = customClick(d, showCustom);  // gán (không addEventListener) để vẽ lại không gắn trùng
+  }
+  /* agent tuỳ chỉnh từ trang Agents: thêm / sửa / xoá (cùng form với popup /custom) */
+  const customData = async () => (await fetch("/api/custom")).json();
+  async function addAgent(done) { agentForm(await customData(), null, done); }
+  async function editAgent(name, done) {
+    const d = await customData(), a = d.agents.find((x) => x.name === name);
+    if (a) agentForm(d, a, done);
+  }
+  async function deleteAgent(name, done) {
+    if (!(await confirmBox(t("remove"), t("cu_del_q", { name }), t("remove")))) return;
+    const r = await request("custom_delete", { kind: "agents", name });
+    if (r.custom_saved) done();
   }
 
   /* ---------------------------------------------------------------- popup "Luồng mặc định" (DefaultFlowScreen) */
@@ -463,5 +475,5 @@ window.Setup = (() => {
     });
   }
 
-  return { open, discovered, custom, showCustom, flowModal, rolesModal };
+  return { open, discovered, custom, showCustom, flowModal, rolesModal, addAgent, editAgent, deleteAgent };
 })();

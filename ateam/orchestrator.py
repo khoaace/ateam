@@ -88,7 +88,7 @@ class Orchestrator:
         self._rules_sent: dict[str, str] = {}  # phiên CLI -> digest bộ rule đã gửi trong phiên đó
         self._chat_new: set[str] = set()  # agent mà tin chat kế tiếp bắt đầu cuộc mới
         self._wt_base: dict[int, str] = {}
-        # hoạt động hiện tại của từng agent (cho tab Đội)
+        # hoạt động hiện tại của từng agent (cho tab Agents)
         self.activity: dict[str, dict] = {}
         # các lần trưởng nhóm lập kế hoạch / review: (bắt đầu, kết thúc|None, nhãn)
         self.lead_spans: list[list] = []
@@ -864,7 +864,7 @@ class Orchestrator:
 
     async def resolve_conflicts(self, paths: list[str] | None = None) -> tuple[bool, str]:
         """Nhờ agent (agent viết commit ở tab Git, mặc định trưởng nhóm) sửa các file xung đột git — một lượt chat
-        mới ở thư mục gốc (xem tiến độ ở tab Đội). paths None = mọi file đang xung đột."""
+        mới ở thư mục gốc (xem tiến độ ở tab Agents). paths None = mọi file đang xung đột."""
         from .gitops import GitRepo
         st = await GitRepo(self.root).status()
         files = [f.path for f in st.conflicts if paths is None or f.path in paths]
@@ -874,7 +874,7 @@ class Orchestrator:
         res = self.chat(agent, P.conflict_prompt(files=files, state=st.state, cwd=str(self.root)), new=True)
         if isinstance(res, str):
             return False, res
-        return True, tr("🤖 {agent} đang giải quyết xung đột {v} file — xem ở tab Đội; xong thì xem lại rồi "
+        return True, tr("🤖 {agent} đang giải quyết xung đột {v} file — xem ở tab Agents; xong thì xem lại rồi "
                         "Đánh dấu đã xong", agent=agent, v=len(files))
 
     def chat_reset(self, agent: str) -> None:

@@ -96,7 +96,7 @@ def flows_text(cfg: Config) -> str:
 def models_text(cfg: Config, only: str | None = None) -> str:
     return (describe_models(cfg, only) + tr("\n"
                                             "Chọn: /model <agent>, /effort <agent> hoặc "
-                                            "bấm vào ô agent ở tab Đội. Model ngoài danh "
+                                            "bấm vào ô agent ở tab Agents. Model ngoài danh "
                                             "sách vẫn đặt được: /model <agent> <tên>."))
 
 
