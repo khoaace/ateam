@@ -170,7 +170,7 @@ def _add(b: dict, r: dict) -> None:
         b["out_tok"] += int(r.get("output_chars") or 0) // 4
     if r.get("cost") is not None:
         b["cost"] = (b["cost"] or 0.0) + float(r["cost"])
-    b["failed"] += r.get("status") in ("failed", "timeout")
+    b["failed"] += r.get("status") in ("failed", "timeout", "overloaded")
     b["ratelimits"] += r.get("status") == "ratelimit"
     b["real"] += r.get("tok_src") == "cli"
 

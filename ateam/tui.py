@@ -283,11 +283,11 @@ COMMANDS = [
     ("checkout", tr("<nhánh>"), tr("chuyển sang nhánh (nhánh remote → tạo nhánh local)")),
     ("stash", "[message|pop|apply|list]", tr("cất tạm / lấy lại thay đổi chưa commit")),
     ("flow", tr("<tên> <mục tiêu>"), tr("chạy mục tiêu theo workflow")),
-    ("assign", "<task> <agent>", tr("đổi người làm 1 task")),
+    ("assign", "<task> [agent]", tr("đổi người làm 1 task (task lỗi/huỷ: chạy lại luôn); thiếu agent: bảng chọn")),
     ("edit", tr("<task> <nội dung>"), tr("sửa nội dung task chưa chạy")),
     ("set", tr("<task> effort|model <giá trị>"), tr("effort/model riêng cho 1 task")),
     ("retry", "<task>", tr("chạy lại task")),
-    ("cancel", "<task>", tr("huỷ task")),
+    ("cancel", tr("<task|m<mục tiêu>>"), tr("huỷ task; m<số>: huỷ lượt lập kế hoạch đang chạy")),
     ("review", tr("<mục tiêu>"), tr("bắt trưởng nhóm review ngay")),
     ("search", tr("[từ khoá]"), tr("tìm & thay trong toàn dự án (F3), như VS Code")),
     ("plan", tr("[mục tiêu]"), tr("xem lại kế hoạch của mục tiêu, kể cả đã duyệt / đã xong")),
@@ -6660,6 +6660,10 @@ class TeamApp(App):
                                               meta={"@click": f"app.continue_goal({g.id})"}))
             if g.summary and g.status in ("done", "incomplete", "failed", "awaiting"):
                 t.append(f" {g.summary[:160]}" if ended else f"\n   ↳ {g.summary[:160]}", "dim")
+            if g.status == "planning":
+                t.append("\n   ")
+                t.append(tr(" ✕ Huỷ lập kế hoạch "), Style(color="black", bgcolor="red", bold=True,
+                                                         meta={"@click": f"app.cancel_planning({g.id})"}))
             if g.status == "awaiting":
                 t.append(tr("\n   ↳ xem khung Duyệt kế hoạch phía dưới · F2 duyệt & chạy"), "yellow")
             if g.status == "grilling":
@@ -6748,6 +6752,11 @@ class TeamApp(App):
             t.append(f"\n⚠ {task.error}", "red")
         elif task.result and task.status != "running":
             t.append(f"\n↳ {task.result[:240].replace(chr(10), ' ')}", "green")
+        if task.status in ("failed", "cancelled", "blocked"):
+            t.append("\n")
+            t.append(tr(" ⇄ Đổi agent "), Style(color="black", bgcolor="cyan", bold=True,
+                                               meta={"@click": f"app.reassign_task({task.id})"}))
+            t.append(tr("  F5: chạy lại với {agent}", agent=task.agent), "dim")
         if task.status not in ACTIVE:
             g = self.db.goal(task.goal_id) if task.goal_id else None
             if g is None or g.status in GOAL_ENDED:
@@ -7230,6 +7239,30 @@ class TeamApp(App):
         """Nút "↪ Tiếp tục" trong khung mục tiêu."""
         self.prefill_continue(f"m{gid}")
 
+    def action_cancel_planning(self, gid: int) -> None:
+        """Nút "✕ Huỷ" của mục tiêu đang lập kế hoạch."""
+        self.notify(self.orch.cancel_planning(gid))
+        self.refresh_view()
+
+    def action_reassign_task(self, tid: int) -> None:
+        """Nút "⇄ Đổi agent" ở chi tiết task lỗi / bị huỷ."""
+        self.reassign_task(tid)
+
+    def reassign_task(self, tid: int) -> None:
+        """Bảng chọn agent cho task rồi chạy lại ngay (task lỗi / bị huỷ / bị chặn) — /assign <task>."""
+        t = self.db.task(tid)
+        if not t:
+            self.notify(tr("Không có task #{tid}", tid=tid), severity="warning")
+            return
+        agents = [n for n, a in self.cfg.active_agents().items() if a.installed()]
+
+        def done(agent: str | None) -> None:
+            if agent and agent != RESET:
+                self.notify(self.orch.assign(tid, agent, rerun=True))
+                self.refresh_view()
+        self.push_screen(ChoiceScreen(tr("Đổi agent cho task #{tid}", tid=tid), agents, t.agent,
+                                      tr("Thôi (giữ {agent})", agent=t.agent)), done)
+
     def start_goal(self, text: str, workflow: str = "") -> None:
         """Mục tiêu mới: theo workflow (nếu có) hoặc để trưởng nhóm lập kế hoạch."""
         if workflow:
@@ -7697,8 +7730,11 @@ class TeamApp(App):
                 return
             self.notify(tr("Đã bỏ kế hoạch #{gid} ({v} task nháp)", gid=gid, v=o.discard_plan(gid)))
         elif cmd == "assign":
-            tid, agent = shlex.split(rest)[:2]
-            self.notify(o.assign(num(tid), agent))
+            tid, *agent = shlex.split(rest)[:2]
+            if agent:
+                self.notify(o.assign(num(tid), agent[0], rerun=True))
+            else:
+                self.reassign_task(num(tid))
         elif cmd == "edit" and not re.match(r"^#?\d+(\s|$)", rest.strip()):
             target, line = parse_code_target(rest)  # /edit @file: mở file trong tab 📝 Code
             self.open_code(target, line)
@@ -7708,7 +7744,7 @@ class TeamApp(App):
         elif cmd == "retry":
             self.notify(o.retry(num(rest)))
         elif cmd == "cancel":
-            self.notify(o.cancel(num(rest)))
+            self.notify(o.cancel_command(rest))
         elif cmd == "review":
             self.notify(o.force_review(num(rest)))
         elif cmd == "note":

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 
-from conftest import git_init
+from conftest import git_init, write_project_config
 
 
 def test_grill_prompt_goal_text_and_db_migration(tmp_path):
@@ -327,3 +328,65 @@ def test_cancel_grill_stops_lead_run(env, project, monkeypatch, tmp_path):
         assert o.db.goal(gid).status == "cancelled"
 
     asyncio.run(main())
+
+
+def test_codex_lead_prompt_echo_and_truncated_plan(env, project, monkeypatch, tmp_path):
+    """Codex làm trưởng nhóm: `codex exec` in lại prompt (có JSON câu hỏi mẫu) và model quên `]` cuối kế hoạch —
+    trước đây thành câu hỏi "..." rồi "Trưởng nhóm không trả về kế hoạch JSON hợp lệ"."""
+    write_project_config(project, 'lead = "codex"\n')
+    o, _ = _orch(env, project, monkeypatch, tmp_path)
+
+    async def main():
+        await o.setup()
+        gid = o.new_goal("THIEU_NGOAC hai cột cao bằng nhau")
+        await _idle(o)
+        g = o.db.goal(gid)
+        assert g.status in ("awaiting", "running"), (g.status, g.summary, g.grill)
+        assert [t.title for t in o.db.tasks(goal_id=gid)] == ["Kế hoạch do codex lập"]
+    asyncio.run(main())
+
+
+def test_prompt_echo_and_placeholder_question():
+    from ateam import prompts as P
+    prompt = "GOAL: @a.py\n\nAsk first.\nReply with ONLY JSON:\n" + P.QUESTION_SCHEMA
+    # CLI nhận prompt đã kèm rule + đổi @file (khác `prompt` ở đầu) và giữ nguyên dòng trống
+    out = (f"session id: x\nuser\nRULES\nGOAL: a.py\n\nAsk first.\n\nReply with ONLY JSON:\n{P.QUESTION_SCHEMA}\n"
+           'codex\n{"question": "Màu gì?"}')
+    assert P.strip_echo(out, prompt) == 'codex\n{"question": "Màu gì?"}'
+    assert P.strip_echo(out, "lượt resume ngắn, khác hẳn", prompt) == 'codex\n{"question": "Màu gì?"}'
+    assert P.strip_echo("không in lại prompt", prompt) == "không in lại prompt"
+    assert P.strip_echo("a\nok\nb", "ok") == "a\nok\nb"  # quá ngắn: không cắt
+    # câu trả lời trích một dòng của prompt: không cắt (phải khớp cả mấy dòng cuối liên tiếp)
+    assert P.strip_echo(P.QUESTION_SCHEMA + "\nđáp", prompt) == P.QUESTION_SCHEMA + "\nđáp"
+    assert P.question_from(json.loads(P.QUESTION_SCHEMA)) is None  # câu hỏi "..." của JSON mẫu
+    assert P.question_from({"question": "Màu gì?"})["q"] == "Màu gì?"
+
+
+def test_extract_json_closes_truncated_array():
+    from ateam import prompts as P
+    keys = ("prompt", "agent", "title")
+    plan = '[{"id":1,"agent":"ui","title":"T","prompt":"p [x]","depends_on":[]}'
+    want = [{"id": 1, "agent": "ui", "title": "T", "prompt": "p [x]", "depends_on": []}]
+    assert P.extract_json(plan + "\ntokens used\n24,916\n" + plan, list, keys) == want
+    assert P.extract_json("codex\n" + plan, list, keys) == want  # hết văn bản
+    assert P.extract_json('[\n  {"agent": "ui", "prompt": "p"}\n\nxong', list, keys) == [{"agent": "ui", "prompt": "p"}]
+    # JSON mẫu trong prompt hỏng giữa dòng (<ids>): không vá thành kế hoạch giả
+    assert P.extract_json(P.TASK_SCHEMA, list, keys) is None
+    assert P.extract_json('{"done": true, "spec": "a"\nok', dict, ("done",)) == {"done": True, "spec": "a"}
+    assert P.extract_json('[{"agent": "ui", "prompt": "chưa đóng\nchuỗi', list, keys) is None
+
+
+def test_task_output_prompt_echo_examples_ignored():
+    """codex làm thành viên cũng in lại prompt: khối DELEGATE/NOTE/ASK/SUMMARY ví dụ không được coi là thật."""
+    from ateam import prompts as P
+    from ateam.config import AgentConfig, Config
+    cfg = Config(agents={n: AgentConfig(n, [n, "{prompt}"]) for n in ("codex", "grok")})
+    prompt = P.task_prompt(cfg, agent="codex", task_id=1, title="t", prompt="sửa X", goal=None, deps=[],
+                           notes="", cwd="/p", can_delegate=True, can_ask=True)
+    assert "MEMBER_NAME" in prompt and "<<<ASK>>>" in prompt
+    out = "session id: x\nuser\n" + prompt + "\ncodex\nđã sửa X\n"
+    assert P.parse_delegations(out) == []  # MEMBER_NAME của ví dụ
+    answer = P.strip_echo(out, prompt)
+    assert answer == "codex\nđã sửa X" and P.parse_ask(answer) is None and not P.parse_notes(answer)
+    assert "SUMMARY" not in P.extract_summary(answer)  # thiếu SUMMARY: không lấy luật SUMMARY trong prompt
+    assert P.extract_summary("xong\n**SUMMARY:**\nsửa a.py") == "sửa a.py"  # agy viết markdown

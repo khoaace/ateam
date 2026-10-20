@@ -230,7 +230,7 @@ def question_from(d: dict) -> dict | None:
     """JSON câu hỏi (question/why/options/recommended — /grill, hỏi lại khi lập kế hoạch, <<<ASK>>>) -> mục
     {"q", "why", "options", "rec"} hiển thị cho người dùng; None nếu không có câu hỏi."""
     question = str(d.get("question") or "").strip() if isinstance(d, dict) else ""
-    if not question:
+    if not re.search(r"\w", question):  # rỗng hoặc "..." của JSON ví dụ trong prompt (CLI in lại prompt)
         return None
     return {"q": question, "why": str(d.get("why") or "").strip(),
             "options": [str(x).strip() for x in d.get("options") or [] if str(x).strip()][:6],
@@ -426,6 +426,47 @@ def extract_commit_message(text: str) -> str:
 
 # ---------------- tách kết quả ----------------
 
+def strip_echo(output: str, *prompts: str) -> str:
+    """Bỏ phần CLI in lại prompt trước câu trả lời (`codex exec` in "user\\n<prompt>"), để không bóc nhầm JSON
+    mẫu, khối DELEGATE/SUMMARY ví dụ trong prompt. Prompt thật đã kèm rule và đổi @file nên không so nguyên văn:
+    cắt tới hết vài dòng cuối của prompt (thường là JSON mẫu / luật SUMMARY) ở lần xuất hiện liên tiếp đầu tiên.
+    Nhiều prompt: lượt tiếp tục phiên có thể chạy lại bằng prompt đầy đủ khi CLI mất phiên."""
+    lines = output.splitlines()
+    filled = [(i, ln.strip()) for i, ln in enumerate(lines) if ln.strip()]
+    for prompt in prompts:
+        tail = [ln.strip() for ln in (prompt or "").splitlines() if ln.strip()][-3:]
+        if len("".join(tail)) < 20:  # quá ngắn/chung chung: dễ trùng câu trả lời thật
+            continue
+        for j in range(len(filled) - len(tail) + 1):
+            if all(filled[j + k][1] == tail[k] for k in range(len(tail))):
+                return "\n".join(lines[filled[j + len(tail) - 1][0] + 1:])
+    return output
+
+
+def _close_truncated(s: str) -> str | None:
+    """JSON thiếu dấu đóng ở cuối (model quên `]` cuối mảng): thêm đủ `}`/`]` còn mở; None nếu không vá được."""
+    stack: list[str] = []
+    in_str = esc = False
+    for ch in s:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch in "[{":
+            stack.append("]" if ch == "[" else "}")
+        elif ch in "]}":
+            if not stack or stack.pop() != ch:
+                return None
+    if in_str or not stack:
+        return None
+    return s.rstrip().rstrip(",") + "".join(reversed(stack))
+
+
 def extract_json(text: str, kind: type, keys: tuple[str, ...] = ()):
     """Tìm giá trị JSON đầu tiên có kiểu `kind` (list hoặc dict) trong văn bản. Bỏ giá trị rỗng;
     `keys`: object (hoặc mọi phần tử của mảng) phải có ít nhất một khoá trong đó — tránh lấy nhầm
@@ -445,7 +486,17 @@ def extract_json(text: str, kind: type, keys: tuple[str, ...] = ()):
         while i >= 0:
             try:
                 val, end = dec.raw_decode(cand, i)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                # hỏng đúng ở đầu một dòng mới hoặc hết văn bản (JSON hết dòng mà chưa đóng): vá dấu đóng còn thiếu
+                head = cand[i:e.pos]
+                at_eol = "\n" in head[len(head.rstrip()):] or not cand[e.pos:].strip()
+                fixed = _close_truncated(head) if at_eol else None
+                try:
+                    val = json.loads(fixed) if fixed else None
+                except ValueError:
+                    val = None
+                if isinstance(val, kind) and val and (all(fits(x) for x in val) if kind is list else fits(val)):
+                    return val
                 i = cand.find(opener, i + 1)
                 continue
             if isinstance(val, kind) and val:
@@ -479,8 +530,9 @@ def parse_ask(text: str) -> dict | None:
 
 
 def parse_delegations(text: str) -> list[tuple[str, str, str]]:
+    # bỏ khối ví dụ trong prompt (codex in lại prompt; output đọc lại từ file log khi merge)
     return [(m.group(1).strip(), (m.group(2) or "").strip(), m.group(3).strip())
-            for m in DELEGATE_RE.finditer(text)]
+            for m in DELEGATE_RE.finditer(text) if m.group(1).strip() != "MEMBER_NAME"]
 
 
 def parse_notes(text: str) -> list[str]:
@@ -490,8 +542,8 @@ def parse_notes(text: str) -> list[str]:
 
 def extract_summary(text: str, limit: int = 2500) -> str:
     idx = text.rfind("SUMMARY:")
-    if idx >= 0:
-        s = text[idx + len("SUMMARY:"):].strip()
+    if idx >= 0:  # "**SUMMARY:**" (agy viết markdown): bỏ dấu ** còn sót
+        s = re.sub(r"^\*+", "", text[idx + len("SUMMARY:"):]).strip()
     else:
         s = text.strip()
         s = s[-limit:]

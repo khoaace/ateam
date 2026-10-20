@@ -477,6 +477,17 @@ theo nhóm model), OpenCode `opencode stats --days 7` (token, chi phí), Codex �
 phiên gần nhất (`~/.codex/sessions`; codex không có lệnh xem hạn mức mà không gọi model). `ateam usage --local`
 bỏ phần hỏi CLI; `/cooldown codex 60` cho nghỉ tay, `/cooldown codex off` để bỏ.
 
+Máy chủ của nhà cung cấp **quá tải** (vd agy "high traffic… No capacity available", lỗi 503/529) không phải hết hạn
+mức: agent chỉ nghỉ 3 phút, task chuyển sang agent dự phòng hoặc tự chạy lại khi hết nghỉ. Một lượt của trưởng nhóm
+(lập kế hoạch, hỏi đáp, review) chạy quá `lead_timeout` (mặc định 10 phút, trong `[limits]`) — thường là CLI treo không
+in gì — thì bị dừng và `lead_fallback` làm thay.
+
+**Huỷ lập kế hoạch**: mục tiêu đang lập kế hoạch có nút **✕ Huỷ** (web: thẻ mục tiêu; TUI: ✕ Huỷ lập kế hoạch dưới
+mục tiêu) hoặc `/cancel m<số>` — dừng ngay CLI của trưởng nhóm, không thử agent dự phòng.
+**Đổi agent cho task lỗi / bị huỷ**: mở task rồi bấm **⇄ Đổi agent** (TUI: nút ở khung chi tiết, hoặc `/assign <task>`
+không kèm agent để mở bảng chọn), chọn agent khác — task chạy lại ngay với agent đó bằng prompt đầy đủ (model/effort
+riêng của agent cũ được bỏ). `/assign <task> <agent>` làm thẳng không cần bảng chọn.
+
 ## Thống kê: token, cost, lịch sử mục tiêu (`/dash`)
 
 Tab **📊 Thống kê** (web: mục *Thống kê*): token (input · output · cache), cost, số lượt, thời gian chạy của hôm

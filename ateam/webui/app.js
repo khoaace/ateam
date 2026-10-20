@@ -545,6 +545,7 @@ function renderGoals() {
         ${g.followups.length ? `<span>↪ ${esc(t("followups", { n: g.followups.length }))}</span>` : ""}
         ${ts.length ? `<button class="btn sm ghost" data-action="goal-plan" data-goal="${g.id}" style="margin-left:auto" title="${esc(t("goal_plan"))}">📋</button>` : ""}
         ${g.ended ? `<button class="btn sm" data-action="goal-continue" data-goal="${g.id}"${ts.length ? "" : ` style="margin-left:auto"`}>${esc(t("continue"))}</button>` : ""}
+        ${g.status === "planning" ? `<button class="btn sm ghost danger" data-action="goal-cancel-plan" data-goal="${g.id}"${ts.length ? "" : ` style="margin-left:auto"`} title="${esc(t("cancel_plan_hint"))}">✕ ${esc(t("cancel_plan"))}</button>` : ""}
       </div>
     </div>`;
   }).join("");
@@ -935,9 +936,25 @@ function taskActions(x) {
   }
   b.push(`<button class="btn sm" data-action="diff" data-task="${x.id}">Δ ${esc(t("diff"))}</button>`);
   if (["failed", "cancelled", "blocked", "done", "conflict"].includes(st)) b.push(`<button class="btn sm" data-action="retry" data-task="${x.id}">↻ ${esc(t("retry"))}</button>`);
+  if (["failed", "cancelled", "blocked"].includes(st)) b.push(`<button class="btn sm" data-action="reassign" data-task="${x.id}" title="${esc(t("reassign_hint"))}">⇄ ${esc(t("reassign"))}</button>`);
   if (["done", "failed"].includes(st)) b.push(`<button class="btn sm" data-action="task-continue" data-task="${x.id}">↪ ${esc(t("continue_task"))}</button>`);
   if (["queued", "running", "draft", "review"].includes(st)) b.push(`<button class="btn sm danger" data-action="cancel" data-task="${x.id}">■ ${esc(t("cancel"))}</button>`);
   return b.join("");
+}
+
+/* ⇄ đổi agent cho task lỗi / bị huỷ rồi chạy lại ngay */
+function reassignModal(tid) {
+  const x = S.state.tasks.find((y) => y.id === tid);
+  if (!x) return;
+  const items = S.state.agents.filter((a) => a.installed).map((a) => `<button class="pick${a.name === x.agent ? " on" : ""}" data-v="${esc(a.name)}" title="${esc(a.role || "")}">${agentHtml(a.name)}${a.cooldown ? ` <span class="muted">⏸ ${esc(a.cooldown)}</span>` : ""}</button>`).join("");
+  const m = openModal(`${modalHead("⇄ " + esc(t("reassign_title", { id: tid })))}
+    <div class="modal-pad"><div class="muted small" style="margin-bottom:8px">${esc(t("reassign_hint"))}</div><div class="picks">${items}</div></div>`, { box: "sm" });
+  m.addEventListener("click", (e) => {
+    const b = e.target.closest(".pick");
+    if (!b) return;
+    closeModal(m);
+    send("assign", { task: tid, agent: b.dataset.v, rerun: true });
+  });
 }
 
 /* mở trên điện thoại: URL kèm token + mã QR (GET /api/remote) */
@@ -1684,6 +1701,8 @@ const ACTIONS = {
   "dr-tab": (el) => { S.drawerTab = el.dataset.tab; renderDrawer(true); if (S.drawerTab === "log") loadLog(S.openTask); },
   "goal-filter": (el) => { S.goalFilter = el.dataset.goal ? +el.dataset.goal : null; renderGoals(); renderKanban(); },
   "goal-continue": (el) => prefill(`/continue m${el.dataset.goal} `),
+  "goal-cancel-plan": (el, e) => { e.stopPropagation(); send("cancel_plan", { goal: +el.dataset.goal }); },
+  "reassign": (el) => reassignModal(+el.dataset.task),
   "task-continue": (el) => prefill(`/continue t${el.dataset.task} `),
   "grill-pick": (el) => { const q = S.state.grill.question; send("grill", { action: "answer", goal: S.state.grill.goal, text: q.options[+el.dataset.i] }); },
   "grill-skip": () => send("grill", { action: "skip", goal: S.state.grill.goal }),

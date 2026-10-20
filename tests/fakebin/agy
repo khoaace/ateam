@@ -23,6 +23,10 @@ if [[ "$P" == *"NEEDS_SHELL"* && " $* " != *" --dangerously-skip-permissions "* 
   echo 'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.'
   exit 0
 fi
+if fake_overloaded agy; then  # nguyên văn agy thật (20/10/2026), thoát mã 3
+  printf 'error: Our servers are experiencing high traffic right now, please try again in a minute. (UNAVAILABLE (code 503): No capacity available for model gemini-4-argon)\r\n'
+  exit 3
+fi
 if [ "$P" = "/usage" ]; then
   printf 'Quota:\r\nGemini Models  Weekly Limit Remaining  29%%  2026-10-21 09:25 +07\r\n'
   exit 0

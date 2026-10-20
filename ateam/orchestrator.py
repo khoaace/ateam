@@ -76,6 +76,7 @@ class Orchestrator:
         self.runs: dict[int, Run] = {}
         self.lead_busy: set[int] = set()  # goal đang được lập kế hoạch / review
         self.lead_runs: dict[int, Run] = {}  # lượt trưởng nhóm đang chạy theo mục tiêu (huỷ khi bỏ /grill)
+        self._lead_stop: set[int] = set()  # mục tiêu người dùng huỷ lúc đang lập kế hoạch: không thử agent dự phòng
         self.compacting = False  # /compact đang chạy
         self.paused = False
         self.auto_answer = False  # chạy không tương tác (ateam goal -y / run): tự trả lời <<<ASK>>>
@@ -309,6 +310,8 @@ class Orchestrator:
         (/continue m<id> nhờ vậy nhớ kế hoạch cũ)."""
         names = list(dict.fromkeys([first or self.cfg.lead, self.cfg.lead] + list(self.cfg.lead_fallback)))
         for name in names:
+            if goal_id is not None and goal_id in self._lead_stop:
+                return None
             lead = self.cfg.agents.get(name)
             if not lead or not lead.enabled:
                 if name == self.cfg.lead:
@@ -328,8 +331,14 @@ class Orchestrator:
                 session = g.lead_session if g and g.lead_session_agent == name else None
             out, rc, kind = await self._lead_once(lead, prompt, label, goal_id, session=session,
                                                   keep_session=keep_session and goal_id is not None)
-            if kind == "ratelimit":
-                self._set_cooldown(name, out)
+            if kind == "cancelled":
+                return None
+            if kind in ("ratelimit", "overloaded"):
+                self._set_cooldown(name, out, overloaded=kind == "overloaded")
+                continue
+            if kind == "timeout":  # CLI treo (vd agy không in gì): thử người khác thay vì chờ tiếp
+                self.log(tr("⌛ {name} quá {v}s chưa xong ({label}) — thử agent dự phòng.", name=name,
+                            v=self.lead_timeout(lead), label=label))
                 continue
             if rc != 0:
                 self.log(tr("✗ {label}: {name} thoát với mã {rc}.", label=label, name=name, rc=rc))
@@ -337,10 +346,18 @@ class Orchestrator:
         self.log(tr("✗ Không còn agent nào lập kế hoạch/review được ({label}).", label=label))
         return None
 
+    def lead_timeout(self, lead: AgentConfig) -> int:
+        """Giây tối đa cho một lượt trưởng nhóm: lead_timeout (ngắn hơn timeout của task — lập kế hoạch/review
+        thường xong trong vài phút), không vượt timeout của agent."""
+        lt = self.cfg.lead_timeout
+        return min(lead.timeout, lt) if lt > 0 else lead.timeout
+
     async def _lead_once(self, lead: AgentConfig, prompt: str, label: str,
                          goal_id: int | None = None, session: str | None = None,
                          keep_session: bool = False) -> tuple[str, int, str]:
         await self.prepare_agent(lead)
+        if goal_id is not None and goal_id in self._lead_stop:  # huỷ trong lúc chuẩn bị: không chạy nữa
+            return "", 1, "cancelled"
         resume = bool(session)
         if keep_session and not resume:
             session = self.new_session(lead)
@@ -363,7 +380,7 @@ class Orchestrator:
             def make(argv=None) -> Run:
                 return Run(argv if argv is not None else
                            self.argv_for(lead, prompt, self.root, plan=True, session=session, resume=resume),
-                           str(self.root), self.env_for(), use_pty=lead.pty, timeout=lead.timeout,
+                           str(self.root), self.env_for(), use_pty=lead.pty, timeout=self.lead_timeout(lead),
                            on_line=on_line)
             run = make(first_argv)
             if goal_id is not None:
@@ -395,7 +412,8 @@ class Orchestrator:
                 self._usage_job(rid, lead, prompt, session)
                 act["status"] = DONE if kind == "ok" else FAILED
                 self._end_activity(lead.name, act)
-        return run.output, rc, kind
+        # CLI in lại prompt (codex exec) thì JSON mẫu trong prompt sẽ bị bóc nhầm thành kế hoạch/câu hỏi
+        return P.strip_echo(run.output, prompt), rc, kind
 
     async def _plan(self, gid: int, followup: tuple[str, str, str] | None = None) -> None:
         """followup: (yêu cầu mới, kết quả các task cũ, đánh giá cũ) khi tiếp tục mục tiêu đã xong."""
@@ -415,6 +433,13 @@ class Orchestrator:
                                        can_ask=can_ask)
             out = await self._call_lead(prompt, tr("Lập kế hoạch mục tiêu #{gid}", gid=gid), goal_id=gid,
                                         keep_session=True)
+            if gid in self._lead_stop:  # người dùng đã huỷ (cancel_planning đã đổi trạng thái mục tiêu)
+                return
+            if out is None:
+                self.db.update_goal(gid, status="failed", summary=tr(
+                    "Không có trưởng nhóm nào lập được kế hoạch (hết hạn mức, quá tải hoặc quá thời gian — xem log "
+                    "hệ thống)"))
+                return
             plan = P.extract_json(out or "", list, keys=("prompt", "agent", "title"))
             q = P.question_from(P.extract_json(out or "", dict, keys=("question",)) or {}) \
                 if can_ask and not plan else None
@@ -445,7 +470,29 @@ class Orchestrator:
             self.log(tr("✗ Lập kế hoạch mục tiêu #{gid} lỗi: {e!r}", gid=gid, e=e))
         finally:
             self.lead_busy.discard(gid)
+            self._lead_stop.discard(gid)
             self.emit("changed")
+
+    def cancel_planning(self, gid: int | None) -> str:
+        """Huỷ lượt lập kế hoạch đang chạy (dừng CLI của trưởng nhóm, không thử agent dự phòng). Mục tiêu mới thành
+        "đã huỷ"; lập kế hoạch tiếp (/continue) thì quay về "chưa xong" — việc đã làm vẫn còn."""
+        if gid is None:
+            gid = next((g.id for g in reversed(self.db.goals()) if g.status == "planning"), None)
+        g = self.db.goal(gid) if gid is not None else None
+        if not g or g.status != "planning":
+            return tr("Không có mục tiêu nào đang lập kế hoạch") if gid is None else \
+                tr("Mục tiêu #{gid} không đang lập kế hoạch", gid=gid)
+        if g.id in self.lead_busy:
+            self._lead_stop.add(g.id)  # _plan tự bỏ khi lượt trưởng nhóm dừng
+        followup = any(t.status != CANCELLED for t in self.db.tasks(goal_id=g.id))
+        self.db.update_goal(g.id, status="incomplete" if followup else "cancelled",
+                            summary=tr("Đã huỷ khi đang lập kế hoạch"))
+        run = self.lead_runs.get(g.id)
+        if run:
+            run.cancel()
+        self.log(tr("✗ Huỷ lập kế hoạch mục tiêu #{gid}", gid=g.id))
+        self.emit("changed")
+        return tr("Đã huỷ lập kế hoạch mục tiêu #{gid}", gid=g.id)
 
     # ------------------------------------------------------------------ /grill: hỏi đáp trước khi lập kế hoạch
     def start_grill(self, text: str) -> int:
@@ -895,7 +942,9 @@ class Orchestrator:
         rows = [t for t in self.db.tasks() if t.source == CHAT and t.agent == agent]
         return rows[-1] if rows else None
 
-    def assign(self, tid: int, agent: str) -> str:
+    def assign(self, tid: int, agent: str, rerun: bool = False) -> str:
+        """Đổi agent làm task (chưa chạy, lỗi, bị huỷ…). rerun: task lỗi/huỷ/bị chặn thì chạy lại luôn với agent mới
+        (nút ⇄ Đổi agent) — phiên CLI cũ là của agent cũ nên chạy lại bằng prompt đầy đủ."""
         t = self.db.task(tid)
         if not t:
             return tr("Không có task #{tid}", tid=tid)
@@ -903,7 +952,11 @@ class Orchestrator:
             return tr("Không có agent '{agent}'", agent=agent)
         if t.status == RUNNING:
             return tr("Task #{tid} đang chạy — /cancel trước rồi giao lại", tid=tid)
-        self.db.update_task(tid, agent=agent)
+        if agent != t.agent:  # model/effort riêng của task là của agent cũ (như khi chuyển agent dự phòng)
+            self.db.update_task(tid, agent=agent, model=None, effort=None)
+            self.log(tr("⇄ #{tid}: {old} → {agent}", tid=tid, old=t.agent, agent=agent))
+        if rerun and t.status in (FAILED, CANCELLED, BLOCKED):
+            return f"Task #{tid} → {agent}. " + self.retry(tid)
         self.emit("changed")
         return f"Task #{tid} → {agent}"
 
@@ -1129,6 +1182,13 @@ class Orchestrator:
         self.log(tr("💬 #{tid} trả lời {agent}: {a}", tid=tid, agent=t.agent, a=q["a"][:200]))
         self.emit("changed")
         return tr("Đã trả lời — {agent} làm tiếp task #{tid}", agent=t.agent, tid=tid)
+
+    def cancel_command(self, ref: str) -> str:
+        """/cancel <task> | m<mục tiêu> (huỷ lượt lập kế hoạch đang chạy) — TUI và web dùng chung."""
+        m = re.fullmatch(r"#?([mM]?)(\d+)", ref.strip())
+        if not m:
+            return tr("Dùng: /cancel <task> hoặc /cancel m<mục tiêu> (huỷ lập kế hoạch)")
+        return self.cancel_planning(int(m.group(2))) if m.group(1) else self.cancel(int(m.group(2)))
 
     def cancel(self, tid: int) -> str:
         t = self.db.task(tid)
@@ -1386,11 +1446,14 @@ class Orchestrator:
         until = self.cooldown.get(agent)
         return time.strftime("%H:%M %d/%m", time.localtime(until)) if until else "-"
 
-    def _set_cooldown(self, agent: str, output: str) -> None:
-        until = limits.reset_time(output, self.cfg.cooldown_minutes)
+    def _set_cooldown(self, agent: str, output: str, overloaded: bool = False) -> None:
+        """overloaded: máy chủ quá tải (lỗi tạm thời) — nghỉ vài phút thay vì cooldown_minutes."""
+        until = limits.reset_time(output, limits.OVERLOAD_MINUTES if overloaded else self.cfg.cooldown_minutes)
         self.cooldown[agent] = until
         limits.save_cooldown(agent, until)
-        self.log(tr("⏸ {agent} hết hạn mức — tạm nghỉ đến {v}.", agent=agent, v=self.cooldown_label(agent)))
+        self.log(tr("⏸ {agent} đang quá tải — tạm nghỉ đến {v} rồi thử lại.", agent=agent, v=self.cooldown_label(agent))
+                 if overloaded else
+                 tr("⏸ {agent} hết hạn mức — tạm nghỉ đến {v}.", agent=agent, v=self.cooldown_label(agent)))
         self.emit("changed")
 
     def set_cooldown_manual(self, agent: str, minutes: int | None) -> str:
@@ -1426,6 +1489,8 @@ class Orchestrator:
             return "timeout"
         if limits.looks_rate_limited(run.output, rc):
             return "ratelimit"
+        if limits.looks_overloaded(run.output, rc):
+            return "overloaded"
         if rc != 0 and BAD_FLAG_RE.search(run.output):
             return "badflag"
         if DENIED_RE.search(run.output):
@@ -1594,16 +1659,16 @@ class Orchestrator:
             run, rc, res = await self._run_agent(t, agent, prompt, workdir, log_file, kind="task",
                                                  title=t.title, model=t.model, effort=t.effort,
                                                  session=sess, full_prompt=full)
-            outputs.append(run.output)
+            outputs.append(P.strip_echo(run.output, prompt, full))  # codex in lại prompt: bỏ khối mẫu trong đó
             status, error = self._status_of(res, rc, agent)
-            if res == "ratelimit":
-                self._set_cooldown(t.agent, run.output)
+            if res in ("ratelimit", "overloaded"):  # quá tải: nghỉ vài phút rồi tự chạy lại (hoặc agent dự phòng)
+                self._set_cooldown(t.agent, run.output, overloaded=res == "overloaded")
                 if chat:  # chat là với đúng agent này: báo lỗi, không lặng lẽ chuyển người khác
-                    status, error = FAILED, tr("{name} hết hạn mức", name=t.agent)
+                    status, error = self._status_of(res, rc, agent)
                 else:
                     new_agent = self.pick_fallback(t.agent)
                     status, error = QUEUED, None
-            asked = P.parse_ask(run.output) if status == DONE and can_ask else None
+            asked = P.parse_ask(outputs[-1]) if status == DONE and can_ask else None
 
             # ---- cổng kiểm tra: chạy test, fail thì giao sửa
             attempts = 0
@@ -1642,17 +1707,19 @@ class Orchestrator:
                 if same:  # agent của task tự sửa: tiếp tục phiên vừa làm, chỉ gửi lỗi
                     cur = self.db.task(tid)
                     fsess = cur.session if cur and cur.session_agent == fixer else None
+                sent = P.fix_resume_prompt(command=v.command, rc=trc, output=tail, attempt=attempts,
+                                           max_attempts=v.max_fix_attempts) if fsess else fprompt
                 run, rc, res = await self._run_agent(
-                    t, fa, P.fix_resume_prompt(command=v.command, rc=trc, output=tail, attempt=attempts,
-                                               max_attempts=v.max_fix_attempts) if fsess else fprompt,
-                    workdir, log_file, kind="fix",
+                    t, fa, sent, workdir, log_file, kind="fix",
                     title=tr("sửa lỗi test #{tid} ({attempts}/{max_fix_attempts})", tid=tid, attempts=attempts, max_fix_attempts=v.max_fix_attempts),
                     model=t.model if same else None, effort=t.effort if same else None,
                     session=fsess, full_prompt=fprompt)
-                outputs.append(run.output)
-                if res == "ratelimit":
-                    self._set_cooldown(fixer, run.output)
-                    status, error = FAILED, tr("{fixer} hết hạn mức khi đang sửa lỗi test — /retry sau", fixer=fixer)
+                outputs.append(P.strip_echo(run.output, sent, fprompt))
+                if res in ("ratelimit", "overloaded"):
+                    self._set_cooldown(fixer, run.output, overloaded=res == "overloaded")
+                    status, error = FAILED, (tr("{fixer} quá tải khi đang sửa lỗi test — /retry sau", fixer=fixer)
+                                             if res == "overloaded" else
+                                             tr("{fixer} hết hạn mức khi đang sửa lỗi test — /retry sau", fixer=fixer))
                     break
                 status, error = self._status_of(res, rc, fa)
 
@@ -1702,6 +1769,7 @@ class Orchestrator:
                     fields.update(agent=new_agent, model=None, effort=None)
                 self.db.update_task(tid, **fields)
                 self.log(tr("↪ #{tid} xếp hàng lại", tid=tid) + (tr(", chuyển sang {new_agent}", new_agent=new_agent) if new_agent
+                                                     else tr(", chờ {agent} hết quá tải", agent=t.agent) if res == "overloaded"
                                                      else tr(", chờ {agent} hồi hạn mức", agent=t.agent)))
             else:
                 self.db.update_task(tid, status=status, error=error, result=summary,
@@ -1723,6 +1791,7 @@ class Orchestrator:
                                   "agent này ở /setup (agent có sẵn) hoặc /custom (agent tuỳ "
                                   "chỉnh), rồi /retry", name=a.name)),
             "ratelimit": (FAILED, tr("{name} hết hạn mức", name=a.name)),
+            "overloaded": (FAILED, tr("{name} đang quá tải (máy chủ bận) — thử lại sau ít phút", name=a.name)),
         }[res]
 
     def _delegations(self, t: Task, output: str) -> None:

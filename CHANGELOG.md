@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.32.0 — 20/10/2026
+
+- **Codex làm trưởng nhóm / thành viên ổn định hơn**: `codex exec` in lại cả prompt nên trước đây JSON mẫu bị bóc
+  nhầm thành câu hỏi "..." ở /grill, và hiện cảnh báo giả "giao việc cho 'MEMBER_NAME'". Giờ ateam bỏ phần prompt in
+  lại trước khi đọc kết quả, tự vá kế hoạch JSON thiếu dấu `]` cuối (lỗi "Trưởng nhóm không trả về kế hoạch JSON hợp lệ").
+- **Máy chủ quá tải** (agy "high traffic… No capacity available", lỗi 503/529): agent chỉ nghỉ 3 phút, task chuyển
+  sang agent dự phòng hoặc tự chạy lại — trước đây task lỗi "Thoát với mã 3".
+- **`lead_timeout`** (`[limits]`, mặc định 600 giây): lượt trưởng nhóm treo quá lâu thì dừng và `lead_fallback` làm thay.
+- **Huỷ lập kế hoạch đang chạy**: nút ✕ Huỷ (web, TUI) hoặc `/cancel m<số>`.
+- **Đổi agent cho task lỗi / bị huỷ**: nút ⇄ Đổi agent (web, TUI) hoặc `/assign <task>` — chạy lại ngay với agent mới.
+- `**SUMMARY:**` (agy viết markdown) không còn để lại `**` trong kết quả.
+
 ## 0.31.0 — 20/10/2026
 
 - **Trang 🤖 Agents thay tab Đội** (web và TUI): danh sách gọn mọi agent kèm agent tuỳ chỉnh (thêm / sửa / xoá ngay

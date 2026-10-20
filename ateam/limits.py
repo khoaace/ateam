@@ -19,15 +19,31 @@ IN_RE = re.compile(r"(?:try again|retry|resets?|available again)\s+in\s+(?:about
                    r"(s|sec|second|m|min|minute|h|hr|hour)s?\b", re.I)
 AT_RE = re.compile(r"resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", re.I)
 EPOCH_RE = re.compile(r"\|(\d{10})\b")
+# máy chủ của nhà cung cấp quá tải (lỗi tạm thời, không phải hết hạn mức): agy "Our servers are experiencing high
+# traffic… No capacity available (UNAVAILABLE (code 503))", Anthropic "overloaded_error" (529)…
+OVERLOAD_RE = re.compile(
+    r"high (?:traffic|demand)|no capacity|overloaded|servers? (?:is |are )?(?:busy|at capacity)"
+    r"|service (?:is )?(?:temporarily )?unavailable|temporarily unavailable|\b(?:503|529)\b", re.I)
+OVERLOAD_MINUTES = 3  # nghỉ ngắn rồi thử lại: quá tải thường hết sau vài phút
+
+
+def _tail(output: str, rc: int) -> str | None:
+    """30 dòng cuối, chỉ khi agent thất bại hoặc gần như không in gì — tránh nhầm câu trả lời ngắn có chữ
+    'rate limit' (vd SUMMARY "thêm rate limiting") với thông báo lỗi."""
+    lines = [l for l in output.splitlines() if l.strip()]
+    if rc == 0 and len(lines) > 3:
+        return None
+    return "\n".join(lines[-30:])
 
 
 def looks_rate_limited(output: str, rc: int) -> bool:
-    """Chỉ xét khi agent thất bại hoặc gần như không in gì — tránh nhầm câu trả lời ngắn có chữ
-    'rate limit' (vd SUMMARY "thêm rate limiting") với thông báo hết hạn mức."""
-    lines = [l for l in output.splitlines() if l.strip()]
-    if rc == 0 and len(lines) > 3:
-        return False
-    return bool(LIMIT_RE.search("\n".join(lines[-30:])))
+    tail = _tail(output, rc)
+    return bool(tail and LIMIT_RE.search(tail))
+
+
+def looks_overloaded(output: str, rc: int) -> bool:
+    tail = _tail(output, rc)
+    return bool(tail and OVERLOAD_RE.search(tail))
 
 
 def reset_time(output: str, default_minutes: int, now: float | None = None) -> float:

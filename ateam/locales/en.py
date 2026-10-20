@@ -3904,4 +3904,56 @@ EN: dict[str, str] = {
         "Not on the team yet — turn them on in ⚡ Roles · model · effort or /setup.",
     "Workflow chạy bằng /flow <tên> <mục tiêu>, hoặc ★ Đặt mặc định để gõ mục tiêu là chạy luôn. Agent tuỳ chỉnh nằm ở trang Agents.":
         "Workflows run with /flow <name> <goal>, or ★ Make default so typing a goal runs it. Custom agents live on the Agents page.",
+    'Đã huỷ lập kế hoạch mục tiêu #{gid}':
+        'Cancelled planning for goal #{gid}',
+    '✗ Huỷ lập kế hoạch mục tiêu #{gid}':
+        '✗ Planning cancelled for goal #{gid}',
+    'Dùng: /cancel <task> hoặc /cancel m<mục tiêu> (huỷ lập kế hoạch)':
+        'Usage: /cancel <task> or /cancel m<goal> (cancel planning)',
+    'Không có mục tiêu nào đang lập kế hoạch':
+        'No goal is being planned',
+    'Mục tiêu #{gid} không đang lập kế hoạch':
+        'Goal #{gid} is not being planned',
+    'Đã huỷ khi đang lập kế hoạch':
+        'Cancelled while planning',
+    '⇄ #{tid}: {old} → {agent}':
+        '⇄ #{tid}: {old} → {agent}',
+    '⏸ {agent} đang quá tải — tạm nghỉ đến {v} rồi thử lại.':
+        '⏸ {agent} is overloaded — pausing until {v}, then retrying.',
+    '⌛ {name} quá {v}s chưa xong ({label}) — thử agent dự phòng.':
+        '⌛ {name} did not finish within {v}s ({label}) — trying a fallback agent.',
+    '{name} đang quá tải (máy chủ bận) — thử lại sau ít phút':
+        '{name} is overloaded (server busy) — try again in a few minutes',
+    'Không có trưởng nhóm nào lập được kế hoạch (hết hạn mức, quá tải hoặc quá thời gian — xem log hệ thống)':
+        'No team lead could make a plan (rate limited, overloaded or timed out — see the system log)',
+    '{fixer} quá tải khi đang sửa lỗi test — /retry sau':
+        '{fixer} was overloaded while fixing the tests — /retry later',
+    ', chờ {agent} hết quá tải':
+        ', waiting for {agent} to recover from overload',
+    'đổi người làm 1 task (task lỗi/huỷ: chạy lại luôn); thiếu agent: bảng chọn':
+        'reassign a task (failed/cancelled: rerun right away); no agent: pick from a list',
+    '<task|m<mục tiêu>>':
+        '<task|m<goal>>',
+    'huỷ task; m<số>: huỷ lượt lập kế hoạch đang chạy':
+        'cancel a task; m<id>: cancel the planning in progress',
+    ' ⇄ Đổi agent ':
+        ' ⇄ Change agent ',
+    '  F5: chạy lại với {agent}':
+        '  F5: rerun with {agent}',
+    'Đổi agent cho task #{tid}':
+        'Change agent for task #{tid}',
+    'Thôi (giữ {agent})':
+        'Never mind (keep {agent})',
+    ' ✕ Huỷ lập kế hoạch ':
+        ' ✕ Cancel planning ',
+    'Dừng trưởng nhóm đang lập kế hoạch cho mục tiêu này':
+        'Stop the team lead planning this goal',
+    'Đổi agent':
+        'Change agent',
+    'Đổi agent cho task #{id}':
+        'Change agent for task #{id}',
+    'Chọn agent khác — task chạy lại ngay với agent đó (prompt đầy đủ, phiên mới)':
+        'Pick another agent — the task reruns right away with it (full prompt, new session)',
+    'Dùng: /assign <task> <agent> — hoặc mở task rồi bấm ⇄ Đổi agent':
+        'Usage: /assign <task> <agent> — or open the task and click ⇄ Change agent',
 }

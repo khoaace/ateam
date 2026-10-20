@@ -720,6 +720,7 @@ class Config:
     verify: VerifyConfig = field(default_factory=VerifyConfig)
     cooldown_minutes: int = 30
     lead_fallback: list[str] = field(default_factory=list)
+    lead_timeout: int = 600  # giây tối đa cho 1 lượt trưởng nhóm (lập kế hoạch/review/hỏi đáp); 0 = theo timeout agent
     default_workflow: str = ""  # gõ mục tiêu trong TUI là chạy theo workflow này ("" = trưởng nhóm)
     commit_agent: str = ""  # agent viết commit message ở tab Git ("" = trưởng nhóm)
     prices: dict = field(default_factory=dict)  # [prices."<model>"] input/output… USD / 1 triệu token
@@ -1507,6 +1508,7 @@ def load_config(root: Path, with_state: bool = True) -> Config:
         verify=verify,
         cooldown_minutes=max(1, int(lim.get("cooldown_minutes", 30))),
         lead_fallback=_strs(lim.get("lead_fallback")),
+        lead_timeout=max(0, int(lim.get("lead_timeout", 600))),
         default_workflow=dwf if dwf in workflows else "",  # workflow đã bị xoá thì coi như không đặt
         commit_agent=cag if cag in agents else "",
         prices={str(k): v for k, v in (data.get("prices") or {}).items() if isinstance(v, dict)},

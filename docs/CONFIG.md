@@ -81,7 +81,12 @@ cache_read = 0.15
 | Khoá | Mặc định | Ý nghĩa |
 | --- | --- | --- |
 | `cooldown_minutes` | `30` | Thời gian nghỉ khi CLI không nói giờ hồi hạn mức |
-| `lead_fallback` | `["codex"]` | Ai lập kế hoạch/review thay khi trưởng nhóm hết hạn mức |
+| `lead_fallback` | `["codex"]` | Ai lập kế hoạch/review thay khi trưởng nhóm hết hạn mức, quá tải hoặc quá `lead_timeout` |
+| `lead_timeout` | `600` | Giây tối đa cho một lượt trưởng nhóm (lập kế hoạch, hỏi đáp, review) — quá thì dừng và thử `lead_fallback` (CLI treo không in gì, vd agy). Không vượt `timeout` của agent; `0` = chỉ theo `timeout` của agent. Không có trong file mặc định: tự thêm vào `[limits]` khi cần |
+
+Máy chủ của nhà cung cấp **quá tải** (agy "high traffic… No capacity available", lỗi 503/529, `overloaded`) được xử lý
+như hết hạn mức nhưng chỉ nghỉ `OVERLOAD_MINUTES` (3 phút, `limits.py`): task chuyển cho agent dự phòng hoặc tự chạy
+lại khi hết nghỉ.
 
 ## `[agents.<tên>]`
 

@@ -142,3 +142,15 @@ nên chỉ chạy test liên quan, `SUMMARY` ≤ ~5 dòng. Review tiếp tục p
 `_results_text`; chỉ giao thêm việc cho lỗi thật / yêu cầu thiếu, vòng cuối không viết task (đằng nào cũng bị bỏ).
 Người dùng chọn: vẫn review mọi mục tiêu, chia ít task, chỉ chạy test liên quan (20/10/2026).
 **Xem lại nếu**: kế hoạch hay thiếu việc (prompt quá ngắn), hoặc review bỏ sót lỗi vì không tự kiểm.
+
+## 17. Bóc output: bỏ phần CLI in lại prompt, vá JSON thiếu dấu đóng cuối
+
+**Lý do**: `codex exec` in lại cả prompt (`user\n<prompt>`) trước câu trả lời, cả khi làm trưởng nhóm lẫn thành viên.
+Các mẫu trong prompt (JSON câu hỏi `{"question": "..."}`, khối `<<<DELEGATE to="MEMBER_NAME">>>`, luật `SUMMARY:`) bị
+bóc nhầm thành câu hỏi "...", việc giao cho `MEMBER_NAME`… Model còn có lúc quên `]` cuối mảng kế hoạch (gpt-6.1-sol,
+20/10/2026) → "không trả về kế hoạch JSON hợp lệ". Giờ `strip_echo` cắt output tới hết 3 dòng cuối của prompt (khớp
+liên tiếp — không so nguyên văn cả prompt vì CLI nhận bản đã kèm rule và đổi `@file`) trước khi bóc kế hoạch / review /
+hỏi đáp / ASK / NOTE / SUMMARY; `extract_json` vá dấu `]`/`}` còn thiếu khi JSON hỏng đúng ở cuối dòng (không vá chỗ
+hỏng giữa dòng như `[<ids>]` của mẫu); `question_from` bỏ câu hỏi không có chữ; `parse_delegations` bỏ `MEMBER_NAME`
+(đọc lại từ file log khi merge). Agent giả lập `codex` in lại prompt như bản thật để test bắt được lỗi loại này.
+**Xem lại nếu**: thêm CLI in lại prompt theo kiểu khác (cắt ngắn, đổi định dạng) — khi đó chỉ còn lớp lọc mẫu bảo vệ.

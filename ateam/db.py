@@ -372,7 +372,7 @@ class DB:
         for r in self.conn.execute(
                 "SELECT agent, COUNT(*) n, SUM(COALESCE(finished, started) - started) secs,"
                 " SUM(prompt_chars) pc, SUM(COALESCE(output_chars, 0)) oc,"
-                " SUM(status = 'ratelimit') rl, SUM(status IN ('failed', 'timeout')) bad"
+                " SUM(status = 'ratelimit') rl, SUM(status IN ('failed', 'timeout', 'overloaded')) bad"
                 " FROM runs WHERE started >= ? AND kind != 'test' GROUP BY agent", (since,)):
             out[r["agent"]] = {"runs": r["n"], "secs": r["secs"] or 0, "prompt_chars": r["pc"] or 0,
                                "output_chars": r["oc"] or 0, "ratelimits": r["rl"] or 0,

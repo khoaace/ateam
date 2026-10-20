@@ -89,6 +89,9 @@ def ui_strings() -> dict[str, str]:
         "no_goals_hint": tr("Gõ yêu cầu ở ô dưới cùng — trưởng nhóm sẽ lập kế hoạch, chia việc cho đội."),
         "all_goals": tr("Tất cả"), "round": tr("vòng {n}"),
         "continue": tr("↪ Tiếp tục"), "followups": tr("{n} lần tiếp"),
+        "cancel_plan": tr("Huỷ"), "cancel_plan_hint": tr("Dừng trưởng nhóm đang lập kế hoạch cho mục tiêu này"),
+        "reassign": tr("Đổi agent"), "reassign_title": tr("Đổi agent cho task #{id}"),
+        "reassign_hint": tr("Chọn agent khác — task chạy lại ngay với agent đó (prompt đầy đủ, phiên mới)"),
         "g_planning": tr("đang lập kế hoạch"), "g_awaiting": tr("chờ duyệt kế hoạch"),
         "g_running": tr("đang chạy"), "g_reviewing": tr("đang review"), "g_done": tr("hoàn thành"),
         "g_incomplete": tr("chưa xong"), "g_failed": tr("thất bại"), "g_cancelled": tr("đã huỷ"),
@@ -1087,7 +1090,9 @@ class WebApp:
         if op == "edit":
             return o.edit(int(d["task"]), str(d.get("prompt") or "").strip()), "info"
         if op == "assign":
-            return o.assign(int(d["task"]), str(d.get("agent") or "")), "info"
+            return o.assign(int(d["task"]), str(d.get("agent") or ""), rerun=bool(d.get("rerun"))), "info"
+        if op == "cancel_plan":
+            return o.cancel_planning(int(d["goal"])), "info"
         if op == "agent_option":  # bảng chọn model/effort (như open_picker của TUI)
             v, name = d.get("value"), str(d["agent"])
             msg = o.set_agent_option(name, str(d["key"]), None if v in (None, "") else str(v))
@@ -1345,8 +1350,10 @@ class WebApp:
             res = o.run_workflow(name, goal.strip())
             return (res, "warn") if isinstance(res, str) else None
         if cmd == "assign":
-            tid, agent = shlex.split(rest)[:2]
-            return o.assign(num(tid), agent), "info"
+            tid, *agent = shlex.split(rest)[:2]
+            if not agent:
+                return tr("Dùng: /assign <task> <agent> — hoặc mở task rồi bấm ⇄ Đổi agent"), "warn"
+            return o.assign(num(tid), agent[0], rerun=True), "info"
         if cmd == "edit" and not re.match(r"^#?\d+(\s|$)", rest):  # /edit @file: mở file ở tab Code
             path, line = parse_code_target(rest)
             return "", "", {"open": {"code": {"path": path, "line": line}}}
@@ -1474,7 +1481,7 @@ class WebApp:
         if cmd == "retry":
             return o.retry(num(rest)), "info"
         if cmd == "cancel":
-            return o.cancel(num(rest)), "info"
+            return o.cancel_command(rest), "info"
         if cmd == "review":
             return o.force_review(num(rest)), "info"
         if cmd == "continue":

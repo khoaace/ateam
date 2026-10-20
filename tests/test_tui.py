@@ -729,7 +729,7 @@ def test_tui_missing_args_show_usage_and_compact(env, project, monkeypatch):
             await pilot.pause(0.2)
             assert box.value == "/set "
             box.value = ""
-            for bad in ("/set 1", "/assign 1", "/set abc model x", "/retry", "/t"):
+            for bad in ("/set 1", "/set abc model x", "/retry", "/t"):
                 seen.clear()
                 await pilot.press(*bad)
                 box.close_popup()
@@ -737,6 +737,14 @@ def test_tui_missing_args_show_usage_and_compact(env, project, monkeypatch):
                 await pilot.pause(0.1)
                 assert seen and seen[-1][1].startswith("Dùng: /"), (bad, seen)
                 box.value = ""
+            # /assign <task> thiếu agent: mở bảng chọn agent (task không có thì báo)
+            seen.clear()
+            await pilot.press(*"/assign 1")
+            box.close_popup()
+            await pilot.press("enter")
+            await pilot.pause(0.1)
+            assert seen and seen[-1] == ("warning", "Không có task #1"), seen
+            box.value = ""
             await pilot.press(*"/setup", "enter")
             await pilot.pause(0.3)
             assert type(app.screen).__name__ == "OnboardScreen"

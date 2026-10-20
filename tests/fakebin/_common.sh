@@ -1,7 +1,8 @@
 # Dùng chung cho các agent giả lập (source từ từng script).
 # Biến môi trường điều khiển:
 #   ATEAM_FAKE_SLOW       giây nghỉ giữa các dòng output (mặc định 0)
-#   ATEAM_FAKE_LIMIT_DIR  nếu có file <tên agent> trong thư mục này -> giả lập hết hạn mức
+#   ATEAM_FAKE_LIMIT_DIR  nếu có file <tên agent> trong thư mục này -> giả lập hết hạn mức;
+#                         file <tên agent>.overload -> giả lập máy chủ quá tải (lỗi tạm thời)
 #   ATEAM_FAKE_ARGS_LOG   nếu đặt, ghi toàn bộ argv (trừ prompt) vào file này để test kiểm tra cờ
 #   ATEAM_FAKE_FULL_LOG   nếu đặt, ghi toàn bộ argv kể cả prompt (để test nội dung prompt)
 #   fake_flags            (đặt trước khi source) các cờ CLI "biết", in ra ở --help cho `ateam doctor`
@@ -34,4 +35,5 @@ if [ "$fake_headless" = 0 ] && [ -t 0 ]; then
   exit 0
 fi
 fake_limited() { [ -n "${ATEAM_FAKE_LIMIT_DIR:-}" ] && [ -f "$ATEAM_FAKE_LIMIT_DIR/$1" ]; }
+fake_overloaded() { [ -n "${ATEAM_FAKE_LIMIT_DIR:-}" ] && [ -f "$ATEAM_FAKE_LIMIT_DIR/$1.overload" ]; }
 fake_sleep() { sleep "${ATEAM_FAKE_SLOW:-0}"; }
