@@ -50,7 +50,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/limits.py` | Nhận diện thông báo hết hạn mức, đoán giờ hồi, lưu cooldown |
 | `ateam/usage_logs.py` | Token & cost thật của một lượt: đọc file phiên Claude Code / Codex, bảng giá (`[prices]`) — dashboard, `/usage` |
 | `ateam/notify.py` | Thông báo kế hoạch/diff chờ duyệt, task lỗi: `Watcher` so trạng thái, `desktop()` (osascript/notify-send), `/notify` |
-| `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `grok` (Grok Build), `opencode`, `mycli` (agent tuỳ chỉnh), `code` (VS Code, cho phím `o` ở màn hình diff) |
+| `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `grok` (Grok Build), `opencode`, `mycli` (agent tuỳ chỉnh), `code` (VS Code, cho phím `o` ở màn hình diff), `ruff` (format ở tab Code) |
 | `site/`, `scripts/build_site.py`, `wrangler.jsonc` | Trang docs + gói zip, deploy Cloudflare Workers; `scripts/site_shots.py` chụp ảnh app cho `site/shots/` |
 | `scripts/get.sh`, `install.sh` | Cài một lệnh từ GitHub; cài vào `~/.ateam/venv` + `~/.local/bin/ateam` |
 | `docs/` | Tài liệu cho người phát triển (xem dưới) |

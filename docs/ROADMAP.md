@@ -87,10 +87,11 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
     `goal_id`, vượt thì tạm dừng mục tiêu và hỏi người dùng.
 12. ~~**Bảng lệnh (Ctrl+P)**~~ — đã làm cho tab Code (`palette.py`). Còn: đưa cả lệnh `/…` (`COMMANDS`) và thao tác
     của tab khác vào palette.
-13. **Tab Code kiểu VS Code, phần còn thiếu** — đi tới định nghĩa / tìm chỗ dùng (LSP: pyright, typescript-language-
-    server nếu có sẵn trên máy), dấu thay đổi git ở lề và git blame dòng, chia đôi màn hình hai file, format bằng
-    công cụ của dự án (prettier / ruff format nếu có), Ctrl+Tab đổi file theo thứ tự dùng gần nhất, outline cố
-    định bên phải.
+13. **Tab Code kiểu VS Code, phần còn thiếu** — web đã có (10/2026): dấu thay đổi git ở lề, màu git trong cây,
+    symbol cả dự án + đi tới định nghĩa (theo tên, chưa phải LSP), ⌥Tab, outline, format bằng công cụ của dự án,
+    tự lưu, chia đôi, xem ảnh/PDF, ⌘I AI sửa inline (diff duyệt từng đoạn), giải thích đoạn chọn. Còn: đưa các
+    phần này sang TUI (`palette.TUI_SKIP`), tìm chỗ dùng / định nghĩa chính xác bằng LSP (pyright,
+    typescript-language-server nếu có), git blame dòng.
 
 Ghi chú cho mục 3: khung chat (💬) hưởng lợi nhiều nhất — `claude -p` ở chế độ chữ chỉ in khi xong lượt, nên câu trả lời
 chat chưa hiện dần.

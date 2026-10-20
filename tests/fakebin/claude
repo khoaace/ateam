@@ -55,6 +55,20 @@ elif [[ "$P" == *"git COMMIT MESSAGE"* ]]; then
   echo "Thêm file mới cho bản demo"
   echo ""
   echo "Ghi chú: viết bởi claude giả lập."
+elif [[ "$P" == *"INLINE CODE EDIT"* ]]; then
+  # ⌘I tab Code: đoạn thay thế = đoạn đang chọn viết hoa, giữa <<<CODE>>> … <<<END>>> (không sửa file)
+  [[ "$P" == *"CHAM_SUA"* ]] && sleep 2  # sửa lâu: test tab vẫn dùng được trong lúc chờ
+  sel=$(printf '%s\n' "$P" | awk '/^<<<SELECTION>>>$/{f=1;next} f&&/^<<<END>>>$/{exit} f')
+  echo "Đang sửa đoạn code..."
+  echo "<<<CODE>>>"
+  printf '%s\n' "$sel" | tr '[:lower:]' '[:upper:]'
+  echo "<<<END>>>"
+elif [[ "$P" == *"EXPLAIN CODE"* ]]; then
+  echo "Đang đọc code..."
+  echo "SUMMARY:"
+  echo "**Đoạn này** trả về lời chào."
+  echo ""
+  echo "- dùng \`hello(name)\`"
 elif [[ "$P" == *"reusable ateam WORKFLOW"* ]]; then
   # Gợi ý workflow tuỳ chỉnh: agent lạ (ghost) và effort lạ để test chuẩn hoá
   sleep 0.5  # chậm như model thật: test không được đọc form trước khi gợi ý về

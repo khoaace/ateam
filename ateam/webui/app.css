@@ -1296,6 +1296,29 @@ body.readonly .card-actions { display: none !important; }
 .okind { color: var(--accent); width: 12px; text-align: center; flex: none; font-family: var(--mono); }
 .okind.k-class, .okind.k-type { color: var(--review); }
 .okind.k-heading { color: var(--accent-2); }
+/* ✨ AI trong editor: ô yêu cầu ⌘I, thanh duyệt diff, khung giải thích */
+.ai-pop { position: fixed; z-index: 1000; width: min(520px, calc(100vw - 32px)); padding: 8px; display: flex; flex-direction: column; gap: 6px;
+  background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius); box-shadow: var(--shadow-pop), 0 8px 28px rgba(0, 0, 0, .3); }
+.ai-head { font-size: 12px; color: var(--muted); }
+.ai-pop .ai-q { width: 100%; margin: 0; resize: vertical; min-height: 44px; font: 13px/1.45 var(--mono); }
+.ai-row { display: flex; align-items: center; gap: 8px; }
+.ai-row .ai-agent { width: auto; flex: none; margin: 0; height: auto; min-height: 0; padding: 4px 8px; }
+.ai-row .muted { flex: 1; min-width: 0; }
+.ai-bar { position: absolute; z-index: 4; right: 14px; top: 8px; display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 12px; font-size: 12px;
+  background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius); box-shadow: var(--shadow-pop), 0 4px 16px rgba(0, 0, 0, .25); }
+.ai-bar kbd { font: 10px var(--mono); opacity: .7; margin-left: 4px; }
+.code-host .cm-changedLine, .code-host .cm-insertedLine { background: var(--diff-add) !important; }
+.code-host .cm-changedText { background: var(--diff-add-mark) !important; }
+.code-host .cm-deletedChunk { background: var(--diff-del) !important; }
+.code-host .cm-deletedChunk .cm-deletedText, .code-host .cm-deletedChunk del { background: var(--diff-del-mark) !important; text-decoration: none; }
+.code-host .cm-chunkButtons button { font: 11px var(--font); border-radius: var(--radius); border: 1px solid var(--border-strong) !important; background: var(--surface) !important; color: var(--text); padding: 1px 8px; margin-right: 4px; cursor: pointer; }
+.code-host .cm-chunkButtons button[name=accept] { color: var(--done); }
+.code-host .cm-chunkButtons button[name=reject] { color: var(--failed); }
+.code-ai { width: 380px; flex: none; min-height: 0; border-left: 1px solid var(--border); overflow: auto; background: var(--side); }
+.ai-ph { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; position: sticky; top: 0; background: var(--side); }
+.ai-ph b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-body { padding: 10px 14px 24px; font-size: 13px; }
+@media (max-width: 760px) { .code-ai { width: auto; position: absolute; inset: 0; z-index: 5; } }
 .mru-pop { position: fixed; z-index: 1000; left: 50%; top: 12vh; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); padding: 4px;
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-pop), 0 8px 28px rgba(0, 0, 0, .3); }
 .code-status > * { flex: none; }

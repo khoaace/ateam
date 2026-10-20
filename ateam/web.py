@@ -319,6 +319,16 @@ def ui_strings() -> dict[str, str]:
         "fmt_done": tr("Đã format bằng {v}", v="{v}"),
         "code_autosave_off": tr("Tạm tắt tự lưu {path}: file đã đổi trên đĩa — lưu tay (:w) để ghi đè", path="{path}"),
         "code_autosave_chip": tr("tự lưu"), "code_autosave_tip": tr("Tự lưu sau 1,5 giây ngừng gõ — ⌘⇧P › Bật/tắt tự lưu"),
+        "ai_edit_title": tr("Sửa {v} bằng AI", v="{v}"),
+        "ai_edit_ph": tr("Muốn sửa gì? vd: thêm xử lý lỗi, đổi sang async, viết docstring…"),
+        "ai_hint": tr("Enter gửi · Shift+Enter xuống dòng · Esc huỷ"), "ai_go": tr("Sửa"),
+        "ai_wait": tr("AI đang sửa đoạn trước — chờ xong đã"),
+        "ai_busy_edit": tr("✨ {agent} đang sửa…", agent="{agent}"), "ai_busy_explain": tr("✨ {agent} đang đọc code…", agent="{agent}"),
+        "ai_stale": tr("File đã đổi trong lúc chờ AI — bỏ kết quả, thử lại"),
+        "ai_same": tr("{agent} không đổi gì đoạn này", agent="{agent}"),
+        "ai_review": tr("{agent} đã sửa — duyệt từng đoạn hoặc:", agent="{agent}"),
+        "ai_accept": tr("Chấp nhận"), "ai_reject": tr("Bỏ"), "ai_rejected": tr("Đã bỏ phần AI sửa"),
+        "ai_explain_title": tr("{agent} giải thích {v}", agent="{agent}", v="{v}"), "ai_copy": tr("Chép câu trả lời"),
         "code_running_tip": tr("Agent đang chạy task ngay trong thư mục dự án (chế độ shared) — file đang mở có thể bị sửa"),
         # --- gợi ý ô nhập
         "cmds": tr("Lệnh"), "sg_agent": tr("Agent"), "sg_agent_task": tr("Agent · thêm :model hoặc @effort"),
@@ -973,7 +983,7 @@ class WebApp:
             return d.get("action") in self.SLOW_GIT
         if op == "submit":
             return str(d.get("text") or "").strip().startswith(self.SLOW_CMDS)
-        return op in ("workflow_suggest", "code_format")
+        return op in ("workflow_suggest", "code_format", "code_ai")
 
     async def _answer(self, ws: web.WebSocketResponse, data) -> None:
         """Chạy một thao tác rồi trả lời bằng toast (kèm ref nếu trình duyệt đang chờ)."""
@@ -1200,6 +1210,14 @@ class WebApp:
             return self.code.save(d)
         if op == "code_format":
             return await self.code.format(d)
+        if op == "code_ai":  # ⌘I sửa inline / giải thích đoạn chọn: agent chỉ trả lời, trang hiện diff để duyệt
+            mode = "explain" if d.get("mode") == "explain" else "edit"
+            ok, res = await self.orch.code_ai(mode, str(d.get("path") or ""), str(d.get("text") or ""),
+                                              int(d.get("from") or 0), int(d.get("to") or 0),
+                                              str(d.get("instruction") or ""), str(d.get("agent") or ""))
+            if not ok:
+                return res, "warn"
+            return "", "", {"code": res} if mode == "edit" else {"answer": res}
         if op in ("file_new", "file_rename", "file_delete", "open_vscode"):
             return await self.code.file_op(op, d)
         if op == "setup_save":

@@ -891,3 +891,51 @@ def test_web_paste_image(env, project, monkeypatch):
             await client.close()
 
     asyncio.run(main())
+
+
+def test_web_code_ai_edit_and_explain(env, project, monkeypatch):
+    """⌘I tab Code: agent viết lại đoạn đang chọn (trả code, không sửa file) hoặc giải thích; chạy nền như AI viết commit."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    from aiohttp.test_utils import TestClient, TestServer
+    wa = _web_app(env, project, monkeypatch)
+    (project / "app.py").write_text("import os\n\ndef hi():\n    return 1\n")
+    text = (project / "app.py").read_text()
+    start, end = text.index("def hi"), len(text) - 1
+    assert wa.slow_op({"op": "code_ai"})
+
+    async def main():
+        r = await wa.handle({"op": "code_ai", "mode": "edit", "path": "app.py", "text": text, "from": start, "to": end,
+                             "instruction": "viết hoa", "agent": "claude"})
+        assert r[2] == {"code": "DEF HI():\n    RETURN 1"}
+        assert (project / "app.py").read_text() == text  # agent không sửa file
+        # codex in lại prompt (có khối <<<CODE>>> mẫu) và bọc ``` — vẫn lấy đúng đoạn trả lời
+        r = await wa.handle({"op": "code_ai", "mode": "edit", "path": "app.py", "text": text, "from": start, "to": end,
+                             "instruction": "x", "agent": "codex"})
+        assert r[2] == {"code": "codex_sua = True"}
+        assert (await wa.handle({"op": "code_ai", "mode": "edit", "path": "app.py", "text": text, "from": 0, "to": 3,
+                                 "instruction": "  "}))[1] == "warn"
+        r = await wa.handle({"op": "code_ai", "mode": "explain", "path": "app.py", "text": text, "from": start, "to": end})
+        assert r[2]["answer"].startswith("**Đoạn này** trả về lời chào.") and "`hello(name)`" in r[2]["answer"]
+
+        # chạy nền: trong lúc agent đang sửa (CHAM_SUA: chậm 2 giây) tab vẫn nhận trả lời thao tác khác
+        client = TestClient(TestServer(wa.make_app(), host="127.0.0.1", port=wa.port))
+        await client.start_server()
+        try:
+            ws = await client.ws_connect("/ws", headers={"Origin": f"http://127.0.0.1:{wa.port}"})
+
+            async def reply(ref):
+                while True:
+                    m = await ws.receive_json(timeout=15)
+                    if m.get("t") == "toast" and m.get("ref") == ref:
+                        return m
+            await ws.send_json({"op": "code_ai", "mode": "edit", "path": "app.py", "text": text, "from": start,
+                                "to": end, "instruction": "CHAM_SUA", "agent": "claude", "ref": 1})
+            await ws.send_json({"op": "prefs", "autosave": False, "ref": 2})
+            first = await reply(2)
+            assert "code" not in first
+            assert (await reply(1))["code"] == "DEF HI():\n    RETURN 1"
+            await ws.close()
+        finally:
+            await client.close()
+    asyncio.run(main())

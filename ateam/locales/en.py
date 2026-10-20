@@ -4122,4 +4122,46 @@ EN: dict[str, str] = {
         'auto save',
     'Tự lưu sau 1,5 giây ngừng gõ — ⌘⇧P › Bật/tắt tự lưu':
         'Saves 1.5 s after you stop typing — ⌘⇧P › Toggle auto save',
+    '✨ Sửa đoạn đang chọn bằng AI…':
+        '✨ Edit the selection with AI…',
+    '✨ Giải thích đoạn đang chọn':
+        '✨ Explain the selection',
+    'Gõ yêu cầu sửa trước (vd: thêm xử lý lỗi)':
+        'Type what to change first (e.g. add error handling)',
+    'Sửa code inline: {path}':
+        'Inline code edit: {path}',
+    'Giải thích code: {path}':
+        'Explain code: {path}',
+    '{agent} không trả về đoạn code (xem .ateam/logs/lead.log)':
+        '{agent} returned no code (see .ateam/logs/lead.log)',
+    '{agent} không trả lời (xem .ateam/logs/lead.log)':
+        '{agent} gave no answer (see .ateam/logs/lead.log)',
+    'Sửa {v} bằng AI':
+        'Edit {v} with AI',
+    'Muốn sửa gì? vd: thêm xử lý lỗi, đổi sang async, viết docstring…':
+        'What should change? e.g. add error handling, make it async, write a docstring…',
+    'Enter gửi · Shift+Enter xuống dòng · Esc huỷ':
+        'Enter send · Shift+Enter new line · Esc cancel',
+    'AI đang sửa đoạn trước — chờ xong đã':
+        'AI is still editing the previous selection — wait for it',
+    '✨ {agent} đang sửa…':
+        '✨ {agent} is editing…',
+    '✨ {agent} đang đọc code…':
+        '✨ {agent} is reading the code…',
+    'File đã đổi trong lúc chờ AI — bỏ kết quả, thử lại':
+        'The file changed while waiting for AI — result dropped, try again',
+    '{agent} không đổi gì đoạn này':
+        '{agent} did not change this code',
+    '{agent} đã sửa — duyệt từng đoạn hoặc:':
+        '{agent} made changes — review each chunk or:',
+    'Chấp nhận':
+        'Accept',
+    'Bỏ':
+        'Discard',
+    'Đã bỏ phần AI sửa':
+        'Discarded the AI changes',
+    '{agent} giải thích {v}':
+        '{agent} explains {v}',
+    'Chép câu trả lời':
+        'Copy answer',
 }

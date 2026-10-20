@@ -887,3 +887,16 @@ def test_results_text_marks_verified_tasks(env, project, monkeypatch):
     o.db.add_task("codex", "b", "b", goal_id=gid, status="failed")
     text = o._results_text(gid)
     assert text.count("verification `true`: passed") == 1
+
+
+def test_extract_code_block_and_answer():
+    from ateam import prompts as P
+    assert P.extract_code_block("x\n<<<CODE>>>\n\n    a = 1\n    b = 2\n\n<<<END>>>\n") == "    a = 1\n    b = 2"  # giữ thụt lề
+    assert P.extract_code_block("<<<CODE>>>\n```python\nx\n```\n<<<END>>>") == "x"
+    assert P.extract_code_block("<<<CODE>>>\nchưa xong") is None and P.extract_code_block("không có") is None
+    # CLI in lại prompt (khối mẫu) trước câu trả lời: strip_echo bỏ phần đó, lấy khối cuối
+    p = P.code_edit_prompt(path="a.py", language="Python", before="", selection="s", after="", instruction="i", cwd="/x")
+    assert P.extract_code_block(P.strip_echo("user\n" + p + "\ncodex\n<<<CODE>>>\nthật\n<<<END>>>", p)) == "thật"
+    assert P.extract_code_block(P.strip_echo("user\n" + p + "\n", p)) is None  # chỉ có prompt in lại: không bóc nhầm mẫu
+    assert P.extract_answer("đọc...\nSUMMARY:\n**A**\n- b\n") == "**A**\n- b"
+    assert P.extract_answer("chỉ có chữ") == "chỉ có chữ"

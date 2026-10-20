@@ -368,6 +368,74 @@ Do NOT modify any files and do NOT run git yourself.
 End your answer with a line 'SUMMARY:' followed by the commit message only (nothing after it)."""
 
 
+def code_edit_prompt(*, path: str, language: str, before: str, selection: str, after: str, instruction: str,
+                     cwd: str) -> str:
+    """⌘I ở tab Code (web): agent viết lại đoạn đang chọn — trả đoạn thay thế giữa <<<CODE>>> và <<<END>>>,
+    không tự sửa file (người dùng xem diff rồi chấp nhận / bỏ)."""
+    return f"""INLINE CODE EDIT in the repository at: {cwd}
+File: {path} ({language})
+
+Rewrite ONLY the SELECTED CODE according to the instruction. The code before and after it is context: do not repeat it.
+
+INSTRUCTION:
+{instruction}
+
+CODE BEFORE THE SELECTION (context, may be truncated):
+<<<BEFORE>>>
+{before}
+<<<END>>>
+
+SELECTED CODE (to replace):
+<<<SELECTION>>>
+{selection}
+<<<END>>>
+
+CODE AFTER THE SELECTION (context, may be truncated):
+<<<AFTER>>>
+{after}
+<<<END>>>
+
+Rules:
+- Do NOT modify any files and do NOT run commands — only answer.
+- The replacement goes exactly where the selection was: keep the file's indentation and style, and the same
+  first-line indentation as the selection.
+- Write new comments in the same language as the existing comments of the file.
+- Put the replacement code (nothing else, no ``` fences) between these two marker lines:
+<<<CODE>>>
+(the replacement code)
+<<<END>>>"""
+
+
+def code_explain_prompt(*, path: str, language: str, before: str, selection: str, after: str, question: str,
+                        cwd: str, lang: str) -> str:
+    """Giải thích đoạn code đang chọn (tab Code web): câu trả lời Markdown sau SUMMARY:."""
+    ask = question or "Explain what this code does, how it works, and anything surprising or risky in it."
+    reply_lang = ("the same language as the question" if question else
+                  {"vi": "Vietnamese", "en": "English"}.get(lang, "the user's language"))
+    return f"""EXPLAIN CODE in the repository at: {cwd}
+File: {path} ({language})
+
+QUESTION: {ask}
+
+CODE BEFORE (context, may be truncated):
+<<<BEFORE>>>
+{before}
+<<<END>>>
+
+THE CODE TO EXPLAIN:
+<<<SELECTION>>>
+{selection}
+<<<END>>>
+
+CODE AFTER (context, may be truncated):
+<<<AFTER>>>
+{after}
+<<<END>>>
+
+Do NOT modify any files. Answer concisely in {reply_lang}, using Markdown (short paragraphs, bullet lists,
+`code`). End with a line 'SUMMARY:' followed by your whole answer (it is shown to the user as is)."""
+
+
 def conflict_prompt(*, files: list[str], state: str, cwd: str) -> str:
     """Nhờ agent giải quyết xung đột git (tab Git): sửa file, không stage/commit — người dùng xem lại rồi đánh dấu xong."""
     side = ("During a rebase, the <<<<<<< side is the branch being rebased onto and the >>>>>>> side is the commit "
@@ -425,6 +493,33 @@ def extract_commit_message(text: str) -> str:
 
 
 # ---------------- tách kết quả ----------------
+
+def extract_code_block(text: str) -> str | None:
+    """Đoạn code thay thế của ⌘I: giữa <<<CODE>>> cuối cùng và <<<END>>> sau nó (bỏ dòng trống sát hai đầu và
+    rào ``` nếu agent vẫn bọc). None nếu không có khối."""
+    i = text.rfind("<<<CODE>>>")
+    if i < 0:
+        return None
+    body = text[i + len("<<<CODE>>>"):]
+    j = body.find("<<<END>>>")
+    if j < 0:
+        return None
+    lines = body[:j].split("\n")
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if len(lines) >= 2 and lines[0].strip().startswith("```") and lines[-1].strip() == "```":
+        lines = lines[1:-1]
+    return "\n".join(lines)
+
+
+def extract_answer(text: str) -> str:
+    """Câu trả lời sau dòng SUMMARY: cuối cùng; không có thì cả output."""
+    if "SUMMARY:" in text:
+        text = text[text.rfind("SUMMARY:") + len("SUMMARY:"):]
+    return text.strip()
+
 
 def strip_echo(output: str, *prompts: str) -> str:
     """Bỏ phần CLI in lại prompt trước câu trả lời (`codex exec` in "user\\n<prompt>"), để không bóc nhầm JSON

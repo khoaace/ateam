@@ -45,6 +45,7 @@ if [ -n "${CODEX_HOME:-}" ]; then mkdir -p "$CODEX_HOME/fake_sessions"; touch "$
 # như codex thật: in lại cả prompt ("user\n<prompt>") trước câu trả lời — có JSON mẫu, khối DELEGATE/NOTE/ASK ví dụ
 printf -- '--------\nuser\n%s\ncodex\n' "$P"
 if [[ "$P" == *"git COMMIT MESSAGE"* ]]; then printf 'SUMMARY:\nCodex viết message này\n'; exit 0; fi
+if [[ "$P" == *"INLINE CODE EDIT"* ]]; then printf '<<<CODE>>>\n```python\ncodex_sua = True\n```\n<<<END>>>\n'; exit 0; fi
 if [[ "$P" == *"TEAM LEAD"* && "$P" == *"Reply with ONLY a JSON array"* ]]; then
   plan='[{"id":1,"agent":"grok","title":"Kế hoạch do codex lập","prompt":"tạo file b.txt","depends_on":[]}]'
   # model quên dấu ] cuối mảng (gặp thật với gpt-6.1-sol); codex in câu trả lời 2 lần: trong luồng và ra stdout

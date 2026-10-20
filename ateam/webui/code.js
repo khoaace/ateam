@@ -4,7 +4,8 @@
    báo; lưu khi file đã đổi → hỏi ghi đè. File .md: Sửa / Chia đôi / Xem trước (mdHtml của app.js, Ctrl/⌘+Shift+V đổi
    chế độ, nhớ trong localStorage "ateam-md"). 🔍 Tìm & thay trong toàn dự án (⌘⇧F, như VS Code) ở sidebar — logic
    ở ateam/search.py. Chia đôi hai khung (⌘\\, mỗi file ở một khung), ảnh / PDF xem tại chỗ, ⌥Tab đổi file vừa dùng,
-   Outline, palette # (symbol cả dự án), F12 / ⌘+click đi tới định nghĩa, ⇧⌥F format (ruff, prettier…), tự lưu. */
+   Outline, palette # (symbol cả dự án), F12 / ⌘+click đi tới định nghĩa, ⇧⌥F format (ruff, prettier…), tự lưu.
+   ✨ ⌘I: agent viết lại đoạn đang chọn → diff ngay trong editor (chấp nhận / bỏ từng đoạn); ⌘⇧E giải thích đoạn chọn. */
 "use strict";
 
 window.CodeView = (() => {
@@ -41,7 +42,7 @@ window.CodeView = (() => {
     return C.loading;
   }
   function comps() {
-    if (!C.comp) C.comp = { vim: new CM.Compartment(), theme: new CM.Compartment(), lang: new CM.Compartment(), ro: new CM.Compartment(), wrap: new CM.Compartment() };
+    if (!C.comp) C.comp = { vim: new CM.Compartment(), theme: new CM.Compartment(), lang: new CM.Compartment(), ro: new CM.Compartment(), wrap: new CM.Compartment(), merge: new CM.Compartment() };
     return C.comp;
   }
   const vimOn = () => S.prefs.vim !== false;
@@ -67,7 +68,12 @@ window.CodeView = (() => {
       c.ro.of(CM.EditorState.readOnly.of(!!buf.ro)),
       c.wrap.of(C.wrap ? CM.EditorView.lineWrapping : []),
       gitExt(),
+      c.merge.of([]),  // ⌘I: unifiedMergeView so với trước khi AI sửa
       CM.EditorView.updateListener.of((u) => {
+        if (AI.review && AI.review.view === u.view && u.transactions.length) {  // duyệt hết từng đoạn (nút ✓/✗ của merge) → xong
+          const ch = CM.getChunks(u.state);
+          if (ch && !ch.chunks.length) setTimeout(() => aiFinish(true), 0);
+        }
         if (u.docChanged) { buf.dirty = u.state.doc.toString() !== buf.saved; renderTabs(); schedulePreview(); scheduleGit(); scheduleAutosave(buf); }
         if (u.docChanged || u.selectionSet) { renderStatus(); markOutline(); }
       }),
@@ -122,6 +128,7 @@ window.CodeView = (() => {
           <div class="code-host" id="code-editor"><div class="code-media"></div></div>
           <div class="code-host hidden" id="code-editor2"><div class="code-media"></div></div>
           <div class="code-preview md" id="code-preview"></div>
+          <aside class="code-ai hidden" id="code-ai"></aside>
         </div>
         <div class="code-status" id="code-status"></div>
       </section>`;
@@ -400,6 +407,7 @@ window.CodeView = (() => {
     if (!b) return;
     const other = paneOf(path);
     if (other >= 0 && other !== C.act) setActive(other);  // mỗi file ở một khung: đang hiện ở khung kia thì sang đó
+    if (AI.review && AI.review.view === C.view && C.cur !== path) aiFinish(true);  // rời file đang duyệt diff: giữ phần AI sửa
     stash();
     C.cur = path;
     touchMru(path);
@@ -563,6 +571,7 @@ window.CodeView = (() => {
       if (!await confirmBox(t("code_unsaved"), t("code_unsaved_q", { path }), t("code_discard"))) return;
     }
     const pi = paneOf(path);
+    if (AI.review && AI.review.path === path) aiFinish(true);
     clearTimeout(b.asTimer);
     C.bufs.delete(path);
     C.mru = C.mru.filter((p) => p !== path);
@@ -593,6 +602,7 @@ window.CodeView = (() => {
   async function doSave(force) {
     const b = C.cur && C.bufs.get(C.cur);
     if (!b || b.media) return false;
+    if (AI.review && AI.review.path === b.path) aiFinish(true);  // lưu = chấp nhận phần AI sửa
     if (S.prefs.fmt_save && !b.ro) await formatDoc(true);  // format khi lưu (không có công cụ: bỏ qua, im lặng)
     const ok = await saveBuf(b, liveText(b), force);
     renderTabs(); renderStatus();
@@ -761,6 +771,116 @@ window.CodeView = (() => {
       renderTabs();
       if (b.path === C.cur) renderStatus();
     }, 1500);
+  }
+
+  /* ---------------------------------------------------------------- ✨ AI trong editor: ⌘I sửa inline, ⌘⇧E giải thích */
+  const AI = { review: null, pending: false };
+  function aiAgent() {  // agent lần trước chọn (nhớ trong trình duyệt), mặc định: agent viết commit / trưởng nhóm
+    const names = (S.state ? S.state.agents : []).map((a) => a.name);
+    let v = "";
+    try { v = localStorage.getItem("ateam-ai-agent") || ""; } catch (e) { /* chặn đọc */ }
+    return names.includes(v) ? v : (S.state && (names.includes(S.state.commit_agent) ? S.state.commit_agent : S.state.lead)) || names[0] || "";
+  }
+  function aiRange(view) {  // cả dòng của đoạn đang chọn (chưa chọn: dòng hiện tại)
+    const st = view.state, s = st.selection.main;
+    const end = !s.empty && s.to > s.from && st.doc.lineAt(s.to).from === s.to ? s.to - 1 : s.to;  // chọn tới đầu dòng sau: bỏ dòng đó
+    const a = st.doc.lineAt(s.from), b = st.doc.lineAt(Math.max(s.from, end));
+    return { from: a.from, to: b.to, label: a.number === b.number ? t("pal_line1", { a: a.number }) : t("pal_lines", { a: a.number, b: b.number }) };
+  }
+  function aiEdit() {
+    const b = C.cur && C.bufs.get(C.cur), view = C.view;
+    if (!b || b.media || !view) { toast(t("pal_noopen"), "info"); return; }
+    if (b.ro) { toast(t("code_readonly", { v: b.note }), "warn"); return; }
+    if (AI.pending) { toast(t("ai_wait"), "info"); return; }
+    if (AI.review) aiFinish(true);
+    const rg = aiRange(view), at = view.coordsAtPos(rg.from) || { left: 200, bottom: 200 };
+    const agents = (S.state ? S.state.agents : []).map((a) => a.name), cur = aiAgent();
+    const m = floating(at.left, at.bottom + 4, "ai-pop", `<div class="ai-head">✨ ${esc(t("ai_edit_title", { v: rg.label }))}</div>
+      <textarea class="field ai-q" rows="2" placeholder="${esc(t("ai_edit_ph"))}" spellcheck="false"></textarea>
+      <div class="ai-row"><select class="field ai-agent">${agents.map((n) => `<option${n === cur ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>
+        <span class="muted small">${esc(t("ai_hint"))}</span><button class="btn primary" data-ai="go">${esc(t("ai_go"))}</button></div>`);
+    const q = $(".ai-q", m);
+    const go = () => {
+      const instruction = q.value.trim();
+      if (!instruction) { q.focus(); return; }
+      const agent = $(".ai-agent", m).value;
+      try { localStorage.setItem("ateam-ai-agent", agent); } catch (e) { /* chặn lưu */ }
+      closeCtx();
+      aiRun(view, b, rg, instruction, agent);
+    };
+    q.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); go(); } });
+    m.addEventListener("click", (e) => { if (e.target.closest("[data-ai=go]")) go(); });
+    setTimeout(() => q.focus(), 0);
+  }
+  async function aiRun(view, b, rg, instruction, agent) {
+    const text = view.state.doc.toString();
+    AI.pending = true;
+    let r;
+    try {
+      r = await request("code_ai", { mode: "edit", path: b.path, text, from: rg.from, to: rg.to, instruction, agent },
+        t("ai_busy_edit", { agent }));
+    } finally { AI.pending = false; }
+    if (r.code == null) return;  // lỗi: server đã báo
+    const pane = C.panes.find((p) => p.view === view);
+    if (!pane || pane.cur !== b.path || view.state.doc.toString() !== text) { toast(t("ai_stale"), "warn"); return; }
+    if (r.code === text.slice(rg.from, rg.to)) { toast(t("ai_same", { agent }), "info"); return; }
+    const original = view.state.doc;
+    view.dispatch({
+      changes: { from: rg.from, to: rg.to, insert: r.code },
+      effects: comps().merge.reconfigure(CM.unifiedMergeView({ original, mergeControls: chunkButton, highlightChanges: true, gutter: true, syntaxHighlightDeletions: true })),
+      selection: { anchor: rg.from },  // bỏ vùng chọn: vim về normal mode, Esc là "Bỏ"
+      scrollIntoView: true,
+    });
+    AI.review = { view, path: b.path, original, agent };
+    const host = view.dom.parentElement, bar = document.createElement("div");
+    bar.className = "ai-bar";
+    bar.innerHTML = `<span>✨ ${esc(t("ai_review", { agent }))}</span>
+      <button class="btn primary" data-ai="accept">${esc(t("ai_accept"))} <kbd>⌘⏎</kbd></button>
+      <button class="btn ghost" data-ai="reject">${esc(t("ai_reject"))} <kbd>Esc</kbd></button>`;
+    bar.addEventListener("click", (e) => { const a = e.target.closest("[data-ai]"); if (a) aiFinish(a.dataset.ai === "accept"); });
+    host.appendChild(bar);
+    AI.review.bar = bar;
+    view.focus();
+  }
+  function chunkButton(type, action) {  // nút ✓ / ✗ của từng đoạn (chữ đã dịch thay cho Accept / Reject của CodeMirror)
+    const b = document.createElement("button");
+    b.name = type;
+    b.textContent = t(type === "accept" ? "ai_accept" : "ai_reject");
+    b.onmousedown = (e) => { e.preventDefault(); action(e); };
+    return b;
+  }
+  function aiFinish(accept) {  // chấp nhận: giữ chữ mới (chưa lưu); bỏ: về như trước khi AI sửa
+    const r = AI.review;
+    if (!r) return;
+    AI.review = null;
+    r.bar.remove();
+    const fx = comps().merge.reconfigure([]);
+    if (accept) r.view.dispatch({ effects: fx });
+    else r.view.dispatch({ changes: { from: 0, to: r.view.state.doc.length, insert: r.original }, effects: fx });
+    if (!accept) toast(t("ai_rejected"), "info");
+  }
+  async function aiExplain() {
+    const b = C.cur && C.bufs.get(C.cur), view = C.view;
+    if (!b || b.media || !view) { toast(t("pal_noopen"), "info"); return; }
+    let rg = aiRange(view);
+    if (view.state.selection.main.empty) {  // chưa chọn: cả hàm / class đang đứng (tới symbol kế tiếp cùng cấp)
+      const syms = b.syms || [], ln = view.state.doc.lineAt(view.state.selection.main.head).number, s = symAt(syms, ln);
+      if (s) {
+        const next = syms.find((x) => x.line > s.line && x.depth <= s.depth), doc = view.state.doc;
+        const last = next ? next.line - 1 : doc.lines;
+        rg = { from: doc.line(s.line).from, to: doc.line(Math.max(s.line, last)).to, label: s.name };
+      }
+    }
+    const agent = aiAgent();
+    const r = await request("code_ai", { mode: "explain", path: b.path, text: view.state.doc.toString(), from: rg.from, to: rg.to, agent },
+      t("ai_busy_explain", { agent }));
+    if (r.answer == null) return;
+    const box = $("#code-ai");
+    box.innerHTML = `<div class="ai-ph"><b>✨ ${esc(t("ai_explain_title", { agent, v: `${b.path.split("/").pop()} ${rg.label}` }))}</b>
+      <button class="icon-btn" data-ai="copy" title="${esc(t("ai_copy"))}">⧉</button>
+      <button class="icon-btn" data-ai="close" title="${esc(t("close"))}">×</button></div><div class="md ai-body">${mdHtml(r.answer)}</div>`;
+    box._text = r.answer;
+    box.classList.remove("hidden");
   }
 
   /* ---------------------------------------------------------------- 🔍 tìm & thay trong dự án */
@@ -1152,6 +1272,8 @@ window.CodeView = (() => {
       case "toggle_autosave": return request("prefs", { autosave: !S.prefs.autosave });
       case "toggle_split": return C.panes[1] ? unsplit() : split();
       case "outline": return sidePane("outline");
+      case "ai_edit": return aiEdit();
+      case "ai_explain": return aiExplain();
       case "save": return save();
       case "save_all": return saveAll();
       case "close": return close(C.cur);
@@ -1200,6 +1322,9 @@ window.CodeView = (() => {
     const media = e.target.closest(".code-host");
     if (media && C.panes[1]) setActive(HOSTS.indexOf("#" + media.id));
     if (e.target.closest("[data-cact=crumb]")) return palette("@");
+    const ai = e.target.closest("#code-ai [data-ai]");
+    if (ai && ai.dataset.ai === "close") $("#code-ai").classList.add("hidden");
+    if (ai && ai.dataset.ai === "copy") copyText($("#code-ai")._text || "");
     const x = e.target.closest("[data-close]");
     if (x) { e.stopPropagation(); return close(x.dataset.close); }
     const tab = e.target.closest(".ctab");
@@ -1231,6 +1356,13 @@ window.CodeView = (() => {
   }, true);
   document.addEventListener("keydown", (e) => {  // ⇧⌥F format · ⌘\\ chia đôi — trước vim (vim nuốt phím ⌥ ở normal mode)
     if (S.view !== "code" || topModal()) return;
+    const mod = (e.metaKey || e.ctrlKey) && !e.altKey;
+    if (AI.review && mod && e.key === "Enter") { e.preventDefault(); e.stopPropagation(); aiFinish(true); return; }
+    if (AI.review && e.key === "Escape" && !CTX && !(vimOn() && !/^normal/.test(C.mode))) {  // vim: Esc ra insert mode trước
+      e.preventDefault(); e.stopPropagation(); aiFinish(false); return;
+    }
+    if (mod && !e.shiftKey && e.code === "KeyI") { e.preventDefault(); e.stopPropagation(); aiEdit(); return; }
+    if (mod && e.shiftKey && e.code === "KeyE") { e.preventDefault(); e.stopPropagation(); aiExplain(); return; }
     if (e.altKey && e.shiftKey && !e.metaKey && !e.ctrlKey && e.code === "KeyF") { e.preventDefault(); e.stopPropagation(); formatDoc(false); }
     else if ((e.metaKey || e.ctrlKey) && !e.altKey && e.code === "Backslash") { e.preventDefault(); e.stopPropagation(); runCmd("toggle_split"); }
   }, true);

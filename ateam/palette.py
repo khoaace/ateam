@@ -27,6 +27,8 @@ CODE_COMMANDS: list[tuple[str, str, str, str]] = [
     ("goto_line", tr("Tới dòng… (:)"), "", ""),
     ("find", tr("Tìm trong file… (/)"), "", ""),
     ("search_project", tr("Tìm & thay trong dự án"), "F3", "Ctrl/⌘+Shift+F"),
+    ("ai_edit", tr("✨ Sửa đoạn đang chọn bằng AI…"), "", "Ctrl/⌘+I"),
+    ("ai_explain", tr("✨ Giải thích đoạn đang chọn"), "", "Ctrl/⌘+Shift+E"),
     ("ask_agent", tr("Hỏi agent về file / đoạn đang chọn…"), "", ""),
     ("task_agent", tr("Giao task cho agent với file / đoạn đang chọn…"), "", ""),
     ("save", tr("Lưu file"), "Ctrl+S", "Ctrl/⌘+S"),
@@ -56,15 +58,16 @@ KEYWORDS: dict[str, str] = {'quick_open': 'open file', 'goto_symbol': 'symbol ou
             'open_folder': 'open folder project recent workspace switch', 'workspace_symbol': 'workspace symbol project',
             'goto_definition': 'go to definition declaration', 'recent_buffer': 'recent buffer switch mru',
             'format': 'format document prettier ruff black', 'toggle_fmt_save': 'format on save',
-            'toggle_autosave': 'auto save autosave', 'toggle_split': 'split editor right', 'outline': 'outline symbols'}
+            'toggle_autosave': 'auto save autosave', 'toggle_split': 'split editor right', 'outline': 'outline symbols',
+            'ai_edit': 'ai edit inline rewrite refactor', 'ai_explain': 'ai explain'}
 # lệnh cần file đang mở
 NEEDS_FILE = {"goto_symbol", "goto_line", "find", "save", "save_all", "close", "next", "prev", "rename_file",
-              "delete_file", "copy_path", "git_diff", "open_vscode", "goto_definition", "format", "outline"}
+              "delete_file", "copy_path", "git_diff", "open_vscode", "goto_definition", "format", "outline", "ai_edit", "ai_explain"}
 
 
 WEB_SKIP = {"toggle_numbers"}  # CodeMirror của web luôn có số dòng
 TUI_SKIP = {"workspace_symbol", "goto_definition", "recent_buffer", "format", "toggle_fmt_save", "toggle_autosave",
-            "toggle_split", "outline"}  # mới có ở web
+            "toggle_split", "outline", "ai_edit", "ai_explain"}  # mới có ở web
 WS_SYMBOL_MAX_BYTES = 512 * 1024  # symbol toàn dự án: bỏ qua file lớn hơn
 WS_SYMBOL_FILES = 4000
 WS_SYMBOL_SECONDS = 4.0  # lần quét đầu (chưa có cache) dừng sau bấy nhiêu giây, trả phần đã có

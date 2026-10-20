@@ -424,6 +424,24 @@ trên 2 MB / 20 000 dòng không tô màu, trên 5 MB mở chỉ đọc, file nh
 - **Hỏi agent về đoạn đang chọn** / **Giao task cho agent**: chọn agent, gõ câu hỏi — agent nhận `@file (dòng a–b)`
   kèm câu hỏi (hỏi = chat 💬 ở tab Agents; giao task = hiện trên Bảng việc).
 
+**Chỉ có ở tab Code của `ateam web`:**
+
+- **✨ AI sửa inline (⌘I)**: chọn đoạn code, gõ yêu cầu, chọn agent. Agent chỉ trả đoạn mới (không tự sửa file),
+  editor hiện diff ngay tại chỗ — **Chấp nhận / Bỏ** từng đoạn, hoặc cả lượt bằng ⌘⏎ / Esc (vim: Esc ở normal
+  mode). **⌘⇧E** (hoặc `>Giải thích`): agent giải thích đoạn đang chọn (chưa chọn: cả hàm đang đứng) ở khung bên phải.
+  ⌘K vẫn là "về ô nhập" như mọi tab.
+- **Theo dõi agent**: lề editor có dấu dòng thêm / sửa / xoá so với HEAD (bấm dấu để xem đoạn cũ và hoàn tác đoạn
+  đó), cây file hiện `M` / `U` / `A` / `C` như VS Code và tự làm mới khi agent tạo file (nút ⟳ làm mới ngay). Có
+  task đang chạy ở chế độ shared thì thanh dưới báo "⚙ claude đang chạy". Mọi tab đang mở đều được so với đĩa.
+- **Điều hướng**: palette **`#`** tìm hàm / class trong cả dự án, **F12** hoặc **⌘+click** đi tới định nghĩa,
+  **⌥Tab** đổi file theo thứ tự vừa dùng (giữ ⌥, bấm Tab nữa để đổi), tab **Outline** ở cột trái, bấm `› tên hàm`
+  ở thanh dưới để mở `@`.
+- **Soạn thảo**: **⇧⌥F** format bằng công cụ của dự án (ruff/black, prettier, gofmt, rustfmt, shfmt — bản trong
+  `node_modules/.bin` / `.venv` được ưu tiên), `>Bật/tắt format khi lưu`, `>Bật/tắt tự lưu` (lưu sau 1,5 giây ngừng
+  gõ); **⌘\\** chia đôi hai khung (chuột phải file › *Mở bên phải*); ảnh và PDF xem ngay trong tab.
+- Chuột phải trên cây file: mở, file mới ở đây, đổi tên / chuyển (cả thư mục), xoá, chép đường dẫn, xem thay đổi
+  git, tìm trong thư mục. Tải lại trang thì các file đang mở (và khung chia đôi) được mở lại.
+
 ## Rule của dự án
 
 `/rules` (web: nút 📏 trên thanh trên) quản lý các rule mà **mọi agent phải tuân theo** trong dự án này — như

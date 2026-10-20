@@ -1322,6 +1322,37 @@ class Orchestrator:
             return False, tr("{agent} không trả về commit message (xem .ateam/logs/lead.log)", agent=writer)
         return True, msg
 
+    CODE_AI_CONTEXT = 200  # số dòng trước / sau đoạn chọn gửi kèm cho agent
+
+    async def code_ai(self, mode: str, path: str, text: str, start: int, end: int, instruction: str = "",
+                      agent: str = "") -> tuple[bool, str]:
+        """Tab Code (web): agent viết lại đoạn text[start:end] của file (mode "edit" → đoạn code mới, ⌘I) hoặc giải
+        thích nó ("explain" → Markdown). Agent chỉ trả lời, không sửa file. (thành công, kết quả hoặc lời báo lỗi)."""
+        from . import editor
+        from .i18n import get_lang
+        start, end = sorted((max(0, min(start, len(text))), max(0, min(end, len(text)))))
+        before = "".join(text[:start].splitlines(keepends=True)[-self.CODE_AI_CONTEXT:])
+        after = "".join(text[end:].splitlines(keepends=True)[:self.CODE_AI_CONTEXT])
+        lang = editor.language_name(Path(path))
+        who = agent if agent in self.cfg.active_agents() else self.commit_agent()
+        if mode == "edit":
+            if not instruction.strip():
+                return False, tr("Gõ yêu cầu sửa trước (vd: thêm xử lý lỗi)")
+            prompt = P.code_edit_prompt(path=path, language=lang, before=before, selection=text[start:end], after=after,
+                                        instruction=instruction.strip(), cwd=str(self.root))
+            out = await self._call_lead(prompt, tr("Sửa code inline: {path}", path=path), first=who)
+            code = P.extract_code_block(P.strip_echo(out or "", prompt))
+            if code is None:
+                return False, tr("{agent} không trả về đoạn code (xem .ateam/logs/lead.log)", agent=who)
+            return True, code
+        prompt = P.code_explain_prompt(path=path, language=lang, before=before, selection=text[start:end], after=after,
+                                       question=instruction.strip(), cwd=str(self.root), lang=get_lang())
+        out = await self._call_lead(prompt, tr("Giải thích code: {path}", path=path), first=who)
+        answer = P.extract_answer(P.strip_echo(out or "", prompt))
+        if not answer:
+            return False, tr("{agent} không trả lời (xem .ateam/logs/lead.log)", agent=who)
+        return True, answer
+
     async def suggest_workflow(self, description: str) -> tuple[bool, "dict | str"]:
         """Trưởng nhóm thiết kế workflow tuỳ chỉnh theo mô tả của người dùng (form /custom → ✨ Gợi ý).
         Trả về (thành công, dữ liệu điền form — xem wizard.suggestion_form — hoặc lời nhắn lỗi)."""
