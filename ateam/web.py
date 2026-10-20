@@ -296,6 +296,13 @@ def ui_strings() -> dict[str, str]:
         "ctx_open": tr("Mở"), "ctx_new_here": tr("File mới ở đây…"), "ctx_search_in": tr("Tìm trong thư mục này"),
         "ctx_rename": tr("Đổi tên / chuyển…"), "ctx_delete": tr("Xoá (vào Thùng rác)"),
         "ctx_copy_path": tr("Chép đường dẫn"), "ctx_git_diff": tr("Xem thay đổi git"),
+        "git_st_M": tr("Đã sửa"), "git_st_U": tr("Mới, chưa theo dõi"), "git_st_A": tr("Đã stage (mới)"),
+        "git_st_C": tr("Xung đột"), "git_st_D": tr("Đã xoá"), "git_st_R": tr("Đổi tên"), "git_st_T": tr("Đổi kiểu file"),
+        "git_hunk_add": tr("Dòng mới so với HEAD"), "git_hunk_mod": tr("Đã sửa — nội dung ở HEAD:"),
+        "git_hunk_del": tr("Đã xoá — nội dung ở HEAD:"), "git_hunk_revert": tr("Hoàn tác đoạn này"),
+        "code_reloaded_by": tr("File đổi trên đĩa ({v} đang chạy task) — đã nạp lại", v="{v}"),
+        "code_running": tr("{v} đang chạy", v="{v}"),
+        "code_running_tip": tr("Agent đang chạy task ngay trong thư mục dự án (chế độ shared) — file đang mở có thể bị sửa"),
         # --- gợi ý ô nhập
         "cmds": tr("Lệnh"), "sg_agent": tr("Agent"), "sg_agent_task": tr("Agent · thêm :model hoặc @effort"),
         "sg_model": tr("Model của {v}"), "sg_effort": tr("Effort của {v}"), "sg_task": tr("Task"),
@@ -805,7 +812,7 @@ class WebApp:
                            for n, a in self.cfg.active_agents().items()],
                 "all_agents": list(self.cfg.agents),
                 "grid_presets": preset_names(),
-                "code_commands": palette.commands_json(),
+                "code_commands": palette.commands_json(), "isolation": self.cfg.isolation,
                 "workflows": [{"name": n, "summary": w.summary(), "description": w.description}
                               for n, w in self.cfg.workflows.items()],
                 "accents": [{"key": k, "label": theme.accent_label(k), "color": c} for k, c in theme.ACCENTS.items()],

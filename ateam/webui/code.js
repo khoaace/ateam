@@ -9,7 +9,8 @@
 window.CodeView = (() => {
   const LIMIT = 10;
   const C = { view: null, bufs: new Map(), order: [], cur: null, open: new Set([""]), tree: {}, filter: "",
-    loading: null, comp: null, warned: {}, timer: null, ticks: 0, mode: "normal", wrap: false, restored: false };
+    loading: null, comp: null, warned: {}, timer: null, ticks: 0, mode: "normal", wrap: false, restored: false,
+    git: {}, gitDirs: new Set(), gitKey: "", head: undefined, runKey: "" };
   const el = () => $("#code");
   async function getJSON(url) {  // mất kết nối / server lỗi → {error} thay vì lỗi không ai bắt
     try { return await (await fetch(url)).json(); } catch (e) { return { error: t("code_net_fail") }; }
@@ -46,8 +47,9 @@ window.CodeView = (() => {
       c.lang.of(buf.lang ? buf.lang.support : []),
       c.ro.of(CM.EditorState.readOnly.of(!!buf.ro)),
       c.wrap.of(C.wrap ? CM.EditorView.lineWrapping : []),
+      gitExt(),
       CM.EditorView.updateListener.of((u) => {
-        if (u.docChanged) { buf.dirty = u.state.doc.toString() !== buf.saved; renderTabs(); schedulePreview(); }
+        if (u.docChanged) { buf.dirty = u.state.doc.toString() !== buf.saved; renderTabs(); schedulePreview(); scheduleGit(); }
         if (u.docChanged || u.selectionSet) renderStatus();
       }),
     ];
@@ -123,7 +125,7 @@ window.CodeView = (() => {
     if (!force && (S.view !== "code" || document.hidden)) return;
     const dirs = [""].concat([...C.open].filter((d) => d && C.tree[d]));
     for (const d of Object.keys(C.tree)) if (!dirs.includes(d)) delete C.tree[d];  // thư mục đang đóng: nạp lại khi mở
-    let changed = false;
+    let changed = await loadGit();
     for (const [i, d] of dirs.entries()) {
       const r = await getJSON(`/api/tree?dir=${encodeURIComponent(d)}${i ? "" : force ? "&refresh=1" : "&age=5"}`);
       if (Array.isArray(r) && JSON.stringify(r) !== JSON.stringify(C.tree[d])) { C.tree[d] = r; changed = true; }
@@ -135,11 +137,17 @@ window.CodeView = (() => {
     const ext = n.name.includes(".") ? n.name.split(".").pop().toLowerCase() : "";
     return `<i class="fic e-${esc(ext)}">${esc(ext.slice(0, 3) || "·")}</i>`;
   }
+  function gitTag(path, dir) {  // chữ trạng thái git bên phải tên (M sửa · U mới · A đã stage · C xung đột), thư mục: chấm
+    if (dir) return C.gitDirs.has(path) ? [" g-dir", `<span class="gst">●</span>`] : ["", ""];
+    const g = C.git[path];
+    return g ? [" g-" + g, `<span class="gst" title="${esc(t("git_st_" + g))}">${esc(g)}</span>`] : ["", ""];
+  }
   function nodes(dir, depth) {
     return (C.tree[dir] || []).map((n) => {
-      const cls = (n.dir ? "dir" : "file") + (n.path === C.cur ? " on" : "") + (C.bufs.get(n.path) && C.bufs.get(n.path).dirty ? " dirty" : "");
+      const [gcls, gst] = gitTag(n.path, n.dir);
+      const cls = (n.dir ? "dir" : "file") + (n.path === C.cur ? " on" : "") + (C.bufs.get(n.path) && C.bufs.get(n.path).dirty ? " dirty" : "") + gcls;
       const row = `<div class="tnode ${cls}" data-path="${esc(n.path)}" data-dir="${n.dir ? 1 : 0}" style="padding-left:${10 + depth * 14}px">
-        <span class="ticon">${icon(n)}</span><span class="tname">${esc(n.name)}</span></div>`;
+        <span class="ticon">${icon(n)}</span><span class="tname">${esc(n.name)}</span>${gst}</div>`;
       return row + (n.dir && C.open.has(n.path) ? nodes(n.path, depth + 1) : "");
     }).join("");
   }
@@ -153,9 +161,9 @@ window.CodeView = (() => {
       const files = Array.isArray(r) ? r : [];
       if (seq !== filterSeq) return;
       box.innerHTML = files.map((f) => {
-        const dir = f.endsWith("/");
-        return `<div class="tnode ${dir ? "dir" : "file"}${f === C.cur ? " on" : ""}" data-path="${esc(dir ? f.slice(0, -1) : f)}" data-dir="${dir ? 1 : 0}" data-flat="1">
-          <span class="ticon">${dir ? "▸" : icon({ name: f })}</span><span class="tname">${esc(f)}</span></div>`;
+        const dir = f.endsWith("/"), [gcls, gst] = gitTag(dir ? f.slice(0, -1) : f, dir);
+        return `<div class="tnode ${dir ? "dir" : "file"}${f === C.cur ? " on" : ""}${gcls}" data-path="${esc(dir ? f.slice(0, -1) : f)}" data-dir="${dir ? 1 : 0}" data-flat="1">
+          <span class="ticon">${dir ? "▸" : icon({ name: f })}</span><span class="tname">${esc(f)}</span>${gst}</div>`;
       }).join("") || `<div class="muted small pad">${esc(t("code_nofile"))}</div>`;
       return;
     }
@@ -180,6 +188,100 @@ window.CodeView = (() => {
     return Promise.all([...C.open].map((d) => loadDir(d))).then(renderTree);
   }
 
+  /* ---------------------------------------------------------------- git: trạng thái file + dấu ở lề */
+  async function loadGit() {  // true nếu trạng thái đổi (cần vẽ lại cây)
+    const r = await getJSON("/api/git/status");
+    if (!r.groups) return false;
+    const st = {}, dirs = new Set(), g = r.groups;
+    const put = (rows, fn) => (rows || []).forEach((f) => { if (!st[f.path]) st[f.path] = fn(f.icon); });
+    put(g.c, () => "C"); put(g.w, (i) => i); put(g.s, (i) => i);
+    for (const p of Object.keys(st)) for (let i = p.lastIndexOf("/"); i > 0; i = p.lastIndexOf("/", i - 1)) dirs.add(p.slice(0, i));
+    const key = JSON.stringify(st), changed = key !== C.gitKey;
+    C.git = st; C.gitDirs = dirs; C.gitKey = key;
+    if (r.oid !== C.head) {  // commit mới (tab Git, agent): so lại với HEAD mới
+      const first = C.head === undefined;
+      C.head = r.oid;
+      const b = C.cur && C.bufs.get(C.cur);
+      if (!first && b && window.CM) loadBase(b);
+    }
+    return changed;
+  }
+  let GIT = null;  // gutter + StateField dùng chung mọi buffer (tạo khi CodeMirror đã nạp)
+  function gitExt() {
+    if (!GIT) {
+      const set = CM.StateEffect.define();
+      class Mark extends CM.GutterMarker {
+        constructor(kind) { super(); this.kind = kind; }
+        eq(o) { return o.kind === this.kind; }
+        toDOM() { const d = document.createElement("div"); d.className = "cm-git-" + this.kind; return d; }
+      }
+      const field = CM.StateField.define({
+        create: () => CM.RangeSet.empty,
+        update(v, tr) {
+          for (const e of tr.effects) if (e.is(set)) return e.value;
+          return tr.docChanged ? v.map(tr.changes) : v;
+        },
+      });
+      const g = CM.gutter({
+        class: "cm-git-gutter",
+        markers: (view) => view.state.field(field),
+        domEventHandlers: { mousedown: (view, line, ev) => hunkPop(view, line, ev) },
+      });
+      GIT = { set, marks: { add: new Mark("add"), mod: new Mark("mod"), del: new Mark("del") }, ext: [field, g] };
+    }
+    return GIT.ext;
+  }
+  function gitMarks(b, doc) {
+    b.chunks = b.base ? CM.Chunk.build(b.base, doc) : [];
+    const out = [];
+    for (const ch of b.chunks) {
+      if (ch.fromB === ch.toB) { out.push(GIT.marks.del.range(doc.lineAt(Math.min(ch.fromB, doc.length)).from)); continue; }
+      const kind = ch.fromA === ch.toA ? "add" : "mod";
+      for (let ln = doc.lineAt(ch.fromB).number, end = doc.lineAt(ch.endB).number; ln <= end; ln++) out.push(GIT.marks[kind].range(doc.line(ln).from));
+    }
+    return CM.RangeSet.of(out, true);
+  }
+  function applyGit() {
+    const b = C.cur && C.bufs.get(C.cur);
+    if (b && C.view && GIT) C.view.dispatch({ effects: GIT.set.of(gitMarks(b, C.view.state.doc)) });
+  }
+  let gitTimer = null;
+  function scheduleGit() { clearTimeout(gitTimer); gitTimer = setTimeout(applyGit, 300); }
+  async function loadBase(b) {  // nội dung ở HEAD; không phải repo / file bị .gitignore → không có dấu
+    const r = await getJSON("/api/file/base?path=" + encodeURIComponent(b.path));
+    if (r.error) return;
+    b.base = r.repo && !r.ignored ? CM.Text.of(String(r.text || "").split("\n")) : null;
+    if (b.path === C.cur) applyGit();
+  }
+  function hunkPop(view, line, ev) {  // bấm dấu ở lề: xem đoạn cũ, hoàn tác đoạn này
+    const b = C.cur && C.bufs.get(C.cur), doc = view.state.doc;
+    const ch = b && (b.chunks || []).find((c) => c.fromB === c.toB ? doc.lineAt(Math.min(c.fromB, doc.length)).from === line.from
+      : line.from >= c.fromB && line.from <= c.endB);
+    if (!ch) return false;
+    const kind = ch.fromA === ch.toA ? "add" : ch.fromB === ch.toB ? "del" : "mod";
+    const m = floating(ev.clientX + 12, ev.clientY - 8, "hunk-pop", `<div class="hunk-head"><span>${esc(t("git_hunk_" + kind))}</span>
+        <button class="ctx-item" data-h="revert">↶ ${esc(t("git_hunk_revert"))}</button></div>
+      ${kind === "add" ? "" : `<pre class="hunk-old">${esc(b.base.sliceString(ch.fromA, ch.endA))}</pre>`}`);
+    m.addEventListener("click", (e) => {
+      if (!e.target.closest("[data-h=revert]")) return;
+      closeCtx();
+      const d = view.state.doc;
+      view.dispatch({ changes: { from: ch.fromB, to: Math.min(ch.toB, d.length), insert: b.base.sliceString(ch.fromA, Math.min(ch.toA, b.base.length)) } });
+      view.focus();
+    });
+    return true;
+  }
+
+  /* ---------------------------------------------------------------- agent đang chạy (chế độ shared: sửa thẳng thư mục) */
+  function runningAgents() {
+    if ((S.meta.isolation || "shared") !== "shared" || !S.state) return [];
+    return [...new Set(S.state.tasks.filter((x) => x.status === "running").map((x) => x.agent))];
+  }
+  function runChip() {
+    const run = runningAgents();
+    return run.length ? `<span class="chip run" title="${esc(t("code_running_tip"))}">⚙ ${esc(t("code_running", { v: run.join(", ") }))}</span>` : "";
+  }
+
   /* ---------------------------------------------------------------- file đang mở */
   function renderTabs() {
     const box = $("#code-tabs");
@@ -200,9 +302,9 @@ window.CodeView = (() => {
     const st = C.view.state, pos = st.selection.main.head, line = st.doc.lineAt(pos);
     const mode = vimOn() ? `<span class="vmode m-${esc(C.mode)}">${esc(C.mode.toUpperCase())}</span>` : "";
     const sym = symAt(b.syms, line.number);
-    box.innerHTML = `${mode}<span class="mono">${esc(b.path)}</span>${b.dirty ? `<span class="dot-dirty">●</span>` : ""}
+    box.innerHTML = `${mode}<span class="mono cpath">${esc(b.path)}</span>${b.dirty ? `<span class="dot-dirty">●</span>` : ""}
       ${sym ? `<span class="mono crumb">› ${esc(sym.name)}</span>` : ""}
-      <span style="flex:1"></span>${b.ro ? `<span class="chip warn">${esc(t("code_readonly", { v: b.note }))}</span>` : ""}
+      <span style="flex:1"></span>${runChip()}${b.ro ? `<span class="chip warn">${esc(t("code_readonly", { v: b.note }))}</span>` : ""}
       ${b.newline === "\r\n" ? `<span class="chip">CRLF</span>` : ""}<span>${esc((b.lang && b.lang.name) || b.language || t("code_plain"))}</span>
       <span class="mono">${esc(t("code_pos", { r: line.number, n: st.doc.lines, c: pos - line.from + 1 }))}</span>
       ${isMd(b) ? `<span class="seg" title="${esc(t("code_md_title"))}">${MD_MODES.map((m) =>
@@ -268,6 +370,7 @@ window.CodeView = (() => {
     renderTabs(); renderStatus(); renderPreview();
     revealInTree(path);
     if (!b.syms) loadSyms(b);
+    loadBase(b);
     persist();
   }
   /* symbol (hàm, class, heading) của file: thanh "› đang ở đâu" và palette @ — tính lại khi mở / lưu */
@@ -394,6 +497,7 @@ window.CodeView = (() => {
     const st = b.path === C.cur && C.view ? C.view.state : b.state;
     b.saved = text; b.mtime = sv.mtime; b.dirty = !!st && st.doc.toString() !== text; C.warned[b.path] = 0;
     loadSyms(b);
+    loadGit().then((ch) => { if (ch) renderTree(); });
     return true;
   }
   async function reload(quiet, path) {
@@ -414,8 +518,10 @@ window.CodeView = (() => {
     b.state = CM.EditorState.create({ doc: r.text, extensions: extensions(b), selection: { anchor: Math.min(head, r.text.length) } });
     C.view.setState(b.state);
     refreshConfig();
+    applyGit();
     renderTabs(); renderStatus(); renderPreview();
-    toast(quiet === "disk" ? t("code_reloaded_disk") : t("code_reloaded"), "info");
+    const run = runningAgents();
+    toast(quiet !== "disk" ? t("code_reloaded") : run.length ? t("code_reloaded_by", { v: run.join(", ") }) : t("code_reloaded_disk"), "info");
   }
   async function checkDisk() {  // agent sửa file đang mở (mọi tab, không chỉ file đang xem)
     if (S.view !== "code" || document.hidden || !C.order.length) return;
@@ -727,7 +833,7 @@ window.CodeView = (() => {
     if (SR.query) runSearch();
   }
 
-  /* menu chuột phải: items = [{label, run, key?, danger?} | "-"] */
+  /* khung nổi (menu chuột phải, đoạn thay đổi git): đóng khi bấm ra ngoài / Esc; ↑↓ đổi mục */
   let CTX = null;
   function closeCtx() {
     if (!CTX) return;
@@ -736,24 +842,20 @@ window.CodeView = (() => {
     document.removeEventListener("keydown", CTX.off, true);
     CTX = null;
   }
-  function ctxMenu(e, items) {
-    e.preventDefault();
+  function floating(x, y, cls, html) {
     closeCtx();
     const m = document.createElement("div");
-    m.className = "ctx-menu";
-    m.setAttribute("role", "menu");
-    m.innerHTML = items.map((it, i) => it === "-" ? `<div class="ctx-sep"></div>` :
-      `<button class="ctx-item${it.danger ? " danger" : ""}" data-i="${i}" role="menuitem">${esc(it.label)}${it.key ? `<span class="pal-key">${esc(it.key)}</span>` : ""}</button>`).join("");
+    m.className = cls;
+    m.innerHTML = html;
     document.body.appendChild(m);
     const r = m.getBoundingClientRect();
-    m.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 4)) + "px";
-    m.style.top = Math.max(4, Math.min(e.clientY, innerHeight - r.height - 4)) + "px";
-    m.addEventListener("click", (ev) => { const b = ev.target.closest("[data-i]"); if (b) { closeCtx(); items[+b.dataset.i].run(); } });
+    m.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + "px";
+    m.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + "px";
     const off = (ev) => {
       if (ev.type === "mousedown") { if (!m.contains(ev.target)) closeCtx(); return; }
       const btns = $$(".ctx-item", m), i = btns.indexOf(document.activeElement);
       if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeCtx(); }
-      else if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      else if ((ev.key === "ArrowDown" || ev.key === "ArrowUp") && btns.length) {
         ev.preventDefault(); ev.stopPropagation();
         btns[(i + (ev.key === "ArrowDown" ? 1 : -1) + btns.length) % btns.length].focus();
       }
@@ -763,6 +865,15 @@ window.CodeView = (() => {
     document.addEventListener("keydown", off, true);
     const first = $(".ctx-item", m);
     if (first) first.focus();
+    return m;
+  }
+  /* menu chuột phải: items = [{label, run, key?, danger?} | "-"] */
+  function ctxMenu(e, items) {
+    e.preventDefault();
+    const m = floating(e.clientX, e.clientY, "ctx-menu", items.map((it, i) => it === "-" ? `<div class="ctx-sep"></div>` :
+      `<button class="ctx-item${it.danger ? " danger" : ""}" data-i="${i}" role="menuitem">${esc(it.label)}${it.key ? `<span class="pal-key">${esc(it.key)}</span>` : ""}</button>`).join(""));
+    m.setAttribute("role", "menu");
+    m.addEventListener("click", (ev) => { const b = ev.target.closest("[data-i]"); if (b) { closeCtx(); items[+b.dataset.i].run(); } });
   }
   function treeMenu(e, n) {
     const path = n.dataset.path;
@@ -828,6 +939,7 @@ window.CodeView = (() => {
     layout();
     if (!C.timer) C.timer = setInterval(tick, 2000);
     renderTree(); renderTabs(); renderStatus();
+    loadGit().then((ch) => { if (ch) renderTree(); });
     try { await loadCM(); } catch (e) { toast(t("code_load_fail"), "error"); return; }
     if (!C.view) {
       newView(CM.EditorState.create({ doc: "", extensions: [CM.EditorState.readOnly.of(true), comps().theme.of(isDark() ? CM.oneDark : [])] }));
@@ -884,6 +996,10 @@ window.CodeView = (() => {
   return {
     show, open, palette, search: (q) => show().then(() => sidePane("search", q || "")),
     prefsChanged() { if (window.CM && C.view) { refreshConfig(); renderStatus(); } },
+    stateChanged() {  // ảnh chụp trạng thái mới: chip "agent đang chạy"
+      const k = runningAgents().join(",");
+      if (k !== C.runKey) { C.runKey = k; renderStatus(); }
+    },
     unsaved: () => [...C.bufs.values()].filter((b) => b.dirty).map((b) => b.path),
   };
 })();

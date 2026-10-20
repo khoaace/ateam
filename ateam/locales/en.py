@@ -4022,4 +4022,28 @@ EN: dict[str, str] = {
         'Copy path',
     'Xem thay đổi git':
         'Show git changes',
+    'Đã sửa':
+        'Modified',
+    'Mới, chưa theo dõi':
+        'New, untracked',
+    'Đã stage (mới)':
+        'Staged (new)',
+    'Đã xoá':
+        'Deleted',
+    'Đổi kiểu file':
+        'Type changed',
+    'Dòng mới so với HEAD':
+        'New lines compared to HEAD',
+    'Đã sửa — nội dung ở HEAD:':
+        'Modified — content at HEAD:',
+    'Đã xoá — nội dung ở HEAD:':
+        'Deleted — content at HEAD:',
+    'Hoàn tác đoạn này':
+        'Revert this change',
+    'File đổi trên đĩa ({v} đang chạy task) — đã nạp lại':
+        'File changed on disk ({v} is running a task) — reloaded',
+    '{v} đang chạy':
+        '{v} running',
+    'Agent đang chạy task ngay trong thư mục dự án (chế độ shared) — file đang mở có thể bị sửa':
+        'An agent is running a task directly in the project folder (shared mode) — open files may be changed',
 }

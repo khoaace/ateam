@@ -45,7 +45,7 @@ class CodeWeb:
     def routes(self) -> list:
         return [web.get("/api/tree", self.api_tree), web.get("/api/file", self.api_file),
                 web.get("/api/file/stat", self.api_stat), web.get("/api/symbols", self.api_symbols),
-                web.get("/api/recent", self.api_recent)]
+                web.get("/api/recent", self.api_recent), web.get("/api/file/base", self.api_base)]
 
     async def api_tree(self, r: web.Request) -> web.Response:
         """?refresh=1: quét lại ngay (⟳); ?age=5: quét lại nếu danh sách cũ hơn 5 giây (tab Code hỏi định kỳ để
@@ -84,6 +84,23 @@ class CodeWeb:
             return web.json_response([])
         sf = await asyncio.to_thread(editor.read_source, p)
         return web.json_response([] if sf.error else await asyncio.to_thread(palette.symbols, p, sf.text))
+
+    async def api_base(self, r: web.Request) -> web.Response:
+        """Nội dung file ở HEAD cho dấu thay đổi git ở lề editor: {"repo", "tracked", "ignored", "text"}.
+        Chưa theo dõi → tracked false, text "" (cả file là dòng mới); bị .gitignore → ignored (không có dấu)."""
+        p = safe_path(self.app.root, r.query.get("path", ""))
+        if p is None:
+            return web.json_response({"error": tr("Đường dẫn không hợp lệ (ngoài dự án): {path}", path=r.query.get("path", ""))})
+        repo = self.app.git.repo
+        rel = p.relative_to(self.app.root.resolve()).as_posix()
+        rc, out = await repo.run("show", f"HEAD:./{rel}")
+        if rc == 0:
+            return web.json_response({"repo": True, "tracked": True, "ignored": False, "text": out.replace("\r\n", "\n")})
+        rc_repo, _ = await repo.run("rev-parse", "--git-dir")
+        if rc_repo:
+            return web.json_response({"repo": False, "tracked": False, "ignored": False, "text": ""})
+        rc_ign, _ = await repo.run("check-ignore", "-q", f"./{rel}")
+        return web.json_response({"repo": True, "tracked": False, "ignored": rc_ign == 0, "text": ""})
 
     async def api_recent(self, r: web.Request) -> web.Response:
         root = self.app.root

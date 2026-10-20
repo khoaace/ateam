@@ -1253,6 +1253,28 @@ body.readonly .card-actions { display: none !important; }
 .ctx-item:hover, .ctx-item:focus { background: var(--accent-soft); outline: none; }
 .ctx-item.danger { color: var(--failed); }
 .ctx-sep { height: 1px; margin: 4px 2px; background: var(--border); }
+/* git trong tab Code: dấu ở lề (so với HEAD), chữ trạng thái trong cây, đoạn cũ khi bấm dấu */
+.code-host .cm-git-gutter { width: 5px; cursor: pointer; }
+.code-host .cm-git-gutter .cm-gutterElement { padding: 0 1px; position: relative; }
+.cm-git-add, .cm-git-mod { position: absolute; inset: 0 1px; }
+.cm-git-add { background: var(--done); }
+.cm-git-mod { background: var(--term-link); }
+.cm-git-del { position: absolute; left: 0; top: -4px; width: 0; height: 0; border-left: 6px solid var(--failed); border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+.tnode .gst { margin-left: auto; padding: 0 4px 0 8px; font: 700 10px/1 var(--mono); flex: none; }
+.tnode.g-M .tname, .tnode.g-M .gst, .tnode.g-T .gst { color: var(--review); }
+.tnode.g-U .tname, .tnode.g-U .gst, .tnode.g-A .tname, .tnode.g-A .gst { color: var(--done); }
+.tnode.g-C .tname, .tnode.g-C .gst, .tnode.g-D .gst { color: var(--failed); }
+.tnode.g-R .tname, .tnode.g-R .gst { color: var(--term-del); }
+.tnode.g-dir .gst { color: var(--review); font-size: 8px; }
+.hunk-pop { position: fixed; z-index: 1000; width: min(560px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-pop), 0 6px 20px rgba(0, 0, 0, .25); }
+.hunk-head { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 10px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--border); }
+.hunk-head .ctx-item { margin-left: auto; padding: 3px 8px; }
+.hunk-old { margin: 0; padding: 6px 10px; max-height: 240px; overflow: auto; font: 12px/1.5 var(--mono); background: var(--diff-del); white-space: pre; }
+.code-status .chip.run { color: var(--running); border-color: color-mix(in srgb, var(--running) 45%, var(--border)); cursor: default; max-width: 340px; }
+.code-status { white-space: nowrap; overflow: hidden; }
+.code-status > * { flex: none; }
+.code-status .crumb, .code-status .chip.run, .code-status .cpath { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.code-status .crumb { flex-shrink: 4; } .code-status .chip.run { flex-shrink: 2; }  /* hẹp: bớt symbol trước, đường dẫn sau cùng */
 
 /* giải quyết xung đột git (git.js: resolve) */
 .cf-body { display: flex; flex-direction: column; gap: 10px; max-height: 75vh; overflow: auto; }

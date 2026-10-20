@@ -426,6 +426,22 @@ def test_web_code_files(env, project, monkeypatch):
             assert "error" in await (await client.get("/api/file?path=blob.bin")).json()
             r = await wa.command("/code @src/app.py:3")
             assert r[2]["open"]["code"] == {"path": "src/app.py", "line": 3}
+            # dấu git ở lề: nội dung ở HEAD; chưa theo dõi / bị .gitignore / ngoài dự án
+            import subprocess
+            git = lambda *a: subprocess.run(("git",) + a, cwd=project, check=True, capture_output=True)
+            if not (project / ".git").exists():
+                git("init", "-q")
+            (project / ".gitignore").write_text("*.log\n")
+            git("add", "src/app.py", ".gitignore")
+            git("-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "-qm", "base")
+            (project / "src" / "app.py").write_text("changed\n")
+            (project / "moi.txt").write_text("x\n")
+            (project / "x.log").write_text("x\n")
+            base = await (await client.get("/api/file/base?path=src/app.py")).json()
+            assert base == {"repo": True, "tracked": True, "ignored": False, "text": "x\n"}  # CRLF → \n
+            assert (await (await client.get("/api/file/base?path=moi.txt")).json())["tracked"] is False
+            assert (await (await client.get("/api/file/base?path=x.log")).json())["ignored"] is True
+            assert "error" in await (await client.get("/api/file/base?path=../ngoai.txt")).json()
         finally:
             await client.close()
 

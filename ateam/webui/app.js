@@ -371,6 +371,7 @@ function render() {
   if (window.TodoView) TodoView.render();  // cả số việc chưa xong trên thanh bên
   if (window.NotesView) NotesView.render();
   if (S.openTask != null) renderDrawer(false);
+  if (S.view === "code" && window.CodeView) CodeView.stateChanged();
   renderContinueHint();
 }
 function renderTop() {
