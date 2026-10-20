@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.33.1 — 20/10/2026
+
+- **Toast "đang chạy…" tới khi xong**: ✨ AI viết commit message, Commit (kể cả hook chạy lâu), Push / Pull / Fetch,
+  AI giải xung đột, ✨ gợi ý workflow, lệnh `/commit` `/push` `/pull` gõ ở ô nhập… hiện toast có spinner, chỉ tắt khi
+  có kết quả; nút đang chạy có spinner và bị khoá (không bấm hai lần). Nút Lưu ở wizard / vai trò / tuỳ chỉnh cũng vậy.
+- **Tab web không còn bị đứng** khi AI đang viết commit hay đang push: gõ vào Lưới, terminal, bấm nút khác vẫn được.
+- **TUI**: thanh trạng thái hiện `⠋ Đang push…` (commit, pull, merge, AI viết…) ở mọi tab tới khi thao tác xong.
+
 ## 0.33.0 — 20/10/2026
 
 - **Trang 🤖 Agents chia hai block** (web): **⚡ Vai trò · model · effort** sửa ngay trên trang — mỗi vai trò chọn
