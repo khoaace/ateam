@@ -3900,6 +3900,10 @@ EN: dict[str, str] = {
         "custom",
     "chưa bật":
         "off",
+    "⌨ Terminal trống":
+        "⌨ Empty terminal",
+    "shell của bạn trong thư mục dự án, không mở agent":
+        "your shell in the project folder, no agent",
     "Chưa tham gia đội — bật ở /setup.":
         "Not on the team yet — turn them on in /setup.",
     "Workflow chạy bằng /flow <tên> <mục tiêu>, hoặc ★ Đặt mặc định để gõ mục tiêu là chạy luôn. Agent tuỳ chỉnh nằm ở trang Agents.":

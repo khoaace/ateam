@@ -24,7 +24,7 @@ from textual.widgets import Button, Checkbox, OptionList, Select, Static
 from textual.widgets.option_list import Option
 
 from . import vterm
-from .grid import GridHub, preset_names
+from .grid import SHELL, GridHub, preset_names
 from .i18n import tr
 from .tui import BaseModal, Btn
 
@@ -257,7 +257,7 @@ class GridCell(Vertical):
         st = hub.status(self.cell_id)
         st_txt = {"run": (tr("● đang chạy"), "cyan"), "exit": (tr("■ đã thoát"), "red"),
                   "off": (tr("○ chưa mở"), "grey50")}[st]
-        t = Text.assemble(("⠿ ", "grey50"), (cell.agent, "bold"))
+        t = Text.assemble(("⠿ ", "grey50"), (tr("Terminal") if cell.agent == SHELL else cell.agent, "bold"))
         if cell.agent == app.cfg.lead:
             t.append(" ★", "yellow")
         if a:

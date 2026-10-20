@@ -143,7 +143,7 @@ def test_grid_hub_runs_cli(env, project, monkeypatch):
         monkeypatch.setenv(k, v)
     importlib.reload(importlib.import_module("ateam.config"))
     from ateam.config import ensure_global_config, load_config
-    from ateam.grid import GridHub, load_layout
+    from ateam.grid import SHELL, GridHub, load_layout
     ensure_global_config()
     cfg = load_config(project)
 
@@ -187,6 +187,15 @@ def test_grid_hub_runs_cli(env, project, monkeypatch):
         assert st["cols"][0]["cells"][0]["lead"] and st["cols"][0]["cells"][0]["status"] == "run"
         none, err = await hub.add("khong-co")
         assert none is None and err
+        # ô terminal trống: shell của người dùng (SHELL) trong thư mục dự án, không cần agent
+        monkeypatch.setenv("SHELL", "/bin/sh")
+        sh, err = await hub.add(SHELL, model="x", effort="high")
+        assert sh and not err and hub.terms[sh].argv == ["/bin/sh", "-l"]
+        hub.write(sh, b"echo xin-$((1+1))\r")
+        assert await _until(lambda: b"xin-2" in clean(sh))
+        cell = next(c for col in hub.state()["cols"] for c in col["cells"] if c["id"] == sh)
+        assert cell["shell"] and not cell["model"] and not cell["effort"] and not cell["resume"]
+        hub.close(sh)
         hub.close(cid)
         assert hub.layout.find(cid) is None and cid not in hub.terms
         # mở lại ateam: bố cục còn, CLI chưa chạy cho tới khi người dùng mở

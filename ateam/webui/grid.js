@@ -116,6 +116,7 @@ window.GridView = (() => {
     el().innerHTML = `<div class="gview">
       <div class="gbar">
         <button class="btn primary sm" data-g="add">${esc(t("g_add"))}</button>
+        <button class="btn sm" data-g="shell" title="${esc(t("g_shell_s"))}">${esc(t("g_shell"))}</button>
         <span class="gsep"></span><span class="glbl">${esc(t("g_layout"))}</span>
         <span class="gseg">${Object.keys(presets).map((k) => `<button data-g="preset" data-preset="${k}" title="${esc(presets[k])}"><svg viewBox="0 0 16 16">${PRESET_ICONS[k] || ""}</svg></button>`).join("")}</span>
         <span class="glayout-name" id="g-layout-name"></span>
@@ -169,7 +170,7 @@ window.GridView = (() => {
       <div class="gcol" data-col="${i}">${col.cells.map((c, j) => `${j ? `<div class="ggutter h" data-col="${i}" data-cell="${j - 1}"></div>` : ""}
         <div class="gcell" data-id="${esc(c.id)}">
           <div class="ghead" draggable="true">
-            <span class="ggrip">⠿</span>${agentHtml(c.agent)}<span class="gmeta"></span><span class="gst"></span>
+            <span class="ggrip">⠿</span>${headName(c)}<span class="gmeta"></span><span class="gst"></span>
             <button class="gbtn" data-g="restart" title="${esc(t("g_restart"))}">⟲</button>
             <button class="gbtn" data-g="zoom" title="${esc(t("g_zoom"))}">⤢</button>
             <button class="gbtn" data-g="menu" title="${esc(t("g_more"))}">⋯</button>
@@ -191,8 +192,12 @@ window.GridView = (() => {
     const agents = (S.meta.agents || []).filter((a) => a.tty);
     return `<div class="gplus">＋</div><div class="gempty-t">${esc(t("g_empty_t"))}</div>
       <div class="gempty-s">${esc(t("g_empty_s"))}</div>
-      <div class="gquick">${agents.map((a) => `<button class="chip" data-g="quick" data-agent="${esc(a.name)}">${esc(a.name)}</button>`).join("")}</div>`;
+      <div class="gquick">${agents.map((a) => `<button class="chip" data-g="quick" data-agent="${esc(a.name)}">${esc(a.name)}</button>`).join("")}
+        <button class="chip" data-g="shell" title="${esc(t("g_shell_s"))}">${esc(t("g_shell"))}</button></div>`;
   }
+  const SHELL = ":shell";  // ô terminal trống (grid.SHELL): shell của người dùng, không phải agent
+  const shellHtml = () => `<span class="agent"><span class="av">⌨</span>${esc(t("terminal"))}</span>`;
+  const headName = (c) => c.shell ? shellHtml() : agentHtml(c.agent);
   function applySizes() {
     if (G.zoom) return;
     $$(".gcol", el()).forEach((colEl, i) => {
@@ -226,6 +231,7 @@ window.GridView = (() => {
     const act = b.dataset.g;
     if (act === "add") addModal();
     else if (act === "quick") request("grid_add", { agent: b.dataset.agent, resume: true }).then(focusNew);
+    else if (act === "shell") request("grid_add", { agent: SHELL }).then(focusNew);
     else if (act === "preset") { G.zoom = null; send("grid_preset", { preset: b.dataset.preset }); }
     else if (act === "bcast") send("grid_bcast", { on: !G.state.bcast });
     else if (act === "full") { document.documentElement.classList.toggle("grid-full"); render(); setTimeout(() => cells().forEach((c) => refit(c.id)), 50); }
@@ -243,7 +249,7 @@ window.GridView = (() => {
   async function closeCell(id) {
     const c = cellById(id);
     if (!c) return;
-    if (c.status === "run" && !(await confirmBox(t("g_close"), t("g_close_q", { agent: c.agent }), t("g_close_yes")))) return;
+    if (c.status === "run" && !(await confirmBox(t("g_close"), t("g_close_q", { agent: c.shell ? t("terminal") : c.agent }), t("g_close_yes")))) return;
     send("grid_close", { id });
   }
   function cellMenu(id, btn) {
@@ -251,7 +257,7 @@ window.GridView = (() => {
     $$(".gmenu").forEach((m) => m.remove());
     const m = document.createElement("div");
     m.className = "gmenu";
-    m.innerHTML = `<div class="mh">${esc(c.agent)} · ${esc(c.label || "")}</div>
+    m.innerHTML = `<div class="mh">${c.shell ? esc(t("terminal")) : `${esc(c.agent)} · ${esc(c.label || "")}`}</div>
       <div class="mi" data-m="right">${esc(t("g_split_r"))}</div>
       <div class="mi" data-m="bottom">${esc(t("g_split_b"))}</div>
       <div class="ms"></div>
@@ -363,14 +369,15 @@ window.GridView = (() => {
   /* ---------------------------------------------------------------- popup Thêm agent */
   function addModal(opts = {}) {
     const agents = (S.meta.agents || []).filter((a) => a.tty);
-    if (!agents.length) { toast(t("g_no_tty"), "warn"); return; }
     const open = {};
     for (const c of cells()) open[c.agent] = (open[c.agent] || 0) + 1;
-    let pick = agents.find((a) => !open[a.name]) || agents[0];
+    const shell = { name: SHELL, models: [], efforts: [], model: "", effort: "" };
+    let pick = agents.find((a) => !open[a.name]) || agents[0] || shell;
     const near = opts.near || (G.focus && cellById(G.focus) ? G.focus : "");
     const m = openModal(`${modalHead(esc(t("g_add_title")))}
       <div class="modal-pad gadd">
-        <div><div class="gfl">1 · ${esc(t("g_cli"))}</div><div class="gclis">${agents.map((a) => `
+        <div><div class="gfl">1 · ${esc(t("g_cli"))}</div><div class="gclis"><button class="gcli" data-agent="${SHELL}">${shellHtml()}
+            <span class="gcli-s">${esc(t("g_shell_s"))}</span><span class="gcli-n">${open[SHELL] ? "×" + open[SHELL] : ""}</span></button>${agents.map((a) => `
           <button class="gcli" data-agent="${esc(a.name)}">${agentHtml(a.name)}
             <span class="gcli-s">${esc(a.bin)} · ${esc(a.installed ? t("g_installed") : t("g_missing"))}</span>
             <span class="gcli-n">${open[a.name] ? "×" + open[a.name] : ""}</span></button>`).join("")}</div></div>
@@ -394,6 +401,7 @@ window.GridView = (() => {
       $("#ga-model", m).innerHTML = `<option value="">${esc(t("g_default"))}${pick.model ? " (" + esc(pick.model) + ")" : ""}</option>`
         + pick.models.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join("");
       fillEffort();
+      $$("#ga-model, #ga-effort, input[name=ga-sess]", m).forEach((x) => { x.disabled = pick === shell; });
     };
     const fillEffort = () => {
       $("#ga-effort", m).innerHTML = `<option value="">effort: ${esc(t("g_default"))}${pick.effort ? " (" + esc(pick.effort) + ")" : ""}</option>`
@@ -402,7 +410,7 @@ window.GridView = (() => {
     fill();
     m.addEventListener("click", (e) => {
       const b = e.target.closest(".gcli");
-      if (b) { pick = agents.find((a) => a.name === b.dataset.agent) || pick; fill(); }
+      if (b) { pick = b.dataset.agent === SHELL ? shell : agents.find((a) => a.name === b.dataset.agent) || pick; fill(); }
     });
     const go = () => {
       const where = ($("input[name=ga-where]:checked", m) || {}).value || "";

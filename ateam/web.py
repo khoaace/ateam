@@ -141,6 +141,7 @@ def ui_strings() -> dict[str, str]:
         "g_resume_s": tr("--resume phiên chat/task gần nhất của agent"), "g_new_s": tr("CLI mở cuộc trò chuyện mới"),
         "g_place_auto": tr("Theo bố cục"), "g_place_right": tr("Chia ô chọn: phải"),
         "g_place_bottom": tr("Chia ô chọn: dưới"), "g_open": tr("▶ Mở terminal"),
+        "g_shell": tr("⌨ Terminal trống"), "g_shell_s": tr("shell của bạn trong thư mục dự án, không mở agent"),
         "g_default": tr("mặc định"), "g_no_tty": tr("agent tuỳ chỉnh: không mở được ở chế độ tương tác"),
         "g_installed": tr("✓ đã cài"), "g_missing": tr("✗ chưa cài"), "g_bcast_in": tr("Nhận phím khi gửi tất cả"),
         "g_close_q": tr("Dừng CLI {agent} trong ô này và bỏ ô khỏi lưới?"), "g_close_yes": tr("Đóng"),

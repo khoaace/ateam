@@ -25,6 +25,7 @@ BUFFER_MAX = 256 * 1024  # byte output gần nhất của mỗi ô, phát lại 
 MIN_SIZE = 0.15          # cột / ô không nhỏ hơn tỉ lệ này so với ô bên cạnh khi kéo đổi kích thước
 WHERE = ("center", "left", "right", "top", "bottom")
 DIRS = ("left", "right", "up", "down")
+SHELL = ":shell"         # agent của ô "terminal trống": shell của người dùng thay vì CLI agent (tên agent không có ":")
 
 
 def preset_names() -> dict[str, str]:
@@ -378,6 +379,8 @@ class GridHub:
         return "exit" if t else "off"
 
     def argv_for(self, cell: Cell) -> list | None:
+        if cell.agent == SHELL:
+            return [os.environ.get("SHELL") or "/bin/sh", "-l"]
         a = self.cfg_getter().active_agents().get(cell.agent)
         if not a:
             return None
@@ -393,7 +396,7 @@ class GridHub:
             for c in col.cells:
                 a = cfg.agents.get(c.agent)
                 t = self.terms.get(c.id)
-                cells.append(dict(asdict(c), status=self.status(c.id), rc=t.rc if t else None,
+                cells.append(dict(asdict(c), status=self.status(c.id), rc=t.rc if t else None, shell=c.agent == SHELL,
                                   label=a.label(c.model or None, c.effort or None) if a else "",
                                   lead=c.agent == cfg.lead, cmd=" ".join(t.argv) if t else ""))
             cols.append({"w": col.w, "cells": cells})
@@ -404,9 +407,9 @@ class GridHub:
                   near: str | None = None, where: str = "", rows: int = 24, cols: int = 80) -> tuple[str | None, str]:
         """Thêm ô và mở CLI. Trả (id ô, lỗi)."""
         cfg = self.cfg_getter()
-        if agent not in cfg.active_agents():
+        if agent != SHELL and agent not in cfg.active_agents():
             return None, tr("Không có agent '{agent}'", agent=agent)
-        cell = Cell(agent, model, effort, resume)
+        cell = Cell(agent, "", "", False) if agent == SHELL else Cell(agent, model, effort, resume)
         if not self.argv_for(cell):
             return None, tr("Không biết cách mở {agent} ở chế độ tương tác (agent tuỳ chỉnh) — tự mở trong terminal khác",
                             agent=agent)
