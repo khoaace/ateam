@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.33.0 — 20/10/2026
+
+- **Trang 🤖 Agents chia hai block** (web): **⚡ Vai trò · model · effort** sửa ngay trên trang — mỗi vai trò chọn
+  CLI → model → effort, kèm trạng thái và nút 💬 Chat / ⌨ của agent đang giữ vai trò; đổi gì là hiện Thôi / ✓ Lưu.
+  Bên dưới là **Agent tuỳ chỉnh** (và agent ngoài vai trò). Bỏ nút mở popup; `/roles` vẫn mở popup như cũ.
+- **Form workflow**: mỗi bước chọn **agent → model → effort** từ danh sách (theo CLI của agent) thay cho ô gõ effort tay.
+  Sửa lỗi lưu form workflow làm mất model của bước (đặt ở popup Luồng mặc định).
+- **🔲 Lưới**: thêm ô **⌨ Terminal trống** — shell của bạn trong thư mục dự án, không mở agent (nút trên thanh công
+  cụ, gợi ý khi lưới trống, thẻ đầu popup Thêm agent).
+- **Lưới lên ngay dưới Bảng việc** ở sidebar web và tab TUI (Alt+2 = Lưới; các tab sau lùi một số).
+
 ## 0.32.0 — 20/10/2026
 
 - **Codex làm trưởng nhóm / thành viên ổn định hơn**: `codex exec` in lại cả prompt nên trước đây JSON mẫu bị bóc
