@@ -931,7 +931,7 @@ class WebApp:
         return ws
 
     SLOW_GIT = ("ai_message", "ai_resolve", "commit", "push", "pull", "fetch")
-    SLOW_CMDS = ("/commit ", "/push", "/pull", "/fetch")
+    SLOW_CMDS = ("/commit ", "/push", "/pull", "/fetch", "/usage")
 
     def slow_op(self, d) -> bool:
         """Thao tác có thể chạy hàng chục giây (gọi AI, mạng, git hook). Còn lại chạy tuần tự để giữ thứ tự."""
@@ -1423,14 +1423,15 @@ class WebApp:
             return "", "", text_box("Model & effort", reports.models_text(cfg, parts[0] if parts else None))
         if cmd == "agents":
             return "", "", text_box("Agent", reports.agents_text(cfg))
-        if cmd == "usage":
-            names = list(cfg.active_agents())
+        if cmd == "usage":  # chờ hạn mức từ CLI (song song, toast "đang chạy…" ở trình duyệt) rồi mở một khung
+            names = reports.usage_agents(cfg)
             o.log(tr("\nĐang hỏi hạn mức từ CLI của {v}…", v=", ".join(names)))
 
             def done(name: str, c: str, lines: list[str]) -> None:
                 o.log(f"📊 {name}" + (f"  ({c})" if c else "") + "\n" + "\n".join("  " + ln for ln in lines))
-            self._spawn(self._bg_log(o.usage_all(names, on_done=done)))
-            return "", "", text_box(tr("Thống kê"), reports.usage_text(cfg, self.db, o))
+            res = await o.usage_all(names, on_done=done)
+            return "", "", text_box(tr("Thống kê"), reports.usage_text(cfg, self.db, o) + "\n\n"
+                                    + reports.usage_quota_text(cfg, res))
         if cmd == "update":
             o.log(tr("Đang kiểm tra bản mới…"))
             self._spawn(self._bg_log(update.run_update(lambda line: o.log("  " + line)),

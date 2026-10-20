@@ -159,3 +159,57 @@ def codex_rate_limits(home=None, max_files: int = 30) -> list[str] | None:
                 pass
         return out
     return None
+
+
+def grok_home():
+    import os
+    from pathlib import Path
+    return Path(os.environ.get("GROK_HOME") or Path.home() / ".grok")
+
+
+def grok_recent_sessions(days: int = 7, limit: int = 30, home=None) -> list[str]:
+    """Id các phiên grok (mọi dự án) có cập nhật trong `days` ngày qua, mới nhất trước. Thư mục phiên:
+    ~/.grok/sessions/<thư mục làm việc mã hoá URL>/<id phiên>/."""
+    root = (home or grok_home()) / "sessions"
+    since = time.time() - days * 86400
+    found = []
+    try:
+        for proj in root.iterdir():
+            if not proj.is_dir():
+                continue
+            for s in proj.iterdir():
+                try:
+                    mt = s.stat().st_mtime
+                except OSError:
+                    continue
+                if s.is_dir() and mt >= since:
+                    found.append((mt, s.name))
+    except OSError:
+        return []
+    return [n for _, n in sorted(found, reverse=True)[:limit]]
+
+
+def grok_usage_lines(reports: list[dict], now: float | None = None) -> list[str]:
+    """Token & chi phí grok (hôm nay, 7 ngày) cộng từ JSON của `grok usage <phiên>` theo từng lượt (endedAt).
+    Grok Build không có lệnh headless nào in hạn mức credit của tài khoản — chỉ /usage trong giao diện grok."""
+    from .reports import fmt_cost, fmt_tokens, today_start
+    now = now or time.time()
+    spans = ((tr("Hôm nay"), today_start()), (tr("7 ngày"), now - 7 * 86400))
+    sums = [[0, 0, 0.0] for _ in spans]  # lượt, token, USD
+    for rep in reports:
+        for turn in rep.get("turns") or []:
+            try:
+                t = dt.datetime.fromisoformat(str(turn.get("endedAt") or "").replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                continue
+            for i, (_, since) in enumerate(spans):
+                if t >= since:
+                    sums[i][0] += 1
+                    sums[i][1] += int(turn.get("totalTokens") or 0)
+                    sums[i][2] += int(turn.get("costUsdTicks") or 0) / 1e10  # 10¹⁰ tick = 1 USD
+    out = [tr("{label}: {n} lượt · {tok} token · {cost}", label=label, n=s[0], tok=fmt_tokens(s[1]),
+              cost=fmt_cost(s[2])) for (label, _), s in zip(spans, sums)]
+    if not reports:
+        out = [tr("Chưa có phiên grok nào trong 7 ngày")]
+    out.append(tr("(token & chi phí grok lưu trên máy, mọi dự án — hạn mức credit của tài khoản: mở grok rồi gõ /usage)"))
+    return out

@@ -3,6 +3,13 @@
 if [ "${@: -1}" = "--help" ] && [ "${1:-}" = "models" ]; then
   printf 'Usage: grok models [OPTIONS]\n  --help\n'; exit 0
 fi
+if [ "${1:-}" = "usage" ]; then  # như `grok usage <phiên>` thật: JSON token & cost đã lưu (costUsdTicks = 10^10/USD)
+  now=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
+  printf '{"sessionId": "%s", "session": {"totalTokens": 150000, "costUsdTicks": 30000000000}, "turns": [
+    {"turnNumber": 1, "endedAt": "%s", "totalTokens": 100000, "costUsdTicks": 20000000000},
+    {"turnNumber": 2, "endedAt": "2020-01-01T00:00:00+00:00", "totalTokens": 50000, "costUsdTicks": 10000000000}]}\n' "$2" "$now"
+  exit 0
+fi
 if [ "${1:-}" = "models" ]; then  # như grok thật (kể cả dòng thừa trước danh sách)
   if [ "${ATEAM_FAKE_GROK_UNAUTHENTICATED:-0}" = "1" ]; then echo 'You are not authenticated.'; fi
   if [ "${ATEAM_FAKE_GROK_AUTH_ONLY:-0}" = "1" ]; then echo 'You are not authenticated.'; exit 0; fi

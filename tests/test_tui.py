@@ -1073,11 +1073,12 @@ def test_tui_usage_and_update_commands(env, project, monkeypatch):
             app.run_command("/usage")
             for _ in range(60):
                 await pilot.pause(0.25)
-                if all(f"📊 {n}" in log_text(app) for n in ("claude", "codex", "antigravity", "opencode")):
+                if all(f"📊 {n}" in log_text(app) for n in ("claude", "codex", "antigravity", "grok", "opencode")):
                     break
             text = log_text(app)
             assert "Hôm nay:" in text and "Current session: 41% used" in text, text
             assert "Weekly Limit Remaining" in text and "Chưa có phiên codex" in text
+            assert "Chưa có phiên grok nào" in text and not app.busy_ops  # xong: thanh trạng thái hết "đang hỏi"
             app.run_command("/update")
             for _ in range(40):
                 await pilot.pause(0.25)

@@ -6,6 +6,7 @@ Không phụ thuộc Textual — trả chuỗi thường hoặc dữ liệu thô
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import mentions
@@ -44,9 +45,42 @@ def today_start() -> float:
     return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))
 
 
+USAGE_CLIS = ("claude", "codex", "agy", "grok")  # /usage luôn có mục cho các CLI này, kể cả agent đang tắt
+
+
+def usage_agents(cfg: Config) -> list[str]:
+    """Agent cần có mặt ở /usage: mọi agent đang bật + agent của từng CLI trong USAGE_CLIS (dù đang tắt)."""
+    names = list(cfg.active_agents())
+    for cli in USAGE_CLIS:
+        if not any(Path(cfg.agents[n].binary).name == cli for n in names):
+            names += [n for n, a in cfg.agents.items() if Path(a.binary).name == cli][:1]
+    return names
+
+
+def agent_note(cfg: Config, name: str) -> str:
+    """"chưa cài" / "đang tắt" cho một agent, hoặc cả nhóm "a, b" của usage_all (đang tắt khi mọi agent đều tắt)."""
+    agents = [cfg.agents[n] for n in name.split(", ") if n in cfg.agents]
+    if not agents:
+        return ""
+    if not agents[0].installed():
+        return tr("chưa cài")
+    return tr("đang tắt") if not any(a.enabled for a in agents) else ""
+
+
+def usage_quota_text(cfg: Config, results: dict) -> str:
+    """Hạn mức do CLI từng agent báo (kết quả Orchestrator.usage_all), theo thứ tự usage_agents."""
+    out = [tr("Hạn mức từ CLI:")]
+    for name, (cmd, lines) in results.items():  # tên: một agent hoặc "a, b" (nhiều agent cùng một CLI)
+        note = agent_note(cfg, name)
+        out.append(f"📊 {name}" + (f"  ({cmd})" if cmd else "") + (f"  · {note}" if note else ""))
+        out += ["  " + ln for ln in lines]
+    return "\n".join(out)
+
+
 def usage_text(cfg: Config, db: DB, orch: "Orchestrator") -> str:
     now = time.time()
     out = []
+    shown = usage_agents(cfg)
     for label, since in ((tr("Hôm nay"), today_start()), (tr("7 ngày"), now - 7 * 86400)):
         by = summarize(db.runs_since(since), "agent")
         out.append(f"{label}:")
@@ -54,11 +88,13 @@ def usage_text(cfg: Config, db: DB, orch: "Orchestrator") -> str:
                    f"{tr('hết HM'):>6}")
         for name in cfg.agents:
             r = by.get(name)
-            if not r:
+            if not r and name not in shown:
                 continue
+            r = r or _bucket()  # chưa chạy lượt nào: vẫn có dòng (đủ 4 CLI)
             tok = fmt_tokens(r["tokens"]) + ("" if r["real"] == r["runs"] else "~")
+            note = agent_note(cfg, name)
             out.append(f"  {name:12} {r['runs']:>5} {fmt_dur(r['secs']):>10} {tok:>8} {fmt_cost(r['cost']):>8} "
-                       f"{r['failed']:>4} {r['ratelimits']:>6}")
+                       f"{r['failed']:>4} {r['ratelimits']:>6}" + (f"  ({note})" if note else ""))
     cds = [tr("{a} đến {v}", a=a, v=orch.cooldown_label(a)) for a in cfg.agents if orch.in_cooldown(a)]
     out.append(tr("Đang tạm nghỉ: ") + (", ".join(cds) if cds else tr("không")))
     out.append(TOKEN_NOTE)

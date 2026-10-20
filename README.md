@@ -474,7 +474,10 @@ Trưởng nhóm hết hạn mức thì `lead_fallback` lập kế hoạch/review
 lượt, thời gian, token ước tính theo agent, rồi hỏi song song **hạn mức thật** từ CLI của từng agent:
 Claude Code `claude -p /usage` (% phiên/tuần đã dùng, giờ hồi), Antigravity `agy -p /usage` (quota còn lại
 theo nhóm model), OpenCode `opencode stats --days 7` (token, chi phí), Codex đọc ảnh chụp hạn mức trong file
-phiên gần nhất (`~/.codex/sessions`; codex không có lệnh xem hạn mức mà không gọi model). `ateam usage --local`
+phiên gần nhất (`~/.codex/sessions`; codex không có lệnh xem hạn mức mà không gọi model), Grok Build cộng token & chi
+phí hôm nay / 7 ngày của các phiên gần đây (`grok usage <phiên>`; hạn mức credit chỉ xem được bằng `/usage` trong
+grok). Luôn có đủ 4 CLI claude, codex, agy, grok (kể cả agent đang tắt); nhiều agent cùng một CLI chỉ hỏi một lần.
+Trên web, kết quả mở trong một khung khi mọi CLI đã trả lời. `ateam usage --local`
 bỏ phần hỏi CLI; `/cooldown codex 60` cho nghỉ tay, `/cooldown codex off` để bỏ.
 
 Máy chủ của nhà cung cấp **quá tải** (vd agy "high traffic… No capacity available", lỗi 503/529) không phải hết hạn
@@ -629,8 +632,8 @@ role = "Đọc codebase lớn, viết tài liệu."
   chạy lệnh shell (`acceptEdits` của grok ở chế độ `-p` chặn cả sửa file nên ateam không dùng). Toàn quyền đổi thành
   `--permission-mode bypassPermissions` (chạy lệnh, mạng). Model bằng `-m` (`grok models`), effort
   `--reasoning-effort` (low, medium, high, xhigh). Cần `grok login` trước. Khi bị chặn lệnh, grok chỉ kể lại bằng
-  lời rồi thoát 0 — ateam nhận ra câu đó và báo task lỗi kèm hướng dẫn bật Toàn quyền. Grok Build chưa có lệnh xem
-  hạn mức chung nên `/usage` chỉ hiện thống kê của ateam.
+  lời rồi thoát 0 — ateam nhận ra câu đó và báo task lỗi kèm hướng dẫn bật Toàn quyền. Grok Build chưa có lệnh
+  headless xem hạn mức credit, nên `/usage` cộng token & chi phí đã lưu của các phiên grok gần đây (`grok usage`).
 * **OpenCode**: `opencode run --model xai/grok-build-0.1 ...` (chạy được nhiều nhà cung cấp; xem model bằng
   `opencode models`). Toàn quyền thêm `--auto`. Từ bản 0.6, agent `grok` cũ (chạy qua OpenCode) đổi tên thành
   `opencode`; lựa chọn model/effort đã lưu được chuyển theo.

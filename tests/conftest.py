@@ -30,6 +30,7 @@ def env(tmp_path) -> dict:
     e["ATEAM_LANG"] = "vi"
     e["ATEAM_DESKTOP_NOTIFY"] = "0"  # không hiện thông báo macOS thật khi task giả lập lỗi
     e["CODEX_HOME"] = str(tmp_path / "codex")  # không đọc phiên codex thật của máy (/usage)
+    e["GROK_HOME"] = str(tmp_path / "grok")  # /usage: không đọc phiên grok thật của máy
     e["CLAUDE_CONFIG_DIR"] = str(tmp_path / "claude")  # phiên Claude giả lập (dashboard), không đọc của máy
     e["PYTHONPATH"] = str(ROOT)
     for k in ("ATEAM_DB", "ATEAM_ROOT", "ATEAM_TASK_ID", "ATEAM_AGENT"):

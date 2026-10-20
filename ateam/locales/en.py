@@ -3988,4 +3988,16 @@ EN: dict[str, str] = {
         "⏳ Writing…",
     "⏳ Đang thiết kế…":
         "⏳ Designing…",
+    '{label}: {n} lượt · {tok} token · {cost}':
+        '{label}: {n} turns · {tok} tokens · {cost}',
+    '(token & chi phí grok lưu trên máy, mọi dự án — hạn mức credit của tài khoản: mở grok rồi gõ /usage)':
+        '(grok tokens & cost saved on this machine, all projects — account credit limit: open grok and type /usage)',
+    'Chưa có phiên grok nào trong 7 ngày':
+        'No grok sessions in the last 7 days',
+    'đang tắt':
+        'disabled',
+    'Hạn mức từ CLI:':
+        'Limits reported by each CLI:',
+    '📊 Đang hỏi hạn mức…':
+        '📊 Asking for limits…',
 }

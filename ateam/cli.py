@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import __version__, mentions
+from . import __version__, mentions, reports
 from .config import (DEFAULT_CONFIG, GLOBAL_CONFIG, ensure_global_config,
                      load_config, needs_setup, save_agent_setting)
 from .db import DB, QUEUED
@@ -577,7 +577,8 @@ def cmd_usage(args) -> int:
     orch = _orch(args)
 
     def done(name: str, cmd: str, lines: list[str]) -> None:
-        print(f"\n📊 {name}" + (f"  ({cmd})" if cmd else ""))
+        note = reports.agent_note(orch.cfg, name)
+        print(f"\n📊 {name}" + (f"  ({cmd})" if cmd else "") + (f"  · {note}" if note else ""))
         for ln in lines:
             print("  " + ln)
     asyncio.run(orch.usage_all(on_done=done))

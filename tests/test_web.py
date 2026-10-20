@@ -546,8 +546,15 @@ def test_web_setup_and_custom(env, project, monkeypatch):
             assert (await wa.handle({"op": "prefs", "vim": False}))[1] == "ok"
             assert (await wa.handle({"op": "prefs", "accent": "tím"}))[1] == "ok"
             assert load_state()["vim"] is False and load_state()["accent"] == "purple"
+            wa.cfg.agents["grok"].enabled = False  # agent đang tắt: /usage vẫn có mục của CLI đó
             r = await wa.command("/usage")
-            assert r[2]["open"]["text"]["body"]
+            body = r[2]["open"]["text"]["body"]
+            for name in ("claude", "codex", "antigravity", "grok"):  # đủ 4 CLI, cả khi chưa chạy lượt nào
+                assert f"  {name} " in body and f"📊 {name}" in body, body
+            assert "Current session: 41% used" in body and "Weekly Limit Remaining" in body  # hạn mức ngay trong khung
+            assert "📊 grok  (grok usage)  · đang tắt" in body and "(đang tắt)" in body
+            assert wa.slow_op({"op": "submit", "text": "/usage"})
+            wa.cfg.agents["grok"].enabled = True
             assert "codex" in (await wa.command("/agents"))[2]["open"]["text"]["body"]
             r = await wa.command("/model codex")
             assert r[2]["open"]["picker"]["agent"] == "codex"

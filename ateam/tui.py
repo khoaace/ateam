@@ -7406,13 +7406,15 @@ class TeamApp(App):
 
     async def _cli_usage(self) -> None:
         """Hỏi song song hạn mức của từng agent bằng chính CLI của nó, in vào log hệ thống khi xong."""
-        names = list(self.cfg.active_agents())
+        names = reports.usage_agents(self.cfg)  # đủ claude, codex, agy, grok (kể cả agent đang tắt)
         self.write_sys(tr("\nĐang hỏi hạn mức từ CLI của {v}…", v=', '.join(names)))
 
         def done(name: str, cmd: str, lines: list[str]) -> None:
-            self.write_sys(f"\n📊 {name}" + (f"  ({cmd})" if cmd else "") + "\n"
+            note = reports.agent_note(self.cfg, name)
+            self.write_sys(f"\n📊 {name}" + (f"  ({cmd})" if cmd else "") + (f"  · {note}" if note else "") + "\n"
                            + "\n".join("  " + ln for ln in lines))
-        await self.orch.usage_all(names, on_done=done)
+        with self.busy(tr("📊 Đang hỏi hạn mức…")):
+            await self.orch.usage_all(names, on_done=done)
 
     async def _self_update(self) -> None:
         self.notify(tr("Đang kiểm tra bản mới…"), timeout=3)

@@ -328,6 +328,13 @@ def test_usage_asks_each_cli(env, project):
     assert "📊 opencode  (opencode stats --days 7)" in out and "stat dòng 20" in out
     assert "stat dòng 21" not in out and "còn 10 dòng" in out
     assert "Chưa có phiên codex nào" in out
+    # grok: không có lệnh headless in hạn mức -> token & chi phí đã lưu của các phiên gần đây (`grok usage <id>`)
+    assert "📊 grok  (grok usage)" in out and "Chưa có phiên grok nào trong 7 ngày" in out, out
+    for sid in ("s1", "s2"):
+        (Path(env["GROK_HOME"]) / "sessions" / "%2Fproj" / sid).mkdir(parents=True)
+    out = ateam(env, project, "usage").stdout
+    assert "Hôm nay: 2 lượt · 200k token · $4.00" in out, out  # lượt năm 2020 không tính
+    assert "mở grok rồi gõ /usage" in out
     sess = Path(env["CODEX_HOME"]) / "sessions" / "2026" / "10" / "15"
     sess.mkdir(parents=True)
     (sess / "rollout-x.jsonl").write_text(

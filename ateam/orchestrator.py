@@ -1078,7 +1078,11 @@ class Orchestrator:
         a = self.cfg.agents.get(agent)
         if not a:
             return "", [tr("Không có agent '{agent}'", agent=agent)]
+        if not a.installed():  # agent đang tắt vẫn được hỏi (/usage hiện đủ các CLI), nhưng chưa cài thì thôi
+            return "", [tr("Chưa cài lệnh '{v}'", v=a.binary)]
         if not a.usage_command:
+            if Path(a.binary).name == "grok":
+                return "grok usage", limits.grok_usage_lines(await self._grok_reports(a))
             if Path(a.binary).name == "codex":
                 lines = limits.codex_rate_limits()
                 return "~/.codex/sessions", lines or [tr("Chưa có phiên codex nào ghi hạn mức — "
@@ -1103,16 +1107,54 @@ class Orchestrator:
             lines.append(tr("(mã thoát {code})", code=code))
         return cmd, lines or [tr("(không in gì)")]
 
-    async def usage_all(self, names: list[str] | None = None, on_done=None) -> dict[str, tuple[str, list[str]]]:
-        """Hỏi song song hạn mức của các agent đang bật. on_done(agent, cmd, lines) gọi khi từng cái xong."""
-        names = names if names is not None else list(self.cfg.active_agents())
+    async def _grok_reports(self, a: AgentConfig, timeout: float = 20) -> list[dict]:
+        """JSON của `grok usage <phiên>` cho các phiên grok gần đây (lệnh chính thức, thay cho đọc file phiên)."""
+        import json
 
-        async def one(n: str):
-            cmd, lines = await self.agent_usage(n)
+        async def one(sid: str) -> dict | None:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    a.binary, "usage", sid, cwd=str(self.root), env=self.env_for(), stdin=asyncio.subprocess.DEVNULL,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+            except OSError:
+                return None
+            try:
+                out, _ = await asyncio.wait_for(proc.communicate(), timeout)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return None
+            try:
+                rep = json.loads(out.decode("utf-8", "replace"))
+            except ValueError:
+                return None
+            return rep if isinstance(rep, dict) else None
+        reps = await asyncio.gather(*(one(s) for s in limits.grok_recent_sessions()))
+        return [r for r in reps if r]
+
+    async def usage_all(self, names: list[str] | None = None, on_done=None) -> dict[str, tuple[str, list[str]]]:
+        """Hỏi song song hạn mức của các agent (mặc định: reports.usage_agents — đủ claude, codex, agy, grok).
+        on_done(tên, cmd, lines) gọi khi từng cái xong.
+        Hạn mức là của tài khoản CLI, không phải của agent: nhiều agent cùng một CLI (antigravity, antigravity-ui…)
+        chỉ hỏi một lần, kết quả đứng tên "antigravity, antigravity-ui"."""
+        if names is None:
+            from .reports import usage_agents
+            names = usage_agents(self.cfg)
+        groups: dict[tuple, list[str]] = {}
+        for n in names:
+            a = self.cfg.agents.get(n)
+            key = (tuple(a.usage_command) if a.usage_command else ("bin", Path(a.binary).name)) if a else ("?", n)
+            groups.setdefault(key, []).append(n)
+
+        async def one(group: list[str]):
+            agents = [self.cfg.agents[n] for n in group if n in self.cfg.agents]
+            first = next((a.name for a in agents if a.enabled), group[0])  # agent đang bật đại diện cho CLI
+            cmd, lines = await self.agent_usage(first)
+            label = ", ".join(group)
             if on_done:
-                on_done(n, cmd, lines)
-            return n, (cmd, lines)
-        return dict(await asyncio.gather(*(one(n) for n in names)))
+                on_done(label, cmd, lines)
+            return label, (cmd, lines)
+        return dict(await asyncio.gather(*(one(g) for g in groups.values())))
 
     async def discover_all(self, names: list[str] | None = None, timeout: float = 20,
                            on_done=None) -> dict[str, str]:
