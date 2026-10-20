@@ -275,8 +275,15 @@ def test_tui_git_tab(env, project, monkeypatch):
             names = [b.name for b in app.screen.branches]
             assert set(names) == {"feature/demo", "master"} or set(names) == {"feature/demo", "main"}
             ol = app.screen.query_one("#gb-list")
-            ol.highlighted = next(i for i, b in enumerate(app.screen.branches) if not b.current)
-            await pilot.press("enter")
+            await pilot.press("m", "a")  # ô lọc có focus sẵn: chỉ còn main/master
+            await pilot.pause(0.1)
+            assert ol.option_count == 1
+            await pilot.press("x", "y", "z")
+            await pilot.pause(0.1)
+            assert ol.option_count == 0
+            await pilot.press("backspace", "backspace", "backspace")
+            await pilot.pause(0.1)
+            await pilot.press("enter")  # chuyển sang nhánh khớp đầu tiên
             assert await wait(lambda: app.git_status.branch in ("master", "main"))
 
             # stash qua popup rồi /stash pop

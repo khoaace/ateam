@@ -4099,9 +4099,12 @@ class GitBranchScreen(BaseModal):
         super().__init__()
         self.branches, self.current = branches, current
 
-    def compose(self) -> ComposeResult:
+    def options(self, q: str = "") -> list:
+        """Option cho các nhánh khớp bộ lọc (chuỗi con, không phân biệt hoa thường); id = chỉ số trong branches."""
         opts = []
         for i, b in enumerate(self.branches):
+            if q and q.lower() not in b.name.lower():
+                continue
             t = Text()
             t.append("● " if b.current else "  ", "green")
             t.append(b.name, "bold green" if b.current else ("cyan" if b.remote else ""))
@@ -4115,9 +4118,14 @@ class GitBranchScreen(BaseModal):
             if b.subject:
                 t.append(f"  {b.subject[:60]}", "dim")
             opts.append(Option(t, id=str(i)))
+        return opts
+
+    def compose(self) -> ComposeResult:
         with Vertical(id="gb-box"):
             yield self.title_bar(tr("⎇ Nhánh — đang ở {v}", v=self.current or '(detached)'))
-            yield OptionList(*opts, id="gb-list")
+            yield TextInput(id="gb-filter", placeholder=tr("Lọc nhánh theo tên… (Enter: chuyển sang nhánh khớp "
+                                                           "đầu tiên · ↓: xuống danh sách)"))
+            yield OptionList(*self.options(), id="gb-list")
             yield Static(Text(tr("Enter: chuyển sang nhánh đang chọn (nhánh remote → tạo nhánh "
                                  "local theo dõi nó) · Esc: đóng"), "dim"), id="gb-hint")
             with Horizontal(classes="gb-buttons"):
@@ -4135,13 +4143,28 @@ class GitBranchScreen(BaseModal):
         ol = self.query_one("#gb-list", OptionList)
         if self.branches:
             ol.highlighted = 0
-        ol.focus()
+        self.query_one("#gb-filter", Input).focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "gb-filter":
+            return
+        event.stop()
+        ol = self.query_one("#gb-list", OptionList)
+        ol.clear_options()
+        ol.add_options(self.options(event.value.strip()))
+        if ol.option_count:
+            ol.highlighted = 0
+
+    def on_key(self, event) -> None:
+        if event.key == "down" and self.focused is self.query_one("#gb-filter", Input):
+            event.stop()
+            self.query_one("#gb-list", OptionList).focus()
 
     def selected(self):
         ol = self.query_one("#gb-list", OptionList)
-        if ol.highlighted is None or not self.branches:
+        if ol.highlighted is None or ol.highlighted >= ol.option_count:
             return None
-        return self.branches[ol.highlighted]
+        return self.branches[int(ol.get_option_at_index(ol.highlighted).id)]
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         event.stop()
@@ -4151,6 +4174,13 @@ class GitBranchScreen(BaseModal):
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.stop()
+        if event.input.id == "gb-filter":  # chuyển sang nhánh khớp đầu tiên
+            b = self.selected()
+            if b and not b.current:
+                self.dismiss(("checkout", b.name, ""))
+            elif not b:
+                self.notify(tr("Không có nhánh nào khớp"), severity="warning")
+            return
         self._create()
 
     def _create(self) -> None:

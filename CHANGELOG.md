@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.26.1 — 20/10/2026
+
+- Sửa màn hình diff trên web bị lệch hàng (cả 2 cột lẫn 1 cột): class `.drow` của tab Thống kê trùng tên và ghi đè
+  lưới của hàng diff. Chế độ 2 cột có thêm vạch ngăn giữa hai bên và nền cho cột số dòng.
+- Popup **⎇ Nhánh** (TUI và web) có ô **lọc theo tên nhánh**; Enter chuyển sang nhánh khớp đầu tiên. Web chia nhóm
+  nhánh local / remote, Esc xoá chữ lọc trước khi đóng.
+
 ## 0.26.0 — 20/10/2026
 
 - **Giải quyết xung đột git** ở tab 🌿 Git (TUI và web), như VS Code:

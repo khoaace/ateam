@@ -32,7 +32,7 @@ window.DashView = (() => {
     return `<div class="panel dcard"><div class="dlabel">${esc(label)}</div>
       <div class="dbig">${tok(b.tokens)} <small>token</small></div>
       <div class="muted small">in ${tok(b.in_tok)} · out ${tok(b.out_tok)} · cache ${tok(b.cache)}</div>
-      <div class="drow"><b class="dcost">${cost(b.cost)}</b><span class="muted small">${esc(t("dash_runs", { n: b.runs }))} · ${dur(b.secs)}</span></div>
+      <div class="dash-row"><b class="dcost">${cost(b.cost)}</b><span class="muted small">${esc(t("dash_runs", { n: b.runs }))} · ${dur(b.secs)}</span></div>
       ${b.failed || b.ratelimits ? `<div class="small warn-text">${esc(t("dash_failed", { f: b.failed, r: b.ratelimits }))}</div>` : ""}</div>`;
   }
   function chart(days) {

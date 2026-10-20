@@ -134,6 +134,8 @@ def ui_strings() -> dict[str, str]:
         "git_stage_all": tr("Stage tất cả"), "git_unstage_all": tr("Bỏ stage tất cả"),
         "git_clean": tr("Không có thay đổi nào chưa commit."), "git_history": tr("Lịch sử"),
         "git_branches": tr("Nhánh"), "git_abort": tr("Huỷ thao tác"), "git_state": tr("đang {v}"),
+        "git_filter_branch": tr("Lọc nhánh theo tên… (Enter: chuyển sang nhánh khớp đầu tiên)"),
+        "git_no_match": tr("Không có nhánh nào khớp"), "git_local": tr("Nhánh local"), "git_remote": tr("Nhánh remote"),
         "git_continue": tr("Tiếp tục {v}"), "cf_resolve": tr("Giải quyết xung đột"),
         "cf_ai_all": tr("Nhờ agent giải quyết tất cả"), "cf_title": tr("Giải quyết xung đột"),
         "cf_block": tr("Xung đột {i}/{n} · dòng {line}"), "cf_current": tr("Hiện tại"), "cf_incoming": tr("Bên đến"),

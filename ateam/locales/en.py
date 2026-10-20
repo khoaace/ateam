@@ -3393,4 +3393,14 @@ EN: dict[str, str] = {
         '✎ Edit in Code',
     '✓ Đánh dấu đã xong':
         '✓ Mark as resolved',
+    'Lọc nhánh theo tên… (Enter: chuyển sang nhánh khớp đầu tiên)':
+        'Filter branches by name… (Enter: switch to the first match)',
+    'Không có nhánh nào khớp':
+        'No matching branches',
+    'Nhánh local':
+        'Local branches',
+    'Nhánh remote':
+        'Remote branches',
+    'Lọc nhánh theo tên… (Enter: chuyển sang nhánh khớp đầu tiên · ↓: xuống danh sách)':
+        'Filter branches by name… (Enter: switch to the first match · ↓: go to the list)',
 }

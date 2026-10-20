@@ -273,7 +273,7 @@ window.GitView = (() => {
   async function branches() {
     const list = await (await fetch("/api/git/branches")).json();
     const cur = G.st && G.st.branch;
-    const rows = list.map((b) => `<div class="brow${b.current ? " cur" : ""}" data-name="${esc(b.name)}" data-remote="${b.remote ? 1 : 0}">
+    const row = (b) => `<div class="brow${b.current ? " cur" : ""}" data-name="${esc(b.name)}" data-remote="${b.remote ? 1 : 0}">
         <span class="bdot">${b.current ? "●" : ""}</span><b>${esc(b.name)}</b>${b.name.startsWith("ateam/") ? `<span class="chip">task</span>` : ""}
         <span class="muted">${esc(b.track || (b.upstream ? "→ " + b.upstream : ""))}</span><span class="muted bsub">${esc(b.date)} · ${esc(b.subject)}</span>
         <span class="grow-acts">
@@ -281,11 +281,32 @@ window.GitView = (() => {
           ${b.current || b.remote ? "" : `<button class="btn sm ghost" data-bact="merge">Merge</button>`}
           ${b.remote ? "" : `<button class="btn sm ghost" data-bact="rename">${esc(t("git_rename"))}</button>`}
           ${b.current || b.remote ? "" : `<button class="btn sm danger" data-bact="delete">${esc(t("remove"))}</button>`}
-        </span></div>`).join("");
+        </span></div>`;
+    const group = (key, items) => items.length ? `<div class="bgroup" data-group="${key}"><div class="ghead">${esc(t(key))} <span class="n">${items.length}</span></div>${items.map(row).join("")}</div>` : "";
     const m = openModal(`${modalHead("⎇ " + esc(t("git_branches")) + (cur ? ` <span class="muted">· ${esc(cur)}</span>` : ""))}
-      <div class="modal-pad"><div class="row-actions"><input class="field one" id="gb-name" placeholder="${esc(t("git_new_branch"))}" autofocus>
-      <button class="btn primary" data-bact="create">+ ${esc(t("git_create_branch"))}</button></div>
-      <div class="blist">${rows}</div></div>`, { box: "md" });
+      <div class="modal-pad"><input class="field one" id="gb-filter" placeholder="${esc(t("git_filter_branch"))}" autofocus>
+      <div class="blist">${group("git_local", list.filter((b) => !b.remote))}${group("git_remote", list.filter((b) => b.remote))}
+        <div class="gclean muted" id="gb-none" hidden>${esc(t("git_no_match"))}</div></div>
+      <div class="row-actions"><input class="field one" id="gb-name" placeholder="${esc(t("git_new_branch"))}">
+      <button class="btn primary" data-bact="create">+ ${esc(t("git_create_branch"))}</button></div></div>`, { box: "md" });
+    const filter = () => {
+      const q = $("#gb-filter", m).value.trim().toLowerCase();
+      let shown = 0;
+      $$(".bgroup", m).forEach((g) => {
+        let n = 0;
+        $$(".brow", g).forEach((r) => { const ok = !q || r.dataset.name.toLowerCase().includes(q); r.hidden = !ok; n += ok; });
+        g.hidden = !n; $(".n", g).textContent = n; shown += n;
+      });
+      $("#gb-none", m).hidden = !!shown;
+    };
+    $("#gb-filter", m).addEventListener("input", filter);
+    $("#gb-filter", m).addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && e.target.value) { e.preventDefault(); e.stopPropagation(); e.target.value = ""; filter(); }
+      if (e.key === "Enter") {  // chuyển sang nhánh khớp đầu tiên
+        const r = $$(".brow", m).find((x) => !x.hidden && !x.classList.contains("cur"));
+        if (r) { closeModal(m); act("checkout", { name: r.dataset.name }); }
+      }
+    });
     m.addEventListener("click", async (e) => {
       const b = e.target.closest("[data-bact]");
       if (!b) return;
