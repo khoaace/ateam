@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.38.0 — 21/10/2026
+
+- **Tab 📝 Code của TUI: danh sách file thành cây thư mục** — thư mục đứng trước file, nét `├ │ └`; Enter / `→` `l` mở
+  thư mục, Enter / `←` `h` thu gọn, `←` trên file nhảy về thư mục cha; mở file nào thì cây tự mở tới file đó. Gõ vào ô
+  lọc vẫn ra kết quả tìm phẳng như cũ; bỏ giới hạn 300 file.
+- Sửa: mở tab Code hai lần liền có thể làm cột file trống (lượt nạp chỉ mục `@file` bị huỷ theo); dấu ● chưa lưu ở danh
+  sách file cập nhật đúng.
+
 ## 0.37.1 — 21/10/2026
 
 - **Popover To-do nổi** (web): tên việc hiện đủ và tự xuống hàng (trước bị cắt "…"); ưu tiên · tag · hạn xuống dòng dưới,
