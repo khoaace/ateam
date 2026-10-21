@@ -90,6 +90,31 @@ def acquire_session_lock(root: Path):
     return f
 
 
+def free_port(host: str, start: int, tries: int = 20) -> int | None:
+    """Cổng trống đầu tiên từ `start` (nhiều dự án chạy `ateam web` cùng lúc, như mở nhiều terminal TUI). Thử bind
+    không đặt SO_REUSEADDR: trên macOS có cờ đó vẫn bind được cổng mà server khác đang nghe ở 0.0.0.0."""
+    import socket
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    for port in range(start, min(start + tries, 65536)):
+        try:
+            with socket.socket(family) as s:
+                s.bind((host.strip("[]"), port))
+        except OSError:
+            continue
+        return port
+    return None
+
+
+def pick_port(host: str, want: int) -> int | None:
+    """Cổng cho `ateam web`: `want` bận thì lấy cổng kế tiếp còn trống (có báo); hết cổng thì báo lỗi, trả None."""
+    port = free_port(host, want)
+    if port is None:
+        print(tr("Cổng {a}–{b} đều đang bận — chọn cổng khác bằng --port.", a=want, b=want + 19), file=sys.stderr)
+    elif port != want:
+        print(tr("⚠ Cổng {a} đang bận — dùng cổng {b}", a=want, b=port))
+    return port
+
+
 def ui_session_running(root: Path) -> bool:
     """Có phiên giao diện (TUI/web) đang giữ khoá dự án không — không giữ khoá lại, để vẫn mở được giao diện
     trong lúc `ateam goal`/`ateam run` chạy."""
@@ -167,9 +192,12 @@ def cmd_web(args) -> int:
     if lock is None:
         print(tr("Dự án này đang mở ở một phiên ateam khác — đóng phiên đó rồi chạy lại."))
         return 1
-    remote = Remote(root / ".ateam", host=args.host, port=args.port, public_url=args.public_url or "",
+    port = pick_port(args.host, args.port)  # dự án khác đang giữ cổng -> cổng kế tiếp
+    if port is None:
+        return 1
+    remote = Remote(root / ".ateam", host=args.host, port=port, public_url=args.public_url or "",
                     tunnel=args.tunnel, readonly=args.readonly, new_token=args.new_token)
-    url = f"http://127.0.0.1:{args.port}"
+    url = f"http://127.0.0.1:{port}"
     if remote.enabled:
         url = remote.urls()[-1][1]  # máy này, kèm token
         print(tr("🔒 Chế độ từ xa: cần token (lưu ở .ateam/web_token; --new-token để đổi)")
@@ -185,11 +213,22 @@ def cmd_web(args) -> int:
         webbrowser.open(url)
     from .projects import touch_project
     touch_project(root)
-    nxt = web.serve(root, cfg, open_db(root), args.port, remote)
+    nxt = web.serve(root, cfg, open_db(root), port, remote)
     if nxt:  # /open trên web: server đã dừng (khoá phiên nhả khi execv) -> chạy lại ở dự án mới, cùng cổng
-        argv = [a for a in sys.argv[1:] if a not in ("--open", "--new-token")]
+        # (cổng thật, kể cả khi đã đổi vì cổng muốn bận: trình duyệt đang mở cổng này)
+        argv, skip = [], False
+        for a in sys.argv[1:]:
+            if skip:
+                skip = False
+                continue
+            if a == "--port":
+                skip = True
+                continue
+            if a in ("--open", "--new-token") or a.startswith("--port="):
+                continue
+            argv.append(a)
         print(tr("↪ Mở dự án {v}", v=nxt), flush=True)  # execv bỏ bộ đệm stdout chưa ghi
-        reexec(argv, nxt)
+        reexec(argv + ["--port", str(port)], nxt)
     return 0
 
 
@@ -217,9 +256,12 @@ def cmd_web_tui(args) -> int:
     # /lang + nút Restart đổi được ngôn ngữ (ATEAM_LANG thắng state.json: chọn --lang là ghim cho cả phiên web)
     if args.lang:
         os.environ["ATEAM_LANG"] = args.lang
+    port = pick_port("127.0.0.1", args.port)
+    if port is None:
+        return 1
     argv = [sys.executable, "-m", "ateam", "-C", str(root), "tui"]
-    print(tr("Mở trên trình duyệt: {v}  (Ctrl+C để dừng)", v=f"http://127.0.0.1:{args.port}"))
-    GuardedServer(shlex.join(argv), host="127.0.0.1", port=args.port,
+    print(tr("Mở trên trình duyệt: {v}  (Ctrl+C để dừng)", v=f"http://127.0.0.1:{port}"))
+    GuardedServer(shlex.join(argv), host="127.0.0.1", port=port,
                   title=f"ateam — {root.name}").serve()
     return 0
 
@@ -624,7 +666,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("tui", help=tr("mở giao diện terminal (mặc định)"))
     s = sub.add_parser("web", help=tr("mở giao diện web trên trình duyệt (http://127.0.0.1:PORT, cần aiohttp)"))
-    s.add_argument("--port", type=int, default=8000)
+    s.add_argument("--port", type=int, default=8000,
+                   help=tr("cổng (mặc định 8000; bận thì tự dùng cổng kế tiếp)"))
     s.add_argument("--open", action="store_true", help=tr("tự mở trình duyệt"))
     s.add_argument("--tui", action="store_true", help=tr("giao diện terminal trong trình duyệt (cần textual-serve)"))
     s.add_argument("--host", default="127.0.0.1",

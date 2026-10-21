@@ -188,6 +188,9 @@ chung với terminal, dùng được trên điện thoại.
 ateam web --open           # mở http://127.0.0.1:8000  ·  đổi cổng: ateam web --port 9000
 ```
 
+Mở thêm dự án khác: chạy `ateam web` ở thư mục dự án đó (như mở thêm một terminal TUI) — cổng 8000 đang bận thì ateam tự
+dùng cổng trống kế tiếp (8001, 8002…) và in URL. Mỗi dự án vẫn chỉ mở được một phiên (terminal hoặc web).
+
 - Ô nhập dưới cùng dùng như trong terminal và gợi ý cả tham số: `/task ` → agent, `codex:` → model, `@` → effort;
   `/model <agent>`, `/assign`, `/retry <task>`, `/continue`, `/flow`, `/checkout <nhánh>`, `/code @file`… Ctrl+K về ô
   nhập, F2 duyệt kế hoạch, F6 tiếp tục, F1 trợ giúp, Esc đóng. Tab Git: phím `space a u x d c e` như TUI. Tab Code:

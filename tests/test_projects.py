@@ -89,10 +89,44 @@ def test_cmd_tui_and_web_relaunch_in_new_root(tmp_path, monkeypatch):
     assert "ATEAM_DB" not in os.environ
     # web: serve() trả thư mục mới (/open) -> chạy lại cùng cổng, bỏ --open
     monkeypatch.setattr(ateam.web, "serve", lambda *a, **kw: other)
-    monkeypatch.setattr(cli.sys, "argv", ["ateam", "-C", str(tmp_path), "web", "--port", "8123", "--open"])
+    port = str(cli.free_port("127.0.0.1", 18123, 1000))  # cổng cố định có thể đang bận trên máy chạy test
+    monkeypatch.setattr(cli.sys, "argv", ["ateam", "-C", str(tmp_path), "web", "--port", port, "--open"])
     monkeypatch.setattr("webbrowser.open", lambda url: None)
-    assert cli.main(["-C", str(tmp_path), "web", "--port", "8123", "--open"]) == 0
-    assert execs[-1][-5:] == ["-C", str(other), "web", "--port", "8123"]
+    assert cli.main(["-C", str(tmp_path), "web", "--port", port, "--open"]) == 0
+    assert execs[-1][-5:] == ["-C", str(other), "web", "--port", port]
+
+
+
+def test_web_busy_port_uses_next_and_keeps_it_on_open(tmp_path, monkeypatch, capsys):
+    """Nhiều dự án cùng chạy `ateam web` (như nhiều terminal TUI): cổng bận -> tự dùng cổng kế tiếp; /open chạy lại
+    ở đúng cổng trình duyệt đang mở; hết cổng trống thì báo lỗi."""
+    import socket
+
+    import ateam.web
+    other = tmp_path / "other"
+    other.mkdir()
+    served, execs = [], []
+    monkeypatch.setattr(ateam.web, "serve", lambda root, cfg, db, port, remote: served.append(port) or other)
+    monkeypatch.setattr(cli, "ensure_global_config", lambda: [])
+    monkeypatch.setattr("ateam.projects.touch_project", lambda root: None)
+    monkeypatch.setattr(cli.os, "execv", lambda *a: execs.append(a[1]))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
+    monkeypatch.setenv("ATEAM_DB", str(tmp_path / ".ateam/team.db"))
+    with socket.socket() as busy:  # dự án khác đang giữ cổng
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        port = busy.getsockname()[1]
+        argv = ["-C", str(tmp_path), "web", f"--port={port}"]
+        monkeypatch.setattr(cli.sys, "argv", ["ateam", *argv])
+        assert cli.main(argv) == 0
+        assert cli.free_port("127.0.0.1", port, tries=1) is None
+    assert served[0] > port
+    assert f"{port}" in capsys.readouterr().out
+    assert execs[-1][-5:] == ["-C", str(other), "web", "--port", str(served[0])]
+    monkeypatch.setattr(cli, "free_port", lambda host, start: None)
+    assert cli.main(argv) == 1 and len(served) == 1
+    assert "--port" in capsys.readouterr().err
 
 
 def test_tui_open_project(env, project, monkeypatch, tmp_path):

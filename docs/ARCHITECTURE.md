@@ -518,7 +518,10 @@ thành agent `<agent>-<vai trò>`), rồi `save_onboard()` ghi `custom.toml` (ag
 `web.WebApp` (aiohttp) giữ **một** `Orchestrator` + `ShellManager` cho mọi tab trình duyệt; trang tĩnh ở
 `ateam/webui/` (HTML/CSS/JS thuần, không build, không CDN): `app.js` (lõi: kết nối, bảng việc, Đội, Terminal, ô
 nhập + gợi ý tham số, modal, theme), `diff.js`, `git.js`, `code.js`, `setup.js`; `vendor/codemirror.js` là CodeMirror 6
-+ vim đóng gói sẵn (nạp khi mở tab Code). Server giữ khoá `acquire_session_lock` như TUI.
++ vim đóng gói sẵn (nạp khi mở tab Code). Server giữ khoá `acquire_session_lock` như TUI. Nhiều dự án chạy `ateam web` cùng lúc
+(như nhiều terminal TUI): `cli.pick_port` thử bind từ `--port` (mặc định 8000) và lấy cổng trống kế tiếp — kiểm tra
+*trước* khi dựng `Remote`/middleware (cần biết cổng) và trước `run_app` (`on_startup` khởi động bộ lập lịch trước khi
+bind); `/open` chạy lại với `--port <cổng thật>` để trình duyệt đang mở vẫn đúng cổng.
 
 - `GET /ws` (WebSocket): server gửi `hello` (chuỗi giao diện `ui_strings()`, mọi lệnh của `tui.COMMANDS`, dữ liệu gợi ý
   — agent + model/effort hợp lệ, workflow, màu nhấn, tuỳ chọn), gửi lại khi cấu hình đổi (/setup, /custom, /models
