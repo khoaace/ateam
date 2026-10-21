@@ -4,7 +4,7 @@
 const S = {
   T: {}, commands: [], agentNames: [], meta: {}, prefs: {}, state: null, ws: null, connected: false, retry: 0,
   pending: {}, refSeq: 0, branches: null, branchesAt: 0,
-  view: "board", goalFilter: null, openTask: null, drawerTab: "log", openJob: null,
+  view: "board", goalFilter: null, board: "list", fold: {}, openTask: null, drawerTab: "log", openJob: null,
   expanded: new Set(), editing: null, rejecting: false,
   logs: [], agentLogs: {}, jobLines: {}, scripts: null, scriptsAt: 0,
   live: {}, full: {}, ptys: {},  // live: dòng cuối của task đang chạy (tin "live"); full: prompt/kết quả đã tải của task
@@ -64,7 +64,7 @@ function connect() {
     else if (m.t === "grid" && window.GridView) GridView.onState(m);
     else if (m.t === "gpty" && window.GridView) GridView.onData(m);
     else if (m.t === "gpty_exit" && window.GridView) GridView.onExit(m);
-    else if (m.t === "live") { S.live = m.last || {}; if (S.state && S.view === "board") renderKanban(); }
+    else if (m.t === "live") { S.live = m.last || {}; if (S.state && S.view === "board") renderBoard(); }
     else if (m.t === "toast") onToast(m);
     else if (m.t === "notice") onNotice(m);
     else if (m.t === "prefs") applyPrefs(m);
@@ -365,7 +365,7 @@ function render() {
   if (!S.state) return;
   renderTop();
   renderComposerMode();
-  if (S.view === "board") { renderGrill(); renderPlan(); renderGoals(); renderKanban(); }
+  if (S.view === "board") { renderGrill(); renderPlan(); renderBoard(); }
   if (S.view === "team") renderTeam();
   if (S.view === "term") renderTerm();
   if (window.TodoView) TodoView.render();  // cả số việc chưa xong trên thanh bên
@@ -624,7 +624,7 @@ const boardTasks = () => S.state.tasks.filter((x) => x.source !== "chat");  // l
 function renderKanban() {
   const box = $("#kanban");
   let tasks = boardTasks();
-  if (S.goalFilter != null) tasks = tasks.filter((x) => x.goal === S.goalFilter);
+  if (S.goalFilter != null) tasks = tasks.filter((x) => x.goal === S.goalFilter || x.goal == null);  // 📌 task ngoài kế hoạch luôn hiện
   const cols = COLUMNS.filter((c) => !c.optional || tasks.some((x) => c.st.includes(x.status)));
   if (box.childElementCount !== cols.length || box.dataset.cols !== cols.map((c) => c.key).join()) {
     box.dataset.cols = cols.map((c) => c.key).join();
@@ -682,8 +682,228 @@ function cardHtml(x, last) {
     ${x.error && ["failed", "blocked", "conflict"].includes(x.status) ? `<div class="card-err">${esc(x.error)}</div>` : ""}
     <div class="card-foot">${agentHtml(x.agent)}${meta ? `<span class="meta">${esc(meta)}</span>` : ""}
       ${x.deps.length ? `<span class="deps">↳ ${x.deps.map((d) => "#" + d).join(", ")}</span>` : ""}
-      ${x.goal ? `<span class="meta" style="margin-left:auto">🎯 #${x.goal}</span>` : ""}</div>
+      ${x.goal ? `<span class="meta" style="margin-left:auto">🎯 #${x.goal}</span>` : `<span class="meta adhoc" style="margin-left:auto">📌 ${esc(t("bl_adhoc_short"))}</span>`}</div>
   </div>`;
+}
+
+/* bảng việc dạng danh sách (mặc định): nhóm 📌 ngoài kế hoạch (task giao tay, goal = null) luôn ở trên cùng, rồi từng
+   kế hoạch mới nhất trước — xem theo kế hoạch mà không phải lọc, nên task ngoài kế hoạch không bao giờ bị lọc mất.
+   Kế hoạch đã kết thúc mặc định thu gọn; bấm tiêu đề nhóm để mở/đóng (nhớ trong localStorage). ▦ Kanban giữ làm chế độ phụ. */
+const ADHOC = "adhoc";
+const NEED_YOU = ["review", "conflict", "asking", "failed", "blocked"];
+function loadBoardPrefs() {
+  try {
+    S.board = localStorage.getItem("ateam-board") === "kanban" ? "kanban" : "list";
+    S.fold = JSON.parse(localStorage.getItem("ateam-board-fold") || "{}") || {};
+  } catch (e) { /* chặn lưu: dùng mặc định */ }
+}
+loadBoardPrefs();
+function setBoardMode(mode) {
+  S.board = mode === "kanban" ? "kanban" : "list";
+  try { localStorage.setItem("ateam-board", S.board); } catch (e) { /* chặn lưu */ }
+  renderBoard();
+}
+function isFolded(key, g) { return key in S.fold ? !!S.fold[key] : !!(g && g.ended); }
+function toggleFold(key) {
+  const g = key === ADHOC ? null : S.state.goals.find((x) => String(x.id) === key) || { ended: true };
+  S.fold[key] = !isFolded(key, g);
+  const ids = new Set(S.state.goals.map((x) => String(x.id)));  // không giữ mãi khoá của kế hoạch đã dọn
+  for (const k of Object.keys(S.fold)) if (k !== ADHOC && !ids.has(k) && k !== key) delete S.fold[k];
+  try { localStorage.setItem("ateam-board-fold", JSON.stringify(S.fold)); } catch (e) { /* chặn lưu */ }
+  renderBoardList();
+}
+function boardJump(key) {
+  if (S.board !== "list") setBoardMode("list");
+  if (isFolded(key, key === ADHOC ? null : S.state.goals.find((x) => String(x.id) === key))) toggleFold(key);
+  const el = $(`#blist [data-grp="${key}"]`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  el.classList.add("flash");
+  setTimeout(() => el.classList.remove("flash"), 900);
+}
+function renderBoard() {
+  const list = S.board === "list";
+  renderBoardBar();
+  $("#goals").classList.toggle("hidden", list);
+  $("#kanban").classList.toggle("hidden", list);
+  $("#blist").classList.toggle("hidden", !list);
+  if (list) renderBoardList(); else { renderGoals(); renderKanban(); }
+}
+/* dữ liệu chung của thanh công cụ + danh sách: task theo nhóm và các kế hoạch (cả kế hoạch cũ đã rời ảnh chụp
+   nhưng còn task trên bảng — hiện tiêu đề rút gọn) */
+function boardGroups() {
+  const adhoc = [], by = new Map();
+  for (const x of boardTasks()) {
+    if (x.status === "draft") continue;  // task nháp ở khung Duyệt kế hoạch phía trên
+    if (x.goal == null) adhoc.push(x);
+    else { if (!by.has(x.goal)) by.set(x.goal, []); by.get(x.goal).push(x); }
+  }
+  const known = new Map(S.state.goals.map((g) => [g.id, g]));
+  const ids = new Set([...known.keys(), ...by.keys()]);
+  const goals = [...ids].sort((a, b) => b - a)
+    .map((id) => known.get(id) || { id, title: "", status: "done", ended: true, followups: [], stub: true });
+  const rank = (x) => ["running", "asking", "review", "conflict", "queued", "failed", "blocked"].indexOf(x.status);
+  adhoc.sort((a, b) => { const ra = rank(a), rb = rank(b); return (ra < 0) - (rb < 0) || b.id - a.id; });  // việc dở lên trước
+  return { adhoc, goals, by };
+}
+function renderBoardBar() {
+  const box = $("#board-bar");
+  const { adhoc, goals, by } = boardGroups();
+  const chips = S.board !== "list" ? "" : [`<button class="bchip pin" data-action="board-jump" data-key="${ADHOC}">📌 ${esc(t("bl_adhoc"))} <span class="n">${adhoc.length}</span></button>`]
+    .concat(goals.filter((g) => by.has(g.id) || !g.ended).slice(0, 8).map((g) => {
+      const ts = by.get(g.id) || [], d = ts.filter((x) => x.status === "done").length;
+      return `<button class="bchip" data-action="board-jump" data-key="${g.id}" title="${esc(g.title)}">#${g.id}${ts.length ? ` <span class="bmini"><i style="width:${d / ts.length * 100}%"></i></span><span class="n">${d}/${ts.length}</span>` : ""}</button>`;
+    })).join("");
+  const html = `<span class="bseg">
+      <button class="${S.board === "list" ? "on" : ""}" data-action="board-mode" data-mode="list">≡ ${esc(t("bl_list"))}</button>
+      <button class="${S.board === "kanban" ? "on" : ""}" data-action="board-mode" data-mode="kanban">▦ ${esc(t("bl_kanban"))}</button></span>
+    ${chips ? `<span class="muted small">${esc(t("bl_jump"))}</span>${chips}` : ""}`;
+  if (box._html !== html) { box._html = html; box.innerHTML = html; }
+}
+function rowHtml(x) {
+  const last = x.status === "running" ? S.live[x.id] || "" : "";
+  const sub = x.error && ["failed", "blocked", "conflict"].includes(x.status) ? `<span class="br-err">${esc(x.error)}</span>`
+    : last ? `<span class="br-last">${esc(last)}</span>` : "";
+  const meta = [x.model, x.effort].filter(Boolean).join(" · ");
+  return `<div class="tbrow s-${x.status}${S.openTask === x.id ? " sel" : ""}" data-action="open-task" data-task="${x.id}">
+    ${badge(x.status, STATUS_LABEL(x.status), x.status === "running")}<span class="tid">#${x.id}</span>
+    <span class="br-title"><span class="br-t">${esc(x.title)}</span>${sub}</span>
+    <span class="br-agent">${agentHtml(x.agent)}${meta ? `<span class="meta">${esc(meta)}</span>` : ""}</span>
+    <span class="br-deps">${x.deps.length ? "↳ " + x.deps.map((d) => "#" + d).join(", ") : ""}</span>
+    ${elapsedHtml(x.started, x.finished) || `<span class="time"></span>`}</div>`;
+}
+function countsHtml(ts) {
+  return COLUMNS.filter((c) => !c.optional).map((c) => {
+    const n = ts.filter((x) => c.st.includes(x.status)).length;
+    return n ? `<span class="bcount" style="--c:${c.c}" title="${esc(t("col_" + c.key))}">● ${n}</span>` : "";
+  }).join("");
+}
+function goalHeadHtml(g, ts, folded) {
+  const n = ts.length || 1, d = ts.filter((x) => x.status === "done").length, r = ts.filter((x) => x.status === "running").length;
+  const b = ts.filter((x) => ["failed", "blocked", "cancelled"].includes(x.status)).length;
+  const st = g.busy && !["awaiting", "grilling"].includes(g.status) ? (g.status === "reviewing" ? "reviewing" : "planning") : g.status;
+  return `<div class="bl-gh" data-action="board-fold" data-key="${g.id}">
+    <span class="chev">${folded ? "▸" : "▾"}</span><span class="goal-id">🎯 #${g.id}</span>
+    ${g.stub ? "" : badge(st, t("g_" + st), g.busy || st === "running")}
+    ${g.round > 1 ? `<span class="muted small">${esc(t("round", { n: g.round }))}</span>` : ""}
+    ${g.workflow ? `<span class="wf">⚙ ${esc(g.workflow)}</span>` : ""}
+    <span class="bl-title">${esc(g.title)}</span>
+    ${ts.length ? `<span class="progress bl-prog"><i class="p-done" style="width:${d / n * 100}%"></i><i class="p-run" style="width:${r / n * 100}%"></i><i class="p-bad" style="width:${b / n * 100}%"></i></span><span class="muted small mono">${d}/${ts.length}</span>` : ""}
+    ${g.followups && g.followups.length ? `<span class="muted small">↪ ${esc(t("followups", { n: g.followups.length }))}</span>` : ""}
+    <span class="sp"></span>${folded ? countsHtml(ts) : ""}
+    ${ts.length ? `<button class="btn sm ghost" data-action="goal-plan" data-goal="${g.id}" title="${esc(t("goal_plan"))}">📋</button>` : ""}
+    ${g.ended && !g.stub ? `<button class="btn sm" data-action="goal-continue" data-goal="${g.id}">${esc(t("continue"))}</button>` : ""}
+    ${g.status === "planning" ? `<button class="btn sm ghost danger" data-action="goal-cancel-plan" data-goal="${g.id}" title="${esc(t("cancel_plan_hint"))}">✕ ${esc(t("cancel_plan"))}</button>` : ""}
+  </div>`;
+}
+function goalEmptyHtml(g) {
+  const k = { planning: "bl_planning", awaiting: "bl_awaiting", grilling: "bl_grilling" }[g.status] || "bl_no_tasks";
+  return `<div class="bl-empty">${esc(t(k))}</div>`;
+}
+/* vẽ một danh sách dòng theo khoá (giữ hover/chọn chữ, chỉ dựng lại dòng đổi) */
+function patchRows(box, list, emptyHtml) {
+  patchList(box, list, (x) => {
+    const last = x.status === "running" ? S.live[x.id] || "" : "";
+    return [JSON.stringify([x.status, x.title, x.error, x.agent, x.model, x.effort, x.deps, x.started, x.finished, last,
+      S.openTask === x.id]), () => rowHtml(x)];
+  }, emptyHtml);
+}
+function renderBoardList() {
+  const box = $("#blist");
+  if (!box._built) {  // khung cố định: nhóm 📌 (ô giao task giữ nguyên khi vẽ lại) + các kế hoạch + cột phải
+    box._built = true;
+    box.innerHTML = `<div class="bl-main">
+        <div class="bl-grp bl-pin" data-grp="${ADHOC}"><div class="bl-gh" id="bl-adhoc-head" data-action="board-fold" data-key="${ADHOC}"></div>
+          <div class="bl-body" id="bl-adhoc-body"><div class="blist-rows" id="bl-adhoc-rows"></div>
+            <form class="bl-add" id="bl-add"><span class="muted">＋</span><input id="bl-add-text" autocomplete="off">
+              <select id="bl-add-agent"></select><button class="btn sm primary" type="submit"></button></form></div></div>
+        <div id="bl-goals"></div></div>
+      <div class="bl-side" id="bl-side"></div>`;
+    $("#bl-add-text").placeholder = t("bl_add_ph");
+    $("#bl-add button").textContent = t("bl_add");
+    $("#bl-add").addEventListener("submit", (e) => { e.preventDefault(); addAdhoc(); });
+  }
+  const { adhoc, goals, by } = boardGroups();
+  // 📌 ngoài kế hoạch
+  const pinFold = isFolded(ADHOC, null);
+  const head = `<span class="chev">${pinFold ? "▸" : "▾"}</span><span class="pin-ico">📌</span><span class="bl-title">${esc(t("bl_adhoc"))}</span>
+    <span class="muted small mono">${adhoc.length}</span><span class="muted small bl-hint">· ${esc(t("bl_adhoc_hint"))}</span>
+    <span class="sp"></span>${pinFold ? countsHtml(adhoc) : ""}`;
+  const hb = $("#bl-adhoc-head");
+  if (hb._html !== head) { hb._html = head; hb.innerHTML = head; }
+  $("#bl-adhoc-body").classList.toggle("hidden", pinFold);
+  patchRows($("#bl-adhoc-rows"), adhoc, "");
+  renderAdhocAgents();
+  // kế hoạch: mỗi nhóm một khối, khoá theo id (patchList ở cấp nhóm, dòng bên trong vẽ theo khoá)
+  const gbox = $("#bl-goals");
+  if (!goals.length && !adhoc.length) {
+    gbox.innerHTML = `<div class="empty"><div class="big">${esc(t("no_goals"))}</div><div>${esc(t("no_goals_hint"))}</div></div>`;
+    gbox._empty = true; gbox._sig = new Map();
+  } else {
+    if (gbox._empty) { gbox.innerHTML = ""; gbox._empty = false; gbox._sig = new Map(); }
+    const old = new Map([...gbox.children].map((el) => [el.dataset.grp, el]));
+    let ref = gbox.firstElementChild;
+    for (const g of goals) {
+      const ts = by.get(g.id) || [], folded = isFolded(String(g.id), g), k = String(g.id);
+      let el = old.get(k);
+      old.delete(k);
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "bl-grp";
+        el.dataset.grp = k;
+        el.innerHTML = `<div class="bl-gh-wrap"></div><div class="bl-body"><div class="blist-rows"></div></div>`;
+      }
+      const head = goalHeadHtml(g, ts, folded), hw = el.firstElementChild;
+      if (hw._html !== head) { hw._html = head; hw.innerHTML = head; }
+      el.classList.toggle("folded", folded);
+      el.lastElementChild.classList.toggle("hidden", folded);
+      if (!folded) patchRows(el.lastElementChild.firstElementChild, ts, goalEmptyHtml(g));
+      if (el === ref) ref = ref.nextElementSibling;
+      else gbox.insertBefore(el, ref);
+    }
+    for (const el of old.values()) el.remove();
+  }
+  renderBoardSide(adhoc, by);
+}
+function renderAdhocAgents() {
+  const sel = $("#bl-add-agent"), names = S.agentNames;
+  if (sel._sig === names.join()) return;
+  sel._sig = names.join();
+  let last = "";
+  try { last = localStorage.getItem("ateam-adhoc-agent") || ""; } catch (e) { /* chặn lưu */ }
+  const cur = sel.value || last;
+  sel.innerHTML = names.map((n) => `<option value="${esc(n)}">${esc(n)}${n === S.state.lead ? " ★" : ""}</option>`).join("");
+  if (names.includes(cur)) sel.value = cur;
+}
+/* giao task ngoài kế hoạch ngay trong nhóm 📌 — cùng lệnh /task <agent> <nội dung> như ô nhập dưới cùng */
+async function addAdhoc() {
+  const inp = $("#bl-add-text"), agent = $("#bl-add-agent").value, text = inp.value.trim();
+  if (!text || !agent) { inp.focus(); return; }
+  try { localStorage.setItem("ateam-adhoc-agent", agent); } catch (e) { /* chặn lưu */ }
+  inp.value = "";
+  const r = await request("submit", { text: `/task ${agent} ${text}` }, t("busy_cmd", { v: "/task" }));
+  if (r && r.level === "error") inp.value = text;  // giữ chữ để sửa lại
+  inp.focus();
+}
+function renderBoardSide(adhoc, by) {
+  const all = adhoc.concat(...by.values());
+  const stats = COLUMNS.filter((c) => !c.optional).map((c) =>
+    `<div class="bstat" style="--c:${c.c}"><div class="v">${all.filter((x) => c.st.includes(x.status)).length}</div><div class="k">${esc(t("col_" + c.key))}</div></div>`).join("")
+    + `<div class="bstat"><div class="v">${by.size}</div><div class="k">${esc(t("bl_plans"))}</div></div>`;
+  const need = all.filter((x) => NEED_YOU.includes(x.status)).sort((a, b) => b.id - a.id);
+  const btns = (x) => ["review", "conflict"].includes(x.status)
+    ? `<button class="btn sm primary" data-action="diff" data-task="${x.id}">Δ ${esc(t("diff"))}</button>${x.status === "review" ? `<button class="btn sm" data-action="merge" data-task="${x.id}">✓ ${esc(t("merge"))}</button>` : ""}`
+    : x.status === "asking" ? `<button class="btn sm primary" data-action="open-task" data-task="${x.id}">${esc(t("ask_view"))}</button>`
+    : `<button class="btn sm" data-action="retry" data-task="${x.id}">↻ ${esc(t("retry"))}</button><button class="btn sm ghost" data-action="reassign" data-task="${x.id}">${esc(t("reassign"))}</button>`;
+  const needs = need.map((x) => `<div class="bneed">
+      <div class="bneed-top">${badge(x.status, STATUS_LABEL(x.status))}<span class="tid">#${x.id}</span>
+        <span class="muted small mono" style="margin-left:auto">${x.goal ? "🎯 #" + x.goal : "📌 " + esc(t("bl_adhoc_short"))}</span></div>
+      <div class="bneed-t" data-action="open-task" data-task="${x.id}">${esc(x.title)}</div><div class="bneed-acts">${btns(x)}</div></div>`).join("");
+  const html = `<div class="bbox"><div class="bbox-h">${esc(t("bl_overview"))}</div><div class="bstats">${stats}</div></div>
+    <div class="bbox${need.length ? "" : " none"}"><div class="bbox-h">${esc(t("bl_need"))}<span class="sp"></span>${need.length}</div>
+      ${needs || `<div class="bl-empty">${esc(t("bl_need_none"))}</div>`}</div>`;
+  const box = $("#bl-side");
+  if (box._html !== html) { box._html = html; box.innerHTML = html; }
 }
 
 /* agents: block ⚡ Vai trò (sửa CLI · model · effort ngay trên trang, kèm trạng thái + chat của agent giữ vai trò) và block
@@ -899,13 +1119,13 @@ function openTask(tid) {
   renderDrawer(true);
   $("#drawer").classList.add("open");
   if (S.drawerTab === "log") loadLog(tid);
-  $$(".card.sel").forEach((c) => c.classList.remove("sel"));
-  $$(`.card[data-task="${tid}"]`).forEach((c) => c.classList.add("sel"));
+  $$(".card.sel, .tbrow.sel").forEach((c) => c.classList.remove("sel"));
+  $$(`.card[data-task="${tid}"], .tbrow[data-task="${tid}"]`).forEach((c) => c.classList.add("sel"));
 }
 function closeDrawer() {
   S.openTask = null;
   $("#drawer").classList.remove("open");
-  $$(".card.sel").forEach((c) => c.classList.remove("sel"));
+  $$(".card.sel, .tbrow.sel").forEach((c) => c.classList.remove("sel"));
 }
 function renderDrawer(full) {
   const tid = S.openTask, dr = $("#drawer");
@@ -1754,6 +1974,9 @@ const ACTIONS = {
   "open-task": (el) => openTask(+el.dataset.task),
   "dr-tab": (el) => { S.drawerTab = el.dataset.tab; renderDrawer(true); if (S.drawerTab === "log") loadLog(S.openTask); },
   "goal-filter": (el) => { S.goalFilter = el.dataset.goal ? +el.dataset.goal : null; renderGoals(); renderKanban(); },
+  "board-mode": (el) => setBoardMode(el.dataset.mode),
+  "board-fold": (el) => toggleFold(el.dataset.key),
+  "board-jump": (el) => boardJump(el.dataset.key),
   "goal-continue": (el) => prefill(`/continue m${el.dataset.goal} `),
   "goal-cancel-plan": (el, e) => { e.stopPropagation(); send("cancel_plan", { goal: +el.dataset.goal }); },
   "reassign": (el) => reassignModal(+el.dataset.task),

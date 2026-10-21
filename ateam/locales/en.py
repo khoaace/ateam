@@ -4268,4 +4268,54 @@ EN: dict[str, str] = {
         'Open the real CLI in a grid cell',
     'Terminal — shell của bạn trong thư mục dự án':
         'Terminal — your shell in the project folder',
+    'Danh sách':
+        'List',
+    'Kanban':
+        'Kanban',
+    'Tới nhanh':
+        'Jump to',
+    'Ngoài kế hoạch':
+        'Outside plans',
+    'ngoài KH':
+        'no plan',
+    'task giao tay cho từng agent, luôn ở trên cùng':
+        'tasks you assign to an agent directly, always on top',
+    'Giao task ngoài kế hoạch cho agent… (Enter)':
+        'Assign a task outside any plan… (Enter)',
+    'Giao':
+        'Assign',
+    'Trưởng nhóm đang lập kế hoạch…':
+        'The lead is planning…',
+    'Kế hoạch chờ duyệt ở khung phía trên':
+        'Plan awaiting approval in the panel above',
+    'Trưởng nhóm đang hỏi để chốt yêu cầu — trả lời ở khung phía trên':
+        'The lead is asking questions to pin down the request — answer in the panel above',
+    'Chưa có task':
+        'No tasks yet',
+    'kế hoạch':
+        'plans',
+    'Cần bạn':
+        'Needs you',
+    'Không có việc nào chờ bạn':
+        'Nothing is waiting on you',
+    'Giao task ngoài kế hoạch':
+        'Assign a task outside plans',
+    'Nhóm theo kế hoạch / bảng phẳng':
+        'Group by plan / flat table',
+    'Nhóm trước':
+        'Previous group',
+    'Nhóm sau':
+        'Next group',
+    'Tiếp tục kế hoạch':
+        'Continue plan',
+    '📌 Ngoài kế hoạch':
+        '📌 Outside plans',
+    '  · n: giao task cho agent':
+        '  · n: assign a task to an agent',
+    '  · c: tiếp tục':
+        '  · c: continue',
+    'Bảng task: nhóm theo kế hoạch':
+        'Task table: grouped by plan',
+    'Bảng task: bảng phẳng theo id':
+        'Task table: flat by id',
 }

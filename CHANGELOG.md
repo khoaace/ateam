@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.37.0 — 21/10/2026
+
+- **Bảng việc nhóm theo kế hoạch** (web + TUI): thay cho bộ lọc "một kế hoạch / Tất cả" — trước đây chọn một kế hoạch
+  là task giao tay biến mất, phải bấm lại Tất cả mới theo dõi được.
+  - Web: chế độ **≡ Danh sách** (mặc định) — nhóm **📌 Ngoài kế hoạch** luôn trên cùng, có ô giao task cho agent ngay
+    trong nhóm; mỗi kế hoạch một nhóm (trạng thái, tiến độ, 📋, ↪ Tiếp tục), kế hoạch đã xong tự thu gọn, bấm tiêu đề
+    để thu/mở; chip **Tới nhanh**; cột phải **Tổng quan** + **Cần bạn** (chờ duyệt diff, lỗi, đang hỏi — kèm nút).
+    **▦ Kanban** vẫn còn; lọc theo kế hoạch giữ cả task 📌 ngoài kế hoạch, thẻ ghi rõ 📌 / 🎯.
+  - TUI: bảng task có dòng tiêu đề nhóm (📌 trên cùng, kế hoạch mới nhất trước); Enter thu/mở, `[` `]` nhảy nhóm, `n`
+    giao task ngoài kế hoạch, `c` tiếp tục kế hoạch, `g` về bảng phẳng.
+
 ## 0.36.1 — 21/10/2026
 
 - **Web: nút nổi ✅ To-do** ở góc dưới phải (mọi tab trừ To-do; badge số việc chưa xong, đỏ khi có việc quá hạn): bấm

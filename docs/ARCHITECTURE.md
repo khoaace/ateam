@@ -503,7 +503,10 @@ nhập + gợi ý tham số, modal, theme), `diff.js`, `git.js`, `code.js`, `set
   `discovered`; `toast` trả lời thao tác (`ref` để trình duyệt chờ kết quả, `open` để mở tab/khung/
   file). Trình duyệt gửi `{"op": …}` — xem `WebApp.handle`; ô nhập (`submit`) và lệnh `/…` cùng luật với TUI
   (`WebApp.command`, test đối chiếu mọi lệnh trong `tui.COMMANDS`).
-- Trình duyệt vẽ Kanban bằng `patchList` (app.js): mỗi thẻ có chữ ký, chỉ dựng lại thẻ đổi — giữ hover/chọn chữ.
+- Trình duyệt vẽ Kanban và bảng danh sách nhóm theo kế hoạch (`renderBoardList`, mặc định; `S.board` + nhóm thu gọn
+  `S.fold` nhớ trong localStorage) bằng `patchList` (app.js): mỗi thẻ/dòng có chữ ký, chỉ dựng lại phần đổi — giữ
+  hover/chọn chữ, ô giao task ở nhóm 📌 không bị vẽ đè. TUI: `_refresh_grouped` (bảng `TaskTable`, khoá dòng tiêu đề
+  `g:adhoc` / `g:<id>`; thứ tự dòng không đổi thì chỉ `update_cell`).
   `/api/dashboard`, `/api/goals` nhớ kết quả theo `DB.change_sig()` + phút hiện tại.
 - Đọc: `/api/log/<task>`, `/api/task/<task>`, `/api/agent/<tên>`, `/api/job/<id>`, `/api/scripts`, `/api/files?q=`, `/api/continue?ref=`;
   Git (`web_git.py`, bọc `gitops.GitRepo`): `/api/git/status|log|branches|stashes|diff`, `/api/diff/<task>`

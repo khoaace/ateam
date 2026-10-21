@@ -74,6 +74,10 @@ tại). Agent tuỳ chỉnh bạn tự thêm ở `/custom` được giữ nguyê
   để sửa nội dung, nút *Đổi agent*, *Bỏ kế hoạch* (`/drop`); Esc về ô nhập.
 * **Giao tay**: `/task codex viết unit test cho utils.py` (gõ `/task ` để chọn agent từ danh sách); agent
   nhận đúng nguyên văn bạn gõ.
+* **Bảng task nhóm theo kế hoạch**: nhóm **📌 Ngoài kế hoạch** (task giao tay) luôn ở trên cùng, rồi từng kế hoạch mới
+  nhất trước (tiến độ ngay ở dòng tiêu đề), kế hoạch đã xong tự thu gọn. Trong bảng: **Enter** trên dòng tiêu đề để
+  thu/mở, `[` `]` nhảy nhóm, `n` giao task ngoài kế hoạch (điền sẵn `/task `), `c` tiếp tục kế hoạch đang chọn, `g`
+  đổi về bảng phẳng theo id (nhớ lựa chọn).
 * **Tiếp tục mục tiêu / thread đã xong**: chọn một task trong bảng rồi **F6** (hoặc **Ctrl+O**), bấm nút
   **↪ Tiếp tục** cạnh mục tiêu đã xong, hoặc gõ `/continue ` để chọn từ danh sách — ô nhập điền sẵn
   `/continue m12 ` (mục tiêu) / `/continue t40 ` (task giao tay), dòng phía trên cho biết sẽ tiếp tục gì; gõ
@@ -168,8 +172,10 @@ Finder vào terminal cũng ra `@ảnh`. Khi chạy, ảnh đi như `@file` ở t
 
 ## Giao diện web (`ateam web`)
 
-Giao diện web hiện đại, **đủ chức năng như terminal**: bảng Kanban (Nháp · Chờ chạy · Đang chạy · Chờ duyệt · Xong ·
-Lỗi), thẻ mục tiêu có tiến độ, duyệt kế hoạch bằng nút (đổi agent, sửa nội dung task), `/grill` bấm chọn phương án,
+Giao diện web hiện đại, **đủ chức năng như terminal**: bảng việc dạng **danh sách nhóm theo kế hoạch** (nhóm
+📌 Ngoài kế hoạch luôn trên cùng, giao task cho agent ngay trong nhóm; kế hoạch đã xong thu gọn; cột phải Tổng quan +
+**Cần bạn** — task chờ duyệt diff / lỗi kèm nút Xem diff, Merge, Chạy lại) hoặc **Kanban** (Nháp · Chờ chạy · Đang chạy ·
+Chờ duyệt · Xong · Lỗi — lọc theo một kế hoạch vẫn giữ task 📌 ngoài kế hoạch), duyệt kế hoạch bằng nút (đổi agent, sửa nội dung task), `/grill` bấm chọn phương án,
 ngăn chi tiết task (log trực tiếp, diff, merge/từ chối, chạy lại, hỏi tiếp), tab **Đội**, **Terminal**, **Git**
 (stage, commit — AI viết message, amend, nhánh, stash, pull/push, lịch sử, revert), **Code** (cây thư mục,
 editor CodeMirror có phím vim `:w :q :wq :e! :bn`, nhiều file, tự nạp lại khi agent sửa file, file `.md` có
