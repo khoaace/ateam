@@ -1888,6 +1888,12 @@ EN: dict[str, str] = {
         "Open",
     "File":
         "Files",
+    "Thư mục dự án":
+        "Project folders",
+    "Mở thư mục":
+        "Expand folder",
+    "Thu gọn thư mục":
+        "Collapse folder",
     "Ghi đè":
         "Overwrite",
     "tắt tô màu (file lớn)":

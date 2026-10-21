@@ -255,10 +255,12 @@ class FileIndex:
         return time.time() - self.loaded_at > self.ttl
 
     async def refresh(self) -> list[str]:
+        # shield: người chờ bị huỷ (worker exclusive mở tab Code hai lần liền) không được huỷ luôn lượt nạp chung —
+        # nếu không, người chờ sau nhận CancelledError và chỉ mục rỗng tới lần nạp sau
         if self._task and not self._task.done():
-            return await self._task
+            return await asyncio.shield(self._task)
         self._task = asyncio.ensure_future(self._load())
-        return await self._task
+        return await asyncio.shield(self._task)
 
     async def _load(self) -> list[str]:
         entries = await self._git_files()

@@ -182,6 +182,21 @@ def test_read_save_source(tmp_path):
     assert (tmp_path / "sub" / "new.py").read_text() == "x = 1\n"
 
 
+def test_file_tree_rows():
+    tree = editor.build_tree(["b.py", "src/z.py", "src/app/main.py", "src/A.py", "Docs/x.md"])
+    # đóng hết: thư mục trước file, không phân biệt hoa thường, cấp gốc không có nét cây
+    assert [(g, p) for g, p, _n, _d in editor.tree_rows(tree, set())] == [("", "Docs/"), ("", "src/"), ("", "b.py")]
+    rows = editor.tree_rows(tree, {"src/", "src/app/"})
+    assert [(g, p, d) for g, p, _n, d in rows] == [
+        ("", "Docs/", True), ("", "src/", True),
+        ("├ ", "src/app/", True), ("│ └ ", "src/app/main.py", False),
+        ("├ ", "src/A.py", False), ("└ ", "src/z.py", False),
+        ("", "b.py", False)]
+    # thư mục cha đóng thì thư mục con đang mở cũng ẩn
+    assert [p for _g, p, _n, _d in editor.tree_rows(tree, {"src/app/"})] == ["Docs/", "src/", "b.py"]
+    assert editor.parent_dirs("a/b/c.py") == ["a/", "a/b/"] and editor.parent_dirs("c.py") == []
+
+
 # ------------------------------------------------------------------------------------------- TUI
 def _app(env, project, monkeypatch):
     for k, v in env.items():
@@ -305,6 +320,59 @@ def test_code_tab_big_file_fast(env, project, monkeypatch):
             await pilot.press("escape")
             await pilot.pause(0.6)
             assert 1 <= ed.hl_runs <= 4
+
+    asyncio.run(main())
+
+
+def test_code_tab_file_tree(env, project, monkeypatch):
+    tui, app = _app(env, project, monkeypatch)
+    (project / "src" / "app").mkdir(parents=True)
+    (project / "src" / "app" / "main.py").write_text("x = 1\n")
+    (project / "src" / "util.py").write_text("y = 2\n")
+    (project / "readme.md").write_text("hi\n")
+
+    async def main():
+        async def wait(cond, n=80):
+            for _ in range(n):
+                await pilot.pause(0.05)
+                if cond():
+                    return True
+            return False
+
+        async with app.run_test(size=(150, 45)) as pilot:
+            assert await wait(lambda: app._booted)
+            app.open_code()
+            ol = app.query_one("#code-files", tui.CodeFileList)
+
+            def ids():
+                return [ol.get_option_at_index(i).id for i in range(ol.option_count)]
+            assert await wait(lambda: "d:src/" in ids())
+            assert "t:readme.md" in ids() and "d:src/app/" not in ids()  # thư mục đóng sẵn
+            assert ids().index("d:src/") < ids().index("t:readme.md")  # thư mục trước file
+            ol.focus()
+            ol.highlighted = ids().index("d:src/")
+            await pilot.press("right")  # → mở thư mục
+            assert await wait(lambda: "d:src/app/" in ids() and "t:src/util.py" in ids())
+            assert ol.get_option_at_index(ol.highlighted).id == "d:src/"  # con trỏ đứng yên
+            await pilot.press("right", "enter")  # → lần nữa: xuống mục con đầu (src/app/), Enter mở nó
+            assert await wait(lambda: "t:src/app/main.py" in ids())
+            assert "│ └ main.py" in ol.get_option_at_index(ids().index("t:src/app/main.py")).prompt.plain
+            ol.highlighted = ids().index("t:src/app/main.py")
+            await pilot.press("left")  # ← trên file: về thư mục cha
+            assert ol.get_option_at_index(ol.highlighted).id == "d:src/app/"
+            await pilot.press("left")  # ← trên thư mục đang mở: thu gọn
+            assert await wait(lambda: "t:src/app/main.py" not in ids())
+            ol.highlighted = ids().index("t:src/util.py")
+            await pilot.press("enter")  # Enter trên file: mở trong editor
+            ed = app.query_one("#code-editor", tui.CodeEditor)
+            assert await wait(lambda: ed.buffer is not None and ed.buffer.path.name == "util.py")
+            # có chữ trong ô lọc: danh sách phẳng kết quả tìm, không có thư mục
+            app.query_one("#code-filter").value = "main"
+            assert await wait(lambda: "f:src/app/main.py" in ids() and not any(i and i[:2] == "d:" for i in ids()))
+            app.query_one("#code-filter").value = ""
+            # mở file ở thư mục đang đóng: cây tự mở tới file đó
+            app.open_code("src/app/main.py")
+            assert await wait(lambda: "t:src/app/main.py" in ids())
 
     asyncio.run(main())
 

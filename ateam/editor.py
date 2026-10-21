@@ -70,6 +70,42 @@ def read_source(path: Path) -> SourceFile:
     return sf
 
 
+def build_tree(paths: list[str]) -> dict:
+    """Cây lồng nhau từ danh sách đường dẫn file: khoá "tên/" là thư mục (giá trị dict), "tên" là file (None)."""
+    root: dict = {}
+    for p in paths:
+        node = root
+        *dirs, name = p.split("/")
+        for d in dirs:
+            node = node.setdefault(d + "/", {})
+        node[name] = None
+    return root
+
+
+def tree_rows(tree: dict, open_dirs: set) -> list[tuple[str, str, str, bool]]:
+    """Dòng hiển thị cây thư mục ở tab Code: (nét cây "│ ├ └", đường dẫn, tên, là thư mục). Thư mục (có "/" cuối)
+    đứng trước file cùng cấp, xếp không phân biệt hoa thường; chỉ đi vào thư mục có trong open_dirs."""
+    out: list[tuple[str, str, str, bool]] = []
+
+    def walk(node: dict, prefix: str, guide: str, top: bool) -> None:
+        names = sorted((k for k in node if node[k] is not None), key=str.lower)
+        names += sorted((k for k in node if node[k] is None), key=str.lower)
+        for i, name in enumerate(names):
+            last = i == len(names) - 1
+            path, is_dir = prefix + name, node[name] is not None
+            out.append(("" if top else guide + ("└ " if last else "├ "), path, name, is_dir))
+            if is_dir and path in open_dirs:
+                walk(node[name], path, "" if top else guide + ("  " if last else "│ "), False)
+    walk(tree, "", "", True)
+    return out
+
+
+def parent_dirs(rel: str) -> list[str]:
+    """Các thư mục cha của một file ("a/b/c.py" → ["a/", "a/b/"]) — để mở cây tới file đang sửa."""
+    parts = rel.split("/")[:-1]
+    return ["/".join(parts[:i + 1]) + "/" for i in range(len(parts))]
+
+
 def disk_mtime(path: Path) -> float:
     try:
         return path.stat().st_mtime
