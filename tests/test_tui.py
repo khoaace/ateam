@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -468,6 +469,8 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             wf.query_one("#wf-template", Select).value = "review-code"
             assert await wait_for(pilot, lambda: wf.query_one("#wf-name", Input).value == "review-code")
             assert len(wf.query(".step-row")) == 2
+            k0 = list(wf.query(".step-row"))[0].id[len("wf-step-"):]
+            assert wf.query_one(f"#wf-kind-{k0}", Select).value == "review"
             await pilot.click("#wf-add")
             await pilot.pause(0.3)
             rows = list(wf.query(".step-row"))
@@ -495,7 +498,7 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             assert "review-code" in app.cfg.workflows
             assert any(p.agent == "mine" for p in app.query(AgentPane))
             steps = app.cfg.workflows["review-code"].steps
-            assert [s.agent for s in steps] == ["lead", "codex", "mine"]
+            assert [s.agent for s in steps] == ["lead", "codex", "mine"] and steps[0].kind == "review"
             assert steps[2].after == [] and steps[2].effort == "high"
             assert app.cfg.workflows["review-code"].review is False
 
@@ -1485,6 +1488,10 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
     def flow_ready(app):  # popup đã đẩy lên *và* on_mount đã vẽ xong các hàng (CI chậm: đẩy xong chưa chắc đã vẽ)
         return isinstance(app.screen, DefaultFlowScreen) and bool(app.screen.query("#df-steps .df-row"))
 
+    def lead_ready(app):  # popup ở ★ trưởng nhóm, on_mount đã điền mô tả preset
+        return isinstance(app.screen, DefaultFlowScreen) and bool(str(app.screen.query_one("#df-quality-hint")
+                                                                      .render()).strip())
+
     async def main():
         ensure_global_config()
         app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
@@ -1494,10 +1501,24 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
             assert await wait_for(pilot, lambda: app.query_one("#tabs").active == "tab-custom")
             panel = app.query_one("#custom-tab", CustomPanel)
             panel.query_one("#custom-default-flow").press()  # không dùng click: tab vừa mở có thể chưa xếp chỗ xong
+            # chưa đặt workflow mặc định: popup mở ở ★ trưởng nhóm — chọn preset chất lượng của dự án
+            assert await wait_for(pilot, lambda: lead_ready(app))
+            df = app.screen
+            assert df.form["lead"] and not df.query_one("#df-flow").display
+            df.query_one("#df-quality", Select).value = "strict"
+            await pilot.press("ctrl+s")
+            assert await wait_for(pilot, lambda: not isinstance(app.screen, DefaultFlowScreen))
+            assert app.cfg.quality == "strict" and app.cfg.default_workflow == ""
+            assert json.loads((project / ".ateam/state.json").read_text())["quality"] == "strict"
+            # cùng popup chọn một workflow: bảng agent · model · effort từng bước
+            panel.query_one("#custom-default-flow").press()
+            assert await wait_for(pilot, lambda: lead_ready(app))
+            assert app.screen.query_one("#df-quality", Select).value == "strict"  # mở lại thấy preset đã lưu
+            app.screen.query_one("#df-name", Select).value = "tinh-nang"
             assert await wait_for(pilot, lambda: flow_ready(app))
             df = app.screen
             assert df.form["name"] == "tinh-nang" and not df.form["exists"]
-            assert [s["title"] for s in df.form["steps"]] == ["Thiết kế", "Viết code", "Viết test"]
+            assert [s["title"] for s in df.form["steps"]] == ["Thiết kế", "Viết code", "Review code"]
             k = f"{df.n}-2"
             df.query_one(f"#df-agent-{k}", Select).value = "antigravity"
             await pilot.pause(0.3)
@@ -1509,7 +1530,8 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
             assert await wait_for(pilot, lambda: not isinstance(app.screen, DefaultFlowScreen))
             assert await wait_for(pilot, lambda: app.cfg.default_workflow == "tinh-nang")
             saved = load_custom()["workflows"]["tinh-nang"]
-            assert [s["agent"] for s in saved["steps"]] == ["lead", "antigravity", "codex"]
+            assert [s["agent"] for s in saved["steps"]] == ["lead", "antigravity", "lead"]  # review: trưởng nhóm
+            assert saved["steps"][2]["type"] == "review"
             assert saved["steps"][1]["effort"] == "high" and saved["steps"][2].get("model")
             assert saved["review"] is False and "prompt" in saved["steps"][0]  # giữ prompt của mẫu
             assert load_state()["default_workflow"] == "tinh-nang"

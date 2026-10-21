@@ -13,10 +13,10 @@ import unicodedata
 from pathlib import Path
 
 from . import shell
-from .config import (CATALOG, LEAD_ALIAS, NAME_RE, PROVIDERS, ROLES, WIZARD_FLOW, WORKFLOW_TEMPLATES, Config,
-                     Workflow, WorkflowStep, builtin_agent, default_cli, needs_setup, provider_of,
-                     provider_template, save_custom_item, save_default_workflow, task_kind, tier_preset,
-                     workflow_to_dict)
+from .config import (CATALOG, LEAD_ALIAS, NAME_RE, PROVIDERS, QUALITY, ROLES, WIZARD_FLOW, WORKFLOW_TEMPLATES, Config,
+                     Workflow, WorkflowStep, builtin_agent, default_cli, fill_template, needs_setup, provider_of,
+                     provider_template, save_custom_item, save_default_workflow, save_project_setting, task_kind,
+                     tier_preset, workflow_to_dict)
 from .i18n import tr
 
 # ---------------------------------------------------------------------------- wizard /setup
@@ -28,7 +28,7 @@ STEPS = [("cli", tr("CLI bạn đang dùng"), "CLI"), ("style", tr("Kiểu làm 
 STYLES = [("approve", tr("Trưởng nhóm lập kế hoạch, tôi duyệt rồi mới chạy"),
            tr("kế hoạch hiện ở khung Duyệt kế hoạch, Enter/F2 để chạy — an toàn, dễ kiểm soát")),
           ("auto", tr("Trưởng nhóm lập kế hoạch và chạy luôn"), tr("nhanh nhất, không cần duyệt")),
-          ("flow", tr("Theo quy trình cố định: thiết kế → code → test"),
+          ("flow", tr("Theo quy trình cố định: thiết kế → code → review"),
            tr("gõ mục tiêu là chạy workflow 'tinh-nang'; /goal vẫn để trưởng nhóm lập kế hoạch")),
           ("manual", tr("Chủ yếu tôi tự giao từng việc (/task)"),
            tr("tắt trưởng nhóm tự review và giao thêm việc"))]
@@ -315,10 +315,10 @@ def check_agent(cfg: Config, name: str, old: str | None, body: dict) -> None:
 
 
 def workflow_template(cfg: Config, key: str) -> dict:
-    """Mẫu workflow, agent '*' thay bằng thành viên đầu tiên (không phải trưởng nhóm)."""
-    tpl = WORKFLOW_TEMPLATES[key]
+    """Mẫu workflow, agent '*' thay theo vai trò hợp với loại bước (role_agents), không có thì thành viên đầu tiên
+    không phải trưởng nhóm."""
     member = next((n for n in cfg.active_agents() if n != cfg.lead), LEAD_ALIAS)
-    return dict(tpl, steps=[dict(st, agent=member if st["agent"] == "*" else st["agent"]) for st in tpl["steps"]])
+    return fill_template(WORKFLOW_TEMPLATES[key], role_agents(cfg), member)
 
 
 def after_text(after) -> str:
@@ -410,9 +410,26 @@ def set_input_mode(cfg: Config, name: str) -> str:
 
 
 # ---------------------------------------------------------------------------- popup "Luồng mặc định"
-def flow_names(cfg: Config) -> list[tuple[str, str]]:
-    """(tên, nhãn) cho ô chọn workflow: workflow đã có, rồi mẫu chưa tạo (lưu sẽ tạo từ mẫu)."""
-    out = [(n, n + (tr("  ★ mặc định") if n == cfg.default_workflow else "")) for n in cfg.workflows]
+LEAD_FLOW = "*lead"  # lựa chọn "★ Trưởng nhóm lập kế hoạch" ở popup (tên workflow không bắt đầu bằng *)
+# preset chất lượng của dự án (config.QUALITY): (khoá, nhãn, mô tả)
+QUALITY_CHOICES = [
+    ("fast", tr("Nhanh"), tr("ít lượt gọi nhất: test khi rủi ro, không review code, bỏ review cuối khi mọi thứ đều qua")),
+    ("auto", tr("Trưởng nhóm tự quyết"), tr("viết test khi đổi hành vi, review code (agent khác) khi thay đổi rủi ro "
+                                           "hoặc lớn")),
+    ("strict", tr("Chặt chẽ"), tr("luôn viết test và review code bởi agent khác")),
+]
+
+
+def quality_label(quality: str) -> str:
+    return dict((k, lb) for k, lb, _h in QUALITY_CHOICES).get(quality, quality)
+
+
+def flow_names(cfg: Config, in_setup: bool = False) -> list[tuple[str, str]]:
+    """(tên, nhãn) cho ô chọn luồng: ★ trưởng nhóm lập kế hoạch (trừ khi mở từ /setup), workflow đã có, rồi mẫu chưa
+    tạo (lưu sẽ tạo từ mẫu)."""
+    out = [] if in_setup else [(LEAD_FLOW, tr("★ Trưởng nhóm lập kế hoạch")
+                                + (tr("  ★ mặc định") if not cfg.default_workflow else ""))]
+    out += [(n, n + (tr("  ★ mặc định") if n == cfg.default_workflow else "")) for n in cfg.workflows]
     out += [(k, tr("{k}  (mẫu, chưa tạo)", k=k)) for k in WORKFLOW_TEMPLATES if k not in cfg.workflows]
     return out
 
@@ -433,9 +450,14 @@ def flow_step_choices(cfg: Config, agent: str) -> tuple[list[str], list[str]]:
     return (a.model_choices(), list(a.efforts_for())) if a else ([], [])
 
 
-def flow_form(cfg: Config, name: str = "") -> dict:
-    """Dữ liệu popup: workflow mặc định hiện tại (hoặc `name`; chưa có thì lấy từ mẫu)."""
-    name = name or cfg.default_workflow or WIZARD_FLOW
+def flow_form(cfg: Config, name: str = "", in_setup: bool = False) -> dict:
+    """Dữ liệu popup: luồng đang chạy khi gõ mục tiêu (hoặc `name`): ★ trưởng nhóm (preset chất lượng) hoặc
+    workflow (chưa có thì lấy từ mẫu). Mở từ /setup thì chỉ có workflow."""
+    name = name or cfg.default_workflow or (WIZARD_FLOW if in_setup else LEAD_FLOW)
+    if name == LEAD_FLOW:
+        return {"name": LEAD_FLOW, "lead": True, "quality": cfg.quality, "verify": cfg.verify.command,
+                "is_default": not cfg.default_workflow, "exists": True, "description": "", "review": cfg.auto_review,
+                "steps": []}
     w = cfg.workflows.get(name)
     if w:
         raw = workflow_to_dict(w)
@@ -444,10 +466,22 @@ def flow_form(cfg: Config, name: str = "") -> dict:
     else:
         raise ValueError(tr("Không có workflow '{name}'", name=name))
     steps = [{"agent": st.get("agent") or LEAD_ALIAS, "title": st.get("title") or tr("Bước {i}", i=i),
-              "model": st.get("model", ""), "effort": st.get("effort", "")}
+              "model": st.get("model", ""), "effort": st.get("effort", ""), "type": task_kind(st.get("type"))}
              for i, st in enumerate(raw.get("steps") or [], 1)]
-    return {"name": name, "description": raw.get("description", ""), "review": raw.get("review") is not False,
-            "steps": steps, "is_default": name == cfg.default_workflow, "exists": w is not None}
+    return {"name": name, "lead": False, "description": raw.get("description", ""),
+            "review": raw.get("review") is not False, "steps": steps, "is_default": name == cfg.default_workflow,
+            "exists": w is not None}
+
+
+def save_lead_flow(cfg: Config, root: Path, quality: str) -> str:
+    """Popup Luồng mặc định, ★ trưởng nhóm: gõ mục tiêu → trưởng nhóm lập kế hoạch theo preset chất lượng của dự án
+    (.ateam/state.json). Trả lời nhắn; preset lạ → ValueError."""
+    if quality not in QUALITY:
+        raise ValueError(tr("Không có preset chất lượng '{name}'", name=quality))
+    save_project_setting(root, "quality", None if quality == "auto" else quality)
+    cfg.quality = quality
+    set_input_mode(cfg, "")
+    return tr("Gõ mục tiêu → trưởng nhóm lập kế hoạch · chất lượng: {v}", v=quality_label(quality))
 
 
 def save_flow(cfg: Config, name: str, steps: list[dict], review: bool, make_default: bool | None) -> str:

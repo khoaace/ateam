@@ -78,6 +78,14 @@ def ui_strings() -> dict[str, str]:
         "df_hint": tr("Gõ mục tiêu (không kèm /goal) là chạy workflow này: mỗi bước một task, bước sau chờ bước "
                       "trước. Chọn agent, model, effort cho từng bước — sửa tiêu đề/prompt hay thêm bước ở trang "
                       "Workflows."),
+        "df_hint_lead": tr("Gõ mục tiêu (không kèm /goal) là trưởng nhóm lập kế hoạch và tự quyết viết test / review "
+                           "code theo preset dưới đây (lưu riêng cho dự án này); ateam tự kiểm tra cuối khi có task "
+                           "chạy song song."),
+        "df_flow": tr("Luồng"), "df_quality": tr("Chất lượng"), "df_need_verify": tr(" · kiểm tra cuối cần lệnh /verify"),
+        "cu_step_type": tr("Loại"),
+        "cu_type_hint": tr("Loại bước: code = làm việc · review = agent khác xem thay đổi của các bước nó chờ, sửa lỗi "
+                           "nhỏ · verify = ateam chạy lệnh kiểm tra (/verify) trên kết quả gộp, fail mới gọi agent của "
+                           "bước sửa."),
         "connected": tr("Đã kết nối"), "disconnected": tr("Mất kết nối — đang thử lại…"),
         "pause": tr("Tạm dừng"), "resume": tr("Tiếp tục nhận task"), "paused": tr("Đang tạm dừng"),
         "clear": tr("Dọn việc đã xong"), "theme": tr("Giao diện & màu nhấn"),

@@ -1110,8 +1110,8 @@ EN: dict[str, str] = {
         "The lead plans and runs right away",
     "nhanh nhất, không cần duyệt":
         "fastest, no approval",
-    "Theo quy trình cố định: thiết kế → code → test":
-        "Fixed process: design → code → test",
+    "Theo quy trình cố định: thiết kế → code → review":
+        "Fixed process: design → code → review",
     "gõ mục tiêu là chạy workflow 'tinh-nang'; /goal vẫn để trưởng nhóm lập kế hoạch":
         "typing a goal runs the 'tinh-nang' workflow; /goal still lets the lead plan",
     "Chủ yếu tôi tự giao từng việc (/task)":
@@ -4343,4 +4343,37 @@ EN: dict[str, str] = {
         "All tasks done and checked — final review skipped (Fast preset)",
     "🏁 Mục tiêu #{id} xong: mọi task qua kiểm tra, bỏ review cuối (preset Nhanh).":
         "🏁 Goal #{id} done: every task passed its checks, final review skipped (Fast preset).",
+    "Loại bước: code = làm việc · review = agent khác xem thay đổi của các bước nó chờ, sửa lỗi nhỏ · verify = ateam "
+    "chạy lệnh kiểm tra (/verify) trên kết quả gộp, fail mới gọi agent của bước sửa.":
+        "Step type: code = do the work · review = another member reviews the changes of the steps it waits for and "
+        "fixes small issues · verify = ateam runs the check command (/verify) on the combined result and calls the "
+        "step's agent only if it fails.",
+    "Loại":
+        "Type",
+    "Luồng":
+        "Flow",
+    "Chất lượng":
+        "Quality",
+    "Nhanh":
+        "Fast",
+    "ít lượt gọi nhất: test khi rủi ro, không review code, bỏ review cuối khi mọi thứ đều qua":
+        "fewest agent calls: tests only for risky logic, no code review, final review skipped when everything passes",
+    "Trưởng nhóm tự quyết":
+        "Lead decides",
+    "viết test khi đổi hành vi, review code (agent khác) khi thay đổi rủi ro hoặc lớn":
+        "tests when behaviour changes, code review (by another member) for risky or large changes",
+    "Chặt chẽ":
+        "Strict",
+    "luôn viết test và review code bởi agent khác":
+        "always write tests and have another member review the code",
+    "Không có preset chất lượng '{name}'":
+        "No quality preset '{name}'",
+    "Gõ mục tiêu → trưởng nhóm lập kế hoạch · chất lượng: {v}":
+        "Typing a goal → the lead plans · quality: {v}",
+    " · kiểm tra cuối cần lệnh /verify":
+        " · the final check needs a /verify command",
+    "Gõ mục tiêu (không kèm /goal) là trưởng nhóm lập kế hoạch và tự quyết viết test / review code theo preset dưới "
+    "đây (lưu riêng cho dự án này); ateam tự kiểm tra cuối khi có task chạy song song.":
+        "Typing a goal (without /goal) lets the lead plan and decide on tests / code review with the preset below "
+        "(saved for this project only); ateam adds a final check when tasks run in parallel.",
 }

@@ -531,8 +531,17 @@ def test_web_setup_and_custom(env, project, monkeypatch):
             # mục 🧩 Tuỳ chỉnh + popup "Luồng mặc định" (như DefaultFlowScreen)
             assert (await wa.command("/custom"))[2]["open"] == {"view": "custom"}
             assert (await wa.command("/flow-setup"))[2]["open"] == {"modal": "flow"}
-            df = await (await client.get("/api/default_flow")).json()
+            df = await (await client.get("/api/default_flow")).json()  # chưa đặt workflow: ★ trưởng nhóm
+            assert df["form"]["lead"] and df["names"][0]["name"] == "*lead"
+            assert [q["key"] for q in df["quality"]] == ["fast", "auto", "strict"]
+            assert (await wa.handle({"op": "default_flow_save", "name": "*lead", "quality": "rat-nhanh"}))[1] == "error"
+            r = await wa.handle({"op": "default_flow_save", "name": "*lead", "quality": "fast"})
+            assert r[1] == "ok" and wa.cfg.quality == "fast" and wa.cfg.default_workflow == ""
+            sdf = await (await client.get("/api/default_flow?setup=1")).json()  # từ /setup: chỉ workflow
+            assert sdf["form"]["name"] == "tinh-nang" and all(n["name"] != "*lead" for n in sdf["names"])
+            df = await (await client.get("/api/default_flow?name=tinh-nang")).json()
             assert df["form"]["name"] == "tinh-nang" and not df["form"]["exists"]
+            assert df["form"]["steps"][2]["type"] == "review"
             assert {"value": "lead", "label": "★ Trưởng nhóm (codex)"} in df["agents"]
             assert "high" in df["choices"]["claude"]["efforts"]
             steps = [dict(st) for st in df["form"]["steps"]]

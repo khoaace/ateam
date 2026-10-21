@@ -992,41 +992,54 @@ def agent_templates() -> dict[str, dict]:
     return out
 
 
-# Mẫu workflow. agent "*" = thành viên đầu tiên đang bật khác trưởng nhóm (điền lúc chọn mẫu).
+# Mẫu workflow. agent "*" = agent giữ vai trò hợp với loại bước (STEP_ROLES, vai trò ở /setup), không có thì thành
+# viên đầu tiên khác trưởng nhóm (bước review: trưởng nhóm) — điền lúc chọn mẫu (fill_template).
 WORKFLOW_TEMPLATES: dict[str, dict] = {
     "tinh-nang": {
-        "description": "Tính năng mới: thiết kế → viết code → viết test",
+        "description": "Tính năng mới: thiết kế → code + test → review",
         "review": True,
         "steps": [
             {"agent": LEAD_ALIAS, "title": "Thiết kế",
-             "prompt": "Đọc codebase và viết thiết kế ngắn cho: {goal}. Chưa sửa code; liệt kê các "
-                       "file cần đổi và cách kiểm tra."},
-            {"agent": "*", "title": "Viết code", "prompt": "Làm {goal} theo thiết kế ở bước trước."},
-            {"agent": "*", "title": "Viết test",
-             "prompt": "Viết/cập nhật test cho {goal} và chạy cho tới khi xanh."},
+             "prompt": "Đọc code liên quan và viết thiết kế ngắn cho: {goal} — file cần đổi, cách làm, cách kiểm "
+                       "tra. Chưa sửa code."},
+            {"agent": "*", "title": "Viết code",
+             "prompt": "Làm {goal} theo thiết kế ở bước trước; thêm hoặc cập nhật test cho hành vi mới."},
+            {"agent": "*", "type": KIND_REVIEW, "title": "Review code",
+             "prompt": "Review thay đổi của bước trước so với mục tiêu: {goal}."},
         ],
     },
     "sua-loi": {
-        "description": "Sửa lỗi: tái hiện → sửa → test chống tái diễn",
+        "description": "Sửa lỗi: tái hiện + sửa + test chống tái diễn → review",
         "review": True,
         "steps": [
-            {"agent": "*", "title": "Tái hiện lỗi",
-             "prompt": "Tìm nguyên nhân và cách tái hiện lỗi: {goal}. Chưa sửa code."},
-            {"agent": "*", "title": "Sửa lỗi", "prompt": "Sửa lỗi theo phân tích ở bước trước: {goal}"},
-            {"agent": "*", "title": "Test chống tái diễn",
-             "prompt": "Thêm test tái hiện lỗi '{goal}' và chắc chắn nó xanh sau khi sửa."},
+            {"agent": "*", "title": "Sửa lỗi",
+             "prompt": "Lỗi: {goal}. Tái hiện lỗi, tìm nguyên nhân gốc, sửa tối thiểu và thêm test tái hiện lỗi "
+                       "(fail trước khi sửa, qua sau khi sửa)."},
+            {"agent": "*", "type": KIND_REVIEW, "title": "Review bản sửa",
+             "prompt": "Kiểm tra bản sửa lỗi '{goal}': đúng nguyên nhân gốc, không làm hỏng chỗ khác."},
         ],
     },
     "review-code": {
-        "description": "Trưởng nhóm review, thành viên sửa theo góp ý",
+        "description": "Review code rồi sửa theo góp ý",
         "review": False,
         "steps": [
-            {"agent": LEAD_ALIAS, "title": "Review",
-             "prompt": "Review code liên quan tới: {goal}. Liệt kê vấn đề cụ thể (file:dòng), chưa sửa."},
+            {"agent": "*", "type": KIND_REVIEW, "title": "Review",
+             "prompt": "Review code liên quan tới: {goal}. Liệt kê vấn đề cụ thể (file:dòng), sửa luôn lỗi nhỏ rõ "
+                       "ràng."},
             {"agent": "*", "title": "Sửa theo review", "prompt": "Sửa các vấn đề review ở bước trước."},
         ],
     },
 }
+STEP_ROLES = {KIND_CODE: "code", KIND_REVIEW: "review", KIND_VERIFY: "code"}  # vai trò (ROLES) hợp với loại bước
+
+
+def fill_template(tpl: dict, by_role: dict[str, str], member: str) -> dict:
+    """Mẫu workflow với agent "*" đã thay: by_role = vai trò → tên agent giữ vai trò đó; không có thì `member`, riêng
+    bước review thì trưởng nhóm."""
+    def pick(st: dict) -> str:
+        kind = task_kind(st.get("type"))
+        return by_role.get(STEP_ROLES[kind]) or (LEAD_ALIAS if kind == KIND_REVIEW else member)
+    return dict(tpl, steps=[dict(st, agent=pick(st) if st["agent"] == "*" else st["agent"]) for st in tpl["steps"]])
 
 
 def load_custom() -> dict:
@@ -1346,10 +1359,8 @@ def save_onboard(root: Path, plan: TeamPlan, *, full_access: bool, approve_plan:
         # đã cấu hình ở popup "Luồng mặc định" (workflow có sẵn) thì giữ; chưa có thì tạo từ mẫu
         if flow_name not in base.workflows:
             flow_name = flow_name if flow_name in WORKFLOW_TEMPLATES else WIZARD_FLOW
-            tpl = WORKFLOW_TEMPLATES[flow_name]
-            code = next((n for n, a in plan.agents.items() if "code" in a["roles"]), plan.lead)
-            steps = [dict(st, agent=code if st["agent"] == "*" else st["agent"]) for st in tpl["steps"]]
-            save_custom_item("workflows", flow_name, {**tpl, "steps": steps})
+            by_role = {r: n for n, a in plan.agents.items() for r in a["roles"]}
+            save_custom_item("workflows", flow_name, fill_template(WORKFLOW_TEMPLATES[flow_name], by_role, plan.lead))
         workflow = flow_name
     save_setup(root, plan.lead, choices, workflow)
     state = load_state()

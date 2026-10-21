@@ -258,22 +258,28 @@ class SetupWeb:
 
     # ------------------------------------------------------------------ popup "Luồng mặc định"
     async def api_default_flow(self, r: web.Request) -> web.Response:
-        """Như DefaultFlowScreen: workflow, bước (agent/model/effort) + model/effort gợi ý của mọi agent."""
+        """Như DefaultFlowScreen: ★ trưởng nhóm (preset chất lượng) hoặc workflow (bước agent/model/effort) + model/effort
+        gợi ý của mọi agent. ?setup=1: mở từ /setup — chỉ workflow."""
+        in_setup = r.query.get("setup") == "1"
         try:
-            form = wizard.flow_form(self.cfg, r.query.get("name", ""))
+            form = wizard.flow_form(self.cfg, r.query.get("name", ""), in_setup)
         except ValueError as e:
             return web.json_response({"error": str(e)})
         agents = wizard.flow_agents(self.cfg)
         choices = {v: dict(zip(("models", "efforts"), wizard.flow_step_choices(self.cfg, v))) for _l, v in agents}
         return web.json_response({"form": form, "names": [{"name": n, "label": lb} for n, lb in
-                                                          wizard.flow_names(self.cfg)],
-                                  "agents": [{"label": lb, "value": v} for lb, v in agents], "choices": choices})
+                                                          wizard.flow_names(self.cfg, in_setup)],
+                                  "agents": [{"label": lb, "value": v} for lb, v in agents], "choices": choices,
+                                  "quality": [{"key": k, "label": lb, "hint": h} for k, lb, h in wizard.QUALITY_CHOICES]})
 
     async def save_default_flow(self, d: dict) -> tuple:
         make_default = d.get("make_default")
         try:
-            msg = wizard.save_flow(self.cfg, str(d.get("name") or ""), list(d.get("steps") or []),
-                                   bool(d.get("review")), None if make_default is None else bool(make_default))
+            if d.get("name") == wizard.LEAD_FLOW:
+                msg = wizard.save_lead_flow(self.cfg, self.app.root, str(d.get("quality") or "auto"))
+            else:
+                msg = wizard.save_flow(self.cfg, str(d.get("name") or ""), list(d.get("steps") or []),
+                                       bool(d.get("review")), None if make_default is None else bool(make_default))
         except ValueError as e:
             return str(e), "error"
         await self.app.reload_config()

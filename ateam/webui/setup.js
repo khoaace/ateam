@@ -296,7 +296,9 @@ window.Setup = (() => {
 
   /* ---------------------------------------------------------------- popup "Luồng mặc định" (DefaultFlowScreen) */
   async function flowModal(opts = {}) {
-    let d = await (await fetch("/api/default_flow?name=" + encodeURIComponent(opts.name || ""))).json();
+    // ★ trưởng nhóm (preset chất lượng) hoặc workflow; mở từ /setup (inSetup) thì chỉ workflow
+    const url = (name) => "/api/default_flow?name=" + encodeURIComponent(name || "") + (opts.inSetup ? "&setup=1" : "");
+    let d = await (await fetch(url(opts.name))).json();
     if (d.error) { toast(d.error, "warn"); return; }
     const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(label)}</option>`;
     const choiceOpts = (agent, model, effort) => {
@@ -308,24 +310,31 @@ window.Setup = (() => {
     const row = (st, i) => {
       const agent = d.agents.some((a) => a.value === st.agent) ? st.agent : "lead";
       const [mo, eo] = choiceOpts(agent, st.model, st.effort);
-      return `<div class="df-row" data-i="${i}"><b class="df-step">${i + 1}. ${esc(st.title)}</b>
+      return `<div class="df-row" data-i="${i}"><b class="df-step">${i + 1}. ${esc(st.title)}${st.type && st.type !== "code" ? ` (${esc(st.type)})` : ""}</b>
         <select class="agent-select" data-df="agent">${d.agents.map((a) => opt(a.value, a.label, agent)).join("")}</select>
         <select class="agent-select" data-df="model">${mo}</select>
         <select class="agent-select" data-df="effort">${eo}</select></div>`;
     };
-    const body = () => `<label>Workflow<select class="field one" id="df-name">${d.names.map((n) => opt(n.name, n.label, d.form.name)).join("")}</select></label>
-      <div class="df-head"><span>${esc(t("df_step"))}</span><span>Agent</span><span>Model</span><span>Effort</span></div>
+    const qHint = (k) => ((d.quality.find((q) => q.key === k) || {}).hint || "") + (d.form.verify ? "" : t("df_need_verify"));
+    const leadBody = () => `<label>${esc(t("df_quality"))}<select class="field one" id="df-quality">${d.quality.map((q) => opt(q.key, q.label, d.form.quality)).join("")}</select></label>
+      <div class="muted small" id="df-quality-hint">${esc(qHint(d.form.quality))}</div>`;
+    const flowBody = () => `<div class="df-head"><span>${esc(t("df_step"))}</span><span>Agent</span><span>Model</span><span>Effort</span></div>
       <div id="df-steps">${d.form.steps.map(row).join("")}</div>
       <label class="chk"><input type="checkbox" id="df-review" ${d.form.review ? "checked" : ""}> ${esc(t("df_review"))}</label>
       ${opts.inSetup ? "" : `<label class="chk"><input type="checkbox" id="df-default" checked> ${esc(t("df_default"))}</label>`}`;
+    const body = () => `<div class="muted small">${esc(t(d.form.lead ? "df_hint_lead" : "df_hint"))}</div>
+      <label>${esc(t("df_flow"))}<select class="field one" id="df-name">${d.names.map((n) => opt(n.name, n.label, d.form.name)).join("")}</select></label>
+      ${d.form.lead ? leadBody() : flowBody()}`;
     const m = openModal(`${modalHead("⚙ " + esc(t("df_title")))}<div class="modal-pad form">
-      <div class="muted small">${esc(t("df_hint"))}</div><div id="df-body">${body()}</div>
+      <div id="df-body">${body()}</div>
       <div class="row-actions end"><button class="btn ghost" data-dfa="cancel">${esc(t("cancel_edit"))}</button><button class="btn primary" data-dfa="save">${esc(t("save"))}</button></div></div>`, { box: "lg" });
     m.addEventListener("change", async (e) => {
       if (e.target.id === "df-name") {
-        d = await (await fetch("/api/default_flow?name=" + encodeURIComponent(e.target.value))).json();
+        d = await (await fetch(url(e.target.value))).json();
         if (d.error) { toast(d.error, "warn"); return; }
         $("#df-body", m).innerHTML = body();
+      } else if (e.target.id === "df-quality") {
+        $("#df-quality-hint", m).textContent = qHint(e.target.value);
       } else if (e.target.dataset.df === "agent") {  // đổi agent: nạp lại model/effort của bước
         const r = e.target.closest(".df-row"), [mo, eo] = choiceOpts(e.target.value, "", "");
         $("[data-df=model]", r).innerHTML = mo;
@@ -336,10 +345,12 @@ window.Setup = (() => {
       const b = e.target.closest("[data-dfa]");
       if (!b) return;
       if (b.dataset.dfa === "cancel") { closeModal(m); return; }
-      const steps = $$(".df-row", m).map((r) => ({ agent: $("[data-df=agent]", r).value, model: $("[data-df=model]", r).value, effort: $("[data-df=effort]", r).value }));
-      const def = $("#df-default", m);
       if (b.disabled) return;
-      const r = await busyBtn(b, request("default_flow_save", { name: d.form.name, steps, review: $("#df-review", m).checked, make_default: def ? def.checked : null }, t("busy_saving")));
+      const def = $("#df-default", m);
+      const payload = d.form.lead ? { name: d.form.name, quality: $("#df-quality", m).value } : {
+        name: d.form.name, review: $("#df-review", m).checked, make_default: def ? def.checked : null,
+        steps: $$(".df-row", m).map((r) => ({ agent: $("[data-df=agent]", r).value, model: $("[data-df=model]", r).value, effort: $("[data-df=effort]", r).value })) };
+      const r = await busyBtn(b, request("default_flow_save", payload, t("busy_saving")));
       if (r.flow_saved) { closeModal(m); if (opts.onSaved) opts.onSaved(r.flow_saved); }
     });
   }
@@ -464,6 +475,7 @@ window.Setup = (() => {
       const agent = st.agent || "lead";
       return `<div class="wf-step"><span class="wf-no"></span>
       <select class="agent-select" data-sf="agent">${agentOpts(agent)}</select>
+      <select class="agent-select" data-sf="type">${["code", "review", "verify"].map((k) => opt(k, k, st.type || "code")).join("")}</select>
       <select class="agent-select" data-sf="model">${modelOpts(agent, st.model || "")}</select>
       <select class="agent-select" data-sf="effort"${hasEfforts(agent, st.effort) ? "" : " disabled"}>${effortOpts(agent, st.effort || "")}</select>
       <input class="field one" data-sf="after" value="${esc(st.after || "")}" placeholder="${esc(t("cu_step_after"))}">
@@ -473,14 +485,14 @@ window.Setup = (() => {
     };
     const steps = (w && w.step_rows) || [{ agent: "lead" }];
     const m = openModal(`${modalHead(esc(w && w.in_file ? t("cu_edit_flow", { name: w.name }) : t("cu_add_flow")))}<div class="modal-pad form">
-      <div class="muted small">${esc(t("cu_flow_hint"))}</div>
+      <div class="muted small">${esc(t("cu_flow_hint"))}</div><div class="muted small">${esc(t("cu_type_hint"))}</div>
       ${w && !w.in_file ? `<div class="warn-text small">${esc(t("cu_flow_copy", { name: w.name }))}</div>` : ""}
       <label>${esc(t("cu_ai"))}<span class="wf-ai"><input class="field one" id="wf-ai-desc" placeholder="${esc(t("cu_ai_ph"))}"><button class="btn sm" data-wf="ai">${esc(t("cu_ai_btn"))}</button></span><span class="muted small">${esc(t("cu_ai_hint"))}</span></label>
       <label>${esc(t("cu_template"))}<select class="field one" id="wf-template"><option value="">${esc(t("cu_pick_template"))}</option>${d.workflow_templates.map((x) => `<option value="${esc(x.key)}">${esc(x.key)} — ${esc(x.description)}</option>`).join("")}</select></label>
       <label>${esc(t("cu_name"))}<input class="field one" id="wf-name" value="${esc(w && w.in_file ? w.name : "")}"></label>
       <label>${esc(t("cu_desc"))}<input class="field one" id="wf-desc" value="${esc(raw.description || "")}"></label>
       <label class="chk"><input type="checkbox" id="wf-review" ${(raw.review ?? d.auto_review) ? "checked" : ""}> ${esc(t("cu_review"))}</label>
-      <div class="wf-head"><span></span><span>Agent</span><span>Model</span><span>Effort</span><span>${esc(t("cu_step_after"))}</span><span></span></div>
+      <div class="wf-head"><span></span><span>Agent</span><span>${esc(t("cu_step_type"))}</span><span>Model</span><span>Effort</span><span>${esc(t("cu_step_after"))}</span><span></span></div>
       <div id="wf-steps">${steps.map(stepRow).join("")}</div>
       <button class="btn sm" data-wf="add">+ ${esc(t("cu_add_step"))}</button>
       <div class="row-actions end"><button class="btn ghost" data-wf="cancel">${esc(t("cancel_edit"))}</button><button class="btn primary" data-wf="save">${esc(t("save"))}</button></div></div>`, { box: "lg" });

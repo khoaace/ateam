@@ -35,8 +35,8 @@ from textual.widgets.option_list import Option
 from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, projects, reports, rules, search,
                shell, theme, todos, update, wizard)
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
-from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TIERS,
-                     WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan,
+from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TASK_KINDS, TIERS,
+                     WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan, task_kind,
                      full_access_supported, plan_team, provider_of, provider_template, save_onboard,
                      tier_preset, agent_from_dict, agent_templates,
                      clear_agent_state, found_models, load_config, load_custom, load_state, mark_setup_done,
@@ -1869,17 +1869,19 @@ class AgentEditScreen(BaseModal):
 
 
 class WorkflowEditScreen(BaseModal):
-    """Form thêm/sửa 1 workflow: danh sách bước (agent, tiêu đề, prompt, chạy sau bước nào, effort).
+    """Form thêm/sửa 1 workflow: danh sách bước (agent, loại, tiêu đề, prompt, chạy sau bước nào, effort).
     Trả về (tên, thân TOML, tên cũ) hoặc None (Esc)."""
 
     BINDINGS = [Binding("ctrl+s", "save", tr("Lưu"), priority=True)]
     DEFAULT_CSS = "WorkflowEditScreen { align: center middle; }" + FORM_CSS.replace("{box}", "flow-box") + """
+    #flow-box { width: 132; }
     #flow-steps { height: auto; }
     #flow-box .f-input { width: 64; }
     .step-row { height: 3; }
     .step-no { width: 4; padding: 1 0 0 1; text-style: bold; }
-    .step-agent { width: 32; }
-    .step-title { width: 22; }
+    .step-agent { width: 30; }
+    .step-kind { width: 14; }
+    .step-title { width: 18; }
     .step-prompt { width: 1fr; }
     .step-after { width: 12; }
     .step-effort { width: 12; }
@@ -1914,6 +1916,9 @@ class WorkflowEditScreen(BaseModal):
                                  "tiêu bạn gõ. 'Sau bước': trống = sau bước liền trước, 0 = chạy "
                                  "ngay, 1,2 = sau bước 1 và 2."),
                               "dim"))
+            yield Static(Text(tr("Loại bước: code = làm việc · review = agent khác xem thay đổi của các bước nó chờ, "
+                                 "sửa lỗi nhỏ · verify = ateam chạy lệnh kiểm tra (/verify) trên kết quả gộp, fail mới "
+                                 "gọi agent của bước sửa."), "dim"))
             with VerticalScroll(classes="f-scroll"):
                 yield form_row(tr("✨ Gợi ý"), Horizontal(
                     TextInput(placeholder=tr("mô tả quy trình, vd: thiết kế → code → test → review"), id="wf-ai-desc"),
@@ -1928,7 +1933,7 @@ class WorkflowEditScreen(BaseModal):
                 yield form_row("Review", Checkbox(tr("Trưởng nhóm review khi xong"), id="wf-review"),
                                tr("review có thể giao thêm việc"))
                 yield Horizontal(*[Static(label, classes=cls) for label, cls in (
-                    ("", "step-no"), ("Agent", "step-agent"), (tr("Tiêu đề"), "step-title"),
+                    ("", "step-no"), ("Agent", "step-agent"), (tr("Loại"), "step-kind"), (tr("Tiêu đề"), "step-title"),
                     ("Prompt", "step-prompt"), (tr("Sau bước"), "step-after"), ("Effort", "step-effort"),
                     ("", "step-del"))], id="flow-head")
                 yield Vertical(id="flow-steps")
@@ -1952,6 +1957,8 @@ class WorkflowEditScreen(BaseModal):
             Static("", classes="step-no"),
             Select(self.agent_options(agent), value=agent, allow_blank=False, classes="step-agent",
                    id=f"wf-agent-{k}"),
+            Select([(x, x) for x in TASK_KINDS], value=task_kind(st.get("type")), allow_blank=False,
+                   classes="step-kind", id=f"wf-kind-{k}"),
             TextInput(str(st.get("title") or ""), placeholder=tr("tiêu đề"), classes="step-title", id=f"wf-title-{k}"),
             TextInput(str(st.get("prompt") or ""), placeholder=tr("việc cần làm, có thể dùng {goal}"),
                   classes="step-prompt", id=f"wf-prompt-{k}"),
@@ -2042,7 +2049,8 @@ class WorkflowEditScreen(BaseModal):
                           "prompt": row.query_one(f"#wf-prompt-{k}", Input).value,
                           "after": row.query_one(f"#wf-after-{k}", Input).value,
                           "effort": row.query_one(f"#wf-effort-{k}", Input).value,
-                          "model": model if agent == was else ""})
+                          "model": model if agent == was else "",
+                          "type": str(row.query_one(f"#wf-kind-{k}", Select).value)})
         body = wizard.workflow_body(self.cfg, name, self.old_name, self.query_one("#wf-desc", Input).value,
                                     self.query_one("#wf-review", Checkbox).value, steps)
         return name, body
@@ -2060,13 +2068,16 @@ class WorkflowEditScreen(BaseModal):
 
 
 class DefaultFlowScreen(BaseModal):
-    """Popup "Luồng mặc định": chọn workflow, rồi agent · model · effort cho từng bước (giữ tiêu đề/prompt),
-    bật/tắt review cuối, đặt làm luồng chạy khi gõ mục tiêu. Lưu ngay vào custom.toml.
-    in_setup: mở từ /setup — wizard tự đặt luồng mặc định khi lưu nên ẩn ô đó. Trả về tên workflow hoặc None."""
+    """Popup "Luồng mặc định": gõ mục tiêu chạy theo đâu — ★ trưởng nhóm lập kế hoạch (preset chất lượng của dự án:
+    viết test / review code tới đâu) hoặc một workflow (agent · model · effort từng bước, giữ tiêu đề/prompt; bật/tắt
+    review cuối; đặt làm luồng chạy khi gõ mục tiêu). Lưu ngay (custom.toml, state.json, .ateam/state.json).
+    in_setup: mở từ /setup — chỉ chọn workflow, wizard tự đặt luồng mặc định khi lưu nên ẩn ô đó. Trả về tên đã lưu
+    (wizard.LEAD_FLOW = trưởng nhóm) hoặc None."""
 
     BINDINGS = [Binding("ctrl+s", "save", tr("Lưu"), priority=True)]
     DEFAULT_CSS = "DefaultFlowScreen { align: center middle; }" + FORM_CSS.replace("{box}", "df-box") + """
-    #df-steps { height: auto; }
+    #df-steps, #df-lead, #df-flow { height: auto; }
+    #df-quality-hint { height: auto; color: $text-muted; padding: 0 1 0 21; }
     .df-row { height: 3; }
     .df-title { width: 28; padding: 1 0 0 1; text-style: bold; text-wrap: nowrap; text-overflow: ellipsis; }
     .df-agent { width: 30; }
@@ -2080,28 +2091,32 @@ class DefaultFlowScreen(BaseModal):
     def __init__(self, cfg: Config, in_setup: bool = False, name: str = ""):
         super().__init__()
         self.cfg, self.in_setup = cfg, in_setup
-        self.form = wizard.flow_form(cfg, name)
+        self.form = wizard.flow_form(cfg, name, in_setup)
         self.n = 0  # bộ đếm id hàng (vẽ lại khi đổi workflow)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="df-box"):
             yield self.title_bar(tr("⚙ Luồng mặc định"))
-            yield Static(Text(tr("Gõ mục tiêu (không kèm /goal) là chạy workflow này: mỗi bước một task, bước sau "
-                                 "chờ bước trước. Chọn agent, model, effort cho từng bước — sửa tiêu đề/prompt hay "
-                                 "thêm bước ở tab 🔀 Workflows."), "dim"))
-            yield form_row("Workflow", Select([(lbl, n) for n, lbl in wizard.flow_names(self.cfg)],
-                                              value=self.form["name"], allow_blank=False, id="df-name",
-                                              classes="f-input"))
-            with Horizontal(id="df-head"):
-                yield Static(tr("Bước"), classes="df-title")
-                yield Static("Agent", classes="df-agent")
-                yield Static("Model", classes="df-model")
-                yield Static("Effort", classes="df-effort")
-            with VerticalScroll(classes="f-scroll"):
-                yield Vertical(id="df-steps")
-            with Horizontal(id="df-checks"):
-                yield Checkbox(tr("Trưởng nhóm review khi xong"), self.form["review"], id="df-review")
-                yield Checkbox(tr("Chạy khi gõ mục tiêu (luồng mặc định)"), True, id="df-default")
+            yield Static(id="df-hint")
+            yield form_row(tr("Luồng"), Select([(lbl, n) for n, lbl in wizard.flow_names(self.cfg, self.in_setup)],
+                                               value=self.form["name"], allow_blank=False, id="df-name",
+                                               classes="f-input"))
+            with Vertical(id="df-lead"):
+                yield form_row(tr("Chất lượng"), Select([(lb, k) for k, lb, _h in wizard.QUALITY_CHOICES],
+                                                       value=self.cfg.quality, allow_blank=False, id="df-quality",
+                                                       classes="f-input"))
+                yield Static(id="df-quality-hint")
+            with Vertical(id="df-flow"):
+                with Horizontal(id="df-head"):
+                    yield Static(tr("Bước"), classes="df-title")
+                    yield Static("Agent", classes="df-agent")
+                    yield Static("Model", classes="df-model")
+                    yield Static("Effort", classes="df-effort")
+                with VerticalScroll(classes="f-scroll"):
+                    yield Vertical(id="df-steps")
+                with Horizontal(id="df-checks"):
+                    yield Checkbox(tr("Trưởng nhóm review khi xong"), self.form["review"], id="df-review")
+                    yield Checkbox(tr("Chạy khi gõ mục tiêu (luồng mặc định)"), True, id="df-default")
             with Horizontal(classes="f-buttons"):
                 yield Btn(tr("Huỷ"), id="df-cancel")
                 yield Btn(tr("Lưu (Ctrl+S)"), id="df-save", variant="primary")
@@ -2110,6 +2125,13 @@ class DefaultFlowScreen(BaseModal):
         self.query_one("#df-default").display = not self.in_setup
         await self.fill()
         self.query_one("#df-name", Select).focus()
+
+    def _quality_hint(self) -> None:
+        q = str(self.query_one("#df-quality", Select).value)
+        hint = dict((k, h) for k, _l, h in wizard.QUALITY_CHOICES).get(q, "")
+        if not self.cfg.verify.command:
+            hint += tr(" · kiểm tra cuối cần lệnh /verify")
+        self.query_one("#df-quality-hint", Static).update(hint)
 
     def _choices(self, agent: str, model: str, effort: str) -> tuple[list, list]:
         models, efforts = wizard.flow_step_choices(self.cfg, agent)
@@ -2120,6 +2142,17 @@ class DefaultFlowScreen(BaseModal):
         return mopts, eopts
 
     async def fill(self) -> None:
+        lead = self.form["lead"]
+        self.query_one("#df-lead").display, self.query_one("#df-flow").display = lead, not lead
+        self.query_one("#df-hint", Static).update(Text(
+            tr("Gõ mục tiêu (không kèm /goal) là trưởng nhóm lập kế hoạch và tự quyết viết test / review code theo "
+               "preset dưới đây (lưu riêng cho dự án này); ateam tự kiểm tra cuối khi có task chạy song song.") if lead
+            else tr("Gõ mục tiêu (không kèm /goal) là chạy workflow này: mỗi bước một task, bước sau "
+                    "chờ bước trước. Chọn agent, model, effort cho từng bước — sửa tiêu đề/prompt hay "
+                    "thêm bước ở tab 🔀 Workflows."), "dim"))
+        if lead:
+            self._quality_hint()
+            return
         rows = []
         self.n += 1
         agents = wizard.flow_agents(self.cfg)
@@ -2129,7 +2162,8 @@ class DefaultFlowScreen(BaseModal):
             mopts, eopts = self._choices(agent, st["model"], st["effort"])
             effort = st["effort"] if any(v == st["effort"] for _l, v in eopts) else RESET
             rows.append(Horizontal(
-                Static(f"{i}. {st['title']}", classes="df-title"),
+                Static(f"{i}. {st['title']}" + (f" ({st['type']})" if st["type"] != "code" else ""),
+                       classes="df-title"),
                 Select(agents, value=agent, allow_blank=False, id=f"df-agent-{k}", classes="df-agent"),
                 Select(mopts, value=st["model"] or RESET, allow_blank=False, id=f"df-model-{k}", classes="df-model"),
                 Select(eopts, value=effort, allow_blank=False, id=f"df-effort-{k}", classes="df-effort"),
@@ -2144,8 +2178,11 @@ class DefaultFlowScreen(BaseModal):
         if sid == "df-name":
             event.stop()
             if event.value != self.form["name"]:
-                self.form = wizard.flow_form(self.cfg, str(event.value))
+                self.form = wizard.flow_form(self.cfg, str(event.value), self.in_setup)
                 await self.fill()
+        elif sid == "df-quality":
+            event.stop()
+            self._quality_hint()
         elif sid.startswith("df-agent-"):  # đổi agent: nạp lại model/effort của bước đó
             event.stop()
             k = sid[len("df-agent-"):]
@@ -2168,10 +2205,13 @@ class DefaultFlowScreen(BaseModal):
         return out
 
     def action_save(self) -> None:
-        make_default = None if self.in_setup else self.query_one("#df-default", Checkbox).value
         try:
-            msg = wizard.save_flow(self.cfg, self.form["name"], self.values(),
-                                   self.query_one("#df-review", Checkbox).value, make_default)
+            if self.form["lead"]:
+                msg = wizard.save_lead_flow(self.cfg, self.app.root, str(self.query_one("#df-quality", Select).value))
+            else:
+                make_default = None if self.in_setup else self.query_one("#df-default", Checkbox).value
+                msg = wizard.save_flow(self.cfg, self.form["name"], self.values(),
+                                       self.query_one("#df-review", Checkbox).value, make_default)
         except ValueError as e:
             self.notify(str(e), severity="error")
             return
