@@ -1469,11 +1469,11 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
 
     import ateam.config
     importlib.reload(ateam.config)
-    from textual.widgets import Checkbox, Select
+    from textual.widgets import Button, Checkbox, Select
 
     from ateam.config import ensure_global_config, load_config, load_custom, load_state
     from ateam.db import DB
-    from ateam.tui import CustomPanel, DefaultFlowScreen, OnboardScreen, TeamApp
+    from ateam.tui import CustomPanel, DefaultFlowScreen, OnboardScreen, TeamApp, WorkflowEditScreen
 
     async def wait_for(pilot, cond, n=200):  # CI chậm: chờ tới 20 giây, xong sớm thì thoát sớm
         for _ in range(n):
@@ -1515,6 +1515,14 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
             assert load_state()["default_workflow"] == "tinh-nang"
             assert await wait_for(pilot, lambda: any("★ mặc định" in str(s.render())
                                                      for s in panel.query(".c-info")))
+            # lưu lại ở form Sửa workflow (không có ô model): model đặt ở popup không được mất
+            bid = next(b for b, v in panel.ids.items() if v == ("edit-flow", "tinh-nang"))
+            panel.query_one(f"#{bid}", Button).press()
+            assert await wait_for(pilot, lambda: isinstance(app.screen, WorkflowEditScreen)
+                                  and len(app.screen.query(".step-row")) == 3)
+            await pilot.press("ctrl+s")
+            assert await wait_for(pilot, lambda: not isinstance(app.screen, WorkflowEditScreen))
+            assert load_custom()["workflows"]["tinh-nang"]["steps"][2].get("model") == saved["steps"][2]["model"]
             # gõ mục tiêu → chạy theo luồng mặc định
             app.run_command("/flow-setup")
             assert await wait_for(pilot, lambda: flow_ready(app))

@@ -1896,6 +1896,9 @@ class WorkflowEditScreen(BaseModal):
         super().__init__()
         self.cfg, self.old_name, self.raw = cfg, name, dict(raw or {})
         self.n = 0  # bộ đếm id hàng (không phải số thứ tự bước)
+        # id hàng -> (agent, model) của bước: form này không có ô model (chọn ở popup Luồng mặc định) nhưng lưu phải
+        # giữ lại; đổi agent của bước thì bỏ (model của CLI khác)
+        self.models: dict[str, tuple[str, str]] = {}
 
     def agent_options(self, extra: str = "") -> list[tuple[str, str]]:
         opts = [(tr("★ trưởng nhóm ({lead})", lead=self.cfg.lead), LEAD_ALIAS)] + [(n, n) for n in self.cfg.agents]
@@ -1944,6 +1947,7 @@ class WorkflowEditScreen(BaseModal):
         k = self.n
         agent = str(st.get("agent") or LEAD_ALIAS)
         after_text = wizard.after_text(st.get("after"))
+        self.models[str(k)] = (agent, str(st.get("model") or ""))
         return Horizontal(
             Static("", classes="step-no"),
             Select(self.agent_options(agent), value=agent, allow_blank=False, classes="step-agent",
@@ -2031,11 +2035,14 @@ class WorkflowEditScreen(BaseModal):
         steps = []
         for row in self.query(".step-row"):
             k = (row.id or "")[len("wf-step-"):]
-            steps.append({"agent": str(row.query_one(f"#wf-agent-{k}", Select).value),
+            agent = str(row.query_one(f"#wf-agent-{k}", Select).value)
+            was, model = self.models.get(k, ("", ""))
+            steps.append({"agent": agent,
                           "title": row.query_one(f"#wf-title-{k}", Input).value,
                           "prompt": row.query_one(f"#wf-prompt-{k}", Input).value,
                           "after": row.query_one(f"#wf-after-{k}", Input).value,
-                          "effort": row.query_one(f"#wf-effort-{k}", Input).value})
+                          "effort": row.query_one(f"#wf-effort-{k}", Input).value,
+                          "model": model if agent == was else ""})
         body = wizard.workflow_body(self.cfg, name, self.old_name, self.query_one("#wf-desc", Input).value,
                                     self.query_one("#wf-review", Checkbox).value, steps)
         return name, body
