@@ -24,6 +24,12 @@ STATE_FILE = GLOBAL_DIR / "state.json"
 CUSTOM_FILE = GLOBAL_DIR / "custom.toml"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 LEAD_ALIAS = "lead"  # agent của bước workflow = trưởng nhóm hiện tại
+# Loại task / bước workflow (khoá "type" trong kế hoạch JSON và trong TOML): code = làm việc (mặc định); review = agent
+# khác xem diff của các task nó phụ thuộc, tự sửa lỗi nhỏ, giao lỗi lớn cho tác giả; verify = kiểm tra cuối — ateam
+# chạy lệnh kiểm tra một lần trên kết quả gộp, fail mới gọi agent của task sửa
+KIND_CODE, KIND_REVIEW, KIND_VERIFY = "code", "review", "verify"
+TASK_KINDS = (KIND_CODE, KIND_REVIEW, KIND_VERIFY)
+QUALITY = ("fast", "auto", "strict")  # preset chất lượng của dự án: Nhanh · Trưởng nhóm tự quyết · Chặt chẽ
 CONFIG_VERSION = 9
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
 # hậu tố effort trong tên model (vd agy: gemini-4-argon-medium) — model đã cố định effort
@@ -658,6 +664,12 @@ class AgentConfig:
         return out
 
 
+def task_kind(value) -> str:
+    """"type" của item kế hoạch / bước workflow (TASK_KINDS); lạ hoặc vắng = code."""
+    v = str(value or "").strip().lower()
+    return v if v in TASK_KINDS else KIND_CODE
+
+
 @dataclass
 class WorkflowStep:
     agent: str = LEAD_ALIAS          # tên agent, hoặc "lead" = trưởng nhóm lúc chạy
@@ -666,6 +678,7 @@ class WorkflowStep:
     after: list[int] | None = None   # số thứ tự bước (từ 1) phải xong trước; None = bước liền trước
     effort: str = ""
     model: str = ""
+    kind: str = KIND_CODE            # TOML "type": code | review | verify (TASK_KINDS)
 
 
 @dataclass
@@ -690,11 +703,13 @@ class Workflow:
                 "depends_on": [a for a in after if 0 < a < i],
                 "effort": st.effort,
                 "model": st.model,
+                "type": st.kind,
             })
         return out
 
     def summary(self) -> str:
-        return " → ".join(st.agent or LEAD_ALIAS for st in self.steps) or tr("(chưa có bước)")
+        return " → ".join((st.agent or LEAD_ALIAS) + (f" ({st.kind})" if st.kind != KIND_CODE else "")
+                          for st in self.steps) or tr("(chưa có bước)")
 
 
 @dataclass
@@ -722,6 +737,7 @@ class Config:
     lead_fallback: list[str] = field(default_factory=list)
     lead_timeout: int = 600  # giây tối đa cho 1 lượt trưởng nhóm (lập kế hoạch/review/hỏi đáp); 0 = theo timeout agent
     default_workflow: str = ""  # gõ mục tiêu trong TUI là chạy theo workflow này ("" = trưởng nhóm)
+    quality: str = "auto"  # preset chất lượng (QUALITY): trưởng nhóm viết test / review code tới đâu
     commit_agent: str = ""  # agent viết commit message ở tab Git ("" = trưởng nhóm)
     prices: dict = field(default_factory=dict)  # [prices."<model>"] input/output… USD / 1 triệu token
     agents: dict[str, AgentConfig] = field(default_factory=dict)
@@ -1121,6 +1137,8 @@ def workflow_to_dict(w: Workflow) -> dict:
     steps = []
     for st in w.steps:
         s: dict = {"agent": st.agent or LEAD_ALIAS, "title": st.title, "prompt": st.prompt}
+        if st.kind != KIND_CODE:
+            s["type"] = st.kind
         if st.after is not None:
             s["after"] = list(st.after)
         if st.effort:
@@ -1461,6 +1479,7 @@ def _workflow_from(name: str, w: dict) -> Workflow:
             after=None if after is None else [int(x) for x in after if str(x).strip().isdigit()],
             effort=str(st.get("effort", "") or "").strip(),
             model=str(st.get("model", "") or "").strip(),
+            kind=task_kind(st.get("type")),
         ))
     review = w.get("review")
     return Workflow(name=name, description=str(w.get("description", "") or ""), steps=steps,
@@ -1506,6 +1525,7 @@ def load_config(root: Path, with_state: bool = True) -> Config:
     lead = full_state.get("lead")
     dwf = str(full_state.get("default_workflow") or "")
     cag = str(full_state.get("commit_agent") or "")
+    quality = str(pstate.get("quality") or data.get("quality") or "auto")  # theo dự án (popup Luồng mặc định)
     return Config(
         lead=lead if lead in agents else data.get("lead", "claude"),
         max_parallel=max(1, int(data.get("max_parallel", 3))),
@@ -1522,6 +1542,7 @@ def load_config(root: Path, with_state: bool = True) -> Config:
         lead_fallback=_strs(lim.get("lead_fallback")),
         lead_timeout=max(0, int(lim.get("lead_timeout", 600))),
         default_workflow=dwf if dwf in workflows else "",  # workflow đã bị xoá thì coi như không đặt
+        quality=quality if quality in QUALITY else "auto",
         commit_agent=cag if cag in agents else "",
         prices={str(k): v for k, v in (data.get("prices") or {}).items() if isinstance(v, dict)},
         agents=agents,

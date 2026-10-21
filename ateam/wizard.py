@@ -15,7 +15,8 @@ from pathlib import Path
 from . import shell
 from .config import (CATALOG, LEAD_ALIAS, NAME_RE, PROVIDERS, ROLES, WIZARD_FLOW, WORKFLOW_TEMPLATES, Config,
                      Workflow, WorkflowStep, builtin_agent, default_cli, needs_setup, provider_of,
-                     provider_template, save_custom_item, save_default_workflow, tier_preset, workflow_to_dict)
+                     provider_template, save_custom_item, save_default_workflow, task_kind, tier_preset,
+                     workflow_to_dict)
 from .i18n import tr
 
 # ---------------------------------------------------------------------------- wizard /setup
@@ -181,6 +182,7 @@ def reload_custom(cfg: Config, fresh: Config) -> tuple[set[str], set[str]]:
     cfg.custom_agents = fresh.custom_agents
     cfg.workflows = fresh.workflows
     cfg.default_workflow = fresh.default_workflow  # workflow mặc định vừa bị xoá -> bỏ
+    cfg.quality = fresh.quality
     if cfg.lead not in cfg.agents:
         cfg.lead = fresh.lead
     return set(cfg.agents) - before, before - set(cfg.agents)
@@ -326,7 +328,8 @@ def after_text(after) -> str:
 
 def workflow_body(cfg: Config, name: str, old: str | None, description: str, review: bool,
                   steps: list[dict]) -> dict:
-    """Form workflow → thân TOML. steps: [{agent, title, prompt, after (chữ), model, effort}]. Lỗi -> ValueError."""
+    """Form workflow → thân TOML. steps: [{agent, title, prompt, after (chữ), model, effort, type}]. Lỗi ->
+    ValueError."""
     if not NAME_RE.match(name):
         raise ValueError(tr("Tên chỉ gồm chữ, số, - và _"))
     if name in cfg.workflows and name != old:
@@ -347,7 +350,7 @@ def workflow_body(cfg: Config, name: str, old: str | None, description: str, rev
             after = [int(p) for p in parts]
         out.append(WorkflowStep(agent=str(st.get("agent") or LEAD_ALIAS), title=title, prompt=prompt, after=after,
                                 effort=str(st.get("effort") or "").strip().lower(),
-                                model=str(st.get("model") or "").strip()))
+                                model=str(st.get("model") or "").strip(), kind=task_kind(st.get("type"))))
     if not out:
         raise ValueError(tr("Workflow cần ít nhất 1 bước"))
     return workflow_to_dict(Workflow(name=name, description=description.strip(), steps=out, review=review))
@@ -370,7 +373,7 @@ def suggestion_form(cfg: Config, raw: dict) -> dict:
             after = None
         steps.append({"agent": agent, "title": str(st.get("title") or "").strip(),
                       "prompt": str(st.get("prompt") or "").strip(), "after": after_text(after),
-                      "effort": effort if a and effort in a.efforts_for() else ""})
+                      "effort": effort if a and effort in a.efforts_for() else "", "type": task_kind(st.get("type"))})
     if not steps:
         raise ValueError(tr("Trưởng nhóm không gợi ý được bước nào — thử mô tả rõ hơn"))
     slug = unicodedata.normalize("NFKD", str(raw.get("name") or "").translate({0x111: "d", 0x110: "D"}))  # đ/Đ không tách dấu

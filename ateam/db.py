@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     session TEXT,
     session_agent TEXT,
     resume TEXT,
-    ask TEXT
+    ask TEXT,
+    kind TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,6 +129,7 @@ class Task:
     resume: str | None = None         # prompt ngắn gửi khi tiếp tục phiên (lý do chạy lại / câu trả lời)
     # <<<ASK>>>: {"qa": [{"q", "why", "options", "rec", "a"}]} — câu hỏi của agent và câu trả lời
     ask: dict | None = None
+    kind: str | None = None           # loại task (config.TASK_KINDS): None = code, "review", "verify" (kiểm tra cuối)
 
     @classmethod
     def from_row(cls, r: sqlite3.Row) -> "Task":
@@ -207,7 +209,7 @@ class DB:
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(tasks)")}
         for col, typ in (("model", "TEXT"), ("effort", "TEXT"), ("base", "TEXT"),
                          ("head", "TEXT"), ("attempts", "INTEGER"), ("session", "TEXT"),
-                         ("session_agent", "TEXT"), ("resume", "TEXT"), ("ask", "TEXT")):
+                         ("session_agent", "TEXT"), ("resume", "TEXT"), ("ask", "TEXT"), ("kind", "TEXT")):
             if col not in cols:  # nâng cấp DB cũ
                 self.conn.execute(f"ALTER TABLE tasks ADD COLUMN {col} {typ}")
         rcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(runs)")}
@@ -259,13 +261,13 @@ class DB:
     def add_task(self, agent: str, title: str, prompt: str, *, goal_id: int | None = None,
                  parent_id: int | None = None, depends_on: list[int] | None = None,
                  status: str = QUEUED, depth: int = 0, source: str = "user",
-                 model: str | None = None, effort: str | None = None) -> int:
+                 model: str | None = None, effort: str | None = None, kind: str | None = None) -> int:
         cur = self.conn.execute(
             "INSERT INTO tasks(goal_id, parent_id, agent, title, prompt, status, depends_on,"
-            " depth, source, created, model, effort) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            " depth, source, created, model, effort, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (goal_id, parent_id, agent, title, prompt, status,
              json.dumps(depends_on or []), depth, source, time.time(), model or None,
-             effort or None))
+             effort or None, kind or None))
         return int(cur.lastrowid)
 
     def task(self, tid: int) -> Task | None:

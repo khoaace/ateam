@@ -18,7 +18,7 @@ from . import usage_logs
 from . import overview
 from . import prompts as P
 from . import rules
-from .config import EFFORT_REJECTED_RE, AgentConfig, Config
+from .config import EFFORT_REJECTED_RE, KIND_CODE, KIND_REVIEW, KIND_VERIFY, AgentConfig, Config, task_kind
 from .db import (ACTIVE, ASKING, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
                  FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Goal, Task)
 from .logtail import read_tail
@@ -39,6 +39,7 @@ MAX_REQUEUES = 5  # số lần một task được tự xếp lại vì hết h�
 QUICK_EFFORT = "low"  # lượt nhanh (viết commit message, giải thích code): không cần effort cao đặt cho lập kế hoạch
 UNTRACKED_MAX = 100  # số file chưa track gửi kèm khi viết commit message
 CHAT_REPLY_MAX = 12000  # độ dài câu trả lời chat giữ lại (thread / chuyển phiên)
+HANDOFF_MAX = 4000  # SUMMARY giữ lại của task có task khác chờ (phân tích / thiết kế / review bàn giao dài hơn)
 # --resume thất bại vì CLI không còn phiên đó (đã xoá, khác thư mục…) -> chạy lại với prompt đầy đủ
 SESSION_LOST_RE = re.compile(r"no conversation found|session[^\n]{0,60}not (?:be )?found|no (?:saved )?session"
                              r"|could not find[^\n]{0,30}(?:session|conversation|rollout|thread)"
@@ -877,12 +878,15 @@ class Orchestrator:
 
     def _insert_plan(self, gid: int, plan: list[dict], source: str,
                      from_user: bool = False) -> list[int]:
-        """from_user: kế hoạch do người dùng viết (workflow) — giữ effort/model của từng bước."""
+        """from_user: kế hoạch do người dùng viết (workflow) — giữ effort/model của từng bước, không thêm/bớt bước."""
+        if not from_user:
+            plan = self._apply_checks(plan, source)
         agents = self.cfg.active_agents()
         status = DRAFT if self.cfg.approve_plan else QUEUED
         id_map: dict = {}
         created: list[tuple[int, list]] = []
         for i, item in enumerate(plan, 1):
+            kind = task_kind(item.get("type"))
             agent = str(item.get("agent", "")).strip()
             if agent not in agents:
                 self.log(tr("⚠ Agent '{agent}' không có trong đội — giao cho {lead}.", agent=agent, lead=self.cfg.lead))
@@ -894,11 +898,13 @@ class Orchestrator:
                 effort = ""
             model = str(item.get("model") or "").strip() if from_user else ""
             tid = self.db.add_task(agent, title, prompt, goal_id=gid, status=status, source=source,
-                                   effort=effort or None, model=model or None)
+                                   effort=effort or None, model=model or None,
+                                   kind=None if kind == KIND_CODE else kind)
             id_map[item.get("id", i)] = tid
             id_map[str(item.get("id", i))] = tid
             created.append((tid, item.get("depends_on") or []))
-            self.log(f"   #{tid} → {agent}{(' @' + effort) if effort else ''}: {title}")
+            self.log(f"   #{tid} → {agent}{(' [' + kind + ']') if kind != KIND_CODE else ''}"
+                     f"{(' @' + effort) if effort else ''}: {title}")
         graph: dict[int, list[int]] = {}
         for tid, deps in created:
             if not isinstance(deps, list):  # "depends_on": 1 hoặc "1"
@@ -909,6 +915,57 @@ class Orchestrator:
             if real:
                 self.db.update_task(tid, depends_on=real)
         return [t for t, _ in created]
+
+    def _apply_checks(self, plan: list[dict], source: str) -> list[dict]:
+        """Luật chất lượng cho kế hoạch của trưởng nhóm (workflow không qua đây — người dùng tự chọn bước): preset
+        Nhanh bỏ task review; Chặt chẽ thêm review khi kế hoạch mới / kế hoạch tiếp thiếu; có lệnh kiểm tra và ≥2 task
+        chạy song song thì thêm một task kiểm tra cuối phụ thuộc mọi task khác — kiểm tra riêng từng task không thấy lỗi
+        khi ghép (worktree) hoặc thấy thay đổi dở của task kia (shared). Chuỗi tuần tự thì không cần: task cuối đã được
+        kiểm tra trên kết quả gộp. Mọi item được gán id rõ ràng để bỏ item không làm lệch depends_on."""
+        items = [dict(x, id=x.get("id", i)) for i, x in enumerate(plan, 1) if isinstance(x, dict)]
+
+        def kind(x: dict) -> str:
+            return task_kind(x.get("type"))
+        if self.cfg.quality == "fast":
+            items = [x for x in items if kind(x) != KIND_REVIEW]
+        code = [x for x in items if kind(x) == KIND_CODE]
+        if (self.cfg.quality == "strict" and source in ("plan", "followup") and code
+                and not any(kind(x) == KIND_REVIEW for x in items)):
+            items.append({"id": "ateam-review", "type": KIND_REVIEW, "title": tr("Review code"),
+                          "agent": self._reviewer({str(x.get("agent", "")) for x in code}),
+                          "prompt": "Review the changes of the tasks you depend on against the goal.",
+                          "depends_on": [x["id"] for x in code]})
+        work = [x for x in items if kind(x) != KIND_VERIFY]
+        if self.cfg.verify.command and len(work) == len(items) and self._has_parallel(work):
+            items.append({"id": "ateam-verify", "type": KIND_VERIFY, "agent": self.cfg.lead,
+                          "title": tr("Kiểm tra cuối"), "prompt": "", "depends_on": [x["id"] for x in work]})
+        return items
+
+    @staticmethod
+    def _has_parallel(items: list[dict]) -> bool:
+        """Có hai item không phụ thuộc (bắc cầu) vào nhau — chúng sẽ chạy song song."""
+        def deps(x: dict) -> set[str]:
+            d = x.get("depends_on") or []
+            return {str(v) for v in (d if isinstance(d, list) else [d]) if isinstance(v, (int, str))}
+        graph = {str(x["id"]): deps(x) for x in items}
+        reach: dict[str, set[str]] = {}
+        for n in graph:
+            seen, stack = set(), list(graph[n])
+            while stack:
+                d = stack.pop()
+                if d in graph and d not in seen:
+                    seen.add(d)
+                    stack.extend(graph[d])
+            reach[n] = seen
+        names = list(graph)
+        return any(b not in reach[a] and a not in reach[b] for i, a in enumerate(names) for b in names[i + 1:])
+
+    def _reviewer(self, authors: set[str]) -> str:
+        """Agent review code khi preset Chặt chẽ tự thêm task review: agent giữ vai trò Review mà không phải tác giả;
+        không có thì trưởng nhóm."""
+        from .wizard import role_agents
+        name = role_agents(self.cfg).get("review")
+        return name if name and name not in authors else self.cfg.lead
 
     def _drop_cycles(self, graph: dict[int, list[int]]) -> dict[int, list[int]]:
         """Bỏ phụ thuộc tạo vòng (1 chờ 2, 2 chờ 1) — không thì cả hai chờ nhau mãi, mục tiêu treo ở "running"."""
@@ -1635,7 +1692,11 @@ class Orchestrator:
                 continue
             wf = self.cfg.workflows.get(g.workflow or "")
             review = wf.review if wf and wf.review is not None else self.cfg.auto_review
-            if review:
+            if review and not g.workflow and self.cfg.quality == "fast" and self._clean(tasks):
+                self.db.update_goal(g.id, status="done", summary=tr("Mọi task xong và qua kiểm tra — bỏ review cuối "
+                                                                   "(preset Nhanh)"))
+                self.log(tr("🏁 Mục tiêu #{id} xong: mọi task qua kiểm tra, bỏ review cuối (preset Nhanh).", id=g.id))
+            elif review:
                 self.lead_busy.add(g.id)
                 self._spawn(self._review(g.id))
             else:
@@ -1839,6 +1900,33 @@ class Orchestrator:
                 pass
         return h.hexdigest()
 
+    @staticmethod
+    def _check_for(t: Task, tasks: list[Task], pending: bool = False) -> Task | None:
+        """Task kiểm tra cuối (cùng mục tiêu) phụ thuộc bắc cầu vào t — pending: chỉ task chưa chạy (draft/queued),
+        không thì mọi task chưa bị huỷ. tasks: các task của mục tiêu."""
+        by_id = {o.id: o for o in tasks}
+        for c in tasks:
+            if c.kind != KIND_VERIFY or c.id == t.id or c.status == CANCELLED \
+                    or (pending and c.status not in (DRAFT, QUEUED)):
+                continue
+            seen, stack = set(), list(c.depends_on)
+            while stack:
+                d = stack.pop()
+                if d == t.id:
+                    return c
+                if d not in seen and d in by_id:
+                    seen.add(d)
+                    stack.extend(by_id[d].depends_on)
+        return None
+
+    @staticmethod
+    def _diff_hint(deps: list[Task]) -> str:
+        """Cách xem thay đổi của các task được review: worktree → base..head của từng task (đã merge vào HEAD nên
+        `git diff HEAD` không còn thấy); shared → thay đổi chưa commit của thư mục."""
+        ranges = [f"`git diff {d.base[:12]} {d.head[:12]}` for #{d.id}" for d in deps
+                  if d.base and d.head and d.base != d.head]
+        return ", ".join(ranges) if ranges else "`git diff HEAD`; new files: `git status`"
+
     async def _run_task(self, tid: int) -> None:
         t = self.db.task(tid)
         if not t:  # bị xoá giữa lúc chiếm chỗ và chạy
@@ -1863,16 +1951,18 @@ class Orchestrator:
             if t.resume:
                 self.db.update_task(tid, resume=None)
             chat = t.source == CHAT
+            check = t.kind == KIND_VERIFY  # kiểm tra cuối: ateam chạy lệnh kiểm tra trước, fail mới gọi agent sửa
             if chat:
                 can_ask = False  # như gõ trong CLI: agent hỏi lại thì người dùng nhắn tiếp
             elif self.use_worktree:
                 workdir = await self._wt_prepare(t)
-            deps = []
-            for d in t.depends_on:
-                dt = self.db.task(d)
-                if dt:
-                    deps.append((dt.id, dt.agent, dt.title, dt.result or ""))
-            if t.source == "user" or (chat and not t.parent_id):  # /task, chat: gửi nguyên văn, không bọc vai trò/luật
+            dep_tasks = [dt for dt in (self.db.task(d) for d in t.depends_on) if dt]
+            deps = [(dt.id, dt.agent, dt.title, dt.result or "") for dt in dep_tasks]
+            goal_tasks = self.db.tasks(goal_id=t.goal_id) if t.goal_id else []
+            handoff = any(t.id in o.depends_on for o in goal_tasks)  # có task chờ kết quả của task này
+            if check:
+                full = ""
+            elif t.source == "user" or (chat and not t.parent_id):  # /task, chat: gửi nguyên văn, không bọc vai trò/luật
                 full = t.prompt + P.qa_text(qa)
             elif (t.source == "followup" and t.goal_id is None) or chat:  # hỏi tiếp thread /task hoặc chat
                 full = P.thread_prompt(self.thread_of(t), t.prompt) + P.qa_text(qa)
@@ -1882,28 +1972,39 @@ class Orchestrator:
                     goal=goal.full_text() if goal else None, deps=deps, notes=self.notes_text(),
                     cwd=str(workdir), can_delegate=t.depth < self.cfg.max_delegation_depth,
                     qa=qa, can_ask=can_ask,
-                    siblings=[(o.id, o.agent, o.title) for o in self.db.tasks(goal_id=t.goal_id)
+                    siblings=[(o.id, o.agent, o.title) for o in goal_tasks
                               if o.id != t.id and o.status != CANCELLED] if t.goal_id else None,
                     verify_cmd=v.command if v.command and agent.verify else "",
-                    overview=await self.overview_block())
+                    overview=await self.overview_block(), kind=t.kind or KIND_CODE,
+                    diff=self._diff_hint(dep_tasks) if t.kind == KIND_REVIEW else "", handoff=handoff)
             prompt = t.resume if sess else full
-            gate = bool(v.command) and agent.verify and not chat
-            before = await self._fingerprint(workdir) if gate and v.only_when_changed else None
-            self.log(f"▶ #{tid} {t.agent}: {t.title}")
-
-            run, rc, res = await self._run_agent(t, agent, prompt, workdir, log_file, kind="task",
-                                                 title=t.title, model=t.model, effort=t.effort,
-                                                 session=sess, full_prompt=full)
-            outputs.append(P.strip_echo(run.output, prompt, full))  # codex in lại prompt: bỏ khối mẫu trong đó
-            status, error = self._status_of(res, rc, agent)
-            if res in ("ratelimit", "overloaded"):  # quá tải: nghỉ vài phút rồi tự chạy lại (hoặc agent dự phòng)
-                self._set_cooldown(t.agent, run.output, overloaded=res == "overloaded")
-                if chat:  # chat là với đúng agent này: báo lỗi, không lặng lẽ chuyển người khác
-                    status, error = self._status_of(res, rc, agent)
-                else:
-                    new_agent = self.pick_fallback(t.agent)
-                    status, error = QUEUED, None
-            asked = P.parse_ask(outputs[-1]) if status == DONE and can_ask else None
+            gate = bool(v.command) and (agent.verify or check) and not chat
+            # shared: task song song đang sửa dở cùng thư mục làm lệnh kiểm tra fail giả — kiểm tra cuối chạy một lần
+            cover = self._check_for(t, goal_tasks, pending=True) if gate and not check and not self.use_worktree else None
+            if cover:
+                gate = False
+            before = await self._fingerprint(workdir) if gate and v.only_when_changed and not check else None
+            run = None
+            if check:
+                self.log(tr("▶ #{tid} kiểm tra cuối: {cmd}", tid=tid, cmd=v.command or "—"))
+                status, error = DONE, None
+            else:
+                self.log(f"▶ #{tid} {t.agent}: {t.title}")
+                run, rc, res = await self._run_agent(t, agent, prompt, workdir, log_file, kind="task",
+                                                     title=t.title, model=t.model, effort=t.effort,
+                                                     session=sess, full_prompt=full)
+                outputs.append(P.strip_echo(run.output, prompt, full))  # codex in lại prompt: bỏ khối mẫu trong đó
+                status, error = self._status_of(res, rc, agent)
+                if res in ("ratelimit", "overloaded"):  # quá tải: nghỉ vài phút rồi tự chạy lại (hoặc agent dự phòng)
+                    self._set_cooldown(t.agent, run.output, overloaded=res == "overloaded")
+                    if chat:  # chat là với đúng agent này: báo lỗi, không lặng lẽ chuyển người khác
+                        status, error = self._status_of(res, rc, agent)
+                    else:
+                        new_agent = self.pick_fallback(t.agent)
+                        status, error = QUEUED, None
+            asked = P.parse_ask(outputs[-1]) if outputs and status == DONE and can_ask else None
+            if cover and status == DONE and not asked:
+                log_file.write(tr("\n(bỏ kiểm tra riêng — kiểm tra cuối #{id} chạy trên kết quả gộp)\n", id=cover.id))
 
             # ---- cổng kiểm tra: chạy test, fail thì giao sửa
             attempts = 0
@@ -1917,7 +2018,7 @@ class Orchestrator:
                     self.log(tr("✅ #{tid} qua kiểm tra `{command}`", tid=tid, command=v.command)
                              + (tr(" sau {attempts} lần sửa", attempts=attempts) if attempts else ""))
                     break
-                if run.cancelled or tid in self._cancel_req:
+                if (run is not None and run.cancelled) or tid in self._cancel_req:
                     status, error = CANCELLED, tr("Bị huỷ")
                     break
                 if attempts >= v.max_fix_attempts:
@@ -1933,10 +2034,17 @@ class Orchestrator:
                 fa = self.cfg.agents[fixer]
                 self.log(tr("🔧 #{tid} test fail (mã {trc}) — {fixer} sửa lần "
                             "{attempts}/{max_fix_attempts}", tid=tid, trc=trc, fixer=fixer, attempts=attempts, max_fix_attempts=v.max_fix_attempts))
-                fprompt = P.fix_prompt(agent=fixer, task_id=tid, title=t.title, prompt=t.prompt,
-                                       command=v.command, rc=trc, output=tail, attempt=attempts,
-                                       max_attempts=v.max_fix_attempts, cwd=str(workdir),
-                                       original_agent=t.agent)
+                if check:
+                    fprompt = P.check_fix_prompt(
+                        agent=fixer, task_id=tid, goal=goal.full_text() if goal else None,
+                        note=t.prompt if t.prompt != t.title else "",
+                        tasks=[(d.id, d.agent, d.title) for d in dep_tasks], command=v.command, rc=trc,
+                        output=tail, attempt=attempts, max_attempts=v.max_fix_attempts, cwd=str(workdir))
+                else:
+                    fprompt = P.fix_prompt(agent=fixer, task_id=tid, title=t.title, prompt=t.prompt,
+                                           command=v.command, rc=trc, output=tail, attempt=attempts,
+                                           max_attempts=v.max_fix_attempts, cwd=str(workdir),
+                                           original_agent=t.agent)
                 same = fixer == t.agent
                 fsess = None
                 if same:  # agent của task tự sửa: tiếp tục phiên vừa làm, chỉ gửi lỗi
@@ -1958,10 +2066,17 @@ class Orchestrator:
                     break
                 status, error = self._status_of(res, rc, fa)
 
-            summary = (P.extract_summary(outputs[0], CHAT_REPLY_MAX) if chat else P.extract_summary(outputs[0])) \
-                if outputs else None
-            if len(outputs) > 1 and status == DONE:
-                summary = (summary or "") + tr("\n(Đã sửa để qua kiểm tra: {v})", v=P.extract_summary(outputs[-1])[:600])
+            if check:
+                summary = (tr("Chưa đặt lệnh kiểm tra (/verify) — bỏ qua kiểm tra cuối") if not v.command else
+                           (tr("✅ `{cmd}` qua trên kết quả gộp", cmd=v.command)
+                            + (tr(" sau {n} lần sửa: {v}", n=len(outputs), v=P.extract_summary(outputs[-1])[:600])
+                               if outputs else "")) if status == DONE else None)
+            else:
+                summary = (P.extract_summary(outputs[0], CHAT_REPLY_MAX if chat else
+                                             HANDOFF_MAX if handoff else 2500)) if outputs else None
+                if len(outputs) > 1 and status == DONE:
+                    summary = (summary or "") + tr("\n(Đã sửa để qua kiểm tra: {v})",
+                                                   v=P.extract_summary(outputs[-1])[:600])
             for out in outputs:
                 for n in P.parse_notes(out):
                     self.db.add_note(t.agent, n)
@@ -1972,7 +2087,7 @@ class Orchestrator:
                     parked = True
             elif self.use_worktree and not chat:
                 status, error = await self._wt_finish(t, workdir, status, error)
-            if status == DONE and not asked and not chat:
+            if status == DONE and not asked and not chat and not check:
                 self._delegations(t, "\n".join(outputs))
         except mentions.AttachmentError as e:
             status, error = FAILED, str(e)
@@ -2047,6 +2162,7 @@ class Orchestrator:
             self.log(tr("⚠ #{id} muốn giao việc nhưng đã chạm giới hạn {max_delegation_depth} tầng.", id=t.id, max_delegation_depth=self.cfg.max_delegation_depth))
             return
         agents = self.cfg.active_agents()
+        made = []
         for to, title, body in dels[:MAX_DELEGATIONS_PER_TASK]:
             if to not in agents:
                 self.log(tr("⚠ #{id} giao việc cho '{to}' — không có trong đội, bỏ qua.", id=t.id, to=to))
@@ -2054,8 +2170,13 @@ class Orchestrator:
             nid = self.db.add_task(to, title or body[:60], body, goal_id=t.goal_id,
                                    parent_id=t.id, depth=t.depth + 1,
                                    status=QUEUED, source=f"delegate:{t.agent}")
+            made.append(nid)
             self.log(tr("🤝 {agent} giao task #{nid} cho {to}: {title}", agent=t.agent, nid=nid, to=to,
                         title=title or body[:60]))
+        if made and t.goal_id:  # kiểm tra cuối chưa chạy chờ cả việc vừa giao (vd reviewer giao sửa cho tác giả)
+            for c in self.db.tasks(goal_id=t.goal_id, status=(DRAFT, QUEUED)):
+                if c.kind == KIND_VERIFY and t.id in c.depends_on:
+                    self.db.update_task(c.id, depends_on=c.depends_on + made)
 
     # ------------------------------------------------------------------ review
     async def _review(self, gid: int) -> None:
@@ -2064,12 +2185,16 @@ class Orchestrator:
             self.db.update_goal(gid, status="reviewing")
             self.emit("changed")
             self.log(tr("🔍 {lead} đang review mục tiêu #{gid} (vòng {round})…", lead=self.cfg.lead, gid=gid, round=g.round))
-            # tiếp tục phiên lập kế hoạch: trưởng nhóm đã đọc code lúc đó, không phải khám phá lại dự án
+            # tiếp tục phiên lập kế hoạch: trưởng nhóm đã đọc code lúc đó, không phải khám phá lại dự án; mục tiêu
+            # không có phiên đó (chạy theo workflow) thì gửi kèm bản tổng quan dự án
+            ov = "" if self._lead_session(g) else await self.overview_block()
             out = await self._call_lead(
                 P.review_prompt(self.cfg, g.full_text(), g.round, self._results_text(gid), str(self.root),
-                                final=g.round >= self.cfg.max_rounds),
+                                final=g.round >= self.cfg.max_rounds, overview=ov),
                 tr("Review mục tiêu #{gid} vòng {round}", gid=gid, round=g.round), goal_id=gid,
                 keep_session=True)
+            if out is not None:
+                self._overview_seen(gid, ov)
             data = P.extract_json(out or "", dict, keys=("done", "summary", "new_tasks"))
             if not data:
                 self.db.update_goal(gid, status="incomplete",
@@ -2103,15 +2228,32 @@ class Orchestrator:
         """Kết quả các task của mục tiêu, gửi trưởng nhóm khi review / lập kế hoạch tiếp."""
         lines = []
         cmd = self.cfg.verify.command
-        for t in self.db.tasks(goal_id=gid):
+        tasks = self.db.tasks(goal_id=gid)
+        for t in tasks:
             if t.status == CANCELLED:
                 continue
             body = (t.result or t.error or "")[:1500]
             a = self.cfg.agents.get(t.agent)
-            if cmd and t.status == DONE and a and a.verify:  # trưởng nhóm khỏi tự chạy lại test
+            chk = self._check_for(t, tasks) if t.kind != KIND_VERIFY else None
+            if chk:  # task song song ở shared không chạy kiểm tra riêng: chỉ kết quả kiểm tra cuối là đúng
+                body += f"\n(checked by final verify #{chk.id}: {chk.status})"
+            elif cmd and t.status == DONE and a and a.verify and t.kind != KIND_VERIFY:  # trưởng nhóm khỏi chạy lại
                 body += f"\n(verification `{cmd}`: passed, or no file changes)"
-            lines.append(f"#{t.id} [{t.agent}] {t.status}: {t.title}\n{body}\n")
+            lines.append(f"#{t.id} [{t.agent}]{(' ' + t.kind) if t.kind else ''} {t.status}: {t.title}\n{body}\n")
         return "\n".join(lines)
+
+    def _clean(self, tasks: list[Task]) -> bool:
+        """Mục tiêu xong gọn — preset Nhanh bỏ review cuối: mọi task xong, có lệnh kiểm tra, mỗi task đã qua kiểm tra
+        riêng hoặc được kiểm tra cuối bao, không có task review (kết quả review cần trưởng nhóm đọc)."""
+        if not self.cfg.verify.command:
+            return False
+        for t in tasks:
+            if t.status != DONE or t.kind == KIND_REVIEW:
+                return False
+            a = self.cfg.agents.get(t.agent)
+            if t.kind != KIND_VERIFY and not (a and a.verify) and not self._check_for(t, tasks):
+                return False
+        return True
 
     # ------------------------------------------------------------------ git worktree
     async def git_ident(self) -> list[str]:

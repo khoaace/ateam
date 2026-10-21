@@ -19,7 +19,7 @@ def roster(cfg: Config, with_effort: bool = False) -> str:
 
 
 TASK_SCHEMA = (
-    '[{"id": 1, "agent": "<member name>", "title": "<short title>", '
+    '[{"id": 1, "type": "code", "agent": "<member name>", "title": "<short title>", '
     '"prompt": "<concise, self-contained instructions: what to change, where (files/areas), done when>", '
     '"depends_on": [<ids>]}]'
 )
@@ -38,14 +38,38 @@ read the code themselves, so do not read the whole codebase.""")
     return f"""{explore}
 Use as FEW tasks as possible (usually 1-3, at most 6) and assign each to the best member (you may assign
 tasks to yourself, "{cfg.lead}"). If one member can do it, make ONE task. Split only when parts can run in
-parallel on different files or need different strengths. Do NOT create separate tasks for testing,
-reviewing or verifying: ateam runs the project's checks after each task and you review the results at the end.
+parallel on different files or need different strengths.
+{checks_rules(cfg)}
 Each prompt must be self-contained (the member only sees its own task, the goal and results of tasks it
 depends on) but SHORT — under ~150 words: what to change, where (files/areas), constraints, and when it is
 done. Do not paste code; choose sensible defaults for minor details. Use "depends_on" when a task needs
 another task's output; otherwise tasks run in parallel, so parallel tasks must not edit the same files.
 Write titles and prompts in the same language as the {language_of}.
 DO NOT modify any files now.{effort_hint(cfg)}"""
+
+
+def checks_rules(cfg: Config) -> str:
+    """Trưởng nhóm quyết viết test / review code theo preset chất lượng của dự án (cfg.quality). Kiểm tra cuối thì
+    ateam tự thêm theo luật (Orchestrator._apply_checks) — chỉ dặn đừng tạo task chạy test."""
+    if cfg.quality == "fast":
+        tests, review = "Tests: only for risky logic, inside the task that makes the change.", ""
+    elif cfg.quality == "strict":
+        tests = ("Tests: REQUIRED — every task that changes behaviour must add or update tests for it (in the same "
+                 "task, or in a separate task for another member that depends on it).")
+        review = ('Code review: REQUIRED — add one task with "type": "review" for a member other than the authors '
+                  "(prefer one whose strength is review), depending on the tasks to review.")
+    else:
+        tests = ("Tests: when a task changes behaviour and the project has tests, ask for tests in that task's "
+                 "prompt; only for large or risky logic, add a separate task for another member to write them "
+                 "(depending on it). No tests for docs, config, styling or trivial edits.")
+        review = ("Code review: only for risky changes (security, data loss, money, concurrency, public APIs, "
+                  'migrations) or large ones, add one task with "type": "review" for a member other than the '
+                  "authors (prefer one whose strength is review), depending on the tasks to review — it reviews "
+                  "their diff and fixes small issues. Skip it for small, low-risk changes.")
+    check = ("Never create tasks just to run tests or checks: "
+             + (f"ateam runs `{cfg.verify.command}` after each task, and once more on the combined result when tasks"
+                " run in parallel." if cfg.verify.command else "each member runs the tests related to its change."))
+    return "\n".join(x for x in (tests, review, check) if x)
 
 
 def effort_hint(cfg: Config) -> str:
@@ -130,9 +154,12 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
                 goal: str | None, deps: list[tuple[int, str, str, str]], notes: str,
                 cwd: str, can_delegate: bool, qa: list[dict] | None = None,
                 can_ask: bool = True, siblings: list[tuple[int, str, str]] | None = None,
-                verify_cmd: str = "", overview: str = "") -> str:
+                verify_cmd: str = "", overview: str = "", kind: str = "code", diff: str = "",
+                handoff: bool = False) -> str:
     """siblings: các task khác cùng mục tiêu (id, agent, tiêu đề) — để không làm chồng việc của nhau;
-    verify_cmd: lệnh kiểm tra ateam tự chạy sau task — agent chỉ cần chạy test liên quan."""
+    verify_cmd: lệnh kiểm tra ateam tự chạy sau task — agent chỉ cần chạy test liên quan;
+    kind "review": review_rules, diff = cách xem thay đổi của các task phụ thuộc;
+    handoff: có task khác phụ thuộc task này — task phân tích/thiết kế/review bàn giao bằng SUMMARY dài hơn."""
     others = [n for n in cfg.active_agents() if n != agent]
     parts = [
         f'You are "{agent}", a member of an AI agent team (team lead: "{cfg.lead}").',
@@ -154,8 +181,7 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
         parts.append(f"\nSHARED TEAM NOTES:\n{notes}")
     if qa:
         parts.append(qa_text(qa))
-    rules = [
-        "\nRULES:",
+    rules = ["\nRULES:"] + (review_rules(diff, bool(deps)) if kind == "review" else []) + [
         "- Do your task yourself and stay within its scope. Make the smallest change that completes it: do not"
         " refactor, reformat or rename unrelated code, and do not add features, dependencies or docs nobody"
         " asked for.",
@@ -182,8 +208,26 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
         " <<<NOTE>>>your note<<<END>>>",
         "- " + SUMMARY_RULE,
     ]
+    if handoff:
+        rules.append("- Other tasks depend on yours. If your task is analysis, design or review (no code changes), the"
+                     " SUMMARY is the hand-off they receive: include everything they need, up to ~40 lines.")
     parts.extend(rules)
     return "\n".join(parts)
+
+
+def review_rules(diff: str, has_deps: bool) -> list[str]:
+    """Task "review": agent khác tác giả xem diff, tự sửa lỗi nhỏ, giao lỗi lớn cho tác giả, liệt kê vấn đề còn mở."""
+    first = (f"- You REVIEW the work of the tasks you depend on; do not redo it. Read their diff first ({diff}),"
+             " then only the code around it." if has_deps else
+             "- You REVIEW the code described in your task; read only the files it concerns.")
+    return [first,
+            "- Check correctness against the goal, edge cases, error handling and security. Do not comment on style or"
+            " rewrite working code you would have written differently.",
+            "- Fix clear, small bugs yourself with minimal edits. Delegate a larger fix to the task's author with a"
+            " DELEGATE block (file:line, what is wrong, what to change) when delegation is available; otherwise"
+            " report it.",
+            "- In your SUMMARY list what you fixed and every problem still open (file:line — problem), or write"
+            ' "no issues found".']
 
 
 def qa_text(qa: list[dict] | None) -> str:
@@ -267,8 +311,10 @@ unless a test is clearly wrong — then say why. Keep the fix minimal: change on
 End your answer with a line starting with 'SUMMARY:' describing what you fixed (at most ~3 lines)."""
 
 
-def review_prompt(cfg: Config, goal: str, round_no: int, results: str, cwd: str, final: bool = False) -> str:
-    """final: vòng cuối (max_rounds) — task mới không chạy nữa nên không cần viết."""
+def review_prompt(cfg: Config, goal: str, round_no: int, results: str, cwd: str, final: bool = False,
+                  overview: str = "") -> str:
+    """final: vòng cuối (max_rounds) — task mới không chạy nữa nên không cần viết; overview: khối PROJECT OVERVIEW
+    khi không tiếp phiên lập kế hoạch nào (mục tiêu chạy theo workflow)."""
     more = ("This is the LAST round: new tasks will not run, so set \"new_tasks\" to [] and say in the summary "
             "what is still missing, if anything." if final else
             "If not, create follow-up tasks ONLY for concrete bugs or missing requirements (at most 3, same short "
@@ -283,9 +329,10 @@ GOAL:
 
 Review round {round_no} of {cfg.max_rounds}. Results of the tasks so far:
 {results}
-
-Judge from the task results and verification status above. Open files (prefer `git diff`) only to check
-a specific doubt; do not re-explore the project or re-run the whole test suite. DO NOT modify any files.
+{(overview + chr(10)) if overview else ''}
+Judge from the task results and verification status above; review tasks list the problems they fixed and any
+still open. Open files (prefer `git diff`) only to check a specific doubt; do not re-explore the project or
+re-run the whole test suite. DO NOT modify any files.
 Decide whether the goal is achieved: set "done" to true when its requirements are met, even if you would
 have written the code differently. {more}
 Write in the same language as the goal.{effort_hint(cfg) if not final else ''}
@@ -533,12 +580,15 @@ Design 2-6 steps. Each step is one task for one member. In titles and prompts wr
 user's goal text should go (the workflow is reused for many goals). Prompts must be self-contained
 instructions. "after" lists the step numbers (1-based) this step waits for; omit it to wait for the
 previous step, use [] to start immediately (parallel steps). "effort" is optional (one of that member's
-effort levels). "review": true if the lead should review the result at the end.
+effort levels). "type" is "code" (default), "review" (another member reviews the diff of the steps it waits
+for and fixes small issues) or "verify" (ateam runs the project's check command once on the combined result
+of the steps it waits for and its agent fixes failures — useful after parallel steps). "review": true if the
+lead should review the result at the end.
 Write name as a short kebab-case slug; write description, titles and prompts in the language of the
 user's request above. Do NOT modify any files.
 
 Reply with ONLY a JSON object, no other text:
-{{"name": "...", "description": "...", "review": true, "steps": [{{"agent": "<member or lead>", "title": "...", "prompt": "...", "after": [1], "effort": ""}}]}}"""
+{{"name": "...", "description": "...", "review": true, "steps": [{{"agent": "<member or lead>", "type": "code", "title": "...", "prompt": "...", "after": [1], "effort": ""}}]}}"""
 
 
 def extract_commit_message(text: str) -> str:
@@ -743,5 +793,29 @@ OUTPUT (last lines):
 
 Fix the code so the verification command passes. Do not delete or weaken tests to make them pass,
 unless a test is clearly wrong — then say why. Keep the fix minimal: change only what the failure needs.
+{FIX_CHECK_RULE}
+End your answer with a line starting with 'SUMMARY:' describing what you fixed (at most ~3 lines)."""
+
+
+def check_fix_prompt(*, agent: str, task_id: int, goal: str | None, note: str, tasks: list[tuple[int, str, str]],
+                     command: str, rc: int, output: str, attempt: int, max_attempts: int, cwd: str) -> str:
+    """Kiểm tra cuối (task "verify") fail trên kết quả gộp của các task: agent tìm thay đổi gây lỗi rồi sửa."""
+    done = "\n".join(f"- #{i} by {a}: {title}" for i, a, title in tasks) or "- (none)"
+    return f"""You are "{agent}", a member of an AI agent team. Working directory: {cwd}
+
+The team finished the tasks below, then ateam ran the project's verification command once on their COMBINED
+result (final check #{task_id}) and it fails. Fix attempt {attempt} of {max_attempts}.
+{('GOAL:' + chr(10) + goal + chr(10)) if goal else ''}
+TASKS CHECKED:
+{done}
+{('NOTE: ' + note + chr(10)) if note else ''}
+VERIFICATION COMMAND: {command}
+EXIT CODE: {rc}
+OUTPUT (last lines):
+{output}
+
+Find the change that breaks it (`git status`, `git diff`, `git log`) and fix the code so the verification
+command passes. Do not delete or weaken tests to make them pass, unless a test is clearly wrong — then say why.
+Keep the fix minimal: change only what the failure needs.
 {FIX_CHECK_RULE}
 End your answer with a line starting with 'SUMMARY:' describing what you fixed (at most ~3 lines)."""

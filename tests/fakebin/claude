@@ -91,6 +91,11 @@ elif [[ "$P" == *"NEW FOLLOW-UP REQUEST"* ]]; then
 elif [[ "$P" == *"To ask the user first"* && "$P" == *"CAN_HOI"* ]]; then
   # Lập kế hoạch mà mục tiêu chưa rõ: hỏi lại người dùng trước (như /grill)
   echo '{"question": "Đăng nhập bằng gì?", "why": "đổi cách làm", "options": ["Email", "Google"], "recommended": "Email"}'
+elif [[ "$P" == *"Reply with ONLY a JSON array"* && "$P" == *"CO_KIEMTRA"* ]]; then
+  # Kế hoạch có loại task: 2 task code song song + 1 review (ateam tự thêm kiểm tra cuối khi có lệnh /verify)
+  echo '[{"id":1,"type":"code","agent":"codex","title":"Tạo a.txt","prompt":"tạo file a.txt","depends_on":[]},
+ {"id":2,"type":"code","agent":"grok","title":"Tạo b.txt","prompt":"tạo file b.txt","depends_on":[]},
+ {"id":3,"type":"review","agent":"claude","title":"Review","prompt":"xem lại a và b","depends_on":[1,2]}]'
 elif [[ "$P" == *"Reply with ONLY a JSON array"* && "$P" == *"TREO_LAP"* ]]; then
   # CLI treo khi lập kế hoạch (như agy không in gì): test huỷ / lead_timeout
   sleep 30
@@ -114,6 +119,15 @@ elif [[ "$P" == *"Review round 1 of"* ]]; then
   echo '{"done": false, "summary": "Còn thiếu c.txt", "new_tasks": [{"id":1,"agent":"claude","title":"Tạo c.txt","prompt":"tạo c.txt","depends_on":[]}]}'
 elif [[ "$P" == *"Review round"* ]]; then
   echo '{"done": true, "summary": "Đã đủ a, b, c.", "new_tasks": []}'
+elif [[ "$P" == *"You REVIEW"* ]]; then
+  # Task review: xem diff, không sửa gì; CO_LOI → giao sửa cho tác giả (codex) bằng DELEGATE
+  echo "Đang xem diff..."
+  if [[ "$P" == *"CO_LOI"* ]]; then
+    printf '<<<DELEGATE to="codex" title="Sửa lỗi review">>>\nsửa lỗi ở a.txt dòng 1\n<<<END>>>\n'
+    echo "SUMMARY: còn lỗi a.txt:1 — đã giao codex sửa"
+  else
+    echo "SUMMARY: no issues found"
+  fi
 elif [[ "$P" == *"ASKME"* && "$P" != *"YOU ASKED THE USER EARLIER"* ]] && [ -z "$RESUME" ]; then
   # <<<ASK>>>: hỏi người dùng giữa task (lượt đầu, chưa có câu trả lời)
   echo wip > wip.txt

@@ -4324,4 +4324,23 @@ EN: dict[str, str] = {
         'Task table: grouped by plan',
     'Bảng task: bảng phẳng theo id':
         'Task table: flat by id',
+    # trưởng nhóm quyết test / review code, ateam tự kiểm tra cuối
+    "Review code":
+        "Code review",
+    "Kiểm tra cuối":
+        "Final check",
+    "▶ #{tid} kiểm tra cuối: {cmd}":
+        "▶ #{tid} final check: {cmd}",
+    "\n(bỏ kiểm tra riêng — kiểm tra cuối #{id} chạy trên kết quả gộp)\n":
+        "\n(own check skipped — final check #{id} runs on the combined result)\n",
+    "Chưa đặt lệnh kiểm tra (/verify) — bỏ qua kiểm tra cuối":
+        "No check command set (/verify) — final check skipped",
+    "✅ `{cmd}` qua trên kết quả gộp":
+        "✅ `{cmd}` passed on the combined result",
+    " sau {n} lần sửa: {v}":
+        " after {n} fix(es): {v}",
+    "Mọi task xong và qua kiểm tra — bỏ review cuối (preset Nhanh)":
+        "All tasks done and checked — final review skipped (Fast preset)",
+    "🏁 Mục tiêu #{id} xong: mọi task qua kiểm tra, bỏ review cuối (preset Nhanh).":
+        "🏁 Goal #{id} done: every task passed its checks, final review skipped (Fast preset).",
 }

@@ -449,3 +449,93 @@ def test_continue_goal_and_thread(env, project, tmp_path):
     log = (project / f".ateam/logs/t{t2.id}.log").read_text()
     assert t2.status == "done" and "không tiếp tục được phiên cũ" in log and "nhớ lượt trước" in log
     assert t2.session and t2.session != first.session
+
+
+def _checks_run(env, project, tmp_path, verify: str, goal: str = "tạo file CO_KIEMTRA") -> dict:
+    """Mục tiêu có kế hoạch 2 task code song song (codex, grok) + 1 review (claude); trả {loại/nguồn: task}."""
+    ateam(env, project, "verify", verify)
+    r = ateam(dict(env, ATEAM_FAKE_FULL_LOG=str(tmp_path / "full.log")), project, "goal", "-y", "-q", goal)
+    assert "=== Mục tiêu #1: done ===" in r.stdout, r.stdout
+    ts = tasks(project)
+    assert all(t.status == "done" for t in ts), [(t.id, t.agent, t.status, t.error) for t in ts]
+    out = {t.kind or t.source: t for t in ts}
+    out["codex"], out["grok"] = ts[0], ts[1]
+    return out
+
+
+def test_parallel_plan_gets_one_final_check_and_review_sees_diff(env, project, tmp_path):
+    """Kế hoạch có 2 task song song: ateam tự thêm kiểm tra cuối (chạy 1 lần trên kết quả gộp, chờ cả việc giao thêm);
+    ở shared các task song song bỏ kiểm tra riêng (thay đổi dở của nhau làm fail giả); reviewer được chỉ cách xem diff."""
+    write_project_config(project, "auto_review = false\n")
+    ts = _checks_run(env, project, tmp_path, "test -f a.txt && test -f b.txt")
+    chk, rev, readme = ts["verify"], ts["review"], ts["delegate:codex"]  # codex giao README cho grok
+    assert chk.agent == "claude" and sorted(chk.depends_on) == sorted([1, 2, rev.id, readme.id])
+    assert rev.agent == "claude" and rev.depends_on == [1, 2] and rev.result == "no issues found"
+    for t in (ts["codex"], ts["grok"], rev, readme):
+        log = (project / f".ateam/logs/t{t.id}.log").read_text()
+        assert "[kiểm tra]" not in log and f"kiểm tra cuối #{chk.id}" in log, t.title
+    assert (project / f".ateam/logs/t{chk.id}.log").read_text().count("[kiểm tra]") == 1
+    assert "qua trên kết quả gộp" in chk.result
+    full = (tmp_path / "full.log").read_text()
+    assert "You REVIEW the work of the tasks you depend on" in full and "`git diff HEAD`" in full
+
+
+def test_final_check_failure_is_fixed_by_its_agent(env, project, tmp_path):
+    write_project_config(project, "auto_review = false\n")
+    chk = _checks_run(env, project, tmp_path, 'test -f c.txt || { echo "FAIL: thiếu c.txt"; exit 1; }')["verify"]
+    assert chk.attempts == 1 and "sau 1 lần sửa" in chk.result and (project / "c.txt").exists()
+    log = (project / f".ateam/logs/t{chk.id}.log").read_text()
+    assert "FAIL: thiếu c.txt" in log and "claude · fix" in log
+    assert "final check #" in (tmp_path / "full.log").read_text()  # prompt sửa nêu đây là kiểm tra kết quả gộp
+
+
+def test_final_check_runs_on_merged_head_in_worktree_mode(env, project, tmp_path):
+    """Worktree: mỗi task vẫn tự kiểm tra trong nhánh riêng; kiểm tra cuối chạy trên HEAD sau khi đã merge cả hai."""
+    git_init(project)
+    write_project_config(project, 'isolation = "worktree"\nauto_review = false\n')
+    ts = _checks_run(env, project, tmp_path, "ls")
+    chk = ts["verify"]
+    for t in (ts["codex"], ts["grok"]):
+        assert "[kiểm tra]" in (project / f".ateam/logs/t{t.id}.log").read_text()
+    log = (project / f".ateam/logs/t{chk.id}.log").read_text()
+    assert "[test] a.txt" in log and "[test] b.txt" in log  # cả hai thay đổi đã gộp
+    full = (tmp_path / "full.log").read_text()
+    assert "`git diff " in full and " for #1" in full  # reviewer xem đúng diff đã merge của task 1
+
+
+def test_fast_preset_drops_review_and_skips_final_review_when_clean(env, project, tmp_path):
+    write_project_config(project, 'quality = "fast"\n')
+    ts = _checks_run(env, project, tmp_path, "test -f a.txt && test -f b.txt")
+    assert "review" not in ts and "verify" in ts  # không review code, vẫn kiểm tra cuối
+    assert not any(t.source == "review" for t in tasks(project))  # không gọi review cuối
+    from ateam.db import DB
+    assert "preset Nhanh" in DB(project / ".ateam/team.db").goal(1).summary
+
+
+def test_workflow_verify_step_runs_check_once(env, project):
+    write_project_config(project, """auto_review = false
+[workflows.song-song]
+[[workflows.song-song.steps]]
+agent = "codex"
+title = "A"
+prompt = "tạo a"
+after = []
+[[workflows.song-song.steps]]
+agent = "grok"
+title = "B"
+prompt = "tạo b"
+after = []
+[[workflows.song-song.steps]]
+agent = "lead"
+type = "verify"
+title = "Kiểm tra"
+after = [1, 2]
+""")
+    ateam(env, project, "verify", "test -f a.txt && test -f b.txt")
+    r = ateam(env, project, "flow", "-y", "-q", "song-song", "x")
+    assert "done" in r.stdout, r.stdout
+    ts = tasks(project)
+    chk = next(t for t in ts if t.kind == "verify")
+    assert chk.title == "Kiểm tra" and chk.status == "done" and 1 in chk.depends_on and 2 in chk.depends_on
+    assert "[kiểm tra]" not in (project / ".ateam/logs/t1.log").read_text()
+    assert (project / f".ateam/logs/t{chk.id}.log").read_text().count("[kiểm tra]") == 1

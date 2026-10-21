@@ -1062,3 +1062,107 @@ def test_commit_message_quick_effort_and_bounded_untracked(tmp_path, monkeypatch
     argv = o.argv_for(o.cfg.agents["claude"], "p", tmp_path, plan=True, effort="low")
     assert argv[argv.index("--effort") + 1] == "low"
 
+
+
+def test_apply_checks_final_check_and_quality_presets(tmp_path):
+    """Kiểm tra cuối chỉ thêm khi có lệnh verify và ≥2 task song song (chuỗi tuần tự: task cuối đã kiểm tra kết quả
+    gộp); preset Nhanh bỏ review, Chặt chẽ thêm review cho kế hoạch mới (không cho vòng review)."""
+    from ateam.config import task_kind
+    o = _orch_unit(tmp_path)
+    kinds = (lambda plan: [task_kind(x.get("type")) for x in plan])
+    par = [{"id": 1, "agent": "codex", "title": "A", "prompt": "a"},
+           {"id": 2, "agent": "claude", "title": "B", "prompt": "b"}]
+    chain = [{"agent": "codex", "title": "A", "prompt": "a"},
+             {"agent": "claude", "title": "B", "prompt": "b", "depends_on": [1]}]
+    rev = par + [{"id": 3, "type": "review", "agent": "claude", "title": "R", "prompt": "r", "depends_on": [1, 2]}]
+    assert o._apply_checks(par, "plan") == par  # chưa có lệnh verify: không có gì để kiểm tra
+    o.cfg.verify.command = "pytest -q"
+    out = o._apply_checks(par, "plan")
+    assert kinds(out) == ["code", "code", "verify"] and out[2]["depends_on"] == [1, 2] and out[2]["agent"] == "claude"
+    out = o._apply_checks(chain, "plan")
+    assert kinds(out) == ["code", "code"] and [x["id"] for x in out] == [1, 2]
+    assert o._apply_checks(rev, "plan")[-1]["depends_on"] == [1, 2, 3]
+    own = par + [{"id": 9, "type": "verify", "agent": "codex", "title": "V", "depends_on": [1, 2]}]
+    assert kinds(o._apply_checks(own, "plan")) == ["code", "code", "verify"]  # trưởng nhóm đã thêm: không thêm nữa
+    o.cfg.quality = "fast"
+    assert kinds(o._apply_checks(rev, "plan")) == ["code", "code", "verify"]
+    o.cfg.quality = "strict"
+    out = o._apply_checks(chain, "plan")
+    assert kinds(out) == ["code", "code", "review"] and out[2]["depends_on"] == [1, 2] and out[2]["agent"] == "claude"
+    assert kinds(o._apply_checks(chain, "review")) == ["code", "code"]
+
+    # chèn vào DB: loại task, phụ thuộc của kiểm tra cuối; review cuối được báo task nào do kiểm tra cuối bao
+    o.cfg.quality = "auto"
+    gid = o.db.add_goal("G")
+    ids = o._insert_plan(gid, rev, source="plan")
+    ts = o.db.tasks(goal_id=gid)
+    assert [t.kind for t in ts] == [None, None, "review", "verify"] and ts[3].depends_on == ids[:3]
+    assert f"(checked by final verify #{ids[3]}: draft)" in o._results_text(gid)
+    assert "verification `pytest -q`: passed" not in o._results_text(gid)
+    # preset Nhanh chỉ bỏ review cuối khi mục tiêu "sạch": có task review thì không
+    for t in ts:
+        o.db.update_task(t.id, status="done")
+    assert not o._clean(o.db.tasks(goal_id=gid))
+    o.db.update_task(ids[2], status="cancelled")
+    assert not o._clean(o.db.tasks(goal_id=gid))
+    o.db.delete([ids[2]], [])
+    assert o._clean(o.db.tasks(goal_id=gid))
+    o.cfg.verify.command = ""
+    assert not o._clean(o.db.tasks(goal_id=gid))  # không có lệnh kiểm tra: review cuối là lớp kiểm tra duy nhất
+
+
+def test_plan_and_task_prompts_follow_quality_preset():
+    from ateam.config import Config
+    cfg = Config()
+    p = P.plan_prompt(cfg, "G", "/w", "")
+    assert '"type": "code"' in p and 'Code review: only for risky' in p and "Do NOT create separate tasks" not in p
+    assert "each member runs the tests related to its change" in p
+    cfg.verify.command = "pytest -q"
+    assert "ateam runs `pytest -q` after each task" in P.plan_prompt(cfg, "G", "/w", "")
+    cfg.quality = "fast"
+    p = P.plan_prompt(cfg, "G", "/w", "")
+    assert "Code review" not in p and "only for risky logic" in p
+    cfg.quality = "strict"
+    assert "Code review: REQUIRED" in P.followup_plan_prompt(cfg, "G", "", "", "thêm", "/w", "")
+    tp = P.task_prompt(cfg, agent="claude", task_id=3, title="R", prompt="r", goal="G",
+                       deps=[(1, "codex", "A", "ok")], notes="", cwd="/w", can_delegate=True, kind="review",
+                       diff="`git diff HEAD`", handoff=True)
+    assert "You REVIEW the work of the tasks you depend on" in tp and "`git diff HEAD`" in tp and "~40 lines" in tp
+    tp = P.task_prompt(cfg, agent="codex", task_id=1, title="A", prompt="a", goal="G", deps=[], notes="", cwd="/w",
+                       can_delegate=True)
+    assert "You REVIEW" not in tp and "~40 lines" not in tp
+    assert "PROJECT OVERVIEW" in P.review_prompt(cfg, "G", 1, "r", "/x", overview="PROJECT OVERVIEW\n- x")
+    fp = P.check_fix_prompt(agent="claude", task_id=4, goal="G", note="", tasks=[(1, "codex", "A")], command="make",
+                            rc=1, output="boom", attempt=1, max_attempts=2, cwd="/w")
+    assert "final check #4" in fp and "- #1 by codex: A" in fp and "VERIFICATION COMMAND: make" in fp
+
+
+def test_old_db_without_task_kind_opens(tmp_path):
+    import sqlite3
+
+    from ateam.db import DB
+    path = tmp_path / "old.db"
+    c = sqlite3.connect(str(path))
+    c.execute("CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, goal_id INTEGER, parent_id INTEGER,"
+              " agent TEXT NOT NULL, title TEXT NOT NULL, prompt TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',"
+              " depends_on TEXT NOT NULL DEFAULT '[]', depth INTEGER NOT NULL DEFAULT 0, source TEXT, result TEXT,"
+              " error TEXT, branch TEXT, created REAL, started REAL, finished REAL)")
+    c.execute("INSERT INTO tasks(agent, title, prompt) VALUES ('codex', 't', 'p')")
+    c.commit()
+    c.close()
+    db = DB(path)
+    assert db.task(1).kind is None
+    assert db.task(db.add_task("claude", "Kiểm tra cuối", "", kind="verify")).kind == "verify"
+
+
+def test_workflow_step_type_roundtrip(tmp_path, monkeypatch):
+    """Loại bước workflow: TOML "type" ↔ WorkflowStep.kind ↔ kế hoạch; form (wizard) giữ loại; lạ = code."""
+    from ateam import wizard
+    from ateam.config import Config, Workflow, WorkflowStep, workflow_to_dict
+    w = Workflow("w", steps=[WorkflowStep(agent="codex", title="A"), WorkflowStep(agent="lead", title="V", kind="verify")])
+    raw = workflow_to_dict(w)
+    assert "type" not in raw["steps"][0] and raw["steps"][1]["type"] == "verify"
+    assert [p["type"] for p in w.plan("G", "claude")] == ["code", "verify"] and "lead (verify)" in w.summary()
+    body = wizard.workflow_body(Config(), "w2", None, "", True, [{"agent": "lead", "title": "R", "type": "review"},
+                                                              {"agent": "lead", "title": "X", "type": "lạ"}])
+    assert body["steps"][0]["type"] == "review" and "type" not in body["steps"][1]
