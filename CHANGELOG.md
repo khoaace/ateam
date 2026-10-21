@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.41.0 — 21/10/2026
 
 - **TUI gọn và đẹp hơn** — thanh bên trái thay thanh tab khi terminal đủ rộng (≥ 120 cột): dự án + nhánh, các màn
   hình theo nhóm *Làm việc* / *Dự án* / *Của bạn* có số đếm, và trạng thái từng agent (bấm để chat riêng). **Ctrl+B**
@@ -8,6 +8,21 @@
   có phím tắt chính; ô nhập một dòng trong khung bo tròn. Mỗi vùng (bảng việc, log, Git, Code, Terminal, Timeline)
   là một khung bo tròn có tiêu đề; nút thành chip một dòng (nút chính nền màu, nút xoá chữ đỏ) thay cho `[ … ]`;
   nhãn tab không còn emoji. Theme và ngôn ngữ đổi bằng `/theme`, `/lang`.
+
+## 0.40.0 — 21/10/2026
+
+- **Antigravity không còn "im lặng như treo"** — ateam chạy agy với `--output-format stream-json`: ô agent hiện từng
+  bước agy đang làm (`▸ read_file src/a.py`, `▸ run_command npm test`…) thay vì trống tới khi xong; vòng sửa, `/retry`,
+  chat và "Mở trong terminal" **tiếp tục đúng phiên** (`--conversation`) thay vì mở phiên mới đọc lại code; token của
+  agy là số thật. Phiên agy không còn thì tự chạy lại với đủ ngữ cảnh. Tắt bằng `stream_args = []`.
+- **Task không còn giới hạn thời gian** (mặc định `timeout = 0`): agy làm hơn 30 phút vẫn đang chạy tốt từng bị cắt ở
+  1800 giây. Dừng tay bằng nút huỷ; trưởng nhóm vẫn có `lead_timeout` để chuyển agent dự phòng khi CLI treo lúc lập kế
+  hoạch. Cấu hình nâng lên bản 10 — `config.toml` được thay (bản cũ sao lưu cạnh đó), agent tuỳ chỉnh đang để
+  `timeout = 1800` (mặc định cũ) được bỏ giới hạn.
+- **Bản tổng quan `/init` chỉ trưởng nhóm đọc**: trưởng nhóm ghi phần task cần (file, lệnh test, quy ước) vào prompt
+  từng task thay vì mọi task đều kèm cả bản (tới ~3K token mỗi task).
+- **`ateam web` nhiều dự án cùng lúc** (như mở nhiều terminal TUI): cổng 8000 đang bận thì tự dùng cổng trống kế tiếp
+  (8001, 8002…) và in URL; `/open` giữ đúng cổng trình duyệt đang mở.
 
 ## 0.39.0 — 21/10/2026
 

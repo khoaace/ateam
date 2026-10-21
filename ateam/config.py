@@ -30,7 +30,7 @@ LEAD_ALIAS = "lead"  # agent của bước workflow = trưởng nhóm hiện t�
 KIND_CODE, KIND_REVIEW, KIND_VERIFY = "code", "review", "verify"
 TASK_KINDS = (KIND_CODE, KIND_REVIEW, KIND_VERIFY)
 QUALITY = ("fast", "auto", "strict")  # preset chất lượng của dự án: Nhanh · Trưởng nhóm tự quyết · Chặt chẽ
-CONFIG_VERSION = 9
+CONFIG_VERSION = 10
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
 # hậu tố effort trong tên model (vd agy: gemini-4-argon-medium) — model đã cố định effort
 EFFORT_SUFFIXES = ("minimal", "low", "medium", "high", "xhigh", "max")
@@ -52,7 +52,7 @@ DEFAULT_CONFIG = """\
 #  Model / effort đổi trong app (/model, /effort) được lưu ở ~/.config/ateam/state.json
 #  và ưu tiên hơn giá trị trong file này. Gõ /model <agent> - để quay về giá trị ở đây.
 # ============================================================
-config_version = 9
+config_version = 10
 
 lead = "claude"              # agent làm trưởng nhóm (lập kế hoạch + review)
 max_parallel = 3             # tổng số task chạy song song tối đa
@@ -99,7 +99,8 @@ lead_fallback = ["codex"]    # ai lập kế hoạch/review thay khi trưởng n
 #   models_command  lệnh liệt kê model thật của CLI (vd ["opencode", "models"]);
 #                 models_filter: chỉ giữ model chứa chữ này (vắng = tên agent nếu có model khớp)
 #   role          thế mạnh -> trưởng nhóm dựa vào đây để phân việc
-#   timeout       giây;  max_concurrent: số task cùng lúc;  pty: chạy trong terminal giả
+#   timeout       giây tối đa một lượt chạy task; 0 = không giới hạn (mặc định — agent làm lâu vẫn chạy tới
+#                 xong, dừng tay bằng nút huỷ);  max_concurrent: số task cùng lúc;  pty: chạy trong terminal giả
 #   fallback      agent thay thế khi agent này hết hạn mức
 #   verify        false = không chạy lệnh kiểm tra sau task của agent này (vd agent chỉ nghiên cứu)
 # ------------------------------------------------------------
@@ -114,7 +115,7 @@ effort_args = ["--effort", "{effort}"]
 efforts = ["low", "medium", "high", "xhigh", "max"]
 fallback = ["codex"]
 role = "Trưởng nhóm. Lập kế hoạch, thiết kế kiến trúc, review code, các việc cần suy luận sâu."
-timeout = 1800
+timeout = 0
 max_concurrent = 1
 
 [agents.codex]
@@ -128,7 +129,7 @@ effort_args = ["-c", "model_reasoning_effort=\\"{effort}\\""]
 efforts = ["low", "medium", "high", "xhigh", "max", "ultra"]
 fallback = ["claude"]
 role = "Viết code, sửa bug, chạy test, refactor."
-timeout = 1800
+timeout = 0
 max_concurrent = 1
 
 [agents.antigravity]
@@ -143,7 +144,7 @@ effort_args = ["--effort", "{effort}"]
 efforts = ["low", "medium", "high", "xhigh", "max"]
 fallback = ["claude", "codex"]
 role = "Nghiên cứu, tìm tài liệu, phân tích codebase lớn, frontend/UI."
-timeout = 1800
+timeout = 0
 max_concurrent = 1
 
 [agents.grok]
@@ -158,7 +159,7 @@ effort_args = ["--reasoning-effort", "{effort}"]
 efforts = ["low", "medium", "high", "xhigh"]
 fallback = ["codex"]
 role = "Code nhanh, việc nhỏ lặp nhanh, viết test, script, tài liệu."
-timeout = 1800
+timeout = 0
 max_concurrent = 1
 
 [agents.opencode]
@@ -171,7 +172,7 @@ effort_args = ["--variant", "{effort}"]
 efforts = ["low", "medium", "high", "xhigh", "max"]
 fallback = ["codex"]
 role = "Code nhanh, việc nhỏ, viết test, script, tài liệu."
-timeout = 1800
+timeout = 0
 max_concurrent = 1
 """
 
@@ -211,14 +212,14 @@ CATALOG: dict[str, dict] = {
 }
 # Giữ phiên giữa các lượt (/retry, vòng sửa verify, /continue, trả lời <<<ASK>>>): cờ đặt id phiên cho lượt
 # mới, cờ tiếp tục phiên, regex bắt id trong output (khi CLI không cho tự đặt id). Ghi đè bằng khoá cùng tên
-# trong [agents.<tên>]; [] = tắt. agy/opencode: chưa có cách lấy id chắc chắn → chạy như cũ (xem ROADMAP).
+# trong [agents.<tên>]; [] = tắt. opencode: chưa có cách lấy id chắc chắn → chạy như cũ (xem ROADMAP).
 # Mở CLI thật (giao diện tương tác) và tiếp tục phiên {session} mà ateam đã chạy headless — "Mở trong terminal".
 # CLI không có ở đây (hoặc agent tuỳ chỉnh bọc qua bash…) thì không mở được.
 INTERACTIVE_RESUME: dict[str, list[str]] = {
     "claude": ["--resume", "{session}"],
     "codex": ["resume", "{session}"],
     "grok": ["--resume", "{session}"],
-    "agy": [], "opencode": [], "gemini": [], "aider": [],
+    "agy": ["--conversation", "{session}"], "opencode": [], "gemini": [], "aider": [],
 }
 
 _WHICH: dict[tuple, tuple[float, str | None]] = {}
@@ -243,6 +244,11 @@ SESSION_PRESETS: dict[str, dict] = {
     # codex exec resume [OPTIONS] <SESSION_ID> <PROMPT>; header của `codex exec` in "session id: <uuid>"
     "codex": {"session_args": [], "resume_args": ["{session}"],
               "session_re": r"session id:\s*([0-9a-fA-F-]{36})"},
+    # agy: stream-json báo id phiên (dòng "agy conversation <id>", agystream.py) + từng bước tool + token thật;
+    # chế độ chữ chỉ in câu trả lời cuối. stream_args: cờ định dạng output ateam thêm vào lệnh headless
+    "agy": {"session_args": [], "resume_args": ["--conversation", "{session}"],
+            "session_re": r"agy conversation ([0-9a-fA-F-]{36})",
+            "stream_args": ["--output-format", "stream-json"]},
 }
 
 
@@ -462,7 +468,7 @@ class AgentConfig:
     name: str
     command: list[str]
     role: str = ""
-    timeout: int = 1800
+    timeout: int = 0                      # giây tối đa một lượt task; 0 = không giới hạn
     max_concurrent: int = 1
     pty: bool = False
     full_access: bool = False  # toàn quyền: chạy lệnh shell, mạng (xem apply_access)
@@ -487,6 +493,7 @@ class AgentConfig:
     session_args: list[str] | None = None     # None = theo SESSION_PRESETS; đặt id phiên cho lượt mới
     resume_args: list[str] | None = None      # None = theo SESSION_PRESETS; tiếp tục phiên {session}
     session_re: str | None = None             # None = theo SESSION_PRESETS; regex bắt id phiên trong output
+    stream_args: list[str] | None = None      # None = theo SESSION_PRESETS; cờ output dạng sự kiện (agy stream-json)
     opencode_major: int | None = None         # chỉ dùng lúc chạy; không ghi vào cấu hình người dùng
 
     @property
@@ -637,6 +644,9 @@ class AgentConfig:
                 extra += [a.replace("{model}", model) for a in self.model_args]
             if effort and effort_args and not combined and not any("{effort}" in c for c in base):
                 extra += [a.replace("{effort}", effort) for a in effort_args]
+        stream = list(self._preset("stream_args") or [])
+        if stream and stream[0] not in base and not any(c.startswith(stream[0] + "=") for c in base):
+            extra += stream
         if session:
             if resume and Path(self.binary).name == "codex" and "--sandbox" in base:
                 # `codex exec resume` không có --sandbox: đổi sang -c sandbox_mode="…"
@@ -788,6 +798,8 @@ def ensure_global_config() -> list[str]:
         note = migrate_grok_to_opencode(data)
         if note:
             notes.append(note)
+    if old_version < 10:
+        unlimit_custom_agents()
     if old_version < CONFIG_VERSION:
         bak = GLOBAL_CONFIG.with_name(f"config.v{data.get('config_version', 1)}.{int(time.time())}.bak.toml")
         shutil.copy2(GLOBAL_CONFIG, bak)
@@ -795,6 +807,19 @@ def ensure_global_config() -> list[str]:
         notes.append(tr("Đã nâng cấp cấu hình lên bản {CONFIG_VERSION} (thêm tính năng mới). Bản "
                         "cũ sao lưu ở {bak}", CONFIG_VERSION=CONFIG_VERSION, bak=bak))
     return notes
+
+
+def unlimit_custom_agents() -> None:
+    """Bản 10: task không còn giới hạn thời gian mặc định (agy làm 30+ phút vẫn đang chạy tốt bị cắt ở 1800 giây).
+    Agent tuỳ chỉnh lưu `timeout = 1800` (mặc định cũ, chép từ mẫu) thì bỏ khoá để theo mặc định mới; số khác giữ."""
+    data = load_custom()
+    changed = False
+    for body in (data.get("agents") or {}).values():
+        if isinstance(body, dict) and body.get("timeout") == 1800:
+            del body["timeout"]
+            changed = True
+    if changed:
+        save_custom(data)
 
 
 def migrate_grok_to_opencode(old_config: dict) -> str:
@@ -1128,7 +1153,7 @@ def agent_to_dict(a: AgentConfig) -> dict:
         d["image_args"] = list(a.image_args)
     if a.plan_command:
         d["plan_command"] = list(a.plan_command)
-    if a.timeout != 1800:
+    if a.timeout:
         d["timeout"] = a.timeout
     if a.max_concurrent != 1:
         d["max_concurrent"] = a.max_concurrent
@@ -1442,7 +1467,7 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
         name=name,
         command=command,
         role=st.get("role", a.get("role", "")) or "",
-        timeout=int(a.get("timeout", 1800)),
+        timeout=max(0, int(a.get("timeout", 0))),
         max_concurrent=max(1, int(a.get("max_concurrent", 1))),
         pty=bool(a.get("pty", False)),
         full_access=bool(st.get("full_access", a.get("full_access", False))),
@@ -1467,6 +1492,7 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
         session_args=_strs(a["session_args"]) if "session_args" in a else None,
         resume_args=_strs(a["resume_args"]) if "resume_args" in a else None,
         session_re=str(a["session_re"]) if "session_re" in a else None,
+        stream_args=_strs(a["stream_args"]) if "stream_args" in a else None,
     )
 
 

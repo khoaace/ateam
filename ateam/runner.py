@@ -10,6 +10,8 @@ import signal
 from collections import deque
 from typing import Callable
 
+from . import agystream
+
 MAX_PARTIAL = 64 * 1024  # dòng chưa có \n dài hơn thế (spinner chỉ dùng \r, JSON một dòng…) thì cắt/đẩy ra
 
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
@@ -32,7 +34,8 @@ class Run:
     def __init__(self, argv: list[str], cwd: str, env: dict[str, str], *, use_pty: bool,
                  timeout: float, on_line: Callable[[str], None], keep_lines: int | None = None,
                  max_partial: int | None = MAX_PARTIAL):
-        """keep_lines: chỉ giữ N dòng cuối trong bộ nhớ (lệnh chạy rất lâu như dev server).
+        """timeout: giây tối đa, <= 0 = không giới hạn (task của agent: chạy tới khi xong hoặc bị huỷ).
+        keep_lines: chỉ giữ N dòng cuối trong bộ nhớ (lệnh chạy rất lâu như dev server).
         max_partial=None: không cắt dòng dài (output là JSON một dòng cần bóc nguyên vẹn, vd `codex debug models`)."""
         # PWD theo cwd: env chép từ os.environ mang PWD của nơi chạy ateam (thư mục gốc khi task ở worktree, dự án
         # cũ sau /open) — CLI/shell đọc $PWD sẽ tưởng đang ở đó
@@ -44,6 +47,10 @@ class Run:
         self.cancelled = False
         self.timed_out = False
         self.max_partial = max_partial
+        # agy --output-format stream-json: sự kiện JSON -> dòng dễ đọc; tool chỉ hiện, không vào output
+        self.stream = agystream.AgyStream() if agystream.wants(argv) else None
+        self.meta: list[str] = []      # dòng chỉ để bắt id phiên (không vào output)
+        self.session_lost = False      # CLI báo không còn phiên --resume/--conversation: đã dừng sớm
 
     def _emit_text(self, buf: list[str], text: str, final: bool = False) -> None:
         text = text.replace("\r\n", "\n")
@@ -67,16 +74,34 @@ class Run:
 
     def _emit(self, raw: str) -> None:
         line = clean_line(raw)
-        self.lines.append(line)
-        self._output = None
+        if self.stream is None:
+            self._show(line, True)
+            return
+        for text, kind in self.stream.feed(line):
+            if kind == agystream.META:
+                self.meta.append(text)
+            self._show(text, kind == agystream.OUT)
+        if self.stream.lost and not self.session_lost:  # chạy tiếp là làm việc trong phiên mới thiếu ngữ cảnh
+            self.session_lost = True
+            self._kill()
+
+    def _show(self, line: str, keep: bool) -> None:
+        if keep:
+            self.lines.append(line)
+            self._output = None
         try:
             self.on_line(line)
         except Exception:
             pass
 
+    @property
+    def usage(self):
+        """Token thật CLI tự báo trong output (agy stream-json), None = không có."""
+        return self.stream.usage if self.stream else None
+
     async def start(self) -> int:
         try:
-            return await asyncio.wait_for(self._run(), timeout=self.timeout)
+            return await asyncio.wait_for(self._run(), timeout=self.timeout if self.timeout > 0 else None)
         except asyncio.CancelledError:  # app thoát / Ctrl+C / task bị huỷ: tiến trình ở session riêng nên phải tự dừng
             self.cancelled = True
             self._kill()

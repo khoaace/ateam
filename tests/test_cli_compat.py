@@ -179,9 +179,10 @@ def test_doctor_reports_help_that_cannot_be_verified(tmp_path, monkeypatch, fail
 
 def test_web_rejects_images_over_opencode_limit_before_saving(env, project, monkeypatch):
     from aiohttp.test_utils import TestClient, TestServer
+    from ateam.cli import free_port
     from ateam.web import WebApp
     o = _orch(env, project, monkeypatch)
-    app = WebApp(project, o.cfg, o.db)
+    app = WebApp(project, o.cfg, o.db, free_port("127.0.0.1", 18000, 1000))  # 8000 có thể đang chạy `ateam web`
     # Ảnh thử lớn hơn 10 MiB nhưng vẫn trong giới hạn chung 20 MiB.
     data = b"\x89PNG\r\n\x1a\n" + b"x" * ATTACHMENT_MAX
 

@@ -45,11 +45,20 @@ def test_web_serves_tui_on_localhost(tmp_path, monkeypatch):
     root.mkdir()
     monkeypatch.setattr(i18n, "_lang", i18n.get_lang())  # --lang đổi ngôn ngữ toàn cục -> trả lại sau test
     monkeypatch.setenv("ATEAM_LANG", "vi")
-    assert cli.main(["-C", str(root), "--lang", "en", "web", "--tui", "--port", "8123"]) == 0
-    assert seen["served"] and seen["host"] == "127.0.0.1" and seen["port"] == 8123
+    port = _free_port()
+    assert cli.main(["-C", str(root), "--lang", "en", "web", "--tui", "--port", str(port)]) == 0
+    assert seen["served"] and seen["host"] == "127.0.0.1" and seen["port"] == port
     # --lang qua biến môi trường, không ghim vào lệnh (nút Restart chạy lại đúng lệnh này)
     assert shlex.split(seen["command"]) == [sys.executable, "-m", "ateam", "-C", str(root.resolve()), "tui"]
     assert os.environ["ATEAM_LANG"] == "en"
+    # cổng bận (dự án khác đang mở web) -> cổng kế tiếp
+    import socket
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        port = busy.getsockname()[1]
+        assert cli.main(["-C", str(root), "web", "--tui", "--port", str(port)]) == 0
+    assert seen["port"] > port
 
 
 def test_lang_restart_skips_execv_under_web(tmp_path, monkeypatch):

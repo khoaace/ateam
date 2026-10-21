@@ -28,7 +28,7 @@ def test_argv_codex_effort_is_toml_string():
 def test_argv_model_with_effort_suffix_drops_effort_flag():
     # agy: "--model gemini-4-argon-medium conflicts with --effort=high" -> đổi sang biến thể -high
     agy = AgentConfig("antigravity", ["agy", "-p", "{prompt}"], model_args=["--model", "{model}"],
-                      effort_args=["--effort", "{effort}"],
+                      effort_args=["--effort", "{effort}"], stream_args=[],  # chỉ xét cờ model/effort
                       models=["gemini-4-argon-medium", "gemini-4-argon-high", "claude-sonnet-4-6"])
     assert agy.argv("P", model="gemini-4-argon-medium", effort="high") == [
         "agy", "--model", "gemini-4-argon-high", "-p", "P"]
@@ -141,6 +141,53 @@ def test_old_global_config_is_upgraded_with_backup(tmp_path, monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(cfgmod)
+
+
+
+def test_task_timeout_unlimited_by_default(tmp_path, monkeypatch):
+    """Bản cấu hình 10: task không giới hạn thời gian (agy làm 30+ phút vẫn đang chạy tốt bị cắt ở 1800 giây); nâng
+    cấp bỏ `timeout = 1800` (mặc định cũ) khỏi agent tuỳ chỉnh, số khác giữ; trưởng nhóm vẫn theo lead_timeout."""
+    import importlib
+
+    import ateam.config as cfgmod
+    from ateam.orchestrator import Orchestrator
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfgmod = importlib.reload(cfgmod)
+    try:
+        cfgmod.GLOBAL_DIR.mkdir(parents=True)
+        cfgmod.GLOBAL_CONFIG.write_text('config_version = 9\nlead = "claude"\n')
+        cfgmod.save_custom({"agents": {"cu": {"command": ["agy", "-p", "{prompt}"], "timeout": 1800},
+                                       "rieng": {"command": ["mycli", "{prompt}"], "timeout": 300}}})
+        cfgmod.ensure_global_config()
+        agents = cfgmod.load_custom()["agents"]
+        assert "timeout" not in agents["cu"] and agents["rieng"]["timeout"] == 300
+        c = cfgmod.load_config(Path(tmp_path / "proj"))
+        assert c.agents["claude"].timeout == 0 and c.agents["cu"].timeout == 0 and c.agents["rieng"].timeout == 300
+        assert "timeout" not in cfgmod.agent_to_dict(c.agents["cu"])
+    finally:
+        monkeypatch.undo()
+        importlib.reload(cfgmod)
+    from ateam.config import Config
+    o = Orchestrator.__new__(Orchestrator)
+    o.cfg = Config()
+    o.cfg.lead_timeout = 600
+    assert o.lead_timeout(AgentConfig("a", ["a"], timeout=0)) == 600  # CLI treo khi lập kế hoạch: vẫn chuyển dự phòng
+    assert o.lead_timeout(AgentConfig("a", ["a"], timeout=30)) == 30
+    o.cfg.lead_timeout = 0
+    assert o.lead_timeout(AgentConfig("a", ["a"], timeout=0)) == 0
+    from ateam import wizard
+    assert wizard.agent_body({"command": "mycli {prompt}", "timeout": "0"})["timeout"] == 0  # form: 0 hợp lệ
+
+
+def test_run_without_timeout_runs_to_end():
+    import asyncio
+    import sys
+
+    from ateam.runner import Run
+    got = []
+    run = Run([sys.executable, "-c", "import time; time.sleep(1.2); print('xong')"], ".", {}, use_pty=False,
+              timeout=0, on_line=got.append)
+    assert asyncio.run(run.start()) == 0 and got == ["xong"] and not run.timed_out
 
 
 def test_mentions_render_per_agent(tmp_path):
@@ -656,7 +703,54 @@ def test_full_access_flags_per_cli():
     assert apply_access(["mycli", "{prompt}"], True) == ["mycli", "{prompt}"]
     a = agent_from_dict("x", dict(provider_template("agy"), full_access=True, model="m"))
     assert a.argv("làm") == ["agy", "--dangerously-skip-permissions", "--print-timeout", "0",
-                             "--model", "m", "-p", "làm"]
+                             "--model", "m", "--output-format", "stream-json", "-p", "làm"]
+
+
+def test_agy_stream_json_and_session_flags():
+    """agy: ateam thêm --output-format stream-json (thấy từng bước, id phiên, token thật) và tiếp tục phiên bằng
+    --conversation; lệnh đã tự đặt định dạng output thì giữ nguyên, stream_args = [] để tắt."""
+    from ateam.config import agent_from_dict, provider_template
+    a = agent_from_dict("x", provider_template("agy"))
+    assert a.argv("P")[-4:] == ["--output-format", "stream-json", "-p", "P"]
+    assert a.can_resume() and a.argv("P", session="s1", resume=True)[-6:-2] == [
+        "--output-format", "stream-json", "--conversation", "s1"]
+    assert a.argv("P", session="s1")[-4:] == ["--output-format", "stream-json", "-p", "P"]  # lượt mới: id bắt từ output
+    own = agent_from_dict("x", dict(provider_template("agy"), command=["agy", "--output-format=json", "-p", "{prompt}"]))
+    assert own.argv("P") == ["agy", "--output-format=json", "-p", "P"]
+    off = agent_from_dict("x", dict(provider_template("agy"), stream_args=[]))
+    assert "--output-format" not in off.argv("P")
+    assert a.interactive_argv("s1") == ["agy", "--conversation", "s1"]
+
+
+def test_agy_stream_decoder():
+    import json
+
+    from ateam import agystream as S
+    assert S.wants(["/x/agy", "--output-format", "stream-json", "-p", "P"]) and S.wants(["agy", "--output-format=stream-json"])
+    assert not S.wants(["agy", "-p", "P"]) and not S.wants(["claude", "--output-format", "stream-json"])
+    d = S.AgyStream()
+    assert d.feed('warning: conversation "x" not found') == [('warning: conversation "x" not found', S.OUT)] and d.lost
+    d = S.AgyStream()
+    feed = lambda ev: d.feed(json.dumps(ev))
+    assert feed({"event": "init", "conversation_id": "c1", "init": {"cwd": "/p"}}) == [("agy conversation c1", S.META)]
+    tool = {"step_type": "tool", "tool_name": "run_command", "tool_info": {"parameters": {"CommandLine": "npm  test"}}}
+    assert feed({"event": "step_update", "step_update": dict(tool, state="ACTIVE")}) == [("▸ run_command npm test", S.SHOW)]
+    assert feed({"event": "step_update", "step_update": dict(tool, state="DONE")}) == []
+    path = {"step_type": "tool", "state": "ACTIVE", "tool_name": "read_file",
+            "tool_info": {"parameters": {"Path": "/p/src/a.py"}}}
+    assert feed({"event": "step_update", "step_update": path}) == [("▸ read_file src/a.py", S.SHOW)]
+    resp = {"step_type": "agent_response", "state": "ACTIVE", "text_delta": "Xong.\nSUMM"}
+    assert feed({"event": "step_update", "step_update": resp}) == [("Xong.", S.OUT)]
+    assert feed({"event": "step_update", "step_update": dict(resp, state="DONE", text_delta="ARY: a\n")}) == [
+        ("SUMMARY: a", S.OUT)]
+    usage = {"input_tokens": 10, "output_tokens": 2, "cache_read_tokens": 7}
+    assert feed({"event": "result", "result": {"status": "SUCCESS", "response": "Xong.\nSUMMARY: a\n",
+                                                "usage": usage}}) == []  # đã stream: không lặp lại
+    assert (d.usage.in_tok, d.usage.out_tok, d.usage.cache_read) == (10, 2, 7)
+    d = S.AgyStream()  # chữ không qua text_delta: lấy response; lỗi: ghi vào output (nhận diện hết hạn mức)
+    assert feed({"event": "result", "result": {"status": "ERROR", "response": "a\nb", "error": "quota"}}) == [
+        ("a", S.OUT), ("b", S.OUT), ("✗ agy: ERROR quota", S.OUT)]
+    assert d.feed("not json {") == [("not json {", S.OUT)]
 
 
 def test_goal_followups_migration_and_continue_refs(tmp_path):
@@ -946,10 +1040,11 @@ def test_prompts_use_overview_only_when_present():
     assert "- Test: pytest" in P.grill_prompt(cfg, "G", [], "/x", "", finish=False, max_questions=5, overview=ov)
     kw = dict(agent="codex", task_id=1, title="t", prompt="p", goal="G", deps=[], notes="", cwd="/x",
               can_delegate=False)
-    t = P.task_prompt(cfg, overview=ov, **kw)
-    assert "- Test: pytest" in t and "Use the PROJECT OVERVIEW" in t
+    t = P.task_prompt(cfg, overview=ov, **kw)  # task của trưởng nhóm (vd bước thiết kế của workflow)
+    assert "- Test: pytest" in t and "Use the PROJECT OVERVIEW" in t and "Later tasks do NOT" not in t
+    assert "Later tasks do NOT receive" in P.task_prompt(cfg, overview=ov, handoff=True, **kw)  # bàn giao lại
     assert "PROJECT OVERVIEW" not in P.task_prompt(cfg, **kw)
-    assert "do not repeat it in task prompts" in plan
+    assert "Members do NOT receive the PROJECT OVERVIEW" in plan
     assert "<<<NOTE>>>your note<<<END>>>" in t and "short fact" in t  # parse_notes vẫn lọc câu mẫu
 
 

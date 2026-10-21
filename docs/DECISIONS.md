@@ -36,6 +36,12 @@ và race giữa thread với DB/TUI. **Hệ quả**: không bao giờ gọi API 
 output đầy đủ; `clean_line` bỏ mã ANSI và `\r`. Task thoát 0 nhưng không in gì bị coi là lỗi để lộ
 ra tình huống này.
 
+Từ agy 1.4.4 ateam thêm `--output-format stream-json` (`stream_args`): ở chế độ chữ agy chỉ in câu trả lời cuối nên
+ô agent trống vài phút như treo, không có id phiên (mỗi lần sửa / retry mở phiên mới, đọc lại code, trả lại ~10K token
+system prompt chưa cache) và không có token thật. Đo 21/10/2026: mỗi lượt agy tốn ~8–9 giây khởi động trước khi gọi
+model; `--conversation` dùng lại phiên đọc ~9K token từ cache. stream-json chạy được cả không có pty, nhưng vẫn giữ
+`pty = true` vì `agy models` / `agy -p /usage` (không qua `argv()`) cần terminal.
+
 ## 6. Chèn cờ model/effort ngay trước prompt
 
 **Lý do**: một số CLI viết bằng Go `flag` dừng đọc cờ ở đối số vị trí đầu tiên, và `-p` của vài CLI
@@ -163,8 +169,11 @@ hỏng giữa dòng như `[<ids>]` của mẫu); `question_from` bỏ câu hỏi
 ## 18. Bản tổng quan dự án (`/init`) ở `.ateam/project.md`, tiếng Anh, gửi kèm prompt, cập nhật bằng tay
 
 **Lý do**: mỗi kế hoạch và mỗi task, trưởng nhóm / thành viên lại đọc repo để biết code ở đâu, lệnh test là gì — tốn
-token lặp lại. `/init` cho trưởng nhóm tìm hiểu một lần, ghi bản đồ gọn; ateam gửi kèm prompt (như rule ở #15) nên agent
-nào cũng nhận, kể cả agent tuỳ chỉnh không đọc `AGENTS.md`. Lưu trong `.ateam/` (đã gitignore) thay vì ghi `AGENTS.md`:
+token lặp lại. `/init` cho trưởng nhóm tìm hiểu một lần, ghi bản đồ gọn; ateam gửi kèm prompt của **trưởng nhóm** (lập
+kế hoạch, `/grill`, kế hoạch tiếp, task giao cho trưởng nhóm). Thành viên không nhận cả bản: trưởng nhóm ghi phần task
+cần (file, lệnh test, quy ước) vào prompt task — trước đây mọi task đều kèm cả bản (tới 12.000 ký tự, ~3K token mỗi task,
+CLI phiên mới không có cache), người dùng chọn đổi (21/10/2026). Task không do trưởng nhóm viết (`/task`, workflow không
+có bước của trưởng nhóm) thì agent tự đọc code như khi chưa `/init`. Lưu trong `.ateam/` (đã gitignore) thay vì ghi `AGENTS.md`:
 không đụng file người dùng tự viết, không lẫn vào commit, mở sửa được ở tab Code. Viết tiếng Anh: chỉ agent đọc, tốn ít
 token hơn tiếng Việt. Không tự cập nhật sau mỗi mục tiêu (tốn thêm một lượt trưởng nhóm): meta giữ commit lúc viết, prompt
 kèm danh sách file đã đổi từ đó, `/init` lại chỉ cập nhật theo các thay đổi; quá `STALE_COMMITS` commit thì nhắc.

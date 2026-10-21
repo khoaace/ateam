@@ -88,7 +88,7 @@ cache_read = 0.15
 | --- | --- | --- |
 | `cooldown_minutes` | `30` | Thời gian nghỉ khi CLI không nói giờ hồi hạn mức |
 | `lead_fallback` | `["codex"]` | Ai lập kế hoạch/review thay khi trưởng nhóm hết hạn mức, quá tải hoặc quá `lead_timeout` |
-| `lead_timeout` | `600` | Giây tối đa cho một lượt trưởng nhóm (lập kế hoạch, hỏi đáp, review) — quá thì dừng và thử `lead_fallback` (CLI treo không in gì, vd agy). Không vượt `timeout` của agent; `0` = chỉ theo `timeout` của agent. Không có trong file mặc định: tự thêm vào `[limits]` khi cần |
+| `lead_timeout` | `600` | Giây tối đa cho một lượt trưởng nhóm (lập kế hoạch, hỏi đáp, review) — quá thì dừng và thử `lead_fallback` (CLI treo không in gì, vd agy). Không vượt `timeout` của agent (nếu agent có đặt); `0` = chỉ theo `timeout` của agent. Không có trong file mặc định: tự thêm vào `[limits]` khi cần |
 
 Máy chủ của nhà cung cấp **quá tải** (agy "high traffic… No capacity available", lỗi 503/529, `overloaded`) được xử lý
 như hết hạn mức nhưng chỉ nghỉ `OVERLOAD_MINUTES` (3 phút, `limits.py`): task chuyển cho agent dự phòng hoặc tự chạy
@@ -110,16 +110,17 @@ lại khi hết nghỉ.
 | `models_filter` | `""` | Chỉ giữ model chứa chữ này. Vắng: nếu có model chứa tên agent (vd `grok`) thì chỉ giữ các model đó |
 | `fallback` | `[]` | Agent thay thế khi agent này hết hạn mức (theo thứ tự) |
 | `verify` | `true` | `false` = không chạy `[verify]` sau task của agent này |
-| `timeout` | `1800` | Giây cho một lượt chạy |
+| `timeout` | `0` | Giây tối đa cho một lượt chạy task; `0` = không giới hạn (mặc định từ bản cấu hình 10 — agent làm lâu như agy vẫn đang chạy tốt thì không bị cắt; dừng tay bằng nút huỷ). Nâng cấp lên bản 10 bỏ `timeout = 1800` (mặc định cũ) khỏi agent tuỳ chỉnh trong `custom.toml` |
 | `max_concurrent` | `1` | Số task cùng lúc của agent này |
 | `pty` | `false` | Chạy trong pseudo-terminal (cần cho `agy`) |
 | `plan_command` | — | argv riêng khi agent lập kế hoạch/review (vd chế độ chỉ đọc) |
 | `enabled` | `true` | `false` = tạm tắt |
 | `file_ref` | theo lệnh | Cách viết file được nhắc bằng `@` trong prompt; `{path}` được thay. Vắng = theo `mentions.SYNTAX`: `"@{path}"` cho `claude`/`agy`/`gemini`, `"{path}"` cho lệnh khác |
 | `file_args` | theo lệnh | Cờ thêm vào lệnh cho mỗi file/thư mục được nhắc (chèn trước prompt). Vắng = `["-f", "{path}"]` cho `opencode`, `[]` cho lệnh khác; `[]` = tắt |
-| `session_args` | theo lệnh | Cờ đặt id phiên cho lượt mới (`{session}` = uuid ateam sinh). Vắng = `SESSION_PRESETS` (`config.py`): claude/grok `["--session-id", "{session}"]`, codex `[]` (id bắt từ output) |
-| `resume_args` | theo lệnh | Cờ tiếp tục phiên `{session}` khi `/retry`, vòng sửa verify, trả lời `<<<ASK>>>`, `/continue`. Vắng = preset: claude/grok `["--resume", "{session}"]`, codex `["{session}"]` (ateam đổi lệnh sang `codex exec resume`); `[]` = tắt (luôn gửi lại đủ ngữ cảnh) |
-| `session_re` | theo lệnh | Regex (nhóm 1 = id) bắt id phiên trong output khi CLI không cho tự đặt id. Vắng = preset: codex `session id:\s*([0-9a-fA-F-]{36})` |
+| `session_args` | theo lệnh | Cờ đặt id phiên cho lượt mới (`{session}` = uuid ateam sinh). Vắng = `SESSION_PRESETS` (`config.py`): claude/grok `["--session-id", "{session}"]`, codex/agy `[]` (id bắt từ output) |
+| `resume_args` | theo lệnh | Cờ tiếp tục phiên `{session}` khi `/retry`, vòng sửa verify, trả lời `<<<ASK>>>`, `/continue`. Vắng = preset: claude/grok `["--resume", "{session}"]`, codex `["{session}"]` (ateam đổi lệnh sang `codex exec resume`), agy `["--conversation", "{session}"]`; `[]` = tắt (luôn gửi lại đủ ngữ cảnh) |
+| `session_re` | theo lệnh | Regex (nhóm 1 = id) bắt id phiên trong output khi CLI không cho tự đặt id. Vắng = preset: codex `session id:\s*([0-9a-fA-F-]{36})`, agy `agy conversation ([0-9a-fA-F-]{36})` (dòng `agystream.py` in từ sự kiện `init`) |
+| `stream_args` | theo lệnh | Cờ cho CLI in output dạng sự kiện, ateam đọc thành dòng log (chèn trước prompt nếu lệnh chưa tự đặt cờ đó). Vắng = preset: agy `["--output-format", "stream-json"]` — thấy từng bước tool lúc đang chạy, id phiên, token thật (`agystream.py`); `[]` = tắt (agy chỉ in câu trả lời cuối) |
 | `image_args` | theo lệnh | Như `file_args` nhưng cho file ảnh (`.png`, `.jpg`, `.webp`…, gồm ảnh dán bằng Ctrl+V). Vắng = `["--image={path}"]` cho `codex`, lệnh khác dùng `file_args`; `[]` = chỉ ghi đường dẫn trong prompt |
 
 ## `[workflows.<tên>]`

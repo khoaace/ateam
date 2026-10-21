@@ -99,8 +99,9 @@ tại). Agent tuỳ chỉnh bạn tự thêm ở `/custom` được giữ nguyê
 * **F5** (hoặc **Ctrl+R**) chạy lại task đang chọn, **Ctrl+K** huỷ, `/note ...` ghi chú cho cả đội. Ghi chú dài dần
   thì `/compact [trọng tâm]` (hoặc `ateam compact`): trưởng nhóm tóm tắt ghi chú, mục tiêu gần đây và log
   thành một ghi chú ngắn thay thế, prompt gửi agent sau đó gọn hơn. Gõ `/init` (hoặc `ateam init --overview`) một
-  lần để trưởng nhóm tìm hiểu dự án và viết bản tổng quan `.ateam/project.md` (lệnh, thư mục, quy ước…) — ateam gửi
-  kèm nó mọi lượt lập kế hoạch và task nên agent đỡ đọc lại code; dự án đổi nhiều thì gõ `/init` lại để cập nhật. Gõ `/` ở đầu ô nhập để xem danh sách lệnh kèm mô tả; **F1** (hoặc `/help`) mở bảng trợ giúp đầy đủ.
+  lần để trưởng nhóm tìm hiểu dự án và viết bản tổng quan `.ateam/project.md` (lệnh, thư mục, quy ước…) — chỉ trưởng
+  nhóm nhận nó mỗi lượt lập kế hoạch, rồi ghi phần cần thiết (file, lệnh test…) vào prompt từng task, nên thành viên đỡ
+  đọc lại code mà không phải nhận cả bản; dự án đổi nhiều thì gõ `/init` lại để cập nhật. Gõ `/` ở đầu ô nhập để xem danh sách lệnh kèm mô tả; **F1** (hoặc `/help`) mở bảng trợ giúp đầy đủ.
 * **Ctrl+T** mở tab **Đội** để xem cả 4 agent làm việc cùng lúc.
 
 Không cần giao diện:
@@ -140,7 +141,7 @@ Với OpenCode, `@thư_mục` chỉ đưa đường dẫn vào prompt; `-f` dàn
 - **Giữ phiên CLI**: `/retry`, từ chối kèm góp ý, vòng sửa khi kiểm tra fail, trả lời câu hỏi và `/continue` (thread
   `/task`) tiếp tục *đúng phiên* của agent (`claude --resume`, `codex exec resume`, `grok --resume`) thay vì gửi lại
   toàn bộ ngữ cảnh — đỡ token, sửa lỗi trúng hơn. `/continue m<id>`: trưởng nhóm tiếp tục phiên lập kế hoạch của mục
-  tiêu đó. Phiên không còn (CLI đã xoá, khác thư mục) thì tự chạy lại với đầy đủ ngữ cảnh. agy/opencode chưa hỗ trợ.
+  tiêu đó. Phiên không còn (CLI đã xoá, khác thư mục) thì tự chạy lại với đầy đủ ngữ cảnh. opencode chưa hỗ trợ.
 
 ### Để trưởng nhóm hỏi kỹ trước khi làm — `/grill`
 
@@ -187,6 +188,9 @@ chung với terminal, dùng được trên điện thoại.
 ~/.ateam/venv/bin/python -m pip install aiohttp   # một lần (cài từ mã nguồn: pip install -e ".[web]")
 ateam web --open           # mở http://127.0.0.1:8000  ·  đổi cổng: ateam web --port 9000
 ```
+
+Mở thêm dự án khác: chạy `ateam web` ở thư mục dự án đó (như mở thêm một terminal TUI) — cổng 8000 đang bận thì ateam tự
+dùng cổng trống kế tiếp (8001, 8002…) và in URL. Mỗi dự án vẫn chỉ mở được một phiên (terminal hoặc web).
 
 - Ô nhập dưới cùng dùng như trong terminal và gợi ý cả tham số: `/task ` → agent, `codex:` → model, `@` → effort;
   `/model <agent>`, `/assign`, `/retry <task>`, `/continue`, `/flow`, `/checkout <nhánh>`, `/code @file`… Ctrl+K về ô
@@ -546,7 +550,8 @@ thái, task xong/lỗi, agent tham gia, token, cost, kết quả) — Enter (web
 việc bằng `/continue`.
 
 Token của **Claude Code** và **Codex** là số thật, đọc từ file phiên mà CLI tự ghi (`~/.claude/projects`,
-`~/.codex/sessions`) — ateam không đổi cách chạy CLI. Agent khác (agy, grok, opencode…) ước tính ~4 ký tự/token
+`~/.codex/sessions`) — ateam không đổi cách chạy CLI; **Antigravity** lấy từ output stream-json của chính agy. Agent
+khác (grok, opencode…) ước tính ~4 ký tự/token
 (cột *Số thật* cho biết bao nhiêu lượt có số thật). Cost ước tính theo bảng giá công khai; model chưa có giá hiện
 "—", thêm bằng `[prices."<model>"]` trong `config.toml` (xem `docs/CONFIG.md`).
 
@@ -677,7 +682,9 @@ role = "Đọc codebase lớn, viết tài liệu."
   (Codex 0.152 trở đi đã bỏ `--full-auto`; cấu hình cũ còn cờ này được ateam tự đổi).
 * **Antigravity (`agy`)**: chỉ in output khi có terminal thật, nên `ateam` chạy nó trong pseudo-terminal
   (`pty = true`), với `--mode accept-edits` (được sửa file) và `--print-timeout 0`. Muốn cho chạy cả lệnh
-  shell: thay `--mode accept-edits` bằng `--dangerously-skip-permissions`.
+  shell: thay `--mode accept-edits` bằng `--dangerously-skip-permissions`. ateam tự thêm
+  `--output-format stream-json` để ô agent hiện từng bước agy đang làm (đọc file, chạy lệnh…) thay vì trống tới khi
+  xong, giữ phiên (`--conversation`) cho vòng sửa / `/retry` / chat, và có token thật; tắt bằng `stream_args = []`.
 * **Grok Build (`grok`)**: `grok --permission-mode auto --deny Bash -p "<prompt>"` — được sửa/tạo file, không
   chạy lệnh shell (`acceptEdits` của grok ở chế độ `-p` chặn cả sửa file nên ateam không dùng). Toàn quyền đổi thành
   `--permission-mode bypassPermissions` (chạy lệnh, mạng). Model bằng `-m` (`grok models`), effort

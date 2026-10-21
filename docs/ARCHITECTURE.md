@@ -137,7 +137,9 @@ thì là mục tiêu đó); task không thuộc mục tiêu thì `continue_task`
   bản cũ thì kèm nó + file đổi từ commit trong meta + `git status`, để chỉ cập nhật), bóc khối
   `<<<OVERVIEW>>>…<<<END>>>` (`extract_overview`) ghi vào `.ateam/project.md`. `overview_block()` đọc file, thêm danh
   sách file đã đổi kể từ commit đó và được truyền `overview=` vào `plan_prompt`, `followup_plan_prompt`, `grill_prompt`
-  và `task_prompt`; có overview thì luật "khám phá vừa đủ" đổi thành "dựa vào PROJECT OVERVIEW". Lượt trưởng nhóm tiếp
+  và `task_prompt` *chỉ khi task giao cho trưởng nhóm* (vd bước thiết kế của workflow — có task phụ thuộc thì dặn bàn
+  giao file/lệnh/quy ước qua SUMMARY); có overview thì luật "khám phá vừa đủ" đổi thành "dựa vào PROJECT OVERVIEW" và
+  trưởng nhóm được dặn ghi phần cần thiết của nó vào prompt từng task (thành viên không nhận). Lượt trưởng nhóm tiếp
   phiên đã nhận đúng khối đó (`_overview_sent[phiên] = digest`, ghi sau `_call_lead` ở `_plan`/`_grill_step`) chỉ nhận
   dòng `overview.SEEN`. `/init` gọi `_call_lead(slow=True)`: timeout của agent thay `lead_timeout`, hết giờ không chuyển
   agent dự phòng; không có commit mới, `git status` sạch, không trọng tâm → không gọi agent. `_plan` nhắc `/init` một lần
@@ -229,6 +231,12 @@ không tính nó vào suất của agent; phải sửa thì `_run_task` chờ ag
   `killpg` (SIGTERM, 5 giây sau SIGKILL).
 - `pty=True`: mở pseudo-terminal 220×50 — cần cho `agy`, vốn không in gì khi stdout không phải tty.
 - Mỗi dòng qua `clean_line`: bỏ mã ANSI, xử lý `\r` (spinner), bỏ ký tự điều khiển.
+- Lệnh `agy … --output-format stream-json` (cờ do `AgentConfig.argv` thêm theo `stream_args`): `Run` đọc qua
+  `agystream.AgyStream` — chữ trả lời (`text_delta`, hoặc `result.response` nếu không stream) vào `run.output` như chế
+  độ chữ (bóc SUMMARY/DELEGATE/limits như cũ); bước tool (`▸ read_file src/a.py`) chỉ hiện ở log/ô agent; dòng
+  `agy conversation <id>` vào `run.meta` để `session_of` bắt id; `result.usage` → `run.usage` (token thật, không đọc
+  file phiên). agy gặp `--conversation` không còn chỉ cảnh báo rồi mở phiên mới và vẫn thoát 0 → `run.session_lost`,
+  dừng ngay, orchestrator chạy lại với đủ ngữ cảnh như CLI báo mất phiên.
 - Timeout bằng `asyncio.wait_for`; mã 124 khi quá giờ.
 - Task đang chờ `start()` bị huỷ (thoát app, Ctrl+C ở CLI) → `CancelledError` dừng luôn tiến trình: nó ở session riêng
   nên không tự nhận tín hiệu của terminal, bỏ qua thì CLI chạy mồ côi tới hết, tốn hạn mức. Thêm vào đó, thoát app
@@ -527,7 +535,10 @@ thành agent `<agent>-<vai trò>`), rồi `save_onboard()` ghi `custom.toml` (ag
 `web.WebApp` (aiohttp) giữ **một** `Orchestrator` + `ShellManager` cho mọi tab trình duyệt; trang tĩnh ở
 `ateam/webui/` (HTML/CSS/JS thuần, không build, không CDN): `app.js` (lõi: kết nối, bảng việc, Đội, Terminal, ô
 nhập + gợi ý tham số, modal, theme), `diff.js`, `git.js`, `code.js`, `setup.js`; `vendor/codemirror.js` là CodeMirror 6
-+ vim đóng gói sẵn (nạp khi mở tab Code). Server giữ khoá `acquire_session_lock` như TUI.
++ vim đóng gói sẵn (nạp khi mở tab Code). Server giữ khoá `acquire_session_lock` như TUI. Nhiều dự án chạy `ateam web` cùng lúc
+(như nhiều terminal TUI): `cli.pick_port` thử bind từ `--port` (mặc định 8000) và lấy cổng trống kế tiếp — kiểm tra
+*trước* khi dựng `Remote`/middleware (cần biết cổng) và trước `run_app` (`on_startup` khởi động bộ lập lịch trước khi
+bind); `/open` chạy lại với `--port <cổng thật>` để trình duyệt đang mở vẫn đúng cổng.
 
 - `GET /ws` (WebSocket): server gửi `hello` (chuỗi giao diện `ui_strings()`, mọi lệnh của `tui.COMMANDS`, dữ liệu gợi ý
   — agent + model/effort hợp lệ, workflow, màu nhấn, tuỳ chọn), gửi lại khi cấu hình đổi (/setup, /custom, /models

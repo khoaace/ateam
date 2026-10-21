@@ -31,7 +31,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/web_auth.py`, `ateam/qr.py` | `ateam web` từ xa (`--host`, `--tunnel` Cloudflare, `--public-url`, `--readonly`): token `.ateam/web_token` → cookie, chặn Origin lạ, khoá khi sai nhiều, chạy cloudflared; mã QR thuần Python (terminal + SVG, nút 📱) |
 | `ateam/wizard.py`, `ateam/reports.py` | Logic dùng chung TUI ↔ web: wizard /setup, form /custom, popup Luồng mặc định (`wizard`); /usage, dashboard + lịch sử mục tiêu, /agents, /flow, /models, gợi ý /continue (`reports`) |
 | `ateam/orchestrator.py` | Lõi: lập kế hoạch, `tick()` lập lịch, `_run_task`, verify, worktree/merge, hạn mức, review |
-| `ateam/runner.py` | `Run`: chạy 1 tiến trình (pipe hoặc pty), stream từng dòng, timeout, huỷ theo process group |
+| `ateam/runner.py`, `ateam/agystream.py` | `Run`: chạy 1 tiến trình (pipe hoặc pty), stream từng dòng, timeout, huỷ theo process group; `AgyStream`: đọc output `agy --output-format stream-json` (bước tool, chữ trả lời, id phiên, token) |
 | `ateam/grid.py`, `ateam/vterm.py`, `ateam/tui_grid.py`, `ateam/webui/grid.js` | Tab 🔲 Lưới (`/grid`): mỗi ô là CLI tương tác thật của một agent trong pty. `grid.py`: bố cục cột/ô, preset, lưu `.ateam/grid.json`, `GridHub` giữ phiên pty + buffer cho cả TUI lẫn web; `vterm.py`: giả lập terminal VT100/xterm thuần Python cho TUI; `tui_grid.py`: `GridPanel`, `TermView`, `GridAddScreen`; `grid.js`: lưới xterm.js, kéo thả, kéo khe đổi kích thước |
 | `ateam/pty_session.py`, `ateam/logtail.py` | `PtySession`: tiến trình tương tác trong pty nối hai chiều với xterm.js ("Mở trong terminal" ở web, chat 💬); `read_tail`/`read_log_tail`: đọc phần cuối file log |
 | `ateam/config.py` | `DEFAULT_CONFIG` (TOML), dataclass `Config`/`AgentConfig`/`VerifyConfig`/`Workflow`, `AgentConfig.argv()`, state.json, custom.toml (agent/workflow tuỳ chỉnh, mẫu) |
@@ -42,7 +42,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/editor.py` | Tab 📝 Code: đọc/ghi file an toàn, tô màu pygments theo byte, `VimState` (phím vim → thao tác); widget `CodeEditor` ở `tui.py` |
 | `ateam/todos.py`, `ateam/notes.py` | To-do (tag, hạn, ưu tiên, mô tả; bóc `#tag !cao @mai 17:00`), tag dùng chung, ghi chú markdown (xung đột theo `updated`) — JSON theo dự án ở `~/.config/ateam/`, ngoài repo |
 | `ateam/rules.py` | `/rules`: rule của dự án mọi agent phải tuân theo — lưu ngoài repo, bật/tắt, chọn agent/vai trò; `Orchestrator.with_rules` gửi kèm mọi prompt |
-| `ateam/overview.py` | `/init` (`ateam init --overview`): bản tổng quan dự án trưởng nhóm viết một lần vào `.ateam/project.md` (meta commit), gửi kèm prompt lập kế hoạch, `/grill`, kế hoạch tiếp và mỗi task |
+| `ateam/overview.py` | `/init` (`ateam init --overview`): bản tổng quan dự án trưởng nhóm viết một lần vào `.ateam/project.md` (meta commit), gửi kèm prompt của trưởng nhóm (lập kế hoạch, `/grill`, kế hoạch tiếp, task giao cho trưởng nhóm) — thành viên nhận phần cần thiết qua prompt task |
 | `ateam/projects.py` | `/open`: mở folder / dự án khác (dự án gần đây, gợi ý thư mục, kiểm tra đích); TUI/web chạy lại với `-C` |
 | `ateam/palette.py` | Command palette tab Code (TUI + web): bảng lệnh, file gần đây, symbol (hàm/class/heading), lọc mờ, tạo/đổi tên/xoá file vào Thùng rác |
 | `ateam/diffview.py` | Màn hình diff kiểu VS Code: bóc `git diff`, ghép dòng hai cột, tô cú pháp (pygments qua rich) và chữ đổi trong dòng; `DiffScreen` ở `tui.py` dùng |

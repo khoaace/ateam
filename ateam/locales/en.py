@@ -1186,8 +1186,8 @@ EN: dict[str, str] = {
         "agents that take over when out of quota, comma-separated",
     "Timeout (giây)":
         "Timeout (seconds)",
-    "mặc định 1800":
-        "default 1800",
+    "0 = không giới hạn (mặc định)":
+        "0 = no limit (default)",
     "Số task cùng lúc":
         "Concurrent tasks",
     "mặc định 1":
@@ -2309,6 +2309,12 @@ EN: dict[str, str] = {
         'Usage: /note <text>',
     'Dự án này đang mở ở một phiên ateam khác — đóng phiên đó rồi chạy lại.':
         'This project is already open in another ateam session — close it and run again.',
+    '⚠ Cổng {a} đang bận — dùng cổng {b}':
+        '⚠ Port {a} is in use — using port {b}',
+    'Cổng {a}–{b} đều đang bận — chọn cổng khác bằng --port.':
+        'Ports {a}–{b} are all in use — pick another one with --port.',
+    'cổng (mặc định 8000; bận thì tự dùng cổng kế tiếp)':
+        'port (default 8000; if it is in use, the next free one is used)',
     'mở giao diện web trên trình duyệt (http://127.0.0.1:PORT, cần aiohttp)':
         'open the web UI in a browser (http://127.0.0.1:PORT, needs aiohttp)',
     'tự mở trình duyệt':

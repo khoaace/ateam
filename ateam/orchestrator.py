@@ -142,23 +142,28 @@ class Orchestrator:
         if not t.cancelled() and t.exception() is not None:  # lỗi ngoài dự kiến: ghi lại thay vì im lặng
             self.log(tr("⚠ Lỗi nội bộ: {e!r}", e=t.exception()))
 
-    def _usage_job(self, rid: int, a: AgentConfig, prompt: str, session: str | None = None) -> None:
-        t = self._spawn(self._collect_usage(rid, a, prompt, session))
+    def _usage_job(self, rid: int, a: AgentConfig, prompt: str, session: str | None = None,
+                   usage: usage_logs.Usage | None = None) -> None:
+        t = self._spawn(self._collect_usage(rid, a, prompt, session, usage))
         self._usage_jobs.add(t)
         t.add_done_callback(self._usage_jobs.discard)
 
-    async def _collect_usage(self, rid: int, a: AgentConfig, prompt: str, session: str | None = None) -> None:
-        """Token & cost của lượt vừa xong: đọc file phiên của CLI (usage_logs), không có thì ước tính ~4 ký
-        tự/token. Chạy nền trong thread (đọc file), không giữ chậm task."""
+    async def _collect_usage(self, rid: int, a: AgentConfig, prompt: str, session: str | None = None,
+                             usage: usage_logs.Usage | None = None) -> None:
+        """Token & cost của lượt vừa xong: CLI tự báo trong output (`usage`, agy stream-json) hoặc đọc file phiên
+        của CLI (usage_logs), không có thì ước tính ~4 ký tự/token. Chạy nền trong thread (đọc file), không giữ
+        chậm task."""
         r = self.db.run(rid)
         if not r:
             return
-        await asyncio.sleep(0.3)  # CLI ghi xong file phiên
-        try:
-            u = await asyncio.to_thread(usage_logs.collect, a.binary, r["cwd"] or str(self.root),
-                                        r["started"], r["finished"] or time.time(), prompt, session)
-        except Exception:
-            u = None
+        u = usage
+        if u is None:
+            await asyncio.sleep(0.3)  # CLI ghi xong file phiên
+            try:
+                u = await asyncio.to_thread(usage_logs.collect, a.binary, r["cwd"] or str(self.root),
+                                            r["started"], r["finished"] or time.time(), prompt, session)
+            except Exception:
+                u = None
         src = "cli" if u else "estimate"
         if not u:
             u = usage_logs.Usage(in_tok=(r["prompt_chars"] or 0) // 4, out_tok=(r["output_chars"] or 0) // 4,
@@ -219,7 +224,7 @@ class Orchestrator:
         pat = a.session_pattern()
         if pat and a.can_resume():
             m = None
-            for m in re.finditer(pat, run.output):
+            for m in re.finditer(pat, "\n".join([run.output, *run.meta])):
                 pass
             if m:
                 return m.group(1)
@@ -424,8 +429,8 @@ class Orchestrator:
     def lead_timeout(self, lead: AgentConfig) -> int:
         """Giây tối đa cho một lượt trưởng nhóm: lead_timeout (ngắn hơn timeout của task — lập kế hoạch/review
         thường xong trong vài phút), không vượt timeout của agent."""
-        lt = self.cfg.lead_timeout
-        return min(lead.timeout, lt) if lt > 0 else lead.timeout
+        lt, own = self.cfg.lead_timeout, lead.timeout  # 0 = không giới hạn
+        return min(own, lt) if lt > 0 and own > 0 else (lt or own)
 
     async def _lead_once(self, lead: AgentConfig, prompt: str, label: str,
                          goal_id: int | None = None, session: str | None = None,
@@ -471,7 +476,8 @@ class Orchestrator:
             rc = 1
             try:
                 rc = await run.start()
-                if resume and rc != 0 and not run.cancelled and SESSION_LOST_RE.search(run.output[-3000:]):
+                if resume and not run.cancelled and (run.session_lost or (
+                        rc != 0 and SESSION_LOST_RE.search(run.output[-3000:]))):
                     resume, session = False, self.new_session(lead)
                     run = make()
                     if goal_id is not None:
@@ -493,7 +499,7 @@ class Orchestrator:
                     session = self.session_of(lead, run, session)
                     if session and kind == "ok":
                         self.db.update_goal(goal_id, lead_session=session, lead_session_agent=lead.name)
-                self._usage_job(rid, lead, prompt, session)
+                self._usage_job(rid, lead, prompt, session, run.usage)
                 act["status"] = DONE if kind == "ok" else FAILED
                 self._end_activity(lead.name, act)
         # CLI in lại prompt (codex exec) thì JSON mẫu trong prompt sẽ bị bóc nhầm thành kế hoạch/câu hỏi
@@ -1857,8 +1863,8 @@ class Orchestrator:
                 run.cancelled = True
             else:
                 rc = await run.start()
-                if (resume and rc != 0 and not run.cancelled and full_prompt
-                        and SESSION_LOST_RE.search(run.output[-3000:])):
+                if resume and not run.cancelled and full_prompt and (run.session_lost or (
+                        rc != 0 and SESSION_LOST_RE.search(run.output[-3000:]))):
                     on_line(tr("↻ không tiếp tục được phiên cũ — chạy lại với đầy đủ ngữ cảnh"))
                     prompt, resume, session = full_prompt, False, self.new_session(a)
                     run = make()
@@ -1873,7 +1879,7 @@ class Orchestrator:
             if own:
                 session = self.session_of(a, run, session)
                 self.db.update_task(t.id, session=session, session_agent=a.name if session else None)
-            self._usage_job(rid, a, prompt, session)
+            self._usage_job(rid, a, prompt, session, run.usage)
             act["status"] = {"ok": DONE, "cancelled": CANCELLED}.get(res, FAILED)
             self._end_activity(a.name, act)
         return run, rc, res
@@ -1994,7 +2000,9 @@ class Orchestrator:
                     siblings=[(o.id, o.agent, o.title) for o in goal_tasks
                               if o.id != t.id and o.status != CANCELLED] if t.goal_id else None,
                     verify_cmd=v.command if v.command and agent.verify else "",
-                    overview=await self.overview_block(), kind=t.kind or KIND_CODE,
+                    # chỉ trưởng nhóm đọc bản tổng quan; thành viên nhận phần cần thiết qua prompt của task (đỡ ~3K
+                    # token mỗi task) — bước workflow do trưởng nhóm làm (thiết kế) bàn giao lại qua SUMMARY
+                    overview=await self.overview_block() if t.agent == self.cfg.lead else "", kind=t.kind or KIND_CODE,
                     diff=self._diff_hint(dep_tasks) if t.kind == KIND_REVIEW else "", handoff=handoff)
             prompt = t.resume if sess else full
             gate = bool(v.command) and (agent.verify or check) and not chat
