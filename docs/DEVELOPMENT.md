@@ -87,6 +87,16 @@ asyncio.run(shot(Path("/tmp/demo")))
 Trong ảnh SVG, ký tự vẽ khung và spinner có thể hiện thành ô vuông do font của trình render; trên
 terminal thật vẫn đúng.
 
+Quy ước khi thêm màn hình / vùng mới (để TUI đồng bộ):
+
+- Mỗi vùng là một khung `classes="box"` (bo tròn) với `border_title` ngắn bằng `tr(...)`; không dùng đường kẻ
+  `border-left/right` để chia cột, khung kề nhau cách `margin-left: 1`.
+- Nút là `Btn` (chip): `variant="primary"`/`"success"` cho việc chính, `"error"` cho xoá/huỷ; không bọc `[ … ]`.
+  Chữ bấm được trong `Text` (`@click`) đặt ở widget có `link-style: none` (chỉ gạch chân khi rê chuột).
+- Tab mới: thêm vào `compose`, `TAB_ORDER`, `tab_labels()` và đúng nhóm trong `side_groups()` (thứ tự = Alt+số).
+- Phím tắt không hiện ở footer nữa: ghi vào `help_text` (F1) và gợi ý một dòng trong chính vùng đó.
+- Chụp cả terminal rộng (thanh bên) và hẹp (< 120 cột, thanh tab): `size=(150, 45)` và `size=(100, 40)`.
+
 ## Công thức cho thay đổi thường gặp
 
 **Thêm agent mặc định**: thêm khối `[agents.<tên>]` trong `DEFAULT_CONFIG` (`config.py`) với

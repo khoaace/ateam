@@ -59,7 +59,7 @@ def test_theme_command_and_screen(env, project, monkeypatch):
             assert await wait(lambda: app._booted)
             assert app.theme == "textual-dark"
             bar = app.query_one("#statusbar", tui.StatusBar)
-            assert "textual-dark" in bar.build(app).plain
+            assert "F1" in bar.build(app).plain  # phím tắt cố định ở bên phải thanh trạng thái
 
             app.run_command("/theme nord tím")
             await pilot.pause(0.2)

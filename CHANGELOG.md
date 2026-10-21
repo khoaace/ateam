@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.41.0 — 21/10/2026
+
+- **TUI gọn và đẹp hơn** — thanh bên trái thay thanh tab khi terminal đủ rộng (≥ 120 cột): dự án + nhánh, các màn
+  hình theo nhóm *Làm việc* / *Dự án* / *Của bạn* có số đếm, và trạng thái từng agent (bấm để chat riêng). **Ctrl+B**
+  ẩn/hiện (nhớ cho lần sau), terminal hẹp tự trả lại thanh tab. Bỏ header và footer: thanh trạng thái duy nhất ở đáy
+  có phím tắt chính; ô nhập một dòng trong khung bo tròn. Mỗi vùng (bảng việc, log, Git, Code, Terminal, Timeline)
+  là một khung bo tròn có tiêu đề; nút thành chip một dòng (nút chính nền màu, nút xoá chữ đỏ) thay cho `[ … ]`;
+  nhãn tab không còn emoji. Theme và ngôn ngữ đổi bằng `/theme`, `/lang`.
+
 ## 0.40.0 — 21/10/2026
 
 - **Antigravity không còn "im lặng như treo"** — ateam chạy agy với `--output-format stream-json`: ô agent hiện từng

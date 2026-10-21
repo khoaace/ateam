@@ -934,7 +934,7 @@ def test_tui_team_tab_layout_stays_fixed(env, project, monkeypatch):
     importlib.reload(ateam.config)
     from textual import events
     from textual.widget import Widget
-    from textual.widgets import Header, RichLog
+    from textual.widgets import RichLog
 
     from ateam.config import ensure_global_config, load_config
     from ateam.db import DB
@@ -972,11 +972,11 @@ def test_tui_team_tab_layout_stays_fixed(env, project, monkeypatch):
                 await pilot.pause(0.02)
             await pilot.pause(0.3)
             w, h = size
-            assert app.query_one(Header).region.y == 0
+            assert app.query_one("#tabs").region.y == 0
             assert {p.agent: p.region for p in panes} == before
             for p in panes:
                 r = p.region
-                assert r.y >= 1 and r.bottom <= h - 3, (size, p.agent, r)
+                assert r.y >= 0 and r.bottom <= h - 4, (size, p.agent, r)
                 log = p.body
                 assert log.virtual_size.width <= log.scrollable_content_region.width, (size, log)
                 assert log.scroll_x == 0
