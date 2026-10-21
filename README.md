@@ -664,6 +664,17 @@ role = "Đọc codebase lớn, viết tài liệu."
   `opencode models`). Toàn quyền thêm `--auto`. Từ bản 0.6, agent `grok` cũ (chạy qua OpenCode) đổi tên thành
   `opencode`; lựa chọn model/effort đã lưu được chuyển theo.
 
+## Xử lý sự cố
+
+Chạy `ateam doctor`, rồi `ateam log <số task>`: dòng đầu ghi agent, model, effort và thư mục làm việc.
+
+| Dấu hiệu | Thường do | Cách xử lý |
+| --- | --- | --- |
+| Agent không in ra gì | CLI chưa đăng nhập hoặc cần terminal thật | Chạy thử CLI đó một lần; giữ `pty = true` cho agy |
+| Task xong mà không file nào đổi | CLI từ chối sửa file khi chạy headless | Thêm cờ cho phép sửa: `acceptEdits`, `--mode accept-edits`… |
+| Thoát mã 1 ngay khi chạy | Sai tên model hoặc mức effort | `/agents` xem lệnh thật; `/model codex -` về mặc định |
+| Xung đột khi merge | Hai task sửa cùng chỗ | `git merge ateam/t<số>` rồi tự xử lý, hoặc `/retry` |
+
 ## Dữ liệu
 
 Mọi thứ nằm trong `.ateam/` của dự án (đã tự gitignore): `team.db` (bảng việc), `logs/t<id>.log`,
@@ -671,8 +682,9 @@ Mọi thứ nằm trong `.ateam/` của dự án (đã tự gitignore): `team.db
 
 ## Trang docs (Cloudflare Workers)
 
-Trang giới thiệu và file tải nằm trong `site/`; `scripts/build_site.py` dựng chúng vào `dist/`
-(điền phiên bản và đóng gói `ateam-<version>.zip`). `wrangler.jsonc` deploy `dist/` lên Cloudflare
+Trang giới thiệu (tiếng Việt `site/index.html`, tiếng Anh `site/en/index.html`) và file tải nằm trong `site/`;
+`scripts/build_site.py` dựng chúng vào `dist/` (điền phiên bản, 5 bản mới nhất từ `CHANGELOG.md`, đóng gói
+`ateam-<version>.zip`). `wrangler.jsonc` deploy `dist/` lên Cloudflare
 Workers dưới dạng static assets, nên chỉ cần:
 
 ```bash

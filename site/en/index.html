@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-copied="Copied ✓">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ateam — run a whole team of AI coding agents from your terminal</title>
+<meta name="description" content="ateam orchestrates Claude Code, Codex, Antigravity, Grok and OpenCode on one repo: a lead agent plans the work, members run in parallel in their own worktrees, tests run automatically, rate-limited agents hand off to a fallback, and nothing merges until you review the diff — in your terminal or browser.">
+<meta property="og:title" content="ateam — one prompt, a whole team of AI coding agents">
+<meta property="og:description" content="Claude Code, Codex, Antigravity, Grok and OpenCode working in parallel on one repo, with a lead, a shared task board and diff review. Runs on your machine.">
+<meta name="theme-color" content="#10110e">
+<link rel="alternate" hreflang="vi" href="https://ateam.khoaace.workers.dev/">
+<link rel="alternate" hreflang="en" href="https://ateam.khoaace.workers.dev/en/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='3' fill='%2310110e'/%3E%3Cpath d='M8 11l5 5-5 5' stroke='%23a78bfa' stroke-width='3' fill='none'/%3E%3Crect x='15' y='19' width='9' height='3' fill='%23e8e6dc'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css?v={{VERSION}}">
+<script>
+  // pick the theme before first paint: dark by default, remember the visitor's choice
+  document.documentElement.classList.add("js");
+  try { var t = localStorage.getItem("ateam-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#" aria-label="ateam — back to top"><span class="pr">❯</span> ateam <span class="ver">v{{VERSION}}</span></a>
+    <nav aria-label="Contents">
+      <a class="nl opt" href="#how-it-works">how it works</a>
+      <a class="nl" href="#tour">tour</a>
+      <a class="nl opt" href="#features">features</a>
+      <a class="nl opt" href="#commands">commands</a>
+      <a class="nl opt" href="#faq">faq</a>
+      <a class="nl" href="#install">install</a>
+      <span class="lang"><a href="/" hreflang="vi">VI</a><a href="/en/" hreflang="en" aria-current="true">EN</a></span>
+      <button class="icon-btn theme-btn" type="button" aria-label="Toggle light / dark theme" title="Light / dark">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+      <a class="icon-btn" href="https://github.com/khoaace/ateam" aria-label="Source code on GitHub" title="GitHub">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.81 1.19 1.83 1.19 3.09 0 4.41-2.7 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============================== HERO ============================== -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <a class="pill" href="#whats-new"><b>v{{VERSION}}</b><span>released {{LATEST_DATE}} · what's new</span>→</a>
+        <h1>One prompt.<br><span class="acc">A whole team</span> of AI coding <span class="nw">agents.<span class="cursor" aria-hidden="true"></span></span></h1>
+        <p class="lede">ateam orchestrates <strong>Claude Code, Codex, Antigravity, Grok and OpenCode</strong> on the same repo. A lead agent splits the work, members run in parallel in their own worktrees, tests run after every task, rate-limited agents hand off to a fallback — and <strong>nothing merges until you review the diff</strong>.</p>
+        <div class="actions">
+          <a class="btn btn-primary" href="#install">$ install</a>
+          <a class="btn" href="/{{ZIP_NAME}}" download>download zip <small>{{ZIP_SIZE}}</small></a>
+          <a class="btn" href="#tour">take the tour →</a>
+        </div>
+        <div class="oneliner" role="group" aria-label="Install command">
+          <span class="dollar">$</span>
+          <code id="hero-cmd">curl -fsSL https://raw.githubusercontent.com/khoaace/ateam/main/scripts/get.sh | bash</code>
+          <button class="copy" type="button" data-copy="hero-cmd">copy</button>
+        </div>
+        <div class="agents" aria-label="Supported agent CLIs">
+          <span class="lbl">works with</span>
+          <span class="chip" style="--c: var(--claude)"><i></i>claude</span>
+          <span class="chip" style="--c: var(--codex)"><i></i>codex</span>
+          <span class="chip" style="--c: var(--agy)"><i></i>antigravity</span>
+          <span class="chip" style="--c: var(--grok)"><i></i>grok</span>
+          <span class="chip" style="--c: var(--opencode)"><i></i>opencode</span>
+          <span class="chip any"><i></i>+ any CLI</span>
+        </div>
+      </div>
+
+      <div class="win term" aria-label="Illustration: ateam takes a goal, the lead plans it, agents work in parallel" role="img">
+        <div class="win-bar"><span class="title"><b>ateam</b> — ~/code/team-notebook</span><span class="sp"></span><span>zsh</span></div>
+        <div class="term-body" id="term" aria-hidden="true"></div>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <div class="stats reveal">
+        <div><b>5 + n</b><span>CLIs built in, plus any headless CLI</span></div>
+        <div><b>0</b><span>API keys — uses the plan each CLI already has</span></div>
+        <div><b>1</b><span>command to install, macOS and Linux</span></div>
+        <div><b>100%</b><span>runs on your machine, data in <code>.ateam/</code></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== HOW IT WORKS ============================== -->
+  <section class="block" id="how-it-works">
+    <div class="wrap">
+      <p class="sec"><b>## 01</b> how it works</p>
+      <h2>You set the goal. The team splits it, builds it, checks it.</h2>
+      <p class="intro">ateam doesn't replace the CLIs you use — it gets them working together on one shared task board, and keeps you as the one who decides.</p>
+      <ol class="steps reveal">
+        <li><h3>Give a goal</h3><p>Write it like a ticket: the outcome and how to verify it. Still fuzzy? <code>/grill</code> lets the lead interview you first.</p></li>
+        <li><h3>The lead plans</h3><p>Splits it into tasks, picks the right agent for each, sets dependencies and effort.</p></li>
+        <li><h3>You approve</h3><p>Reassign, edit, drop draft tasks — then press <kbd>F2</kbd> to run.</p></li>
+        <li><h3>Agents work in parallel</h3><p>One branch per task. Agents can hand a part to a teammate, or stop and ask you.</p></li>
+        <li><h3>Automatic checks</h3><p>Your test command runs after each task; failures go back for a fix with the error log attached.</p></li>
+        <li><h3>Review &amp; merge</h3><p>You read the diff and merge; the lead does a final review and adds tasks if anything is missing.</p></li>
+      </ol>
+
+      <div class="board reveal" role="img" aria-label="Example: claude plans and reviews, codex builds the API and fixes a failing test, antigravity does the UI, grok writes tests and the README">
+        <div class="board-head">
+          <strong>goal: add Google sign-in</strong>
+          <span>4 agents · 18 minutes · you typed 1 sentence and pressed 2 keys</span>
+        </div>
+        <div class="lane" style="--c: var(--claude)">
+          <div class="who"><i></i>claude <em>lead</em></div>
+          <div class="track">
+            <span class="bar lead" style="--x:0%;--w:11%;--d:.1s">plan</span>
+            <span class="bar lead" style="--x:82%;--w:12%;--d:2.6s">review</span>
+          </div>
+        </div>
+        <div class="lane" style="--c: var(--codex)">
+          <div class="who"><i></i>codex <em>effort high</em></div>
+          <div class="track">
+            <span class="bar" style="--x:12%;--w:30%;--d:.6s">#1 OAuth login API</span>
+            <span class="bar fix" style="--x:43%;--w:15%;--d:1.6s">test failed → fix</span>
+            <span class="bar wait" style="--x:59%;--w:14%;--d:2.1s">in review</span>
+          </div>
+        </div>
+        <div class="lane" style="--c: var(--agy)">
+          <div class="who"><i></i>antigravity</div>
+          <div class="track">
+            <span class="bar" style="--x:12%;--w:22%;--d:.75s">#2 login page</span>
+            <span class="bar" style="--x:60%;--w:20%;--d:2.2s">#5 header avatar</span>
+          </div>
+        </div>
+        <div class="lane" style="--c: var(--grok)">
+          <div class="who"><i></i>grok <em>fallback: codex</em></div>
+          <div class="track">
+            <span class="bar" style="--x:44%;--w:17%;--d:1.4s">#3 tests</span>
+            <span class="bar" style="--x:62%;--w:16%;--d:2s">↳ README</span>
+          </div>
+        </div>
+        <div class="legend">
+          <span><b style="background:var(--codex)"></b>task</span>
+          <span><b class="l-lead"></b>lead planning / review</span>
+          <span><b class="l-fix"></b>fix after a failing test</span>
+          <span><b class="l-wait"></b>waiting for your merge</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== TOUR ============================== -->
+  <section class="block" id="tour">
+    <div class="wrap">
+      <p class="sec"><b>## 02</b> tour</p>
+      <h2>One loop, from goal to merge.</h2>
+      <p class="intro">Screenshots of ateam running the goal <em>“Add Google sign-in with tests and a README update”</em> — in the terminal and in <code>ateam web</code>, on the same task board.</p>
+
+      <div class="gal">
+        <div class="gal-list" role="tablist" aria-orientation="vertical" aria-label="ateam screens">
+          <button role="tab" aria-controls="g-grill" aria-selected="true"><span>01</span>/grill interview</button>
+          <button role="tab" aria-controls="g-plan" aria-selected="false" tabindex="-1"><span>02</span>plan</button>
+          <button role="tab" aria-controls="g-board" aria-selected="false" tabindex="-1"><span>03</span>task board</button>
+          <button role="tab" aria-controls="g-grid" aria-selected="false" tabindex="-1"><span>04</span>terminal grid</button>
+          <button role="tab" aria-controls="g-git" aria-selected="false" tabindex="-1"><span>05</span>git &amp; diff</button>
+          <button role="tab" aria-controls="g-code" aria-selected="false" tabindex="-1"><span>06</span>vim-style code</button>
+          <button role="tab" aria-controls="g-agents" aria-selected="false" tabindex="-1"><span>07</span>agents &amp; workflows</button>
+          <button role="tab" aria-controls="g-todo" aria-selected="false" tabindex="-1"><span>08</span>to-do &amp; notes</button>
+        </div>
+
+        <div>
+          <div class="gal-panel" id="g-grill" role="tabpanel">
+            <div class="gal-bar"><span class="title">/grill add Google sign-in</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-grill-tui" aria-selected="true">terminal</button></span></div>
+            <div class="shot"><img id="g-grill-tui" src="/shots/en/grill.svg" width="1848" height="1075" alt="The /grill panel: the lead asks how users should sign in, with a recommended option"></div>
+            <div class="gal-note">
+              <h3>Ask before building</h3>
+              <p>Requirements still vague? The lead asks you one question at a time, each with suggested answers and a recommended one, then writes up a spec.</p>
+              <ul><li>Type a number to choose, or answer in your own words</li><li>The spec travels with every later prompt</li><li>If planning hits an open question, the lead asks on its own</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-plan" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">draft plan · awaiting approval</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-plan-tui" aria-selected="true">terminal</button><button role="tab" aria-controls="g-plan-web" aria-selected="false" tabindex="-1">web</button></span></div>
+            <div class="shot"><img id="g-plan-tui" src="/shots/en/plan.svg" width="1848" height="1075" loading="lazy" alt="Draft plan from the lead: 4 tasks with agents and dependencies, awaiting approval"><img id="g-plan-web" hidden src="/shots/en/web-plan.webp" width="2880" height="1800" loading="lazy" alt="Plan awaiting approval in the web UI: 4 tasks, an agent picker per task, an Approve &amp; run button"></div>
+            <div class="gal-note">
+              <h3>The lead plans, you approve</h3>
+              <p>The goal becomes tasks with an owner, dependencies and effort. Edit, reassign, trim — then run.</p>
+              <ul><li><kbd>F2</kbd> approve &amp; run</li><li><code>/assign 3 grok</code> to reassign</li><li><code>/flow</code> runs a predefined workflow and skips planning</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-board" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">task board · 2 running</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-board-tui" aria-selected="true">terminal</button><button role="tab" aria-controls="g-board-web" aria-selected="false" tabindex="-1">web</button></span></div>
+            <div class="shot"><img id="g-board-tui" src="/shots/en/board.svg" width="1848" height="1075" loading="lazy" alt="Task board: 4 tasks grouped by plan, antigravity and grok running, live log on the right"><img id="g-board-web" hidden src="/shots/en/web-board.webp" width="2880" height="1800" loading="lazy" alt="Task board in the web UI: tasks grouped by plan, a side panel with codex's markdown log"></div>
+            <div class="gal-note">
+              <h3>One board for the whole team</h3>
+              <p>Every task, status, owner and timing in one place, grouped by plan. Select a task to follow that agent's live log.</p>
+              <ul><li>Tasks start once their dependencies are done</li><li>Hand-assigned tasks live under 📌 Outside plans</li><li><kbd>F5</kbd> re-run · <kbd>Ctrl</kbd>+<kbd>K</kbd> cancel</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-grid" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">grid · 4 real CLIs</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-grid-tui" aria-selected="true">terminal</button><button role="tab" aria-controls="g-grid-web" aria-selected="false" tabindex="-1">web</button></span></div>
+            <div class="shot"><img id="g-grid-tui" src="/shots/en/grid.svg" width="1848" height="1075" loading="lazy" alt="Grid tab: interactive CLIs of claude, codex, antigravity and grok side by side"><img id="g-grid-web" hidden src="/shots/en/web-grid.webp" width="2880" height="1800" loading="lazy" alt="Terminal grid in the web UI: four agents running their real CLIs side by side"></div>
+            <div class="gal-note">
+              <h3>Every agent's real CLI, side by side</h3>
+              <p>Each cell is an agent's real interactive CLI — type into it like any terminal. Drag to rearrange, drag the gutters to resize.</p>
+              <ul><li>Layouts: one column, two columns, lead + team…</li><li>Broadcast one message to every cell</li><li>Layout is remembered per project</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-git" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">git &amp; diff</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-git-tui" aria-selected="true">git</button><button role="tab" aria-controls="g-git-diff" aria-selected="false" tabindex="-1">diff</button><button role="tab" aria-controls="g-git-web" aria-selected="false" tabindex="-1">web</button></span></div>
+            <div class="shot"><img id="g-git-tui" src="/shots/en/git.svg" width="1848" height="1075" loading="lazy" alt="Git tab: changed files, commit message box with an AI-write button, commit history"><img id="g-git-diff" hidden src="/shots/en/diff.svg" width="1848" height="1075" loading="lazy" alt="Side-by-side diff with syntax highlighting"><img id="g-git-web" hidden src="/shots/en/web-git.webp" width="2880" height="1800" loading="lazy" alt="Git tab in the web UI: changed files, commit box with AI message, history"></div>
+            <div class="gal-note">
+              <h3>Review the diff, then merge</h3>
+              <p>One worktree per task. Side-by-side diffs with syntax and in-line change highlighting — merge, or send it back with feedback. The Git tab covers the rest: stage, commit, branches, pull/push, stash.</p>
+              <ul><li><kbd>Ctrl</kbd>+<kbd>D</kbd> diff · <kbd>Ctrl</kbd>+<kbd>Y</kbd> merge</li><li><code>/reject 3 missing error handling</code> sends it back</li><li>Empty commit message: AI reads the diff and writes one</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-code" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">app/auth/google.py</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-code-tui" aria-selected="true">terminal</button><button role="tab" aria-controls="g-code-web" aria-selected="false" tabindex="-1">web</button></span></div>
+            <div class="shot"><img id="g-code-tui" src="/shots/en/code.svg" width="1848" height="1075" loading="lazy" alt="Code tab: the Python file codex just wrote, syntax highlighted, lines selected in VISUAL LINE mode"><img id="g-code-web" hidden src="/shots/en/web-code.webp" width="2880" height="1800" loading="lazy" alt="Code tab in the web UI: file tree and a syntax-highlighted editor with vim keys"></div>
+            <div class="gal-note">
+              <h3>Read &amp; edit with vim keys, without leaving</h3>
+              <p>Open what an agent just wrote right in the app: syntax highlighting, vim keys, multiple files, smooth even on files tens of thousands of lines long.</p>
+              <ul><li><kbd>Ctrl</kbd>+<kbd>P</kbd> files, <code>&gt;</code> commands, <code>@</code> symbols</li><li><kbd>F3</kbd> project-wide search &amp; replace</li><li>Open files reload when an agent edits them</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-agents" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">agents &amp; workflows</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-agents-tui" aria-selected="true">agents</button><button role="tab" aria-controls="g-agents-flow" aria-selected="false" tabindex="-1">workflows</button><button role="tab" aria-controls="g-agents-web" aria-selected="false" tabindex="-1">web</button></span></div>
+            <div class="shot"><img id="g-agents-tui" src="/shots/en/agents.svg" width="1848" height="1075" loading="lazy" alt="Agents tab: an inline roles table, agent list with model, effort, status, Chat and Terminal buttons"><img id="g-agents-flow" hidden src="/shots/en/workflows.svg" width="1848" height="1075" loading="lazy" alt="Workflows tab: built-in and custom workflows"><img id="g-agents-web" hidden src="/shots/en/web-agents.webp" width="2880" height="1800" loading="lazy" alt="Agents page in the web UI: roles, agent list and custom agents"></div>
+            <div class="gal-note">
+              <h3>Your team, your way</h3>
+              <p>Change the CLI, model and effort for each role right on the Agents tab. Add your own CLIs (Gemini CLI, Cursor CLI, Aider…) and workflows like design → code → test.</p>
+              <ul><li>💬 chat with any agent, keeping its CLI session</li><li>⌨ open the real CLI to continue that session</li><li>Describe a workflow in words, the lead drafts the steps</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-todo" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">to-do &amp; notes</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-todo-tui" aria-selected="true">to-do</button><button role="tab" aria-controls="g-todo-notes" aria-selected="false" tabindex="-1">notes</button><button role="tab" aria-controls="g-todo-web" aria-selected="false" tabindex="-1">web</button></span></div>
+            <div class="shot"><img id="g-todo-tui" src="/shots/en/todo.svg" width="1848" height="1075" loading="lazy" alt="To-do tab: tasks with tags, due dates and priorities"><img id="g-todo-notes" hidden src="/shots/en/notes.svg" width="1848" height="1075" loading="lazy" alt="Notes tab: markdown notes per project"><img id="g-todo-web" hidden src="/shots/en/web-todo.webp" width="2880" height="1800" loading="lazy" alt="To-do in the web UI: grouped by due date, tags, calendar"></div>
+            <div class="gal-note">
+              <h3>Your tasks, next to the team's</h3>
+              <p>Type <code>Fix login bug #api !high @tomorrow 17:00</code> and the tag, priority and due date are parsed for you. Markdown notes for decisions, ideas and prompts you reuse.</p>
+              <ul><li>Shared tags; filter by tag, due date, priority</li><li>Stored per project, outside the repo</li><li>Shared between terminal and web</li></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== FEATURES ============================== -->
+  <section class="block" id="features">
+    <div class="wrap">
+      <p class="sec"><b>## 03</b> features</p>
+      <h2>Everything you need when several agents share one repo.</h2>
+      <p class="intro">All of it in the terminal and in <code>ateam web</code> — same board, same <code>/…</code> commands, same config.</p>
+      <div class="groups reveal">
+        <div class="group">
+          <h3>orchestration</h3>
+          <ul>
+            <li><b>A real lead</b> — plans, picks the right agent, reviews results and adds work when something is missing, up to 3 rounds.</li>
+            <li><b>Parallel, dependency-aware</b> — with a concurrency limit; agents can delegate a part to a better-suited teammate.</li>
+            <li><b>Agents ask instead of guessing</b> — on ambiguity an agent pauses to ask you, then resumes the same session.</li>
+            <li><b>Workflows</b> — design → code → test out of the box, or describe one in words and the lead drafts the steps.</li>
+            <li><b>Keeps context, saves tokens</b> — <code>/retry</code>, test-fix rounds and <code>/continue</code> resume the same CLI session; <code>/init</code> writes a project overview once.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <h3>safety &amp; control</h3>
+          <ul>
+            <li><b>Worktrees &amp; diff review</b> — one branch per task, no stepping on each other; you merge or send back.</li>
+            <li><b>Tests run, failures get fixed</b> — set <code>/verify npm test</code> once; a task that breaks tests is sent back with the log.</li>
+            <li><b>Rate-limited? Hand off</b> — detects each CLI's rate-limit messages, rests the agent until reset, moves tasks to a fallback.</li>
+            <li><b>Team rules</b> — <code>/rules</code> are sent with every prompt to every agent; shell / network access is off by default.</li>
+            <li><b>Model &amp; effort per task</b> — <code>/model claude opus</code>, or <code>/task codex@xhigh …</code> for one hard task.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <h3>built-in tools</h3>
+          <ul>
+            <li><b>Code</b> — vim-key editor, command palette, project-wide search &amp; replace.</li>
+            <li><b>Git</b> — stage, commit (AI-written messages), branches, pull/push, stash, history, revert.</li>
+            <li><b>Grid &amp; chat</b> — several agents' real CLIs side by side; chat with any agent in its own session.</li>
+            <li><b>Terminal</b> — <code>!yarn dev</code> runs inside the app, suggests package.json / Makefile scripts, detects ports.</li>
+            <li><b>To-do, notes, @file, image paste</b> — <code>@</code> mentions files in each CLI's syntax, <kbd>Ctrl</kbd>+<kbd>V</kbd> pastes screenshots.</li>
+          </ul>
+        </div>
+        <div class="group">
+          <h3>remote &amp; insight</h3>
+          <ul>
+            <li><b><code>ateam web</code></b> — everything the terminal does; multiple tabs never run a task twice.</li>
+            <li><b>From your phone</b> — <code>--tunnel</code>: Cloudflare Tunnel over https + QR code, token-protected, with a read-only mode.</li>
+            <li><b>Usage</b> — real tokens and cost from CLI session logs, goal history, remaining quota.</li>
+            <li><b>Notifications</b> — macOS / browser alerts when something awaits review or a task fails.</li>
+            <li><b>21 themes · English / Tiếng Việt</b> — dark, light, custom accent; <code>/lang vi</code> switches the whole UI.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== COMPARE ============================== -->
+  <section class="block" id="why">
+    <div class="wrap">
+      <p class="sec"><b>## 04</b> why ateam</p>
+      <h2>One good agent. A team is faster and safer.</h2>
+      <div class="compare reveal">
+        <table>
+          <thead><tr><th scope="col"></th><th scope="col">one agent CLI</th><th scope="col" class="us">ateam</th></tr></thead>
+          <tbody>
+            <tr><td>Several things at once</td><td><span class="no">✗</span><span class="note">One task at a time; open more windows yourself</span></td><td class="us"><span class="yes">✓</span><span class="note">Parallel tasks by dependency, with a limit</span></td></tr>
+            <tr><td>Splitting the work</td><td><span class="meh">~</span><span class="note">You split it and track who does what</span></td><td class="us"><span class="yes">✓</span><span class="note">The lead plans and picks the right agent</span></td></tr>
+            <tr><td>Rate limit mid-task</td><td><span class="no">✗</span><span class="note">Stop and wait</span></td><td class="us"><span class="yes">✓</span><span class="note">Tasks move to a fallback agent, even the lead's</span></td></tr>
+            <tr><td>Tests fail after a change</td><td><span class="meh">~</span><span class="note">You run tests, paste errors, ask for a fix</span></td><td class="us"><span class="yes">✓</span><span class="note">Checks run automatically; failures go back with the log</span></td></tr>
+            <tr><td>Control over changes</td><td><span class="meh">~</span><span class="note">The agent edits your working tree directly</span></td><td class="us"><span class="yes">✓</span><span class="note">A worktree per task; you review the diff before merge</span></td></tr>
+            <tr><td>Knowing what's going on</td><td><span class="no">✗</span><span class="note">Switching between terminals</span></td><td class="us"><span class="yes">✓</span><span class="note">Task board, Agents tab, timeline, terminal grid</span></td></tr>
+            <tr><td>Each model's strengths</td><td><span class="no">✗</span><span class="note">Tied to one vendor</span></td><td class="us"><span class="yes">✓</span><span class="note">Model &amp; effort per agent and per task</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== WHAT'S NEW ============================== -->
+  <section class="block" id="whats-new">
+    <div class="wrap">
+      <p class="sec"><b>## 05</b> what's new</p>
+      <h2>Shipped often.</h2>
+      <p class="intro">Upgrade with the same install command, or <code>/update</code> inside the app. Release notes are written in Vietnamese.</p>
+      <div class="log reveal">
+{{CHANGELOG_EN}}
+        <a class="more" href="https://github.com/khoaace/ateam/blob/main/CHANGELOG.md">→ full CHANGELOG.md</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== INSTALL ============================== -->
+  <section class="block" id="install">
+    <div class="wrap">
+      <p class="sec"><b>## 06</b> install</p>
+      <h2>Up and running in a minute.</h2>
+      <p class="intro">macOS and Linux. To upgrade later, run the same command again.</p>
+      <div class="install">
+        <div class="reveal">
+          <div class="istep"><span class="n">[1]</span><div><h3>Install ateam</h3><p>Creates its own environment in <code>~/.ateam/venv</code> and adds the <code>ateam</code> command to <code>~/.local/bin</code>.</p>
+            <div class="cmd"><pre id="oneliner">curl -fsSL https://raw.githubusercontent.com/khoaace/ateam/main/scripts/get.sh | bash</pre><button class="copy" type="button" data-copy="oneliner">copy</button></div></div></div>
+          <div class="istep"><span class="n">[2]</span><div><h3>Check your agents</h3><p>See which agents are installed and ready, and the exact command ateam will run for each.</p>
+            <div class="cmd"><pre id="doctor">ateam doctor</pre><button class="copy" type="button" data-copy="doctor">copy</button></div></div></div>
+          <div class="istep"><span class="n">[3]</span><div><h3>Open a project, give a goal</h3><p>On first run ateam asks each CLI for its models and lets you pick the team (reopen with <code>/setup</code>). Prefer the browser? <code>ateam web --open</code>.</p>
+            <div class="cmd"><pre id="run">cd ~/code/your-project && ateam --lang en</pre><button class="copy" type="button" data-copy="run">copy</button></div></div></div>
+        </div>
+        <div class="box reveal">
+          <h3>requirements</h3>
+          <ul>
+            <li><strong>Python 3.9+</strong> — preinstalled on macOS, or <code>brew install python</code></li>
+            <li><strong>git</strong> — for worktrees, diffs and the Git tab</li>
+            <li><strong>At least one signed-in agent CLI</strong>: <code>claude</code>, <code>codex</code>, <code>agy</code>, <code>grok</code>, <code>opencode</code> or any headless CLI</li>
+          </ul>
+          <p>Prefer a manual install? <a href="/{{ZIP_NAME}}" download>Download ateam-{{VERSION}}.zip</a> ({{ZIP_SIZE}}) and run:</p>
+          <div class="cmd" style="margin-top:10px"><pre id="manual">unzip -o {{ZIP_NAME}} && cd ateam && ./install.sh</pre><button class="copy" type="button" data-copy="manual">copy</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== COMMANDS ============================== -->
+  <section class="block" id="commands">
+    <div class="wrap">
+      <p class="sec"><b>## 07</b> commands</p>
+      <h2>Type <code style="font-size:.8em">/</code> to see them all.</h2>
+      <p class="intro">In the app, <code>/</code> lists every command with a description and argument hints; <kbd>F1</kbd> shows the full help. Many have a command-line form too: <code>ateam goal</code>, <code>ateam diff 3</code>, <code>ateam usage</code>…</p>
+      <div class="cmds">
+        <div class="table-wrap reveal">
+          <table class="t">
+            <thead><tr><th>in the app</th><th>what it does</th></tr></thead>
+            <tbody>
+              <tr><td><em>a plain sentence</em></td><td>Give the lead a goal</td></tr>
+              <tr><td><code>/grill Add sign-in</code></td><td>The lead interviews you before planning</td></tr>
+              <tr><td><code>/task codex@xhigh …</code></td><td>Assign one task directly, with its own effort</td></tr>
+              <tr><td><code>/flow new-feature …</code></td><td>Run a goal through a predefined workflow</td></tr>
+              <tr><td><code>/continue m12 …</code></td><td>Continue a finished goal with a new request</td></tr>
+              <tr><td><code>/chat codex</code> · <code>/focus</code></td><td>Chat with one agent · zoom into it</td></tr>
+              <tr><td><code>/init</code> · <code>/rules</code></td><td>Project overview · rules every agent follows</td></tr>
+              <tr><td><code>/verify pytest -q</code></td><td>Check command after every task</td></tr>
+              <tr><td><code>/diff 3</code> · <code>/merge 3</code></td><td>View changes · merge a task in review</td></tr>
+              <tr><td><code>/reject 3 missing error handling</code></td><td>Send a task back with feedback</td></tr>
+              <tr><td><code>/code @src/app.py:42</code></td><td>Open a file in the Code tab (vim keys, <code>:w</code> saves)</td></tr>
+              <tr><td><code>/git</code> · <code>/commit</code></td><td>Git tab · commit (empty: AI writes the message)</td></tr>
+              <tr><td><code>/grid</code> · <code>/todo</code> · <code>/notes</code></td><td>Terminal grid · to-do · notes</td></tr>
+              <tr><td><code>/roles</code> · <code>/setup</code></td><td>Quick role edits · full team setup</td></tr>
+              <tr><td><code>/open ~/code/app</code></td><td>Switch to another project</td></tr>
+              <tr><td><code>/usage</code> · <code>/dash</code></td><td>Runs and remaining quota · tokens &amp; cost</td></tr>
+              <tr><td><code>/theme nord purple</code> · <code>/lang en</code></td><td>Change theme · switch UI language</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap reveal">
+          <table class="t">
+            <thead><tr><th>key</th><th>what it does</th></tr></thead>
+            <tbody>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>T</kbd></td><td>Switch tab</td></tr>
+              <tr><td><kbd>F2</kbd></td><td>Approve &amp; run a plan</td></tr>
+              <tr><td><kbd>F7</kbd></td><td>Zoom the agent you're chatting with</td></tr>
+              <tr><td><kbd>F6</kbd></td><td>Continue a finished goal</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>Diff of the selected task</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Merge a task</td></tr>
+              <tr><td><kbd>F5</kbd></td><td>Re-run a task</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Cancel a task</td></tr>
+              <tr><td><kbd>F3</kbd></td><td>Search &amp; replace in project</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>Command palette (Code tab)</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>Paste an image</td></tr>
+              <tr><td><kbd>F1</kbd></td><td>Help</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== CONFIG ============================== -->
+  <section class="block config" id="config">
+    <div class="wrap">
+      <p class="sec"><b>## 08</b> config</p>
+      <h2>Sensible defaults. Everything adjustable.</h2>
+      <p class="intro">Global config lives in <code>~/.config/ateam/config.toml</code>; override per project with <code>.ateam/config.toml</code> (<code>ateam init --project</code>).</p>
+<pre class="reveal"><code><span class="c"># safe parallel runs: a branch per task, waits for your review</span>
+<span class="k">isolation</span> = <span class="s">"worktree"</span>
+<span class="k">merge</span> = <span class="s">"review"</span>
+
+<span class="h">[verify]</span>
+<span class="k">command</span> = <span class="s">"npm test"</span>
+<span class="k">max_fix_attempts</span> = 2
+
+<span class="h">[agents.codex]</span>
+<span class="k">effort</span>   = <span class="s">"high"</span>
+<span class="k">fallback</span> = [<span class="s">"claude"</span>]
+<span class="k">role</span>     = <span class="s">"Write code, fix bugs, run tests, refactor."</span>
+
+<span class="c"># add any headless CLI</span>
+<span class="h">[agents.gemini]</span>
+<span class="k">command</span>    = [<span class="s">"gemini"</span>, <span class="s">"--yolo"</span>, <span class="s">"-p"</span>, <span class="s">"{prompt}"</span>]
+<span class="k">model_args</span> = [<span class="s">"--model"</span>, <span class="s">"{model}"</span>]
+<span class="k">role</span>       = <span class="s">"Read large codebases, write docs."</span></code></pre>
+    </div>
+  </section>
+
+  <!-- ============================== FAQ ============================== -->
+  <section class="block" id="faq">
+    <div class="wrap">
+      <p class="sec"><b>## 09</b> faq</p>
+      <h2>Frequently asked questions.</h2>
+      <div class="faq reveal">
+        <details><summary>Does it cost extra or need API keys?</summary><div class="ans"><p>No. ateam calls the CLIs you already installed and signed in to (Claude Code, Codex, Antigravity, Grok, OpenCode…), so it uses the subscription each CLI already has. ateam sends your data nowhere else.</p></div></details>
+        <details><summary>Which CLIs are supported?</summary><div class="ans"><p>Built in: <code>claude</code>, <code>codex</code>, <code>agy</code> (Antigravity), <code>grok</code>, <code>opencode</code>. Plus any CLI with a headless mode (takes a prompt, prints to stdout) — Gemini CLI, Cursor CLI, Aider… — added from the Agents tab, with templates and a command preview.</p></div></details>
+        <details><summary>Is it safe to let agents edit my code?</summary><div class="ans"><p>Turn on <code>isolation = "worktree"</code> and <code>merge = "review"</code>: each task works on its own git branch, never touching your working tree; changes reach your branch only after you review the diff and merge. Agents' shell / network permissions are off by default — enable them in the <em>Safety</em> step of <code>/setup</code>.</p></div></details>
+        <details><summary>How do I make every agent follow project conventions?</summary><div class="ans"><p>Add rules with <code>/rules</code> (e.g. "commit messages in English", "never edit files in <code>dist/</code>"): ateam prepends them to every prompt, so claude, codex, agy, grok, opencode and custom agents all get them. Rules are stored on your machine, not in the repo. Existing <code>AGENTS.md</code> / <code>CLAUDE.md</code> files are still read by the CLIs as usual.</p></div></details>
+        <details><summary>Where is my data?</summary><div class="ans"><p>The task board, logs and pasted images live in the project's <code>.ateam/</code> (added to <code>.gitignore</code> for you). Global config, to-dos and notes are in <code>~/.config/ateam/</code>. Everything runs on your machine.</p></div></details>
+        <details><summary>What happens when an agent hits its rate limit?</summary><div class="ans"><p>ateam recognizes each CLI's rate-limit messages, estimates the reset time, rests that agent and moves its tasks to a fallback agent (<code>fallback</code>) — the lead role included. Check status with <code>/usage</code>; rest an agent manually with <code>/cooldown</code>.</p></div></details>
+        <details><summary>Is the web UI safe? Can I open it from another device?</summary><div class="ans"><p>By default <code>ateam web</code> listens on <code>127.0.0.1</code> only and rejects unknown Host/Origin headers; files outside the project can't be opened. From your phone: <code>ateam web --tunnel</code> (Cloudflare Tunnel, https) or <code>--host 0.0.0.0</code> on your LAN — then every request needs a token (scan the QR code printed in the terminal), and <code>--readonly</code> gives view-only access.</p></div></details>
+        <details><summary>Does it run on Windows?</summary><div class="ans"><p>ateam is developed and tested on macOS and Linux (Python 3.9+). On Windows, WSL is the closest option; native Windows hasn't been tested.</p></div></details>
+        <details><summary>Is the UI available in English?</summary><div class="ans"><p>Yes. <code>/lang en</code> in the app (it restarts itself), or <code>ateam lang en</code> / <code>ateam --lang en …</code>. On first run the language follows your system <code>LANG</code>.</p></div></details>
+        <details><summary>Something doesn't work — where do I start?</summary><div class="ans"><p>Run <code>ateam doctor</code>, then <code>ateam log &lt;task number&gt;</code>: the first line shows the agent, model, effort and working directory. Common problems and fixes are in the README's troubleshooting section (<a href="https://github.com/khoaace/ateam#xử-lý-sự-cố">Xử lý sự cố</a>).</p></div></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== CTA ============================== -->
+  <section class="wrap">
+    <div class="cta reveal">
+      <p class="sec"><b>$</b> ready</p>
+      <h2>One command to install. One sentence to start.</h2>
+      <p>Your AI team handles the rest — you just review.</p>
+      <div class="oneliner">
+        <span class="dollar">$</span>
+        <code id="cta-cmd">curl -fsSL https://raw.githubusercontent.com/khoaace/ateam/main/scripts/get.sh | bash</code>
+        <button class="copy" type="button" data-copy="cta-cmd">copy</button>
+      </div>
+      <div class="actions">
+        <a class="btn" href="https://github.com/khoaace/ateam">view on GitHub →</a>
+        <a class="btn" href="/{{ZIP_NAME}}" download>download zip <small>{{ZIP_SIZE}}</small></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>ateam {{VERSION}} · updated {{BUILD_DATE}}</span>
+    <span class="foot-links"><a href="https://github.com/khoaace/ateam">GitHub</a><a href="https://github.com/khoaace/ateam/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/khoaace/ateam/issues">Report a bug</a><a href="https://github.com/khoaace/ateam/blob/main/AGENTS.md">Developer docs</a><a href="/" hreflang="vi">Tiếng Việt</a></span>
+  </div>
+</footer>
+
+<script type="application/json" id="hero-script">[
+  ["type", "<span class=\"t-ok\">❯</span> ", "ateam"],
+  ["out", "<span class=\"t-dim\">ateam {{VERSION}} · lead: </span><span class=\"t-claude\">claude</span><span class=\"t-dim\"> · 5 agents ready</span>", 500],
+  ["type", "<span class=\"t-acc\">›</span> ", "Add Google sign-in with tests and a README update"],
+  ["out", "<span class=\"t-claude\">● claude</span> is planning…", 900],
+  ["out", "<span class=\"t-b\">Plan</span> <span class=\"t-dim\">· 4 tasks · awaiting your approval (F2)</span>", 400],
+  ["out", " <span class=\"t-dim\">#1</span> <span class=\"t-codex\">codex@high</span>   Google OAuth login API", 140],
+  ["out", " <span class=\"t-dim\">#2</span> <span class=\"t-agy\">antigravity</span>  Login page &amp; button", 140],
+  ["out", " <span class=\"t-dim\">#3</span> <span class=\"t-grok\">grok</span>         Test the login flow <span class=\"t-dim\">←1</span>", 140],
+  ["out", " <span class=\"t-dim\">#4</span> <span class=\"t-oc\">opencode</span>     Update the README <span class=\"t-dim\">←1,2</span>", 700],
+  ["out", "<span class=\"t-warn\">F2</span> <span class=\"t-dim\">approve &amp; run</span>", 700],
+  ["out", "<span class=\"t-cyan\"><span class=\"spin\"></span></span> <span class=\"t-codex\">codex</span>       #1 Adding /auth/google, /auth/callback…", 900],
+  ["out", "<span class=\"t-cyan\"><span class=\"spin\"></span></span> <span class=\"t-agy\">antigravity</span> #2 Creating templates/login.html…", 1300],
+  ["out", "<span class=\"t-ok\">✓</span> <span class=\"t-agy\">antigravity</span> #2 done <span class=\"t-dim\">· 02:41</span>", 900],
+  ["out", "<span class=\"t-err\">✗</span> <span class=\"t-dim\">verify: pytest -q → 1 failed · sent back to</span> <span class=\"t-codex\">codex</span>", 1100],
+  ["out", "<span class=\"t-ok\">✓</span> <span class=\"t-codex\">codex</span> #1 done <span class=\"t-dim\">· 6 passed · diff awaiting review</span>", 900],
+  ["out", "<span class=\"t-cyan\"><span class=\"spin\"></span></span> <span class=\"t-grok\">grok</span>        #3 Writing tests/test_auth.py…", 1200],
+  ["out", "<span class=\"t-ok\">✓</span> <span class=\"t-claude\">claude</span> review: <span class=\"t-ok\">complete — API, UI, tests, docs</span>", 3200]
+]</script>
+<script src="/assets/site.js?v={{VERSION}}" defer></script>
+</body>
+</html>

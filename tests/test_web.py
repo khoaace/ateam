@@ -956,4 +956,12 @@ def test_web_todo_fab_wired():
     js = (STATIC / "todo.js").read_text(encoding="utf-8")
     assert "window.TodoPop" in js and "if (window.TodoPop) TodoPop.render();" in js
     assert "TodoPop.close()" in (STATIC / "app.js").read_text(encoding="utf-8")
-    assert ".tdfab {" in (STATIC / "app.css").read_text(encoding="utf-8")
+    css = (STATIC / "app.css").read_text(encoding="utf-8")
+    assert ".tdfab {" in css
+    # icon nét SVG thay emoji; tên việc hiện đủ, xuống hàng, ưu tiên/tag/hạn ở dòng dưới
+    assert '">✅<span' not in js and "tdp-meta" in js
+    assert ".tdp-body {" in css and "overflow-wrap: anywhere" in css
+    # nút nhạc: nốt nhạc thay tai nghe (cả nút nổi lẫn mục nav)
+    for f in ("lofi.js", "index.html"):
+        html = (STATIC / f).read_text(encoding="utf-8")
+        assert "M4 15v-3a8 8" not in html and "M9 17.5V5.5l11-2v12" in html

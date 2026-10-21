@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.37.1 — 21/10/2026
+
+- **Popover To-do nổi** (web): tên việc hiện đủ và tự xuống hàng (trước bị cắt "…"); ưu tiên · tag · hạn xuống dòng dưới,
+  không còn khe trống giữa ô tick và chữ. Nút nổi, nút mở tab / đóng dùng icon nét SVG thay emoji ✅ ↗ ✕.
+- **Nút nhạc lofi**: icon nốt nhạc thay tai nghe (nút nổi và mục ở thanh bên).
+- **Trang docs làm lại** theo phong cách terminal như `ateam web` (nền xám, góc vuông, chữ mono cho khung): hero và
+  câu chữ viết lại, một gallery 8 màn theo luồng làm việc (mỗi màn chuyển terminal / web) thay cho hai gallery trùng
+  nhau, tính năng gom 4 nhóm, mục "Có gì mới" tự lấy từ `CHANGELOG.md`, ảnh chụp mới theo UI hiện tại.
+  Thêm **bản tiếng Anh** (`/en/`, nút VI / EN) với ảnh chụp app tiếng Anh (`site_shots.py --lang en`).
+  Bảng xử lý sự cố chuyển sang README.
+
 ## 0.37.0 — 21/10/2026
 
 - **Bảng việc nhóm theo kế hoạch** (web + TUI): thay cho bộ lọc "một kế hoạch / Tất cả" — trước đây chọn một kế hoạch

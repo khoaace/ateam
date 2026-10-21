@@ -779,6 +779,7 @@ window.TodoPop = (() => {
   const items = () => (S.state && S.state.todos) || [];
   const box = () => $("#todo-fab");
   const BUCKETS = ["over", "today", "week", "later", "none"];
+  const CHECK = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16.5 9.5"/></svg>';
 
   function mount() {
     if (box()) return;
@@ -787,13 +788,13 @@ window.TodoPop = (() => {
     d.id = "todo-fab";
     d.innerHTML = `
       <div class="tdfab-pop" role="dialog" aria-label="${esc(t("todo"))}">
-        <div class="tdfab-head"><b>✅ ${esc(t("todo"))}</b><span class="muted small" id="tdfab-left"></span><span class="tsp"></span>
-          <button class="mini" data-tp="tab" title="${esc(t("todo_pop_open"))}">↗</button>
-          <button class="mini" data-tp="close" title="${esc(t("close"))}">✕</button></div>
+        <div class="tdfab-head">${CHECK}<b>${esc(t("todo"))}</b><span class="muted small" id="tdfab-left"></span><span class="tsp"></span>
+          <button class="icon-btn" data-tp="tab" title="${esc(t("todo_pop_open"))}"><svg viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5"/></svg></button>
+          <button class="icon-btn" data-tp="close" title="${esc(t("close"))}"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
         <input class="field one" id="tdfab-add" placeholder="${esc(t("todo_ph"))}" autocomplete="off" spellcheck="false" maxlength="500">
         <div class="tdfab-list" id="tdfab-list"></div>
       </div>
-      <button class="tdfab-btn" data-tp="fab" aria-label="${esc(t("todo"))}" title="${esc(t("todo"))}">✅<span class="tdfab-n" id="tdfab-n"></span></button>`;
+      <button class="tdfab-btn" data-tp="fab" aria-label="${esc(t("todo"))}" title="${esc(t("todo"))}">${CHECK}<span class="tdfab-n" id="tdfab-n"></span></button>`;
     document.body.appendChild(d);
     const add = $("#tdfab-add", d);
     add.addEventListener("keydown", (e) => {
@@ -822,14 +823,14 @@ window.TodoPop = (() => {
     render();
     if (on) { const a = $("#tdfab-add"); if (a) a.focus(); }
   }
+  /* hai tầng: tên việc đầy đủ (xuống hàng), dưới là ưu tiên · tag · hạn — dòng này bỏ hẳn khi trống */
   function rowHtml(x) {
     const d = TD.dueLabel(x), p = x.priority || 0;
-    return `<div class="trow" data-id="${x.id}">
+    const meta = (p ? `<span class="tpri p${p}">${"!".repeat(p)}</span>` : "") + (x.tags || []).map((i) => TD.chip(i)).join("")
+      + (d.text ? `<span class="tdue ${d.cls}">${esc(d.text)}</span>` : "");
+    return `<div class="trow tdp-row" data-id="${x.id}">
       <span class="tcb" role="checkbox" aria-checked="false"></span>
-      <span class="tpri p${p}">${p ? "!".repeat(p) : ""}</span>
-      <span class="ttl">${mdInline(x.text)}</span>
-      <span class="trtags">${(x.tags || []).map((i) => TD.chip(i)).join("")}</span>
-      <span class="tdue ${d.cls}">${esc(d.text)}</span>
+      <div class="tdp-body"><span class="ttl">${mdInline(x.text)}</span>${meta ? `<div class="tdp-meta">${meta}</div>` : ""}</div>
     </div>`;
   }
   function render() {

@@ -43,18 +43,25 @@ Tái hiện lỗi chỉ có trên Ubuntu: chạy test với `HOME` trống và `
 
 ## Trang docs
 
-- Nội dung: `site/index.html` (một file, CSS/JS nội tuyến, font Be Vietnam Pro + JetBrains Mono từ
-  Google Fonts). Placeholder `{{VERSION}}`, `{{ZIP_NAME}}`, `{{ZIP_SIZE}}`, `{{BUILD_DATE}}` do
-  `build_site.py` điền; build báo lỗi nếu còn placeholder chưa điền.
-- File và thư mục khác trong `site/` (vd `404.html`, `shots/`) được chép nguyên vào `dist/`.
-- `site/shots/*.svg` là ảnh chụp app thật cho gallery "Xem tận mắt", tạo bằng `python scripts/site_shots.py`
+- Nội dung: `site/index.html` (tiếng Việt) và `site/en/index.html` (tiếng Anh) — cùng bố cục, sửa một trang thì sửa
+  cả trang kia. CSS/JS dùng chung ở `site/assets/site.css`, `site/assets/site.js` (phong cách terminal như `ateam web`;
+  font Be Vietnam Pro + JetBrains Mono từ Google Fonts). Kịch bản terminal ở hero nằm trong
+  `<script type="application/json" id="hero-script">` của từng trang.
+- Placeholder trong mọi trang `.html` của `site/` do `build_site.py` điền: `{{VERSION}}`, `{{ZIP_NAME}}`, `{{ZIP_SIZE}}`,
+  `{{BUILD_DATE}}`, `{{LATEST}}` / `{{LATEST_DATE}}` (bản mới nhất), `{{CHANGELOG}}` / `{{CHANGELOG_EN}}` (5 bản mới
+  nhất, bóc từ `CHANGELOG.md`: tiêu đề `## x — ngày` + chữ **đậm** đầu tiên hoặc câu mở đầu của bản đó — viết mục
+  CHANGELOG sao cho dòng đầu tóm được cả bản). Build báo lỗi nếu còn placeholder chưa điền.
+- Cả `site/` (vd `404.html`, `assets/`, `en/`, `shots/`) được chép sang `dist/`.
+- `site/shots/*.svg` là ảnh chụp TUI thật cho gallery "Một vòng làm việc", tạo bằng `python scripts/site_shots.py`
   (dự án demo + agent giả lập có nội dung thật, `App.run_test()` + `save_screenshot()`; không gọi CLI thật).
   Chạy lại và commit khi giao diện đổi đáng kể.
 - `site/shots/web-*.webp` là ảnh giao diện web: `python scripts/site_shots.py --web` (chạy `ateam web` trên cùng dự
   án demo, chụp bằng Chrome headless qua DevTools protocol; cần `aiohttp` và Chrome/Chromium, biến `CHROME` nếu ở chỗ khác).
+- Bản tiếng Anh: thêm `--lang en` (cả hai lệnh trên) → `site/shots/en/`; app chạy tiếng Anh, dữ liệu demo dịch theo
+  bảng `EN` trong `site_shots.py` (thiếu bản dịch thì script dừng và chỉ ra chỗ còn chữ Việt).
 - Gói zip chứa thư mục `ateam/` với `pyproject.toml`, `README.md`, `install.sh` và package `ateam/`
   (xem `PACKAGE_FILES`/`PACKAGE_DIRS` trong `build_site.py`).
-- Xem thử cục bộ: `python scripts/build_site.py && python -m http.server -d dist 8000`.
+- Xem thử cục bộ: `python scripts/build_site.py && python -m http.server -d dist 8000` (mở `/` và `/en/`).
 - Deploy tay (cần đăng nhập wrangler): `npx wrangler deploy`.
 
 ## Khi deploy lỗi
