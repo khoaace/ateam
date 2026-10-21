@@ -229,6 +229,12 @@ không tính nó vào suất của agent; phải sửa thì `_run_task` chờ ag
   `killpg` (SIGTERM, 5 giây sau SIGKILL).
 - `pty=True`: mở pseudo-terminal 220×50 — cần cho `agy`, vốn không in gì khi stdout không phải tty.
 - Mỗi dòng qua `clean_line`: bỏ mã ANSI, xử lý `\r` (spinner), bỏ ký tự điều khiển.
+- Lệnh `agy … --output-format stream-json` (cờ do `AgentConfig.argv` thêm theo `stream_args`): `Run` đọc qua
+  `agystream.AgyStream` — chữ trả lời (`text_delta`, hoặc `result.response` nếu không stream) vào `run.output` như chế
+  độ chữ (bóc SUMMARY/DELEGATE/limits như cũ); bước tool (`▸ read_file src/a.py`) chỉ hiện ở log/ô agent; dòng
+  `agy conversation <id>` vào `run.meta` để `session_of` bắt id; `result.usage` → `run.usage` (token thật, không đọc
+  file phiên). agy gặp `--conversation` không còn chỉ cảnh báo rồi mở phiên mới và vẫn thoát 0 → `run.session_lost`,
+  dừng ngay, orchestrator chạy lại với đủ ngữ cảnh như CLI báo mất phiên.
 - Timeout bằng `asyncio.wait_for`; mã 124 khi quá giờ.
 - Task đang chờ `start()` bị huỷ (thoát app, Ctrl+C ở CLI) → `CancelledError` dừng luôn tiến trình: nó ở session riêng
   nên không tự nhận tín hiệu của terminal, bỏ qua thì CLI chạy mồ côi tới hết, tốn hạn mức. Thêm vào đó, thoát app

@@ -67,8 +67,8 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
 1. **Best-of-N cho task khó** — chạy cùng task trên 2–3 agent trong worktree riêng, trưởng nhóm chọn
    bản tốt nhất. Gợi ý: cột `variant_of` trong `tasks`; `_run_task` cho mỗi biến thể; một lượt
    `_call_lead` với diff của từng nhánh; merge nhánh thắng, xoá nhánh còn lại.
-2. ~~**Giữ phiên làm việc của agent**~~ — đã làm (claude, codex, grok; `SESSION_PRESETS`). Còn: agy
-   (`--conversation <id>`) và opencode (`--session <id>`) chưa có cách lấy id phiên chắc chắn.
+2. ~~**Giữ phiên làm việc của agent**~~ — đã làm (claude, codex, grok, agy qua stream-json; `SESSION_PRESETS`).
+   Còn: opencode (`--session <id>`) chưa có cách lấy id phiên chắc chắn.
 3. **Token và chi phí thật** — đọc output JSON (`claude --output-format stream-json`,
    `codex exec --json`, `opencode run --format json`) thay vì ước tính theo ký tự. Cần bộ chuyển
    JSON → dòng chữ cho log/SUMMARY, và giữ đường văn bản hiện tại làm dự phòng. Lưu ý lỗi đã biết:

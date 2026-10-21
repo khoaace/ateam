@@ -142,23 +142,28 @@ class Orchestrator:
         if not t.cancelled() and t.exception() is not None:  # lỗi ngoài dự kiến: ghi lại thay vì im lặng
             self.log(tr("⚠ Lỗi nội bộ: {e!r}", e=t.exception()))
 
-    def _usage_job(self, rid: int, a: AgentConfig, prompt: str, session: str | None = None) -> None:
-        t = self._spawn(self._collect_usage(rid, a, prompt, session))
+    def _usage_job(self, rid: int, a: AgentConfig, prompt: str, session: str | None = None,
+                   usage: usage_logs.Usage | None = None) -> None:
+        t = self._spawn(self._collect_usage(rid, a, prompt, session, usage))
         self._usage_jobs.add(t)
         t.add_done_callback(self._usage_jobs.discard)
 
-    async def _collect_usage(self, rid: int, a: AgentConfig, prompt: str, session: str | None = None) -> None:
-        """Token & cost của lượt vừa xong: đọc file phiên của CLI (usage_logs), không có thì ước tính ~4 ký
-        tự/token. Chạy nền trong thread (đọc file), không giữ chậm task."""
+    async def _collect_usage(self, rid: int, a: AgentConfig, prompt: str, session: str | None = None,
+                             usage: usage_logs.Usage | None = None) -> None:
+        """Token & cost của lượt vừa xong: CLI tự báo trong output (`usage`, agy stream-json) hoặc đọc file phiên
+        của CLI (usage_logs), không có thì ước tính ~4 ký tự/token. Chạy nền trong thread (đọc file), không giữ
+        chậm task."""
         r = self.db.run(rid)
         if not r:
             return
-        await asyncio.sleep(0.3)  # CLI ghi xong file phiên
-        try:
-            u = await asyncio.to_thread(usage_logs.collect, a.binary, r["cwd"] or str(self.root),
-                                        r["started"], r["finished"] or time.time(), prompt, session)
-        except Exception:
-            u = None
+        u = usage
+        if u is None:
+            await asyncio.sleep(0.3)  # CLI ghi xong file phiên
+            try:
+                u = await asyncio.to_thread(usage_logs.collect, a.binary, r["cwd"] or str(self.root),
+                                            r["started"], r["finished"] or time.time(), prompt, session)
+            except Exception:
+                u = None
         src = "cli" if u else "estimate"
         if not u:
             u = usage_logs.Usage(in_tok=(r["prompt_chars"] or 0) // 4, out_tok=(r["output_chars"] or 0) // 4,
@@ -219,7 +224,7 @@ class Orchestrator:
         pat = a.session_pattern()
         if pat and a.can_resume():
             m = None
-            for m in re.finditer(pat, run.output):
+            for m in re.finditer(pat, "\n".join([run.output, *run.meta])):
                 pass
             if m:
                 return m.group(1)
@@ -471,7 +476,8 @@ class Orchestrator:
             rc = 1
             try:
                 rc = await run.start()
-                if resume and rc != 0 and not run.cancelled and SESSION_LOST_RE.search(run.output[-3000:]):
+                if resume and not run.cancelled and (run.session_lost or (
+                        rc != 0 and SESSION_LOST_RE.search(run.output[-3000:]))):
                     resume, session = False, self.new_session(lead)
                     run = make()
                     if goal_id is not None:
@@ -493,7 +499,7 @@ class Orchestrator:
                     session = self.session_of(lead, run, session)
                     if session and kind == "ok":
                         self.db.update_goal(goal_id, lead_session=session, lead_session_agent=lead.name)
-                self._usage_job(rid, lead, prompt, session)
+                self._usage_job(rid, lead, prompt, session, run.usage)
                 act["status"] = DONE if kind == "ok" else FAILED
                 self._end_activity(lead.name, act)
         # CLI in lại prompt (codex exec) thì JSON mẫu trong prompt sẽ bị bóc nhầm thành kế hoạch/câu hỏi
@@ -1857,8 +1863,8 @@ class Orchestrator:
                 run.cancelled = True
             else:
                 rc = await run.start()
-                if (resume and rc != 0 and not run.cancelled and full_prompt
-                        and SESSION_LOST_RE.search(run.output[-3000:])):
+                if resume and not run.cancelled and full_prompt and (run.session_lost or (
+                        rc != 0 and SESSION_LOST_RE.search(run.output[-3000:]))):
                     on_line(tr("↻ không tiếp tục được phiên cũ — chạy lại với đầy đủ ngữ cảnh"))
                     prompt, resume, session = full_prompt, False, self.new_session(a)
                     run = make()
@@ -1873,7 +1879,7 @@ class Orchestrator:
             if own:
                 session = self.session_of(a, run, session)
                 self.db.update_task(t.id, session=session, session_agent=a.name if session else None)
-            self._usage_job(rid, a, prompt, session)
+            self._usage_job(rid, a, prompt, session, run.usage)
             act["status"] = {"ok": DONE, "cancelled": CANCELLED}.get(res, FAILED)
             self._end_activity(a.name, act)
         return run, rc, res

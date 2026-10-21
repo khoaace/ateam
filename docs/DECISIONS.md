@@ -36,6 +36,12 @@ và race giữa thread với DB/TUI. **Hệ quả**: không bao giờ gọi API 
 output đầy đủ; `clean_line` bỏ mã ANSI và `\r`. Task thoát 0 nhưng không in gì bị coi là lỗi để lộ
 ra tình huống này.
 
+Từ agy 1.4.4 ateam thêm `--output-format stream-json` (`stream_args`): ở chế độ chữ agy chỉ in câu trả lời cuối nên
+ô agent trống vài phút như treo, không có id phiên (mỗi lần sửa / retry mở phiên mới, đọc lại code, trả lại ~10K token
+system prompt chưa cache) và không có token thật. Đo 21/10/2026: mỗi lượt agy tốn ~8–9 giây khởi động trước khi gọi
+model; `--conversation` dùng lại phiên đọc ~9K token từ cache. stream-json chạy được cả không có pty, nhưng vẫn giữ
+`pty = true` vì `agy models` / `agy -p /usage` (không qua `argv()`) cần terminal.
+
 ## 6. Chèn cờ model/effort ngay trước prompt
 
 **Lý do**: một số CLI viết bằng Go `flag` dừng đọc cờ ở đối số vị trí đầu tiên, và `-p` của vài CLI

@@ -95,3 +95,39 @@ def test_review_resumes_planning_session(env, project, tmp_path):
     lead = [a for a in (tmp_path / "args.log").read_text().splitlines() if a.startswith("claude ")]
     assert lead[0].startswith("claude --session-id " + g.lead_session)  # lập kế hoạch
     assert any(a.startswith("claude --resume " + g.lead_session) for a in lead[1:]), lead  # review
+
+
+def test_agy_stream_json_session_usage_and_lost_session(env, project, monkeypatch, tmp_path):
+    """agy chạy stream-json: log thấy từng bước tool (không thấy JSON thô), SUMMARY bóc từ chữ trả lời, id phiên lưu
+    để /retry tiếp tục bằng --conversation, token lấy từ output; phiên không còn (agy chỉ cảnh báo rồi mở phiên mới,
+    vẫn thoát 0) → dừng ngay, chạy lại với đủ ngữ cảnh trong phiên mới."""
+    o = _orch(env, project, monkeypatch)
+    store = tmp_path / "agy"
+    monkeypatch.setenv("ATEAM_FAKE_AGY_DIR", str(store))
+
+    async def main():
+        await o.setup()
+        tid = o.db.add_task("antigravity", "đọc dự án", "đọc dự án", status="queued")
+        await o.run_until_idle()
+        t = o.db.task(tid)
+        assert t.status == "done" and t.session and t.session_agent == "antigravity"
+        assert "đọc xong" in (t.result or "")
+        log = o.log_path(tid).read_text()
+        assert "▸ read_file README.md" in log and f"agy conversation {t.session}" in log and '"event"' not in log
+        run = [r for r in o.db.runs_since(0) if r["agent"] == "antigravity"][-1]
+        assert (run["in_tok"], run["out_tok"], run["cache_read"], run["tok_src"]) == (1200, 80, 9000, "cli")
+        o.retry(tid)
+        await o.run_until_idle()
+        log = o.log_path(tid).read_text()
+        assert f"tiếp tục phiên {t.session[:8]}" in log and f"nhớ phiên {t.session}" in log
+        assert o.db.task(tid).session == t.session
+        (store / t.session).unlink()  # phiên bị xoá phía agy
+        o.retry(tid)
+        await o.run_until_idle()
+        log = o.log_path(tid).read_text()
+        assert "không tiếp tục được phiên cũ" in log
+        t3 = o.db.task(tid)
+        assert t3.status == "done" and t3.session and t3.session != t.session
+        sent = (store / t3.session).read_text()  # phiên mới nhận đủ đề bài, không phải prompt ngắn "chạy lại"
+        assert "đọc dự án" in sent and "run this same task again" not in sent
+    asyncio.run(main())

@@ -2,7 +2,7 @@
 # Giả lập Antigravity CLI: như agy thật, KHÔNG in gì khi stdout không phải terminal
 # (ateam phải chạy nó qua pty). In mã màu ANSI và \r để kiểm tra phần làm sạch output.
 if [ "${@: -1}" = "--help" ]; then
-  printf 'Usage: agy [OPTIONS]\n  --help\n  -p\n  --mode\n  --model\n  --effort\n  --print-timeout\n  --dangerously-skip-permissions\n'; exit 0
+  printf 'Usage: agy [OPTIONS]\n  --help\n  -p\n  --mode\n  --model\n  --effort\n  --print-timeout\n  --dangerously-skip-permissions\n  --output-format\n  --conversation\n'; exit 0
 fi
 if [ ! -t 1 ]; then exit 0; fi
 if [ "${1:-}" = "models" ]; then
@@ -31,7 +31,39 @@ if [ "$P" = "/usage" ]; then
   printf 'Quota:\r\nGemini Models  Weekly Limit Remaining  29%%  2026-10-21 09:25 +07\r\n'
   exit 0
 fi
+body="$(if [[ "$P" == *"#1 by codex"* ]]; then echo "thấy kết quả task 1"; fi
+echo "SUMMARY: đọc xong; ghi chú UTF-8 có trong prompt: $(echo "$P" | grep -c 'UTF-8')")"
+fmt=""; conv=""; prev=""
+for a in "$@"; do [ "$prev" = "--output-format" ] && fmt="$a"; [ "$prev" = "--conversation" ] && conv="$a"; prev="$a"; done
+if [ "$fmt" = "stream-json" ]; then
+  # như agy thật (1.4.4): id phiên ở sự kiện init; --conversation không còn -> cảnh báo, mở phiên MỚI, vẫn thoát 0.
+  # Phiên đã có lưu ở thư mục ATEAM_FAKE_AGY_DIR (mặc định thư mục tạm) để lượt sau "nhớ" được
+  store="${ATEAM_FAKE_AGY_DIR:-${TMPDIR:-/tmp}/ateam-fake-agy}"; mkdir -p "$store"
+  if [ -n "$conv" ] && [ ! -f "$store/$conv" ]; then echo "warning: conversation \"$conv\" not found"; conv=""; fi
+  if [ -n "$conv" ]; then body="nhớ phiên $conv
+$body"; else conv="$(python3 -c 'import uuid; print(uuid.uuid4())')"; fi
+  echo "$P" >> "$store/$conv"
+  CONV="$conv" BODY="$body" python3 - <<'PY'
+import json, os
+cid, body = os.environ["CONV"], os.environ["BODY"]
+def ev(kind, **kw):
+    print(json.dumps(dict(event=kind, **kw), ensure_ascii=False), flush=True)
+def step(**kw):
+    ev("step_update", step_update=dict(conversation_id=cid, **kw))
+ev("init", conversation_id=cid, init={"cwd": os.getcwd(), "tools": ["read_file"]})
+step(step_index=0, state="DONE", step_type="user_input")
+tool = {"name": "read_file", "parameters": {"Path": os.path.join(os.getcwd(), "README.md")}}
+step(step_index=1, state="ACTIVE", step_type="tool", tool_name="read_file", tool_info=tool)
+step(step_index=1, state="DONE", step_type="tool", tool_name="read_file", tool_info=tool, duration_seconds=0.01)
+half = len(body) // 2  # chữ trả lời đến từng mẩu, cắt ngang dòng
+step(step_index=2, state="ACTIVE", step_type="agent_response", text_delta=body[:half])
+step(step_index=2, state="DONE", step_type="agent_response", text_delta=body[half:] + "\n")
+ev("result", result={"conversation_id": cid, "status": "SUCCESS", "response": body + "\n", "num_turns": 1,
+                     "usage": {"input_tokens": 1200, "output_tokens": 80, "thinking_tokens": 20,
+                               "cache_read_tokens": 9000, "total_tokens": 1280}})
+PY
+  exit 0
+fi
 printf '\033[32mantigravity\033[0m đang đọc...\r\n'
 printf 'loading 10%%\rloading 100%%\n'
-if [[ "$P" == *"#1 by codex"* ]]; then echo "thấy kết quả task 1"; fi
-echo "SUMMARY: đọc xong; ghi chú UTF-8 có trong prompt: $(echo "$P" | grep -c 'UTF-8')"
+echo "$body"

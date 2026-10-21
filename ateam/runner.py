@@ -10,6 +10,8 @@ import signal
 from collections import deque
 from typing import Callable
 
+from . import agystream
+
 MAX_PARTIAL = 64 * 1024  # dòng chưa có \n dài hơn thế (spinner chỉ dùng \r, JSON một dòng…) thì cắt/đẩy ra
 
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
@@ -44,6 +46,10 @@ class Run:
         self.cancelled = False
         self.timed_out = False
         self.max_partial = max_partial
+        # agy --output-format stream-json: sự kiện JSON -> dòng dễ đọc; tool chỉ hiện, không vào output
+        self.stream = agystream.AgyStream() if agystream.wants(argv) else None
+        self.meta: list[str] = []      # dòng chỉ để bắt id phiên (không vào output)
+        self.session_lost = False      # CLI báo không còn phiên --resume/--conversation: đã dừng sớm
 
     def _emit_text(self, buf: list[str], text: str, final: bool = False) -> None:
         text = text.replace("\r\n", "\n")
@@ -67,12 +73,30 @@ class Run:
 
     def _emit(self, raw: str) -> None:
         line = clean_line(raw)
-        self.lines.append(line)
-        self._output = None
+        if self.stream is None:
+            self._show(line, True)
+            return
+        for text, kind in self.stream.feed(line):
+            if kind == agystream.META:
+                self.meta.append(text)
+            self._show(text, kind == agystream.OUT)
+        if self.stream.lost and not self.session_lost:  # chạy tiếp là làm việc trong phiên mới thiếu ngữ cảnh
+            self.session_lost = True
+            self._kill()
+
+    def _show(self, line: str, keep: bool) -> None:
+        if keep:
+            self.lines.append(line)
+            self._output = None
         try:
             self.on_line(line)
         except Exception:
             pass
+
+    @property
+    def usage(self):
+        """Token thật CLI tự báo trong output (agy stream-json), None = không có."""
+        return self.stream.usage if self.stream else None
 
     async def start(self) -> int:
         try:

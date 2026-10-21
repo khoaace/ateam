@@ -140,7 +140,7 @@ Với OpenCode, `@thư_mục` chỉ đưa đường dẫn vào prompt; `-f` dàn
 - **Giữ phiên CLI**: `/retry`, từ chối kèm góp ý, vòng sửa khi kiểm tra fail, trả lời câu hỏi và `/continue` (thread
   `/task`) tiếp tục *đúng phiên* của agent (`claude --resume`, `codex exec resume`, `grok --resume`) thay vì gửi lại
   toàn bộ ngữ cảnh — đỡ token, sửa lỗi trúng hơn. `/continue m<id>`: trưởng nhóm tiếp tục phiên lập kế hoạch của mục
-  tiêu đó. Phiên không còn (CLI đã xoá, khác thư mục) thì tự chạy lại với đầy đủ ngữ cảnh. agy/opencode chưa hỗ trợ.
+  tiêu đó. Phiên không còn (CLI đã xoá, khác thư mục) thì tự chạy lại với đầy đủ ngữ cảnh. opencode chưa hỗ trợ.
 
 ### Để trưởng nhóm hỏi kỹ trước khi làm — `/grill`
 
@@ -545,7 +545,8 @@ thái, task xong/lỗi, agent tham gia, token, cost, kết quả) — Enter (web
 việc bằng `/continue`.
 
 Token của **Claude Code** và **Codex** là số thật, đọc từ file phiên mà CLI tự ghi (`~/.claude/projects`,
-`~/.codex/sessions`) — ateam không đổi cách chạy CLI. Agent khác (agy, grok, opencode…) ước tính ~4 ký tự/token
+`~/.codex/sessions`) — ateam không đổi cách chạy CLI; **Antigravity** lấy từ output stream-json của chính agy. Agent
+khác (grok, opencode…) ước tính ~4 ký tự/token
 (cột *Số thật* cho biết bao nhiêu lượt có số thật). Cost ước tính theo bảng giá công khai; model chưa có giá hiện
 "—", thêm bằng `[prices."<model>"]` trong `config.toml` (xem `docs/CONFIG.md`).
 
@@ -676,7 +677,9 @@ role = "Đọc codebase lớn, viết tài liệu."
   (Codex 0.152 trở đi đã bỏ `--full-auto`; cấu hình cũ còn cờ này được ateam tự đổi).
 * **Antigravity (`agy`)**: chỉ in output khi có terminal thật, nên `ateam` chạy nó trong pseudo-terminal
   (`pty = true`), với `--mode accept-edits` (được sửa file) và `--print-timeout 0`. Muốn cho chạy cả lệnh
-  shell: thay `--mode accept-edits` bằng `--dangerously-skip-permissions`.
+  shell: thay `--mode accept-edits` bằng `--dangerously-skip-permissions`. ateam tự thêm
+  `--output-format stream-json` để ô agent hiện từng bước agy đang làm (đọc file, chạy lệnh…) thay vì trống tới khi
+  xong, giữ phiên (`--conversation`) cho vòng sửa / `/retry` / chat, và có token thật; tắt bằng `stream_args = []`.
 * **Grok Build (`grok`)**: `grok --permission-mode auto --deny Bash -p "<prompt>"` — được sửa/tạo file, không
   chạy lệnh shell (`acceptEdits` của grok ở chế độ `-p` chặn cả sửa file nên ateam không dùng). Toàn quyền đổi thành
   `--permission-mode bypassPermissions` (chạy lệnh, mạng). Model bằng `-m` (`grok models`), effort

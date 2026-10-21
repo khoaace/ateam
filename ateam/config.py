@@ -211,14 +211,14 @@ CATALOG: dict[str, dict] = {
 }
 # Giữ phiên giữa các lượt (/retry, vòng sửa verify, /continue, trả lời <<<ASK>>>): cờ đặt id phiên cho lượt
 # mới, cờ tiếp tục phiên, regex bắt id trong output (khi CLI không cho tự đặt id). Ghi đè bằng khoá cùng tên
-# trong [agents.<tên>]; [] = tắt. agy/opencode: chưa có cách lấy id chắc chắn → chạy như cũ (xem ROADMAP).
+# trong [agents.<tên>]; [] = tắt. opencode: chưa có cách lấy id chắc chắn → chạy như cũ (xem ROADMAP).
 # Mở CLI thật (giao diện tương tác) và tiếp tục phiên {session} mà ateam đã chạy headless — "Mở trong terminal".
 # CLI không có ở đây (hoặc agent tuỳ chỉnh bọc qua bash…) thì không mở được.
 INTERACTIVE_RESUME: dict[str, list[str]] = {
     "claude": ["--resume", "{session}"],
     "codex": ["resume", "{session}"],
     "grok": ["--resume", "{session}"],
-    "agy": [], "opencode": [], "gemini": [], "aider": [],
+    "agy": ["--conversation", "{session}"], "opencode": [], "gemini": [], "aider": [],
 }
 
 _WHICH: dict[tuple, tuple[float, str | None]] = {}
@@ -243,6 +243,11 @@ SESSION_PRESETS: dict[str, dict] = {
     # codex exec resume [OPTIONS] <SESSION_ID> <PROMPT>; header của `codex exec` in "session id: <uuid>"
     "codex": {"session_args": [], "resume_args": ["{session}"],
               "session_re": r"session id:\s*([0-9a-fA-F-]{36})"},
+    # agy: stream-json báo id phiên (dòng "agy conversation <id>", agystream.py) + từng bước tool + token thật;
+    # chế độ chữ chỉ in câu trả lời cuối. stream_args: cờ định dạng output ateam thêm vào lệnh headless
+    "agy": {"session_args": [], "resume_args": ["--conversation", "{session}"],
+            "session_re": r"agy conversation ([0-9a-fA-F-]{36})",
+            "stream_args": ["--output-format", "stream-json"]},
 }
 
 
@@ -487,6 +492,7 @@ class AgentConfig:
     session_args: list[str] | None = None     # None = theo SESSION_PRESETS; đặt id phiên cho lượt mới
     resume_args: list[str] | None = None      # None = theo SESSION_PRESETS; tiếp tục phiên {session}
     session_re: str | None = None             # None = theo SESSION_PRESETS; regex bắt id phiên trong output
+    stream_args: list[str] | None = None      # None = theo SESSION_PRESETS; cờ output dạng sự kiện (agy stream-json)
     opencode_major: int | None = None         # chỉ dùng lúc chạy; không ghi vào cấu hình người dùng
 
     @property
@@ -637,6 +643,9 @@ class AgentConfig:
                 extra += [a.replace("{model}", model) for a in self.model_args]
             if effort and effort_args and not combined and not any("{effort}" in c for c in base):
                 extra += [a.replace("{effort}", effort) for a in effort_args]
+        stream = list(self._preset("stream_args") or [])
+        if stream and stream[0] not in base and not any(c.startswith(stream[0] + "=") for c in base):
+            extra += stream
         if session:
             if resume and Path(self.binary).name == "codex" and "--sandbox" in base:
                 # `codex exec resume` không có --sandbox: đổi sang -c sandbox_mode="…"
@@ -1467,6 +1476,7 @@ def _agent_from(name: str, a: dict, st: dict, found: list) -> AgentConfig:
         session_args=_strs(a["session_args"]) if "session_args" in a else None,
         resume_args=_strs(a["resume_args"]) if "resume_args" in a else None,
         session_re=str(a["session_re"]) if "session_re" in a else None,
+        stream_args=_strs(a["stream_args"]) if "stream_args" in a else None,
     )
 
 

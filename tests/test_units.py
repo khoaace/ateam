@@ -28,7 +28,7 @@ def test_argv_codex_effort_is_toml_string():
 def test_argv_model_with_effort_suffix_drops_effort_flag():
     # agy: "--model gemini-4-argon-medium conflicts with --effort=high" -> đổi sang biến thể -high
     agy = AgentConfig("antigravity", ["agy", "-p", "{prompt}"], model_args=["--model", "{model}"],
-                      effort_args=["--effort", "{effort}"],
+                      effort_args=["--effort", "{effort}"], stream_args=[],  # chỉ xét cờ model/effort
                       models=["gemini-4-argon-medium", "gemini-4-argon-high", "claude-sonnet-4-6"])
     assert agy.argv("P", model="gemini-4-argon-medium", effort="high") == [
         "agy", "--model", "gemini-4-argon-high", "-p", "P"]
@@ -656,7 +656,54 @@ def test_full_access_flags_per_cli():
     assert apply_access(["mycli", "{prompt}"], True) == ["mycli", "{prompt}"]
     a = agent_from_dict("x", dict(provider_template("agy"), full_access=True, model="m"))
     assert a.argv("làm") == ["agy", "--dangerously-skip-permissions", "--print-timeout", "0",
-                             "--model", "m", "-p", "làm"]
+                             "--model", "m", "--output-format", "stream-json", "-p", "làm"]
+
+
+def test_agy_stream_json_and_session_flags():
+    """agy: ateam thêm --output-format stream-json (thấy từng bước, id phiên, token thật) và tiếp tục phiên bằng
+    --conversation; lệnh đã tự đặt định dạng output thì giữ nguyên, stream_args = [] để tắt."""
+    from ateam.config import agent_from_dict, provider_template
+    a = agent_from_dict("x", provider_template("agy"))
+    assert a.argv("P")[-4:] == ["--output-format", "stream-json", "-p", "P"]
+    assert a.can_resume() and a.argv("P", session="s1", resume=True)[-6:-2] == [
+        "--output-format", "stream-json", "--conversation", "s1"]
+    assert a.argv("P", session="s1")[-4:] == ["--output-format", "stream-json", "-p", "P"]  # lượt mới: id bắt từ output
+    own = agent_from_dict("x", dict(provider_template("agy"), command=["agy", "--output-format=json", "-p", "{prompt}"]))
+    assert own.argv("P") == ["agy", "--output-format=json", "-p", "P"]
+    off = agent_from_dict("x", dict(provider_template("agy"), stream_args=[]))
+    assert "--output-format" not in off.argv("P")
+    assert a.interactive_argv("s1") == ["agy", "--conversation", "s1"]
+
+
+def test_agy_stream_decoder():
+    import json
+
+    from ateam import agystream as S
+    assert S.wants(["/x/agy", "--output-format", "stream-json", "-p", "P"]) and S.wants(["agy", "--output-format=stream-json"])
+    assert not S.wants(["agy", "-p", "P"]) and not S.wants(["claude", "--output-format", "stream-json"])
+    d = S.AgyStream()
+    assert d.feed('warning: conversation "x" not found') == [('warning: conversation "x" not found', S.OUT)] and d.lost
+    d = S.AgyStream()
+    feed = lambda ev: d.feed(json.dumps(ev))
+    assert feed({"event": "init", "conversation_id": "c1", "init": {"cwd": "/p"}}) == [("agy conversation c1", S.META)]
+    tool = {"step_type": "tool", "tool_name": "run_command", "tool_info": {"parameters": {"CommandLine": "npm  test"}}}
+    assert feed({"event": "step_update", "step_update": dict(tool, state="ACTIVE")}) == [("▸ run_command npm test", S.SHOW)]
+    assert feed({"event": "step_update", "step_update": dict(tool, state="DONE")}) == []
+    path = {"step_type": "tool", "state": "ACTIVE", "tool_name": "read_file",
+            "tool_info": {"parameters": {"Path": "/p/src/a.py"}}}
+    assert feed({"event": "step_update", "step_update": path}) == [("▸ read_file src/a.py", S.SHOW)]
+    resp = {"step_type": "agent_response", "state": "ACTIVE", "text_delta": "Xong.\nSUMM"}
+    assert feed({"event": "step_update", "step_update": resp}) == [("Xong.", S.OUT)]
+    assert feed({"event": "step_update", "step_update": dict(resp, state="DONE", text_delta="ARY: a\n")}) == [
+        ("SUMMARY: a", S.OUT)]
+    usage = {"input_tokens": 10, "output_tokens": 2, "cache_read_tokens": 7}
+    assert feed({"event": "result", "result": {"status": "SUCCESS", "response": "Xong.\nSUMMARY: a\n",
+                                                "usage": usage}}) == []  # đã stream: không lặp lại
+    assert (d.usage.in_tok, d.usage.out_tok, d.usage.cache_read) == (10, 2, 7)
+    d = S.AgyStream()  # chữ không qua text_delta: lấy response; lỗi: ghi vào output (nhận diện hết hạn mức)
+    assert feed({"event": "result", "result": {"status": "ERROR", "response": "a\nb", "error": "quota"}}) == [
+        ("a", S.OUT), ("b", S.OUT), ("✗ agy: ERROR quota", S.OUT)]
+    assert d.feed("not json {") == [("not json {", S.OUT)]
 
 
 def test_goal_followups_migration_and_continue_refs(tmp_path):
