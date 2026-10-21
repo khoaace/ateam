@@ -4691,6 +4691,18 @@ class CodeFileList(OptionList):
     """Danh sách file ở tab Code (buffer đang mở ở trên, kết quả lọc ở dưới)."""
 
 
+class TaskTable(DataTable):
+    """Bảng task ở tab Bảng việc. Chế độ nhóm (mặc định): dòng tiêu đề 📌 Ngoài kế hoạch rồi từng kế hoạch, Enter trên
+    tiêu đề thu/mở nhóm. Phím một chữ đặt ở đây (không phải ở app) để không nuốt chữ gõ trong ô nhập."""
+    BINDINGS = [
+        Binding("n", "app.adhoc_task", tr("Giao task ngoài kế hoạch"), show=False),
+        Binding("g", "app.toggle_task_groups", tr("Nhóm theo kế hoạch / bảng phẳng"), show=False),
+        Binding("left_square_bracket", "app.task_group(-1)", tr("Nhóm trước"), show=False),
+        Binding("right_square_bracket", "app.task_group(1)", tr("Nhóm sau"), show=False),
+        Binding("c", "app.continue_group", tr("Tiếp tục kế hoạch"), show=False),
+    ]
+
+
 class TeamApp(App):
     TITLE = "AI Team"
     ENABLE_COMMAND_PALETTE = False
@@ -4899,6 +4911,11 @@ class TeamApp(App):
         self._git_log_ids: list = []
         self._git_body = ""  # phần thân commit message do trưởng nhóm viết (ô nhập chỉ một dòng)
         self._rows: dict[int, tuple] = {}
+        # bảng task nhóm theo kế hoạch (phím g đổi sang bảng phẳng, nhớ trong state.json)
+        self.task_groups = load_state().get("task_groups", True) is not False
+        self._folded: dict[str, bool] = {}  # khoá nhóm ("g:adhoc", "g:<id>") -> thu gọn; vắng = mặc định
+        self._gorder: list[str] = []
+        self._gsig: dict[str, tuple] = {}
         self._loop_task: asyncio.Task | None = None
         self._frame = 0
         self._booted = False
@@ -4937,7 +4954,7 @@ class TeamApp(App):
                         yield Static(id="goals")
                         with Horizontal(id="board-tools"):
                             yield Btn(tr("🗑 Dọn task đã xong"), id="board-clear")
-                        yield DataTable(id="tasks", cursor_type="row", zebra_stripes=True)
+                        yield TaskTable(id="tasks", cursor_type="row", zebra_stripes=True)
                         yield Static(id="tasks-empty")
                     with Vertical(id="right"):
                         yield Static(id="detail")
@@ -6785,6 +6802,11 @@ class TeamApp(App):
         set_static(box, t)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id == "tasks":
+            key = str(event.row_key.value or "")
+            if key.startswith("g:"):  # Enter / bấm tiêu đề nhóm: thu / mở
+                self._toggle_group(key)
+            return
         if event.data_table.id != "dash-goals":
             return
         g = self.dash_goal()
@@ -6982,7 +7004,7 @@ class TeamApp(App):
         empty = self.query_one("#tasks-empty", Static)
         table.display, empty.display = bool(tasks), not tasks
         alive = {t.id for t in tasks}
-        for tid in [i for i in self._rows if i not in alive]:  # đã dọn (/clear, nút Dọn)
+        for tid in [i for i in self._rows if i not in alive and not self.task_groups]:  # đã dọn (/clear, nút Dọn)
             table.remove_row(str(tid))
             del self._rows[tid]
         tids, gids = self.orch.finished_ids(tasks, self.snap_goals())
@@ -7003,6 +7025,9 @@ class TeamApp(App):
                 t.append(f"  {keys:27}", "bold cyan")
                 t.append(what + "\n")
             set_static(empty, t)
+        if self.task_groups:
+            self._refresh_grouped(table, tasks, now)
+            return
         for task in tasks:
             label, style = STATUS.get(task.status, (task.status, ""))
             icon = SPIN[self._frame] if task.status == "running" else STATUS_ICON.get(task.status, "·")
@@ -7023,6 +7048,166 @@ class TeamApp(App):
                 table.update_cell(key, "time", Text(row[3], "dim", justify="right"))
                 table.update_cell(key, "title", Text(row[4]))
                 self._rows[task.id] = row
+
+    def _group_folded(self, key: str, ended: bool) -> bool:
+        return self._folded.get(key, ended)
+
+    def _task_cells(self, task, now: float, tree: str) -> tuple:
+        label, style = STATUS.get(task.status, (task.status, ""))
+        icon = SPIN[self._frame] if task.status == "running" else STATUS_ICON.get(task.status, "·")
+        deps = f" ⟵{','.join(map(str, task.depends_on))}" if task.depends_on else ""
+        dur = fmt_dur((task.finished or now) - task.started) if task.started else ""
+        title = Text(tree, "dim")
+        title.append(("↳ " if task.parent_id else "") + task.title, "dim" if task.status in ("done", "cancelled") else "")
+        title.append(deps, "dim")
+        if task.error and task.status in ("failed", "blocked", "conflict"):
+            title.append("  " + task.error.splitlines()[0][:80], PAL.get("err", "red"))
+        agent = task.agent + (f"@{task.effort}" if task.effort else "")
+        return (Text(str(task.id)), Text(agent), Text(f"{icon} {label}", style),
+                Text(dur, "dim", justify="right"), title)
+
+    def _group_counts(self, ts: list, t: Text) -> None:
+        for st in ("running", "review", "queued", "failed", "done"):
+            n = sum(1 for x in ts if x.status == st)
+            if n:
+                label, style = STATUS.get(st, (st, ""))
+                t.append(f"  {STATUS_ICON.get(st, '•')}{n}", style)
+
+    def _refresh_grouped(self, table: DataTable, tasks: list, now: float) -> None:
+        """Bảng task nhóm theo kế hoạch: 📌 Ngoài kế hoạch (task giao tay, không thuộc mục tiêu nào) luôn ở trên cùng,
+        rồi từng kế hoạch mới nhất trước; kế hoạch đã kết thúc mặc định thu gọn. Thứ tự dòng không đổi thì chỉ sửa ô
+        đổi (như bảng phẳng), đổi thì dựng lại và giữ con trỏ theo khoá dòng."""
+        tasks = [t for t in tasks if t.status != "draft"]  # task nháp ở khung Duyệt kế hoạch
+        if not tasks:  # bảng trống: hiện hướng dẫn (#tasks-empty), không để lại dòng tiêu đề
+            if self._gorder:
+                table.clear()
+            self._gorder, self._gsig = [], {}
+            return
+        goals = {g.id: g for g in self.snap_goals()}
+        adhoc = [t for t in tasks if t.goal_id is None]
+        by: dict[int, list] = {}
+        for t in tasks:
+            if t.goal_id is not None:
+                by.setdefault(t.goal_id, []).append(t)
+        gids = set(by) | {g.id for g in goals.values() if g.status not in GOAL_ENDED}
+        rows: list[tuple[str, tuple]] = []
+        blank = (Text(""), Text(""), Text(""))
+
+        def body(ts: list) -> None:
+            for i, x in enumerate(ts):
+                rows.append((str(x.id), self._task_cells(x, now, "  └ " if i == len(ts) - 1 else "  ├ ")))
+
+        fold = self._group_folded("g:adhoc", False)
+        h = Text(tr("📌 Ngoài kế hoạch"), f"bold {PAL.get('warn', 'yellow')}")
+        h.append(f"  {len(adhoc)}", "dim")
+        if fold:
+            self._group_counts(adhoc, h)
+        h.append(tr("  · n: giao task cho agent"), "dim")
+        rows.append(("g:adhoc", (Text("▸" if fold else "▾", "bold"),) + blank + (h,)))
+        if not fold:
+            body(adhoc)
+        for gid in sorted(gids, reverse=True):
+            g, ts = goals.get(gid), by.get(gid, [])
+            ended = g is None or g.status in GOAL_ENDED
+            key = f"g:{gid}"
+            fold = self._group_folded(key, ended)
+            h = Text(f"🎯 #{gid} ", "bold")
+            if g:
+                busy = g.status in ("planning", "reviewing") or gid in self.orch.lead_busy
+                label, style = GOAL_STATUS.get(g.status, (g.status, ""))
+                if busy:
+                    h.append(f"{SPIN[self._frame]} ", f"bold {RUNNING}")
+                h.append(f"[{label}] ", style)
+            if ts:  # tiến độ trước tiêu đề: cột Task hẹp thì phần bị cắt là tiêu đề, không phải số liệu
+                n, d = len(ts), sum(1 for x in ts if x.status == "done")
+                r = sum(1 for x in ts if x.status in ("running", "review"))
+                w = 6
+                dw, rw = round(d / n * w), round(r / n * w)
+                h.append("━" * dw, PAL.get("ok", "green"))
+                h.append("━" * rw, RUNNING)
+                h.append("─" * max(0, w - dw - rw), "dim")
+                h.append(f" {d}/{n} ", "dim")
+            if fold:
+                self._group_counts(ts, h)
+                if ended and g:
+                    h.append(tr("  · c: tiếp tục"), "dim")
+                h.append("  ")
+            if g:
+                if g.workflow:
+                    h.append(f"⚙{g.workflow} ", "cyan")
+                h.append(g.text.splitlines()[0][:80] if g.text else "", "bold")
+            rows.append((key, (Text("▸" if fold else "▾", "bold"),) + blank + (h,)))
+            if not fold:
+                body(ts)
+        order = [k for k, _ in rows]
+        sig = {k: tuple((c.plain, str(c.style), tuple((s.start, s.end, str(s.style)) for s in c.spans)) for c in cells)
+               for k, cells in rows}
+        if order != self._gorder:
+            cur = self._cursor_key(table)
+            table.clear()
+            for k, cells in rows:
+                table.add_row(*cells, key=k)
+            self._gorder = order
+            if cur in order:
+                table.move_cursor(row=order.index(cur))
+        else:
+            for k, cells in rows:
+                if self._gsig.get(k) != sig[k]:
+                    for col, cell in zip(("id", "agent", "status", "time", "title"), cells):
+                        table.update_cell(k, col, cell)
+        self._gsig = sig
+
+    @staticmethod
+    def _cursor_key(table: DataTable) -> str | None:
+        if not table.row_count:
+            return None
+        try:
+            return table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+        except Exception:  # noqa: BLE001 — con trỏ ngoài bảng sau khi xoá dòng
+            return None
+
+    def action_toggle_task_groups(self) -> None:
+        """g (bảng task đang chọn): đổi giữa nhóm theo kế hoạch và bảng phẳng theo id (nhớ trong state.json)."""
+        self.task_groups = not self.task_groups
+        st = load_state()
+        st["task_groups"] = self.task_groups
+        save_state(st)
+        self.query_one("#tasks", DataTable).clear()
+        self._rows, self._gorder, self._gsig = {}, [], {}
+        self._refresh_table()
+        self.notify(tr("Bảng task: nhóm theo kế hoạch") if self.task_groups else tr("Bảng task: bảng phẳng theo id"))
+
+    def action_task_group(self, delta: int) -> None:
+        """[ / ]: nhảy tới tiêu đề nhóm trước / sau."""
+        table = self.query_one("#tasks", DataTable)
+        if not self.task_groups or not self._gorder:
+            return
+        heads = [i for i, k in enumerate(self._gorder) if k.startswith("g:")]
+        row = table.cursor_row
+        nxt = [i for i in heads if i > row] if delta > 0 else [i for i in heads if i < row]
+        if nxt:
+            table.move_cursor(row=nxt[0] if delta > 0 else nxt[-1])
+
+    def action_adhoc_task(self) -> None:
+        """n: điền sẵn /task để giao việc cho một agent, ngoài mọi kế hoạch."""
+        box = self.query_one("#cmd", Input)
+        box.value = "/task "
+        box.cursor_position = len(box.value)
+        box.focus()
+
+    def action_continue_group(self) -> None:
+        """c trên bảng task: tiếp tục kế hoạch của dòng đang chọn (tiêu đề nhóm hoặc task trong nhóm)."""
+        key = self._cursor_key(self.query_one("#tasks", DataTable)) or ""
+        if key.startswith("g:") and key[2:].isdigit():
+            self.prefill_continue(f"m{key[2:]}")
+        elif not key.startswith("g:"):
+            self.action_continue()
+
+    def _toggle_group(self, key: str) -> None:
+        goal = self.db.goal(int(key[2:])) if key[2:].isdigit() else None
+        ended = key != "g:adhoc" and (goal is None or goal.status in GOAL_ENDED)
+        self._folded[key] = not self._group_folded(key, ended)
+        self._refresh_table()
 
     def _refresh_detail(self) -> None:
         d = self.query_one("#detail", Static)
@@ -7360,7 +7545,7 @@ class TeamApp(App):
         if event.data_table.id != "tasks":
             return
         # giữ ↑↓ để lướt bảng: chỉ nạp log của dòng dừng lại (đọc + tô màu log mỗi dòng lướt qua rất chậm)
-        if event.row_key and event.row_key.value:
+        if event.row_key and str(event.row_key.value or "").isdigit():  # bỏ qua tiêu đề nhóm ("g:…")
             tid = int(event.row_key.value)
             if tid != self.view_task:
                 self.view_task = tid  # phím tắt (F5, Ctrl+D, F6…) dùng ngay dòng đang chọn

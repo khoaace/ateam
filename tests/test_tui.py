@@ -658,7 +658,8 @@ def test_tui_task_agent_popup_and_raw_prompt(env, project, monkeypatch, tmp_path
             ids = {t.id for t in db.tasks()}
             assert keep_goal in ids and needed in ids and first not in ids and gone not in ids
             assert [g.id for g in db.goals()] == [live]
-            assert first not in app._rows and gone not in app._rows and keep_goal in app._rows
+            rows = {r.value for r in app.query_one("#tasks").rows}
+            assert str(first) not in rows and str(gone) not in rows and str(keep_goal) in rows
             assert not app.orch.log_path(first).exists()
             assert not app.query_one("#board-tools").display
             await pilot.press("ctrl+q")
@@ -1876,5 +1877,68 @@ def test_tui_search_replace(env, project, monkeypatch):
             assert (project / "src" / "u.ts").read_text() == "export const getFilm = 1;\n"
             await pilot.press("escape")
             await pilot.press("ctrl+q")
+
+    asyncio.run(main())
+
+
+def test_tui_task_table_grouped_by_plan(env, project, monkeypatch):
+    """Bảng task nhóm theo kế hoạch: 📌 task ngoài kế hoạch luôn trên cùng, kế hoạch đã xong thu gọn, Enter trên tiêu
+    đề thu/mở, [ ] nhảy nhóm, c tiếp tục kế hoạch, n điền /task, g đổi sang bảng phẳng."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import TeamApp
+
+    db = DB(project / ".ateam/team.db")
+    g1 = db.add_goal("Kế hoạch cũ")
+    db.update_goal(g1, status="done")
+    g2 = db.add_goal("Kế hoạch đang chạy")
+    db.update_goal(g2, status="running")
+    db.add_task("codex", "việc cũ", "x", goal_id=g1, status="done", source="plan")       # 1
+    db.add_task("claude", "giao tay", "x", status="done")                                # 2: ngoài kế hoạch
+    db.add_task("codex", "bước 1", "x", goal_id=g2, status="failed", source="plan")      # 3
+    db.add_task("grok", "bước 2", "x", goal_id=g2, status="blocked", source="plan")      # 4
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), db)
+        app.orch.paused = True
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.6)
+            table = app.query_one("#tasks")
+            assert app._gorder == ["g:adhoc", "2", f"g:{g2}", "3", "4", f"g:{g1}"]  # #1 thu gọn
+            table.focus()
+            table.move_cursor(row=0)
+            await pilot.press("enter")  # tiêu đề 📌: thu gọn, không mở task
+            await pilot.pause(0.3)
+            assert app._gorder[:2] == ["g:adhoc", f"g:{g2}"] and app.view_task != "g:adhoc"
+            await pilot.press("right_square_bracket", "right_square_bracket")
+            await pilot.pause(0.2)
+            assert app._gorder[table.cursor_row] == f"g:{g1}"
+            await pilot.press("enter")  # mở kế hoạch đã xong
+            await pilot.pause(0.3)
+            assert app._gorder[-2:] == [f"g:{g1}", "1"]
+            await pilot.press("c")
+            await pilot.pause(0.2)
+            assert app.query_one("#cmd").value == f"/continue m{g1} "
+            table.focus()
+            await pilot.press("n")
+            await pilot.pause(0.2)
+            assert app.query_one("#cmd").value == "/task "
+            table.focus()
+            await pilot.press("g")  # bảng phẳng theo id như cũ
+            await pilot.pause(0.3)
+            ids = [r.value for r in table.rows]
+            assert not app.task_groups and ids[:4] == ["1", "2", "3", "4"] and not any(i.startswith("g:") for i in ids)
+            await pilot.press("g")
+            await pilot.pause(0.3)
+            assert app.task_groups and app._gorder[0] == "g:adhoc" and f"g:{g2}" in app._gorder
 
     asyncio.run(main())
