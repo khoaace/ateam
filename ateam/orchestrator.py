@@ -429,8 +429,8 @@ class Orchestrator:
     def lead_timeout(self, lead: AgentConfig) -> int:
         """Giây tối đa cho một lượt trưởng nhóm: lead_timeout (ngắn hơn timeout của task — lập kế hoạch/review
         thường xong trong vài phút), không vượt timeout của agent."""
-        lt = self.cfg.lead_timeout
-        return min(lead.timeout, lt) if lt > 0 else lead.timeout
+        lt, own = self.cfg.lead_timeout, lead.timeout  # 0 = không giới hạn
+        return min(own, lt) if lt > 0 and own > 0 else (lt or own)
 
     async def _lead_once(self, lead: AgentConfig, prompt: str, label: str,
                          goal_id: int | None = None, session: str | None = None,

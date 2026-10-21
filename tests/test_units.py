@@ -143,6 +143,53 @@ def test_old_global_config_is_upgraded_with_backup(tmp_path, monkeypatch):
         importlib.reload(cfgmod)
 
 
+
+def test_task_timeout_unlimited_by_default(tmp_path, monkeypatch):
+    """Bản cấu hình 10: task không giới hạn thời gian (agy làm 30+ phút vẫn đang chạy tốt bị cắt ở 1800 giây); nâng
+    cấp bỏ `timeout = 1800` (mặc định cũ) khỏi agent tuỳ chỉnh, số khác giữ; trưởng nhóm vẫn theo lead_timeout."""
+    import importlib
+
+    import ateam.config as cfgmod
+    from ateam.orchestrator import Orchestrator
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfgmod = importlib.reload(cfgmod)
+    try:
+        cfgmod.GLOBAL_DIR.mkdir(parents=True)
+        cfgmod.GLOBAL_CONFIG.write_text('config_version = 9\nlead = "claude"\n')
+        cfgmod.save_custom({"agents": {"cu": {"command": ["agy", "-p", "{prompt}"], "timeout": 1800},
+                                       "rieng": {"command": ["mycli", "{prompt}"], "timeout": 300}}})
+        cfgmod.ensure_global_config()
+        agents = cfgmod.load_custom()["agents"]
+        assert "timeout" not in agents["cu"] and agents["rieng"]["timeout"] == 300
+        c = cfgmod.load_config(Path(tmp_path / "proj"))
+        assert c.agents["claude"].timeout == 0 and c.agents["cu"].timeout == 0 and c.agents["rieng"].timeout == 300
+        assert "timeout" not in cfgmod.agent_to_dict(c.agents["cu"])
+    finally:
+        monkeypatch.undo()
+        importlib.reload(cfgmod)
+    from ateam.config import Config
+    o = Orchestrator.__new__(Orchestrator)
+    o.cfg = Config()
+    o.cfg.lead_timeout = 600
+    assert o.lead_timeout(AgentConfig("a", ["a"], timeout=0)) == 600  # CLI treo khi lập kế hoạch: vẫn chuyển dự phòng
+    assert o.lead_timeout(AgentConfig("a", ["a"], timeout=30)) == 30
+    o.cfg.lead_timeout = 0
+    assert o.lead_timeout(AgentConfig("a", ["a"], timeout=0)) == 0
+    from ateam import wizard
+    assert wizard.agent_body({"command": "mycli {prompt}", "timeout": "0"})["timeout"] == 0  # form: 0 hợp lệ
+
+
+def test_run_without_timeout_runs_to_end():
+    import asyncio
+    import sys
+
+    from ateam.runner import Run
+    got = []
+    run = Run([sys.executable, "-c", "import time; time.sleep(1.2); print('xong')"], ".", {}, use_pty=False,
+              timeout=0, on_line=got.append)
+    assert asyncio.run(run.start()) == 0 and got == ["xong"] and not run.timed_out
+
+
 def test_mentions_render_per_agent(tmp_path):
     from ateam import mentions
     (tmp_path / "src").mkdir()

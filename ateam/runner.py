@@ -34,7 +34,8 @@ class Run:
     def __init__(self, argv: list[str], cwd: str, env: dict[str, str], *, use_pty: bool,
                  timeout: float, on_line: Callable[[str], None], keep_lines: int | None = None,
                  max_partial: int | None = MAX_PARTIAL):
-        """keep_lines: chỉ giữ N dòng cuối trong bộ nhớ (lệnh chạy rất lâu như dev server).
+        """timeout: giây tối đa, <= 0 = không giới hạn (task của agent: chạy tới khi xong hoặc bị huỷ).
+        keep_lines: chỉ giữ N dòng cuối trong bộ nhớ (lệnh chạy rất lâu như dev server).
         max_partial=None: không cắt dòng dài (output là JSON một dòng cần bóc nguyên vẹn, vd `codex debug models`)."""
         # PWD theo cwd: env chép từ os.environ mang PWD của nơi chạy ateam (thư mục gốc khi task ở worktree, dự án
         # cũ sau /open) — CLI/shell đọc $PWD sẽ tưởng đang ở đó
@@ -100,7 +101,7 @@ class Run:
 
     async def start(self) -> int:
         try:
-            return await asyncio.wait_for(self._run(), timeout=self.timeout)
+            return await asyncio.wait_for(self._run(), timeout=self.timeout if self.timeout > 0 else None)
         except asyncio.CancelledError:  # app thoát / Ctrl+C / task bị huỷ: tiến trình ở session riêng nên phải tự dừng
             self.cancelled = True
             self._kill()

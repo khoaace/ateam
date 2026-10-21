@@ -1186,8 +1186,8 @@ EN: dict[str, str] = {
         "agents that take over when out of quota, comma-separated",
     "Timeout (giây)":
         "Timeout (seconds)",
-    "mặc định 1800":
-        "default 1800",
+    "0 = không giới hạn (mặc định)":
+        "0 = no limit (default)",
     "Số task cùng lúc":
         "Concurrent tasks",
     "mặc định 1":

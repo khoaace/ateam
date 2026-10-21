@@ -204,7 +204,7 @@ AGENT_FIELDS = [  # (id, nhãn, gợi ý, khoá TOML, kiểu: argv | csv | text 
     ("image-args", tr("Cờ đính ảnh"), tr("vd: --image={path} · trống = theo lệnh · '-' = tắt"), "image_args",
      "argv"),
     ("fallback", tr("Dự phòng"), tr("agent thay khi hết hạn mức, cách nhau dấu phẩy"), "fallback", "csv"),
-    ("timeout", tr("Timeout (giây)"), tr("mặc định 1800"), "timeout", "int"),
+    ("timeout", tr("Timeout (giây)"), tr("0 = không giới hạn (mặc định)"), "timeout", "int"),
     ("max-concurrent", tr("Số task cùng lúc"), tr("mặc định 1"), "max_concurrent", "int"),
 ]
 
@@ -255,7 +255,7 @@ def agent_body(fields: dict[str, str], pty: bool = False, verify: bool = True, f
         elif kind == "csv":
             out[key] = [] if text == "-" else csv(text)
         elif kind == "int":
-            if not text.isdigit() or int(text) < 1:
+            if not text.isdigit() or int(text) < (0 if key == "timeout" else 1):  # timeout 0 = không giới hạn
                 raise ValueError(tr("{label}: phải là số nguyên dương", label=label))
             out[key] = int(text)
         else:
