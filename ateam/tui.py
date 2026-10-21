@@ -27,7 +27,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.geometry import Size
 from textual.message import Message
 from textual.screen import ModalScreen
-from textual.widgets import (Button, Checkbox, DataTable, Footer, Header, Input, OptionList,
+from textual.widgets import (Button, Checkbox, DataTable, Input, OptionList,
                              RichLog, Select, SelectionList, Static, TabbedContent, TabPane, TextArea)
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
@@ -197,6 +197,7 @@ Khác:
   /team  /board  /term  /git  /code chuyển tab Agents / Bảng việc / Terminal / Git / Code (Ctrl+T xoay vòng)
   /grid [agent]                     tab 🔲 Lưới: mỗi ô là CLI thật của một agent (F10 sắp xếp, kéo tiêu đề đổi chỗ)
   Alt+1 … Alt+9, Alt+0              tới thẳng tab theo thứ tự (Mac: bật "Use Option as Meta" trong terminal)
+  Ctrl+B                            ẩn/hiện thanh bên (terminal hẹp hơn 120 cột thì tự ẩn, hiện thanh tab)
 
 Lệnh terminal (tab 💻 Terminal):
   !<lệnh>                           chạy lệnh trong thư mục dự án, vd !yarn dev, !make test
@@ -835,19 +836,15 @@ def choice_line(label: str, items: list[str], current: str, limit: int = 0, agen
 
 
 class Btn(Button):
-    """Nút chỉ có chữ (không nền, không viền — màu chữ theo variant, xem TeamApp.CSS): nhãn bọc
-    "[ … ]" để vẫn nhận ra là nút."""
+    """Nút dạng chip một dòng (nền nhạt, không viền — màu theo variant, xem TeamApp.CSS). Nhãn là chữ thường, không
+    bóc markup (nhãn có thể chứa "[" / "]")."""
 
     def __init__(self, label=None, *args, **kw):
         super().__init__(self.wrap(label), *args, **kw)
 
     @staticmethod
     def wrap(label):
-        if isinstance(label, str):
-            label = Text(label)  # chữ thường, không bóc markup (nhãn có "[" / "]")
-        if isinstance(label, Text) and not label.plain.startswith("[ "):
-            label = Text.assemble("[ ", label, " ]")
-        return label
+        return Text(label) if isinstance(label, str) else label
 
     def validate_label(self, label):
         return super().validate_label(self.wrap(label))
@@ -3228,15 +3225,117 @@ class SearchScreen(BaseModal):
         self.dismiss(None)
 
 
+def tab_labels() -> dict[str, str]:
+    """Nhãn các màn hình (thanh tab khi hẹp, thanh bên khi rộng) — không emoji: emoji rộng không đều giữa các terminal."""
+    def bare(label: str) -> str:  # dùng lại bản dịch có sẵn của nhãn kèm emoji, bỏ emoji
+        return label.split(" ", 1)[-1]
+
+    return {"tab-board": bare(tr("📋 Bảng việc")), "tab-grid": tr("Lưới"), "tab-team": "Agents",
+            "tab-custom": "Workflows", "tab-code": "Code", "tab-git": "Git", "tab-term": "Terminal", "tab-todo": "To-do",
+            "tab-notes": bare(tr("🗒 Ghi chú")), "tab-dash": bare(tr("📊 Thống kê"))}
+
+
+def side_groups() -> list[tuple[str, list[str]]]:
+    """Nhóm ở thanh bên; thứ tự giữ đúng TeamApp.TAB_ORDER (Alt+1…0, Ctrl+T)."""
+    return [(tr("Làm việc"), ["tab-board", "tab-grid", "tab-team", "tab-custom"]),
+            (tr("Dự án"), ["tab-code", "tab-git", "tab-term"]),
+            (tr("Của bạn"), ["tab-todo", "tab-notes", "tab-dash"])]
+
+
+SIDE_WIDTH = 24  # cột thanh bên (cả padding)
+SIDE_MIN = 120  # terminal hẹp hơn: ẩn thanh bên, hiện lại thanh tab
+
+
+class Sidebar(Static):
+    """Thanh bên trái thay cho thanh tab khi terminal đủ rộng: dự án + nhánh, các màn hình theo nhóm (kèm số đếm:
+    task đang chạy/chờ, file đổi, việc chưa xong), và trạng thái từng agent. Bấm để chuyển; Ctrl+B ẩn/hiện."""
+
+    _bg: tuple[str, str] = ("", "")
+
+    def active_bg(self, app: "TeamApp") -> str:
+        """Nền mục đang chọn: màu chính của theme pha vào nền thanh bên (đọc được cả theme sáng lẫn tối)."""
+        if self._bg[0] != app.theme:
+            from textual.color import Color
+            v = app.get_css_variables()
+            try:
+                bg = Color.parse(v["primary"]).blend(Color.parse(v["panel"]), 0.6).hex
+            except Exception:
+                bg = "grey30"
+            self._bg = (app.theme, bg)
+        return self._bg[1]
+
+    def build(self, app: "TeamApp") -> Text:
+        t = Text(no_wrap=True, overflow="ellipsis")
+        t.append("◆ ateam\n", f"bold {PAL['info']}")
+        t.append(app.root.name + "\n", "bold")
+        st = app.git_status
+        if st is not None and st.is_repo:
+            t.append("⎇ " + (st.branch or (st.oid[:8] if st.oid else "—")), "dim")
+            if st.ahead:
+                t.append(f" ↑{st.ahead}", STATUS["review"][1])
+            if st.behind:
+                t.append(f" ↓{st.behind}", STATUS["queued"][1])
+            if st.files:
+                t.append(f" ±{len(st.files)}", "dim")
+        t.append("\n")
+        tasks = app.snap_tasks()
+        counts = {"tab-board": sum(x.status in ("running", "queued", "asking", "review", "draft") for x in tasks),
+                  "tab-git": len(st.files) if st is not None and st.is_repo else 0,
+                  "tab-term": len(app.shell.running()),
+                  "tab-todo": app.todo_open_count()}
+        active = app.query_one("#tabs", TabbedContent).active
+        labels = tab_labels()
+        width = max(10, SIDE_WIDTH - 2)
+        for head, ids in side_groups():
+            t.append(f"\n{head}\n", "dim bold")
+            for pid in ids:
+                on = pid == active
+                n = counts.get(pid) or 0
+                label = labels[pid]
+                room = width - 2 - (len(str(n)) + 1 if n else 0)
+                line = f" {label[:room]:<{room}}" + (f" {n}" if n else "") + " "
+                click = Style(meta={"@click": f"app.goto_tab({TeamApp.TAB_ORDER.index(pid)})"})
+                t.append("▌" if on else " ", Style(color=PAL["info"], bold=True))
+                t.append(line, (Style(bold=True, bgcolor=self.active_bg(app)) if on else Style()) + click)
+                t.append("\n")
+        t.append("\n" + tr("Đội") + "\n", "dim bold")
+        busy = app.busy_agents()
+        for name, a in app.cfg.agents.items():
+            if not a.enabled:
+                continue
+            click = Style(meta={"@click": f"app.side_agent({name!r})"})
+            star = " ★" if name == app.cfg.lead else ""
+            if not a.installed():
+                t.append(" ✗ ", PAL["err"])
+                t.append(name + star, Style(dim=True) + click)
+            elif name in busy:
+                acts = app.orch.current_activities(name)
+                t.append(f" {SPIN[app._frame]} ", f"bold {RUNNING}")
+                t.append(name + star, Style(bold=True) + click)
+                if acts and acts[0].get("task_id"):
+                    t.append(f" #{acts[0]['task_id']}", "dim")
+            elif app.orch.in_cooldown(name):
+                t.append(" ⏸ ", PAL["warn"])
+                t.append(name + star, Style(dim=True) + click)
+            else:
+                t.append(" ○ ", "dim")
+                t.append(name + star, Style(dim=True) + click)
+            t.append("\n")
+        return t
+
+
 class StatusBar(Static):
-    """Thanh trạng thái phía trên Footer: nhánh git, số task theo trạng thái, agent đang nghỉ, theme,
-    ngôn ngữ. Bấm vào theme / ngôn ngữ để đổi."""
+    """Thanh trạng thái dưới cùng: trái là dự án (khi thanh bên ẩn), nhánh git, số task theo trạng thái, lệnh đang
+    chạy, agent đang nghỉ; phải là vài phím tắt cố định (thay cho Footer đổi theo từng tab)."""
 
     def build(self, app: "TeamApp") -> Text:
         t = Text()
-        sep = ("  │  ", "dim")
+        sep = ("   ", "")
         if app.busy_ops:  # đầu thanh cho dễ thấy; mất khi thao tác xong
             t.append(f"{SPIN[app._frame]} " + "  ·  ".join(app.busy_ops.values()), f"bold {RUNNING}")
+            t.append(*sep)
+        if not app.sidebar_shown():
+            t.append(app.root.name, "bold")
             t.append(*sep)
         st = app.git_status
         if st is not None and st.is_repo:
@@ -3268,13 +3367,27 @@ class StatusBar(Static):
         if app.orch.paused:
             t.append(tr("⏸ tạm dừng"), STATUS["review"][1])
             t.append("  ")
+        jobs = app.shell.running()
+        if jobs:
+            ports = sorted({p for j in jobs for p in j.ports})
+            t.append(tr("💻 {v} lệnh đang chạy", v=len(jobs)) + (
+                " (" + ", ".join(f":{p}" for p in ports) + ")" if ports else ""), RUNNING)
+            t.append("  ")
         resting = [a for a in app.cfg.active_agents() if app.orch.in_cooldown(a)]
         if resting:
             t.append(tr("⏸ nghỉ: {v}", v=", ".join(resting)), STATUS["conflict"][1])
-        t.append(*sep)
-        t.append(f"🎨 {app.theme}", Style(meta={"@click": "app.open_theme"}))
-        t.append("  ")
-        t.append(f"🌐 {get_lang().upper()}", Style(bold=True, meta={"@click": "app.toggle_lang"}))
+        keys = Text()
+        for i, (k, label, act) in enumerate((("F1", tr("trợ giúp"), "app.help"), ("^T", "tab", "app.toggle_tab"),
+                                             ("^B", tr("thanh bên"), "app.toggle_sidebar"),
+                                             ("^Q", tr("thoát"), "app.quit"))):
+            if i:
+                keys.append("  ")
+            keys.append(k, Style(bold=True, meta={"@click": act}))
+            keys.append(" " + label, Style(dim=True, meta={"@click": act}))
+        room = self.size.width - 2 - t.cell_len
+        if room >= keys.cell_len + 2:  # hẹp: bỏ phím tắt, giữ trạng thái
+            t.append(" " * (room - keys.cell_len))
+            t.append_text(keys)
         return t
 
 
@@ -4763,18 +4876,31 @@ class TeamApp(App):
     ENABLE_COMMAND_PALETTE = False
     CSS = """
     Screen { layers: base overlay; overflow: hidden hidden; }
-    /* Nút chỉ có chữ: không nền, không viền; variant phân biệt bằng màu chữ (xem Btn) */
+    /* Nút dạng chip: một dòng, nền nhạt, không viền. Nút chính (primary/success) nền màu, nút xoá/huỷ (error) chữ đỏ
+       nền đỏ nhạt — mắt thấy ngay đâu là việc chính (xem Btn) */
     Button, Button:hover, Button:focus, Button.-active {
-        height: 1; min-width: 0; border: none; padding: 0 1; background: transparent; tint: transparent;
-        text-style: bold; color: $text; }
-    Button:hover { text-style: bold underline; }
-    Button:focus { text-style: bold underline; }
-    Button.-primary { color: $accent; }
-    Button.-success { color: $success; }
-    Button.-warning { color: $warning; }
-    Button.-error { color: $error; }
-    Button:disabled { color: $text-disabled; text-style: none; }
-    Footer { overflow: hidden hidden; }
+        height: 1; min-width: 0; border: none; padding: 0 1; background: $boost; tint: transparent;
+        text-style: none; color: $text; }
+    Button:hover, Button:focus { background: $accent 35%; text-style: none; }
+    Button.-primary { background: $accent 30%; text-style: bold; }
+    Button.-success { background: $success 28%; text-style: bold; }
+    Button.-warning { background: $warning 15%; color: $warning; }
+    Button.-error { background: $error 12%; color: $error; }
+    Button.-primary:hover, Button.-primary:focus { background: $accent 50%; }
+    Button.-success:hover, Button.-success:focus { background: $success 45%; }
+    Button.-warning:hover, Button.-warning:focus { background: $warning 30%; }
+    Button.-error:hover, Button.-error:focus { background: $error 28%; }
+    Button:disabled { background: transparent; color: $text-disabled; text-style: none; }
+    /* khung chia vùng: bo tròn, tiêu đề mờ ở cạnh trên (border_title) */
+    .box { border: round $panel-lighten-2; border-title-color: $text-muted; border-title-style: bold; }
+    .box:focus-within { border: round $accent 60%; border-title-color: $text; }
+    /* thanh bên (Sidebar): thay thanh tab khi đủ rộng; hẹp hoặc Ctrl+B thì trả lại thanh tab */
+    #side { dock: left; width: 24; height: 1fr; padding: 1 1; background: $panel; overflow: hidden hidden;
+            link-style: none; link-color: $text; link-background: transparent;
+            link-style-hover: bold; link-color-hover: $text; link-background-hover: $boost; }
+    Screen.side #tabs > ContentTabs { display: none; }
+    Screen.side #agents { display: none; }
+    Screen.noside #side { display: none; }
     /* dòng đang chọn trong danh sách (wizard, gợi ý / @ !, dropdown): nền xám trung tính thay cho xanh dương
        đậm — chữ màu (xanh lá, cyan) đè lên xanh dương gần như không đọc được */
     OptionList > .option-list--option-highlighted,
@@ -4786,32 +4912,33 @@ class TeamApp(App):
     #tabs > ContentSwitcher { height: 1fr; }
     TabPane { padding: 0; height: 1fr; }
     #team { height: 1fr; overflow: hidden hidden; }
-    #board { height: 1fr; }
-    #left { width: 46%; min-width: 40; }
+    #board { height: 1fr; padding: 0 1; }
+    #left { width: 50%; min-width: 40; padding: 0 1; }
     #board.mid #left { width: 58%; }
-    #right { width: 1fr; border-left: solid $foreground 15%; }
+    #right { width: 1fr; margin-left: 1; padding: 0 1; }
     /* terminal hẹp: xếp dọc, không để cột phải chỉ còn vài ký tự (log thành chữ dọc) */
     #board.narrow { layout: vertical; }
     #board.narrow #left { width: 100%; min-width: 0; height: 45%; }
-    #board.narrow #right { width: 100%; height: 1fr; border-left: none;
-                           border-top: solid $foreground 15%; }
-    #agents { height: auto; padding: 0 1; background: $boost; }
-    #goals { height: auto; max-height: 7; padding: 0 1; border-bottom: solid $foreground 15%; }
+    #board.narrow #right { width: 100%; height: 1fr; margin: 0; }
+    #agents { height: auto; margin-bottom: 1; }
+    #goals { height: auto; max-height: 7; margin-bottom: 1; }
+    #tasks { background: transparent; }
+    #tasks > .datatable--header { background: transparent; color: $text-muted; text-style: bold; }
     #tasks { height: 1fr; }
     #board-tools { height: 1; align: right top; display: none; }
-    #term { height: 1fr; }
-    #jobs-side { width: 34%; min-width: 30; max-width: 70; border-right: solid $foreground 15%; }
+    #term { height: 1fr; padding: 0 1; }
+    #jobs-side { width: 34%; min-width: 30; max-width: 70; }
     #jobs { height: 1fr; border: none; }
     #jobs-empty { height: auto; padding: 1 2; color: $text-muted; }
     #scripts-title { height: 1; padding: 0 1; margin-top: 1; background: $panel; }
     #term-scripts { height: 1fr; border: none; }
     #jobs-buttons { height: auto; }
     #jobs-buttons Button { margin-right: 1; }
-    #job-view { width: 1fr; }
-    #job-head { height: auto; padding: 0 1; background: $boost; }
+    #job-view { width: 1fr; margin-left: 1; }
+    #job-head { height: auto; padding: 0 1; }
     #job-log { height: 1fr; }
     #board-clear { margin: 0 1 0 0; }
-    #git-top { height: auto; background: $boost; }
+    #git-top { height: auto; }
     #git-top.narrow { layout: vertical; }
     #git-top.narrow #git-head { width: 100%; }
     #git-head { width: 1fr; height: auto; padding: 0 1; }
@@ -4819,9 +4946,10 @@ class TeamApp(App):
     #git-actions Button { margin-left: 1; }
     #git-main { height: 1fr; }
     #git-main.narrow { layout: vertical; }
-    #git-side { width: 50%; min-width: 40; border-right: solid $foreground 15%; }
-    #git-main.narrow #git-side { width: 100%; height: 55%; border-right: none;
-                                 border-bottom: solid $foreground 15%; }
+    #git { padding: 0 1; }
+    #git-side { width: 50%; min-width: 40; }
+    #git-main.narrow #git-side { width: 100%; height: 55%; }
+    #git-main.narrow #git-hist { margin: 0; }
     #git-files { height: 1fr; border: none; }
     #git-empty { height: 1fr; padding: 1 2; }
     .git-row { height: auto; }
@@ -4831,35 +4959,37 @@ class TeamApp(App):
     #git-ai-agent > SelectCurrent { border: none; height: 1; padding: 0 1; }
     #git-amend, #git-no-verify { height: auto; border: none; padding: 0; background: transparent;
                                  margin-right: 2; }
-    #git-hist { width: 1fr; }
-    #git-log-title { height: 1; padding: 0 1; background: $panel; }
+    #git-hist { width: 1fr; margin-left: 1; }
+    #git-log-title { height: 1; padding: 0 1; }
     #git-log { height: 1fr; border: none; }
     #git-norepo { height: 1fr; padding: 1 2; }
     #tasks-empty { height: 1fr; padding: 1 2; color: $text-muted; }
     #code { height: 1fr; }
-    #custom-tab { height: 1fr; padding: 0 1; }
-    #dash { height: 1fr; padding: 0 1; }
+    #custom-tab { height: 1fr; padding: 1 2 0 2; }
+    #dash { height: 1fr; padding: 0 2; }
+    #todo-tab, #notes-tab { padding: 1 1 0 1; }
     #dash-cards, #dash-chart, #dash-goal, #dash-note { height: auto; margin-top: 1; }
     #dash .dash-title { height: 1; margin-top: 1; color: $text-muted; text-style: bold; }
     #dash-agents { height: auto; max-height: 12; }
     #dash-goals { height: auto; max-height: 16; }
     #custom-tab .f-scroll { height: 1fr; max-height: 100%; }
-    #code-side { width: 34; min-width: 22; border-right: solid $foreground 15%; }
+    #code { padding: 0 1; }
+    #code-side { width: 34; min-width: 22; }
     #code.narrow #code-side { width: 24; }
     #code.hide-side #code-side { display: none; }
     #code-filter { margin: 0; }
     #code-new { width: 100%; height: 1; min-width: 0; }
     #code-files { height: 1fr; border: none; }
-    #code-main { width: 1fr; }
+    #code-main { width: 1fr; margin-left: 1; }
     #code-head { height: 1; padding: 0 1; background: $boost; overflow: hidden hidden; }
     #code-status { height: 1; padding: 0 1; background: $panel; overflow: hidden hidden; }
     /* cao cố định: chiều cao đổi theo từng task thì mỗi lần lướt bảng cả màn hình phải tính lại bố cục */
-    #detail { height: 6; padding: 0 1; background: $boost; overflow: hidden hidden; }
+    #detail { height: 6; overflow: hidden hidden; }
     #log-tools { height: 1; align: right top; }
     #log-clear { margin: 0 1 0 0; }
-    #log { height: 1fr; padding: 0 1; overflow-x: hidden; }
+    #log { height: 1fr; overflow-x: hidden; background: transparent; }
     /* tab Agents: danh sách gọn (chỉ phần đầu mỗi ô); chat = phóng to 1 ô (F7 / bấm vào agent) */
-    #team-list { height: 1fr; }
+    #team-list { height: 1fr; padding: 1 1 0 1; }
     #team-hint { height: auto; padding: 0 1; margin-bottom: 1; }
     #team-grid { height: auto; }
     #agents-custom { margin-top: 1; padding: 0 1; }
@@ -4869,7 +4999,7 @@ class TeamApp(App):
     .agentpane.cooling { border-left: tall $warning; }
     .agentpane.failed { border-left: tall $error; }
     .agentpane .pane-log, .agentpane .pane-chat { display: none; }
-    .pane-head { height: auto; padding: 0 1; background: $boost; }
+    .pane-head { height: auto; padding: 0 1; link-style: none; link-style-hover: underline; }
     .pane-log { height: 1fr; padding: 0 1; overflow-x: hidden; }
     .pane-chat { height: 1; margin: 0; padding: 0 1; border: none; background: $boost; }
     .pane-chat:focus { border: none; background: $accent 25%; }
@@ -4880,12 +5010,17 @@ class TeamApp(App):
     #team-grid.focused .agentpane.unfocused { display: none; }
     #team-grid.focused .agentpane { height: 1fr; margin: 0; border: round $accent; }
     #team-grid.focused .pane-log, #team-grid.focused .pane-chat { display: block; }
-    #timeline { height: auto; max-height: 14; padding: 0 1; border-top: solid $foreground 15%; }
-    #cmd-row { dock: bottom; height: 3; margin: 0 0 2 0; }
-    #cmd-mode { width: auto; max-width: 30%; margin-top: 1; text-wrap: nowrap; text-overflow: ellipsis; }
-    #cmd { width: 1fr; }
-    /* Footer, thanh trạng thái, ô nhập cùng dock dưới: chồng nhau nên đẩy bằng margin */
-    #statusbar { dock: bottom; height: 1; margin: 0 0 1 0; padding: 0 1; background: $boost;
+    #timeline { height: auto; max-height: 16; padding: 0 1; margin: 0 1; }
+    /* ô nhập: một dòng trong khung bo tròn; nút chọn luồng (★ Trưởng nhóm ▾) đứng đầu như lời nhắc */
+    #cmd-row { dock: bottom; height: 3; margin: 0 0 1 0; padding: 0 1; border: round $panel-lighten-2; }
+    #cmd-row:focus-within { border: round $accent 70%; }
+    #cmd-mode, #cmd-mode:hover, #cmd-mode:focus { width: auto; max-width: 30%; margin: 0 2 0 0; padding: 0;
+        background: transparent; color: $accent; text-style: bold; text-wrap: nowrap; text-overflow: ellipsis; }
+    #cmd-mode:hover, #cmd-mode:focus { text-style: bold underline; }
+    #cmd, #cmd:focus { width: 1fr; height: 1; border: none; padding: 0; background: transparent; }
+    /* thanh trạng thái và ô nhập cùng dock dưới: chồng nhau nên đẩy bằng margin */
+    #statusbar { dock: bottom; height: 1; padding: 0 1; background: $panel;
+                 link-style: none; link-style-hover: underline; link-color: $text; link-background: transparent;
                  overflow: hidden hidden; }
     #plan { height: auto; max-height: 75%; display: none; border: round $panel-lighten-2;
             border-title-color: $warning; border-title-style: bold; padding: 0 1; background: $boost; }
@@ -4904,9 +5039,10 @@ class TeamApp(App):
                link-style-hover: underline; link-color-hover: $text; link-background-hover: $boost; }
     #grill-buttons { height: auto; margin-top: 1; }
     #grill-buttons Button { margin-right: 2; }
-    #continue-hint { height: auto; display: none; padding: 0 1; background: $boost; }
+    #continue-hint { height: auto; display: none; padding: 0 1; margin: 0 1; background: $boost; }
+    #plan, #grill { margin: 0 1; }
     #mention { dock: bottom; layer: overlay; display: none; height: auto; max-height: 14;
-               width: 90; max-width: 100%; margin: 0 0 5 1; border: round $panel-lighten-2;
+               width: 90; max-width: 100%; margin: 0 0 4 1; border: round $panel-lighten-2;
                border-title-color: $accent; border-subtitle-color: $text-muted;
                background: $panel; }
     """
@@ -4934,6 +5070,7 @@ class TeamApp(App):
         Binding("f8,ctrl+shift+p", "palette('>')", tr("Lệnh"), show=False, priority=True),
         Binding("f9,ctrl+shift+o", "palette('@')", tr("Symbol"), show=False, priority=True),
         Binding("f10", "grid_arrange", tr("Sắp xếp lưới"), show=False, priority=True),
+        Binding("ctrl+b", "toggle_sidebar", tr("Thanh bên"), show=False, priority=True),
         *[Binding(f"alt+{i + 1}", f"goto_tab({i})", show=False, priority=True) for i in range(9)],
         Binding("alt+0", "goto_tab(9)", show=False, priority=True),
     ]
@@ -4942,6 +5079,8 @@ class TeamApp(App):
         super().__init__()
         self.root, self.cfg, self.db = root, cfg, db
         self.focus_agent: str | None = None  # agent đang phóng to ở tab Agents (F7, /focus)
+        self.sidebar_on = True  # thanh bên (Ctrl+B ẩn/hiện, nhớ trong state.json; hẹp thì tự ẩn)
+        self._todo_n: tuple[float, int] = (0.0, 0)  # số to-do chưa xong cho thanh bên: (lúc đọc, số)
         self.start_setup = setup
         # tắt hiệu ứng chuyển động (gạch chân tab trượt, cuộn mượt): mỗi lần đổi tab/cuộn phải vẽ lại nhiều
         # khung hình — trên terminal là giật, lag
@@ -5002,27 +5141,28 @@ class TeamApp(App):
 
     # ------------------------------------------------------------------ layout
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
+        labels = tab_labels()
+        yield Sidebar(id="side")
         with TabbedContent(id="tabs", initial="tab-board"):
-            with TabPane(tr("📋 Bảng việc"), id="tab-board"):
+            with TabPane(labels["tab-board"], id="tab-board"):
                 with Horizontal(id="board"):
-                    with Vertical(id="left"):
+                    with Vertical(id="left", classes="box"):
                         yield Static(id="agents")
                         yield Static(id="goals")
                         with Horizontal(id="board-tools"):
                             yield Btn(tr("🗑 Dọn task đã xong"), id="board-clear")
                         yield TaskTable(id="tasks", cursor_type="row", zebra_stripes=True)
                         yield Static(id="tasks-empty")
-                    with Vertical(id="right"):
+                    with Vertical(id="right", classes="box"):
                         yield Static(id="detail")
                         with Horizontal(id="log-tools"):
                             yield Btn(tr("🗑 Xoá log"), id="log-clear")
                         yield ReflowLog(id="log", wrap=True, markup=False, highlight=False,
                                       max_lines=5000, min_width=1)
-            with TabPane(tr("🔲 Lưới"), id="tab-grid"):
+            with TabPane(labels["tab-grid"], id="tab-grid"):
                 from .tui_grid import GridPanel
                 yield GridPanel(id="grid-panel")
-            with TabPane(tr("🤖 Agents"), id="tab-team"):
+            with TabPane(labels["tab-team"], id="tab-team"):
                 with Vertical(id="team"):
                     with VerticalScroll(id="team-list"):
                         yield RolesTable(self.root, self.cfg, id="roles-table")
@@ -5033,20 +5173,20 @@ class TeamApp(App):
                             for name in self.pane_order():
                                 yield AgentPane(name)
                         yield CustomPanel(self.root, self.cfg, show="agents", id="agents-custom")
-                    yield Timeline(id="timeline")
-            with TabPane(tr("🔀 Workflows"), id="tab-custom"):
+                    yield Timeline(id="timeline", classes="box")
+            with TabPane(labels["tab-custom"], id="tab-custom"):
                 yield CustomPanel(self.root, self.cfg, show="flows", id="custom-tab")
-            with TabPane("📝 Code", id="tab-code"):
+            with TabPane(labels["tab-code"], id="tab-code"):
                 with Horizontal(id="code"):
-                    with Vertical(id="code-side"):
+                    with Vertical(id="code-side", classes="box"):
                         yield TextInput(id="code-filter", placeholder=tr("Tìm file… (Enter mở)"))
                         yield Btn(tr("＋ File mới"), id="code-new")
                         yield CodeFileList(id="code-files")
-                    with Vertical(id="code-main"):
+                    with Vertical(id="code-main", classes="box"):
                         yield Static(id="code-head")
                         yield CodeEditor(id="code-editor")
                         yield Static(id="code-status")
-            with TabPane("🌿 Git", id="tab-git"):
+            with TabPane(labels["tab-git"], id="tab-git"):
                 with Vertical(id="git"):
                     with Horizontal(id="git-top"):
                         yield Static(id="git-head")
@@ -5060,7 +5200,7 @@ class TeamApp(App):
                             yield Btn("📦 Stash", id="git-stash")
                             yield Btn("⟳", id="git-refresh")
                     with Horizontal(id="git-main"):
-                        with Vertical(id="git-side"):
+                        with Vertical(id="git-side", classes="box"):
                             yield GitFileList(id="git-files")
                             yield Static(id="git-empty")
                             with Horizontal(classes="git-row"):
@@ -5083,7 +5223,7 @@ class TeamApp(App):
                             with Horizontal(classes="git-row"):
                                 yield Checkbox(tr("Sửa commit trước"), id="git-amend")
                                 yield Checkbox(tr("Bỏ qua hook (--no-verify)"), id="git-no-verify")
-                        with Vertical(id="git-hist"):
+                        with Vertical(id="git-hist", classes="box"):
                             yield Static(id="git-log-title")
                             yield GitLogList(id="git-log")
                             with Horizontal(classes="git-row"):
@@ -5096,9 +5236,9 @@ class TeamApp(App):
                             tr("Tạo repo để theo dõi thay đổi, commit, và dùng chế độ worktree "
                                "(mỗi task một nhánh riêng).\n")))
                         yield Btn(tr("＋ Tạo git repo (git init)"), id="git-init", variant="success")
-            with TabPane("💻 Terminal", id="tab-term"):
+            with TabPane(labels["tab-term"], id="tab-term"):
                 with Horizontal(id="term"):
-                    with Vertical(id="jobs-side"):
+                    with Vertical(id="jobs-side", classes="box"):
                         yield OptionList(id="jobs")
                         yield Static(id="jobs-empty")
                         with Horizontal(id="jobs-buttons"):
@@ -5107,16 +5247,16 @@ class TeamApp(App):
                             yield Btn(tr("✗ Xoá"), id="job-remove")
                         yield Static(Text(tr("📜 Script dự án — Enter / bấm để chạy"), "bold"), id="scripts-title")
                         yield OptionList(id="term-scripts")
-                    with Vertical(id="job-view"):
+                    with Vertical(id="job-view", classes="box"):
                         yield Static(id="job-head")
                         yield ReflowLog(id="job-log", wrap=True, markup=False, highlight=False,
                                       max_lines=5000, min_width=1)
-            with TabPane(tr("✅ To-do"), id="tab-todo"):
+            with TabPane(labels["tab-todo"], id="tab-todo"):
                 from .tui_todo import NotesPanel, TodoPanel
                 yield TodoPanel(self.root, id="todo-tab")
-            with TabPane(tr("🗒 Ghi chú"), id="tab-notes"):
+            with TabPane(labels["tab-notes"], id="tab-notes"):
                 yield NotesPanel(self.root, id="notes-tab")
-            with TabPane(tr("📊 Thống kê"), id="tab-dash"):
+            with TabPane(labels["tab-dash"], id="tab-dash"):
                 with VerticalScroll(id="dash"):
                     yield Static(id="dash-cards")
                     yield Static(id="dash-chart")
@@ -5137,7 +5277,6 @@ class TeamApp(App):
             yield CommandInput(self.root, id="cmd",
                                placeholder=tr("Nhập mục tiêu cho trưởng nhóm, /help, hoặc @ để nhắc file"))
         yield StatusBar(id="statusbar")
-        yield Footer()
 
     async def on_mount(self) -> None:
         self.sub_title = str(self.root)
@@ -5152,6 +5291,13 @@ class TeamApp(App):
         table.add_column(tr("Trạng thái"), key="status", width=12)
         table.add_column("⏱", key="time", width=6)
         table.add_column("Task", key="title")
+        table.zebra_stripes = False
+        for wid, title in (("#left", tr("Mục tiêu & task")), ("#right", tr("Chi tiết · log")),
+                           ("#code-side", tr("File")), ("#git-side", tr("Thay đổi")),
+                           ("#jobs-side", tr("Lệnh")), ("#job-view", "Output")):
+            self.query_one(wid).border_title = title
+        self.sidebar_on = st.get("sidebar", True) is not False
+        self._layout(self.size.width)
         self.show_task(SYSTEM)
         self._preload_panes()
         await self.orch.setup()
@@ -5171,8 +5317,54 @@ class TeamApp(App):
             self.run_worker(self._discover_missing_models(), exclusive=False)
 
     def on_resize(self, event: events.Resize) -> None:
+        self._layout(event.size.width)
+
+    def sidebar_shown(self) -> bool:
+        return self.sidebar_on and self.size.width >= SIDE_MIN
+
+    def _refresh_sidebar(self) -> None:
+        if not self.sidebar_shown():
+            return
+        side = self.query_one("#side", Sidebar)
+        set_static(side, side.build(self))
+
+    def action_toggle_sidebar(self) -> None:
+        """Ctrl+B: ẩn thanh bên (trả lại thanh tab, thêm chỗ cho nội dung) / hiện lại."""
+        self.sidebar_on = not self.sidebar_on
+        st = load_state()
+        st["sidebar"] = self.sidebar_on
+        save_state(st)
+        self._layout(self.size.width)
+        if self.size.width < SIDE_MIN and self.sidebar_on:
+            self.notify(tr("Terminal hẹp hơn {n} cột: thanh bên tự ẩn", n=SIDE_MIN), timeout=3)
+
+    def action_side_agent(self, agent: str) -> None:
+        """Bấm tên agent ở thanh bên: sang tab Agents, phóng to agent đó để chat."""
+        self.query_one("#tabs", TabbedContent).active = "tab-team"
+        self.set_focus_agent(agent)
+
+    def todo_open_count(self) -> int:
+        """Số to-do chưa xong (đọc lại tối đa 5 giây một lần — file JSON ngoài repo, web cũng sửa)."""
+        at, n = self._todo_n
+        if time.time() - at > 5:
+            try:
+                n = sum(1 for x in todos.load(self.root) if not x.get("done"))
+            except Exception:
+                n = 0
+            self._todo_n = (time.time(), n)
+        return n
+
+    def _layout(self, width: int) -> None:
+        """Thanh bên (đủ rộng và chưa tắt bằng Ctrl+B) thay thanh tab; các tab chia cột theo phần còn lại."""
+        side = self.sidebar_on and width >= SIDE_MIN
+        scr = self.screen_stack[0] if self.screen_stack else self.screen
+        scr.set_class(side, "side")
+        scr.set_class(not side, "noside")
+        if side:
+            self._refresh_sidebar()
+        w = width - (SIDE_WIDTH if side else 0)
         # vừa: nới cột bảng việc để cột "Task" (quan trọng nhất) không bị đẩy mất; hẹp: xếp dọc
-        board, w = self.query_one("#board"), event.size.width
+        board = self.query_one("#board")
         board.set_class(w < NARROW_WIDTH, "narrow")
         board.set_class(NARROW_WIDTH <= w < 140, "mid")
         self.query_one("#git-main").set_class(w < NARROW_WIDTH, "narrow")
@@ -5183,6 +5375,8 @@ class TeamApp(App):
         """Nạp phần cuối log của task gần nhất cho mỗi ô agent."""
         tasks = self.db.tasks()
         for pane in self.query(AgentPane):
+            if not pane.query(".pane-log"):  # chưa dựng xong (vừa mount)
+                continue
             last = [t for t in tasks if t.agent == pane.agent and t.started]
             if not last:
                 pane.body.write(Text(tr("chưa có việc nào"), "dim"))
@@ -5421,7 +5615,7 @@ class TeamApp(App):
     # ------------------------------------------------------------------ code (tab 📝 Code)
     CODE_LIMIT = 10  # số buffer giữ cùng lúc
     # phím tắt của app trùng phím vim (Ctrl+D/U/R…): nhường cho editor khi đang gõ trong đó
-    CODE_YIELD = {"diff", "cancel_task", "retry", "approve", "continue", "merge", "syslog"}
+    CODE_YIELD = {"diff", "cancel_task", "retry", "approve", "continue", "merge", "syslog", "toggle_sidebar"}
 
     async def on_event(self, event) -> None:
         if isinstance(event, events.Key):
@@ -6245,9 +6439,9 @@ class TeamApp(App):
             self._git_loading = False
 
     def _git_badge(self, st) -> None:
-        """Số file thay đổi trên nhãn tab Git ("🌿 Git 3"); sạch thì chỉ "🌿 Git"."""
+        """Số file thay đổi trên nhãn tab Git ("Git 3"); sạch thì chỉ "Git" (thanh bên có số riêng)."""
         n = len(st.files) if st.is_repo else 0
-        label = f"🌿 Git {n}" if n else "🌿 Git"
+        label = f"Git {n}" if n else "Git"
         try:
             tab = self.query_one("#tabs", TabbedContent).get_tab("tab-git")
         except Exception:
@@ -6809,7 +7003,7 @@ class TeamApp(App):
         elif tab != "tab-git" and time.time() - self._git_at > 10 and not self._git_loading:
             # thanh trạng thái hiện nhánh git: ngoài tab Git đọc lại thưa hơn
             self.run_worker(self.refresh_git(), exclusive=False)
-        fns.append(self._refresh_statusbar)
+        fns += [self._refresh_sidebar, self._refresh_statusbar]
         try:
             for fn in fns:
                 try:
@@ -7410,7 +7604,8 @@ class TeamApp(App):
             for what, label in (("chat", tr("💬 Chat")), ("term", "⌨ Terminal")) + (
                     (("edit", tr("✎ Sửa")), ("del", tr("✗ Xoá"))) if name in self.cfg.custom_agents else ()):
                 t.append("  ")
-                t.append(f"[{label}]", Style.parse("bold") + Style(meta={"@click": f"app.agent_btn({name!r}, {what!r})"}))
+                color = PAL["err"] if what == "del" else PAL["info"]  # chữ màu, gạch chân khi rê chuột (.pane-head)
+                t.append(label, Style(bold=True, color=color, meta={"@click": f"app.agent_btn({name!r}, {what!r})"}))
             role = self.role_label(name)
             if role or a.role:
                 t.append(f"\n{role}" if role else "\n", "bold")
@@ -8139,7 +8334,8 @@ class TeamApp(App):
         self.set_focus_agent(None)
         await grid.remove_children()
         await grid.mount_all([AgentPane(n) for n in self.pane_order()])
-        self._preload_panes()
+        # ô vừa mount có thể chưa dựng xong con (log, ô chat) — nạp log sau lượt vẽ kế tiếp
+        self.call_after_refresh(self._preload_panes)
         # truyền hàm (không phải coroutine): worker bị huỷ trước khi chạy (thoát app) không để lại coroutine treo
         self.run_worker(self.query_one("#roles-table", RolesTable).reload, exclusive=False)
         self.run_worker(self.query_one("#agents-custom", CustomPanel).refill, exclusive=False)

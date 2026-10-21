@@ -489,14 +489,23 @@ cho timeline. TUI chỉ đọc hai cấu trúc này, không sửa.
   `TeamApp.apply_theme` đăng ký theme, gán `App.theme`, dựng lại bảng màu chữ Rich (`apply_palette`), đổi màu
   diff sáng/tối (`diffview.set_light`), lưu `theme`/`accent` vào `state.json`. `ThemeScreen` xem trước khi di
   chuyển, Esc trả theme cũ.
-- `StatusBar` (`#statusbar`, dock dưới, cùng `#cmd` và Footer — đẩy nhau bằng margin): vẽ mỗi lượt
-  `refresh_view`; ngoài tab Git đọc lại git status mỗi 10 giây cho nhánh ↑↓.
+- `StatusBar` (`#statusbar`, dock dưới, cùng `#cmd-row` — đẩy nhau bằng margin; không còn Header/Footer): vẽ mỗi
+  lượt `refresh_view`; trái là dự án (khi thanh bên ẩn), nhánh, số task, lệnh đang chạy; phải là 4 phím cố định (bấm
+  được). Ngoài tab Git đọc lại git status mỗi 10 giây cho nhánh ↑↓.
+- `Sidebar` (`#side`, dock trái, `SIDE_WIDTH` cột): thay thanh tab khi terminal ≥ `SIDE_MIN` cột và chưa tắt bằng
+  Ctrl+B (`state.json` `sidebar`). `TeamApp._layout` gắn class `side`/`noside` cho màn hình chính (CSS ẩn
+  `ContentTabs` và `#agents` khi có thanh bên) và chia cột các tab theo phần còn lại. Nhóm màn hình ở `side_groups()`,
+  nhãn ở `tab_labels()` (không emoji), thứ tự phải giữ đúng `TAB_ORDER` (Alt+1…0). Bấm mục: `@click`
+  `app.goto_tab(i)`; bấm agent: `app.side_agent(tên)` → tab Agents, phóng to agent đó.
+- Ngôn ngữ thị giác: mỗi vùng là một khung class `box` (bo tròn, `border_title` mờ); nút `Btn` là chip một dòng (nền
+  `$boost`, primary/success nền màu, error chữ đỏ nền đỏ nhạt); chữ bấm được trong `Text` (`@click`) để
+  `link-style: none` + gạch chân khi rê chuột.
 
 ### Popup (`BaseModal`)
 
 Mọi `ModalScreen` kế thừa `BaseModal`: dòng tiêu đề có nút ✕ (`title_bar`), Esc **không** dùng `priority` nên
 dropdown `Select` / danh sách đang mở nhận Esc trước; form có `dirty()` (so với `mark_clean()` lúc mở) cần Esc
-hai lần trong 3 giây. Nút dùng `Btn` (nhãn `[ … ]`, không nền/viền, variant = màu chữ — CSS trong `TeamApp.CSS`).
+hai lần trong 3 giây. Nút dùng `Btn` (chip một dòng, không viền, variant = màu nền/chữ — CSS trong `TeamApp.CSS`).
 
 ### Wizard thiết lập (`OnboardScreen`)
 

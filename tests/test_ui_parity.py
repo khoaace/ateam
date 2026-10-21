@@ -80,7 +80,7 @@ def test_tui_git_badge_tree_and_click_diff(env, project, monkeypatch):
             app.run_command("/git")
             assert await wait(lambda: app.git_status and len(app.git_status.files) == 3)
             tabs = app.query_one("#tabs")
-            assert str(tabs.get_tab("tab-git").label) == "🌿 Git 3"
+            assert str(tabs.get_tab("tab-git").label) == "Git 3"
             files = app.query_one("#git-files")
             files.focus()
             # bấm (Enter) vào file = mở diff
@@ -105,7 +105,7 @@ def test_tui_git_badge_tree_and_click_diff(env, project, monkeypatch):
             files.highlighted = ids.index("w\0src/app/")
             await pilot.press("space")
             assert await wait(lambda: {f.path for f in app.git_status.staged} == {"src/app/a.py", "src/app/b.py"})
-            assert str(tabs.get_tab("tab-git").label) == "🌿 Git 3"
+            assert str(tabs.get_tab("tab-git").label) == "Git 3"
             await pilot.press("t")  # về danh sách phẳng
             await pilot.pause(0.2)
             ids = [files.get_option_at_index(i).id for i in range(files.option_count)]

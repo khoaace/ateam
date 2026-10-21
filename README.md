@@ -241,7 +241,7 @@ ateam web --public-url https://ateam.ten-mien.com   # bạn tự chạy named tu
   Có thể đặt thêm **Cloudflare Access** (Zero Trust) trước domain để bắt đăng nhập email/Google — token vẫn cần.
 - `--host 0.0.0.0` đi qua http: token truyền dạng rõ trong LAN, ngoài mạng nhà nên dùng `--tunnel`.
 
-## Theme màu và ngôn ngữ
+## Giao diện, theme màu và ngôn ngữ
 
 - **`/theme`** mở màn hình chọn theme: 21 theme dựng sẵn (tối và sáng — nord, dracula, gruvbox, tokyo-night,
   catppuccin, solarized, rose-pine…) và màu nhấn tuỳ chọn (xanh dương, tím, xanh lá, cam, hồng, vàng, xanh ngọc,
@@ -249,8 +249,12 @@ ateam web --public-url https://ateam.ten-mien.com   # bạn tự chạy named tu
   `/theme catppuccin-latte cam`. Màu trạng thái, viền popup, khung agent và diff đổi theo theme.
 - **`/lang en`** / **`/lang vi`**: đổi ngôn ngữ giao diện (app tự mở lại). Ngoài app: `ateam lang en` (lưu),
   `ateam --lang en <lệnh>` hoặc `ATEAM_LANG=en` (một lần). Lần đầu dùng, ngôn ngữ theo `LANG` của máy.
-- Thanh trạng thái phía trên phím tắt: nhánh git ↑↓, số task đang chạy / chờ / chờ duyệt / lỗi, agent đang
-  nghỉ vì hết hạn mức, theme và ngôn ngữ (bấm vào để đổi).
+- **Thanh bên** (terminal từ 120 cột): tên dự án và nhánh, các màn hình theo nhóm — *Làm việc* (Bảng việc, Lưới,
+  Agents, Workflows), *Dự án* (Code, Git, Terminal), *Của bạn* (To-do, Ghi chú, Thống kê) — kèm số đếm (task đang
+  chạy/chờ, file đổi, việc chưa xong), và trạng thái từng agent (bấm tên để chat riêng). **Ctrl+B** ẩn/hiện (nhớ cho
+  lần sau); terminal hẹp hơn thì thanh bên tự ẩn và thanh tab hiện lại. Alt+1…0 / Ctrl+T vẫn chuyển màn hình.
+- Thanh trạng thái dưới cùng: nhánh git ↑↓, số task đang chạy / chờ / chờ duyệt / lỗi, lệnh terminal đang chạy,
+  agent đang nghỉ vì hết hạn mức; bên phải là phím tắt chính (F1 trợ giúp — đủ mọi phím).
 
 Lựa chọn lưu ở `~/.config/ateam/state.json`, dùng chung mọi dự án.
 
