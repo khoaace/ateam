@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.35.1 — chưa phát hành
+## 0.35.1 — 21/10/2026
 
 Sửa lỗi sau khi review toàn bộ tính năng chính:
 - **Không còn nhận nhầm "hết hạn mức"**: câu trả lời ngắn mà thành công nhắc "rate limit", "quota", 429, 503 (task về
