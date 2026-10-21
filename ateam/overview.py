@@ -1,6 +1,6 @@
 """Bản tổng quan dự án (/init): trưởng nhóm tìm hiểu dự án một lần, viết bản đồ gọn (mục đích, lệnh, thư mục →
-trách nhiệm, quy ước…) vào .ateam/project.md; ateam gửi kèm prompt lập kế hoạch, /grill và mỗi task để agent khỏi
-đọc lại code mỗi kế hoạch. Dòng đầu là meta `<!-- ateam:init commit=<sha> date=<ngày> -->` (commit lúc viết, để
+trách nhiệm, quy ước…) vào .ateam/project.md; ateam gửi kèm prompt của trưởng nhóm (lập kế hoạch, /grill, task giao
+cho trưởng nhóm) để khỏi đọc lại code mỗi kế hoạch — thành viên nhận phần cần thiết qua prompt task trưởng nhóm viết. Dòng đầu là meta `<!-- ateam:init commit=<sha> date=<ngày> -->` (commit lúc viết, để
 biết file nào đã đổi từ đó); phần còn lại là markdown người dùng sửa được."""
 
 from __future__ import annotations

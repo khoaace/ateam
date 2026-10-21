@@ -319,8 +319,9 @@ def test_compact_replaces_notes_with_lead_summary(env, project, tmp_path):
 
 
 def test_init_overview_sent_with_plans_and_tasks(env, project, tmp_path):
-    """/init (ateam init --overview): trưởng nhóm viết .ateam/project.md; prompt lập kế hoạch và task sau đó mang
-    bản tổng quan; chạy lại thì trưởng nhóm cập nhật bản cũ theo các file đã đổi kể từ lần trước."""
+    """/init (ateam init --overview): trưởng nhóm viết .ateam/project.md; prompt lập kế hoạch sau đó mang bản tổng
+    quan, task của thành viên thì không (trưởng nhóm ghi phần cần thiết vào prompt task — đỡ token mỗi task); chạy lại
+    thì trưởng nhóm cập nhật bản cũ theo các file đã đổi kể từ lần trước."""
     git_init(project)
     env = dict(env, ATEAM_FAKE_FULL_LOG=str(tmp_path / "full.log"))
     r = ateam(env, project, "goal", "-y", "tạo a và b")
@@ -338,8 +339,9 @@ def test_init_overview_sent_with_plans_and_tasks(env, project, tmp_path):
     full = (tmp_path / "full.log").read_text()
     plan = [c for c in full.split("<<claude>>") if "Reply with ONLY a JSON array" in c][-1]
     assert "PROJECT OVERVIEW" in plan and "- Test: pytest -q" in plan and "Rely on the PROJECT OVERVIEW" in plan
-    task = full.split("<<codex>>")[-1]
-    assert "PROJECT OVERVIEW" in task and "Use the PROJECT OVERVIEW" in task
+    assert "Members do NOT receive the PROJECT OVERVIEW" in plan
+    task = full.split("<<codex>>")[-1].split("\n<<")[0]  # tới lượt gọi kế tiếp (review của trưởng nhóm có bản tổng quan)
+    assert "YOUR TASK" in task and "PROJECT OVERVIEW" not in task and "- Test: pytest -q" not in task
     # lần 2: gửi bản cũ + file đã đổi, ghi bản mới
     (project / "moi.py").write_text("x = 1\n")
     subprocess.run(["git", "add", "moi.py"], cwd=project, check=True)

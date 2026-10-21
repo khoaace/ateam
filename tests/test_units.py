@@ -993,10 +993,11 @@ def test_prompts_use_overview_only_when_present():
     assert "- Test: pytest" in P.grill_prompt(cfg, "G", [], "/x", "", finish=False, max_questions=5, overview=ov)
     kw = dict(agent="codex", task_id=1, title="t", prompt="p", goal="G", deps=[], notes="", cwd="/x",
               can_delegate=False)
-    t = P.task_prompt(cfg, overview=ov, **kw)
-    assert "- Test: pytest" in t and "Use the PROJECT OVERVIEW" in t
+    t = P.task_prompt(cfg, overview=ov, **kw)  # task của trưởng nhóm (vd bước thiết kế của workflow)
+    assert "- Test: pytest" in t and "Use the PROJECT OVERVIEW" in t and "Later tasks do NOT" not in t
+    assert "Later tasks do NOT receive" in P.task_prompt(cfg, overview=ov, handoff=True, **kw)  # bàn giao lại
     assert "PROJECT OVERVIEW" not in P.task_prompt(cfg, **kw)
-    assert "do not repeat it in task prompts" in plan
+    assert "Members do NOT receive the PROJECT OVERVIEW" in plan
     assert "<<<NOTE>>>your note<<<END>>>" in t and "short fact" in t  # parse_notes vẫn lọc câu mẫu
 
 

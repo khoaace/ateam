@@ -169,8 +169,11 @@ hỏng giữa dòng như `[<ids>]` của mẫu); `question_from` bỏ câu hỏi
 ## 18. Bản tổng quan dự án (`/init`) ở `.ateam/project.md`, tiếng Anh, gửi kèm prompt, cập nhật bằng tay
 
 **Lý do**: mỗi kế hoạch và mỗi task, trưởng nhóm / thành viên lại đọc repo để biết code ở đâu, lệnh test là gì — tốn
-token lặp lại. `/init` cho trưởng nhóm tìm hiểu một lần, ghi bản đồ gọn; ateam gửi kèm prompt (như rule ở #15) nên agent
-nào cũng nhận, kể cả agent tuỳ chỉnh không đọc `AGENTS.md`. Lưu trong `.ateam/` (đã gitignore) thay vì ghi `AGENTS.md`:
+token lặp lại. `/init` cho trưởng nhóm tìm hiểu một lần, ghi bản đồ gọn; ateam gửi kèm prompt của **trưởng nhóm** (lập
+kế hoạch, `/grill`, kế hoạch tiếp, task giao cho trưởng nhóm). Thành viên không nhận cả bản: trưởng nhóm ghi phần task
+cần (file, lệnh test, quy ước) vào prompt task — trước đây mọi task đều kèm cả bản (tới 12.000 ký tự, ~3K token mỗi task,
+CLI phiên mới không có cache), người dùng chọn đổi (21/10/2026). Task không do trưởng nhóm viết (`/task`, workflow không
+có bước của trưởng nhóm) thì agent tự đọc code như khi chưa `/init`. Lưu trong `.ateam/` (đã gitignore) thay vì ghi `AGENTS.md`:
 không đụng file người dùng tự viết, không lẫn vào commit, mở sửa được ở tab Code. Viết tiếng Anh: chỉ agent đọc, tốn ít
 token hơn tiếng Việt. Không tự cập nhật sau mỗi mục tiêu (tốn thêm một lượt trưởng nhóm): meta giữ commit lúc viết, prompt
 kèm danh sách file đã đổi từ đó, `/init` lại chỉ cập nhật theo các thay đổi; quá `STALE_COMMITS` commit thì nhắc.

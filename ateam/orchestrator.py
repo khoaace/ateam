@@ -2000,7 +2000,9 @@ class Orchestrator:
                     siblings=[(o.id, o.agent, o.title) for o in goal_tasks
                               if o.id != t.id and o.status != CANCELLED] if t.goal_id else None,
                     verify_cmd=v.command if v.command and agent.verify else "",
-                    overview=await self.overview_block(), kind=t.kind or KIND_CODE,
+                    # chỉ trưởng nhóm đọc bản tổng quan; thành viên nhận phần cần thiết qua prompt của task (đỡ ~3K
+                    # token mỗi task) — bước workflow do trưởng nhóm làm (thiết kế) bàn giao lại qua SUMMARY
+                    overview=await self.overview_block() if t.agent == self.cfg.lead else "", kind=t.kind or KIND_CODE,
                     diff=self._diff_hint(dep_tasks) if t.kind == KIND_REVIEW else "", handoff=handoff)
             prompt = t.resume if sess else full
             gate = bool(v.command) and (agent.verify or check) and not chat

@@ -31,8 +31,9 @@ SUMMARY_RULE = ("End your answer with a line starting with 'SUMMARY:' followed b
 def _plan_rules(cfg: Config, language_of: str, has_overview: bool = False) -> str:
     """Luật chia việc chung cho lập kế hoạch và kế hoạch tiếp: ít task, prompt ngắn, khám phá vừa đủ."""
     explore = ("""Rely on the PROJECT OVERVIEW above instead of re-exploring the project; open files only to confirm
-the specific places you name — members read the code themselves. Members also receive the PROJECT OVERVIEW,
-so do not repeat it in task prompts.""" if has_overview else
+the specific places you name — members read the code themselves. Members do NOT receive the PROJECT OVERVIEW:
+put what each task needs from it into that task's prompt (the files/areas to change, the build/test command,
+conventions that matter) in a few lines, not the whole overview.""" if has_overview else
                """Explore the project only as much as you need to split the work and name the right files — members
 read the code themselves, so do not read the whole codebase.""")
     return f"""{explore}
@@ -188,6 +189,8 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
         ("- Use the PROJECT OVERVIEW to find the right files; read only the files you need for this task and do"
          " not explore the whole repository." if overview else
          "- Read only the files you need for this task; do not explore the whole repository."),
+        *(["- Later tasks do NOT receive the PROJECT OVERVIEW: put the files, commands and conventions they need"
+           " in your SUMMARY."] if overview and handoff else []),
         (f"- After you finish, ateam automatically runs `{verify_cmd}` and sends you any failure — run only the"
          " tests related to your change, do not run the full suite repeatedly." if verify_cmd else
          "- Check your change (e.g. run the relevant tests) before finishing."),

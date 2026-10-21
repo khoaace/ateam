@@ -99,8 +99,9 @@ tại). Agent tuỳ chỉnh bạn tự thêm ở `/custom` được giữ nguyê
 * **F5** (hoặc **Ctrl+R**) chạy lại task đang chọn, **Ctrl+K** huỷ, `/note ...` ghi chú cho cả đội. Ghi chú dài dần
   thì `/compact [trọng tâm]` (hoặc `ateam compact`): trưởng nhóm tóm tắt ghi chú, mục tiêu gần đây và log
   thành một ghi chú ngắn thay thế, prompt gửi agent sau đó gọn hơn. Gõ `/init` (hoặc `ateam init --overview`) một
-  lần để trưởng nhóm tìm hiểu dự án và viết bản tổng quan `.ateam/project.md` (lệnh, thư mục, quy ước…) — ateam gửi
-  kèm nó mọi lượt lập kế hoạch và task nên agent đỡ đọc lại code; dự án đổi nhiều thì gõ `/init` lại để cập nhật. Gõ `/` ở đầu ô nhập để xem danh sách lệnh kèm mô tả; **F1** (hoặc `/help`) mở bảng trợ giúp đầy đủ.
+  lần để trưởng nhóm tìm hiểu dự án và viết bản tổng quan `.ateam/project.md` (lệnh, thư mục, quy ước…) — chỉ trưởng
+  nhóm nhận nó mỗi lượt lập kế hoạch, rồi ghi phần cần thiết (file, lệnh test…) vào prompt từng task, nên thành viên đỡ
+  đọc lại code mà không phải nhận cả bản; dự án đổi nhiều thì gõ `/init` lại để cập nhật. Gõ `/` ở đầu ô nhập để xem danh sách lệnh kèm mô tả; **F1** (hoặc `/help`) mở bảng trợ giúp đầy đủ.
 * **Ctrl+T** mở tab **Đội** để xem cả 4 agent làm việc cùng lúc.
 
 Không cần giao diện:

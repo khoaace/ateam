@@ -137,7 +137,9 @@ thì là mục tiêu đó); task không thuộc mục tiêu thì `continue_task`
   bản cũ thì kèm nó + file đổi từ commit trong meta + `git status`, để chỉ cập nhật), bóc khối
   `<<<OVERVIEW>>>…<<<END>>>` (`extract_overview`) ghi vào `.ateam/project.md`. `overview_block()` đọc file, thêm danh
   sách file đã đổi kể từ commit đó và được truyền `overview=` vào `plan_prompt`, `followup_plan_prompt`, `grill_prompt`
-  và `task_prompt`; có overview thì luật "khám phá vừa đủ" đổi thành "dựa vào PROJECT OVERVIEW". Lượt trưởng nhóm tiếp
+  và `task_prompt` *chỉ khi task giao cho trưởng nhóm* (vd bước thiết kế của workflow — có task phụ thuộc thì dặn bàn
+  giao file/lệnh/quy ước qua SUMMARY); có overview thì luật "khám phá vừa đủ" đổi thành "dựa vào PROJECT OVERVIEW" và
+  trưởng nhóm được dặn ghi phần cần thiết của nó vào prompt từng task (thành viên không nhận). Lượt trưởng nhóm tiếp
   phiên đã nhận đúng khối đó (`_overview_sent[phiên] = digest`, ghi sau `_call_lead` ở `_plan`/`_grill_step`) chỉ nhận
   dòng `overview.SEEN`. `/init` gọi `_call_lead(slow=True)`: timeout của agent thay `lead_timeout`, hết giờ không chuyển
   agent dự phòng; không có commit mới, `git status` sạch, không trọng tâm → không gọi agent. `_plan` nhắc `/init` một lần
