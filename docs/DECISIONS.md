@@ -143,7 +143,9 @@ nhất, chỉ đọc file cần, biết các task song song (`siblings`) để k
 nên chỉ chạy test liên quan, `SUMMARY` ≤ ~5 dòng. Review tiếp tục phiên lập kế hoạch (`keep_session`) — trưởng nhóm
 đã đọc code lúc đó, CLI dùng được prompt cache — và tin vào kết quả task + dòng "verification … passed" trong
 `_results_text`; chỉ giao thêm việc cho lỗi thật / yêu cầu thiếu, vòng cuối không viết task (đằng nào cũng bị bỏ).
-Người dùng chọn: vẫn review mọi mục tiêu, chia ít task, chỉ chạy test liên quan (20/10/2026).
+Người dùng chọn: vẫn review mọi mục tiêu, chia ít task, chỉ chạy test liên quan (20/10/2026). Cập nhật 21/10/2026:
+lệnh cấm task test / review được thay bằng luật theo preset chất lượng (#19); "review mọi mục tiêu" giữ cho preset
+Tự quyết / Chặt chẽ, preset Nhanh bỏ review cuối khi mọi task xong và qua kiểm tra.
 **Xem lại nếu**: kế hoạch hay thiếu việc (prompt quá ngắn), hoặc review bỏ sót lỗi vì không tự kiểm.
 
 ## 17. Bóc output: bỏ phần CLI in lại prompt, vá JSON thiếu dấu đóng cuối
@@ -173,3 +175,26 @@ gọi agent; `/init` dùng timeout của agent và hết giờ không chuyển a
 từ đầu, tốn gấp đôi).
 **Xem lại nếu**: người dùng muốn bản tổng quan có tác dụng khi mở CLI ngoài ateam / chia sẻ qua git (xuất ra
 `AGENTS.md`), hoặc thấy nó cũ quá nhanh (khi đó cho trưởng nhóm cập nhật sau review).
+
+## 19. Trưởng nhóm quyết test / review code theo preset của dự án; kiểm tra cuối do ateam quyết bằng luật
+
+**Quyết định**: item kế hoạch có `"type"` (`code` mặc định | `review` | `verify` — cột `tasks.kind`; bước workflow
+cũng có). Trưởng nhóm chỉ quyết hai việc cần phán đoán: viết test ở đâu (ngay trong task code, hay task riêng cho
+agent khác khi logic lớn/rủi ro) và có cần task `review` (agent khác tác giả) không — theo preset `quality` của dự
+án (`fast` / `auto` / `strict`, chọn ở popup *Luồng mặc định*). Kiểm tra cuối (`verify`: ateam chạy lệnh `/verify`
+một lần trên kết quả gộp, fail mới gọi agent sửa) do `_apply_checks` thêm khi có lệnh verify và ≥2 task chạy song
+song — không hỏi trưởng nhóm.
+**Lý do**: đo trên `.ateam/team.db` của repo này, mỗi lượt `claude -p` mới tốn cố định ~15–20K token cache_write +
+~10K cache_read dù prompt chỉ ~500 token, nên chi phí đi theo *số lượt gọi*: test viết ngay trong task code (cùng
+phiên) rẻ hơn task riêng, review chỉ đáng khi rủi ro. Kiểm tra cuối chỉ phụ thuộc đồ thị phụ thuộc mà ateam biết
+chắc — hỏi LLM vừa tốn token vừa có thể sai; chuỗi tuần tự không cần vì task cuối đã được kiểm tra trên kết quả
+gộp. Worktree kiểm tra từng nhánh nhưng trước đây không ai kiểm tra sau khi merge (review cuối lại được báo
+"passed"); shared thì task song song thấy thay đổi dở của nhau (fail giả, sửa nhầm file của task kia) — nên ở shared
+task được kiểm tra cuối bao bỏ kiểm tra riêng, còn worktree giữ (cô lập, sửa trong phiên còn ấm). Chọn loại task
+thay vì đổi kế hoạch thành object: tương thích ngược, dùng lại bộ lập lịch, bảng việc, `/retry`, `/assign`. Task
+review tự sửa lỗi nhỏ, giao lỗi lớn cho tác giả qua `<<<DELEGATE>>>` (kiểm tra cuối được nối để chờ cả việc giao
+thêm) — ít lượt hơn để review cuối mở vòng mới. Task có task khác chờ (thiết kế, phân tích, review) bàn giao bằng
+SUMMARY tới ~40 dòng (`HANDOFF_MAX`) thay vì ≤5 dòng. Người dùng chọn (21/10/2026): chỉ preset Nhanh được bỏ review
+cuối, reviewer tự sửa lỗi nhỏ, `/flow-setup` là một nơi chọn luồng (★ trưởng nhóm + preset, hoặc một workflow).
+**Xem lại nếu**: trưởng nhóm lạm dụng task review / test (xem `runs` theo mục tiêu), hoặc kiểm tra cuối fail mà
+người sửa (trưởng nhóm, phiên mới) khó tìm thay đổi gây lỗi — khi đó giao cho tác giả task song song cuối cùng.

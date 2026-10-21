@@ -61,8 +61,9 @@ Cột đáng chú ý: `depends_on` (JSON list id), `depth` (số tầng giao ch�
 `branch`/`base`/`head` (worktree, dùng cho diff), `attempts` (số lần sửa sau khi verify fail),
 `result` (SUMMARY đã bóc), `error`, `session`/`session_agent` (id phiên CLI của lượt gần nhất — `--resume`),
 `resume` (prompt ngắn gửi khi tiếp tục phiên: lý do `/retry`, góp ý, câu trả lời, yêu cầu `/continue`; xoá khi chạy),
-`ask` (JSON `{"qa": [{q, why, options, rec, a}], "parked"}` — câu hỏi `<<<ASK>>>`). `goals.lead_session`: phiên
-trưởng nhóm lúc lập kế hoạch, `/continue m<id>` tiếp tục nó.
+`ask` (JSON `{"qa": [{q, why, options, rec, a}], "parked"}` — câu hỏi `<<<ASK>>>`), `kind` (loại task, `"type"` trong
+kế hoạch / bước workflow: NULL = code, `review` = agent khác xem diff của các task nó phụ thuộc, `verify` = kiểm tra
+cuối — xem `_run_task`). `goals.lead_session`: phiên trưởng nhóm lúc lập kế hoạch, `/continue m<id>` tiếp tục nó.
 
 Giữ phiên: `AgentConfig.argv(session=, resume=)` thêm `session_args` (lượt mới, ateam tự sinh uuid) hoặc
 `resume_args` (+ `apply_resume`: codex đổi sang `exec resume`, `--sandbox` → `-c sandbox_mode=`); preset theo binary
@@ -80,11 +81,15 @@ Hằng số trạng thái ở đầu `db.py`; `ACTIVE = (draft, queued, running,
 không lập được kế hoạch. `cancelled` khi người dùng bỏ kế hoạch nháp (`discard_plan`). Khi có mục
 tiêu `awaiting`, TUI hiện `PlanBar` (`#plan`, nằm ngoài các tab) cho mục tiêu chờ lâu nhất và chuyển
 focus vào nút duyệt nếu ô nhập đang trống. Mục tiêu tạo từ workflow (`run_workflow`, cột `workflow`) bỏ qua `planning`:
-các bước chèn thẳng qua `_insert_plan(from_user=True)` (giữ effort/model của bước); `workflow.review`
-(nếu đặt) thay `auto_review` khi `_check_goals` quyết định có review không. Task giao tay (`/task`, `ateam add` ngoài agent) không thuộc mục tiêu nào
+các bước chèn thẳng qua `_insert_plan(from_user=True)` (giữ effort/model/loại của bước, không qua `_apply_checks`);
+`workflow.review` (nếu đặt) thay `auto_review` khi `_check_goals` quyết định có review không. Mục tiêu trưởng nhóm lập kế
+hoạch với preset `quality = "fast"`: mọi task xong và qua kiểm tra (`_clean`: có lệnh verify, task đã qua kiểm tra
+riêng hoặc được kiểm tra cuối bao, không có task review) thì `done` luôn, không gọi review. Task giao tay (`/task`, `ateam add` ngoài agent) không thuộc mục tiêu nào
 nên không được review.
-Review (`_review`) tiếp tục phiên CLI của lượt lập kế hoạch (`keep_session`, `goal.lead_session`); vòng cuối
-(`round >= max_rounds`) báo trưởng nhóm không viết task mới (`review_prompt(final=True)`).
+Review (`_review`) tiếp tục phiên CLI của lượt lập kế hoạch (`keep_session`, `goal.lead_session`); mục tiêu không có
+phiên đó (workflow) thì gửi kèm bản tổng quan dự án; vòng cuối (`round >= max_rounds`) báo trưởng nhóm không viết task
+mới (`review_prompt(final=True)`). `_results_text` ghi kèm loại task và trạng thái kiểm tra: "(verification … passed)"
+khi task đã tự qua lệnh kiểm tra, "(checked by final verify #N: <trạng thái>)" khi một task kiểm tra cuối bao nó.
 
 **Hỏi đáp trước** (`/grill`, "grill me"): `start_grill` tạo mục tiêu ở trạng thái `grilling`, cột `grill`
 (JSON `{"qa": [{"q", "why", "options", "rec", "a"}], "spec", "error", "from_plan"?, "closed"?}`; câu đang chờ /
@@ -156,8 +161,12 @@ thì là mục tiêu đó); task không thuộc mục tiêu thì `continue_task`
 1. `new_goal(text)` → `_plan(gid)` gọi `_call_lead(plan_prompt)`.
 2. `_call_lead` thử trưởng nhóm rồi lần lượt `cfg.lead_fallback`, bỏ qua agent đang cooldown; một lượt
    chạy là `_lead_once` (ghi `logs/lead.log`, `lead_spans` cho timeline).
-3. `extract_json(out, list)` → `_insert_plan`: agent lạ thì giao cho trưởng nhóm; `effort` chỉ nhận
-   nếu nằm trong `efforts` của agent và `lead_sets_effort`; map id cục bộ → id DB cho `depends_on`.
+3. `extract_json(out, list)` → `_insert_plan`: trước hết `_apply_checks` (chỉ kế hoạch của trưởng nhóm) — preset
+   `fast` bỏ item `review`, `strict` thêm `review` khi kế hoạch mới / kế hoạch tiếp thiếu (agent vai trò Review khác
+   tác giả, không có thì trưởng nhóm), có lệnh verify và ≥2 item chạy song song (`_has_parallel`) thì thêm item
+   `verify` "Kiểm tra cuối" (người sửa = trưởng nhóm) phụ thuộc mọi item khác. Rồi: agent lạ thì giao cho trưởng
+   nhóm; `effort` chỉ nhận nếu nằm trong `efforts` của agent và `lead_sets_effort`; map id cục bộ → id DB cho
+   `depends_on`. Trưởng nhóm quyết test / review theo `prompts.checks_rules` (dựng theo `quality`).
 4. Task ở `draft` (chờ `approve`) hoặc `queued`.
 5. `tick()` chạy task; khi mọi task của mục tiêu ra khỏi `ACTIVE`, `_check_goals` gọi `_review`
    (nếu `auto_review`) → JSON `{done, summary, new_tasks}` → kết thúc hoặc thêm vòng (tối đa `max_rounds`).
@@ -194,11 +203,19 @@ Với mỗi task `queued` theo thứ tự id:
 5. `ratelimit`: `_set_cooldown`, chọn agent dự phòng, task quay về `queued`.
 6. Vòng verify: nếu không đổi file thì bỏ qua; chạy `/bin/sh -c <command>` trong thư mục task;
    fail thì `fix_prompt` (kèm 120 dòng cuối) cho `fix_agent` hoặc chính agent đó, tối đa
-   `max_fix_attempts`.
+   `max_fix_attempts`. Chế độ shared: task có một task `verify` chưa chạy phụ thuộc (bắc cầu) vào nó
+   (`_check_for(pending=True)`) bỏ vòng này — task song song đang sửa dở cùng thư mục làm lệnh kiểm tra fail giả;
+   worktree vẫn chạy (cô lập).
+   Loại task: `verify` bỏ bước 4–5, vào thẳng vòng này (không theo `agent.verify` / `only_when_changed`) trên kết quả
+   gộp (shared: gốc; worktree: worktree từ HEAD sau khi task phụ thuộc đã merge), fail thì `check_fix_prompt` cho agent
+   của task; chưa đặt lệnh verify thì xong ngay kèm ghi chú. `review` nhận `review_rules` + cách xem diff
+   (`_diff_hint`: worktree `git diff <base> <head>` từng task phụ thuộc, shared `git diff HEAD`). Task có task khác
+   chờ (`handoff`) được dặn bàn giao bằng SUMMARY tới ~40 dòng, giữ tới `HANDOFF_MAX` ký tự.
 7. Ghi NOTE vào `notes`; SUMMARY của lượt đầu (+ tóm tắt lượt sửa) vào `result`.
 8. Worktree: `_wt_finish` commit nhánh, xoá worktree, rồi merge tự động (`--no-ff`, có khoá
    `_merge_lock`) hoặc để `review`. Nhánh rỗng bị xoá; nhánh lỗi được giữ để xem.
-9. `done` → `_delegations` tạo task cho các khối DELEGATE (tối đa 5/task). Ở chế độ review, việc này
+9. `done` → `_delegations` tạo task cho các khối DELEGATE (tối đa 5/task) và nối chúng vào `depends_on` của task
+   `verify` chưa chạy đang chờ task giao (kiểm tra cuối bao cả bản sửa của reviewer). Ở chế độ review, việc này
    hoãn tới lúc `/merge` (đọc lại từ log task).
 
 ## Chạy tiến trình (`runner.Run`)

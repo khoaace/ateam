@@ -18,7 +18,8 @@ Nguồn cấu hình, ưu tiên tăng dần:
    wizard lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`),
    `recent_projects` (dự án mở gần đây, tối đa 20, cho `/open`; ghi mỗi lần mở TUI / `ateam web`), và
    `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify` hoặc bước *Lệnh kiểm tra*), `isolation` /
-   `merge` (bước *An toàn & duyệt code*, riêng từng dự án).
+   `merge` (bước *An toàn & duyệt code*, riêng từng dự án), `quality` (preset chất lượng chọn ở popup *Luồng mặc
+   định* → ★ Trưởng nhóm lập kế hoạch; vắng = `auto`).
    Agent wizard tự tạo thêm (cùng CLI, model khác, vd `claude-review`) nằm trong `custom.toml` với `wizard = true`;
    chạy lại wizard thì các agent này được xoá và tạo lại.
 6. Riêng từng task: cột `model`/`effort` (`/task agent:model@effort`, `/set`, kế hoạch của trưởng nhóm).
@@ -56,6 +57,7 @@ giữ phần người dùng sửa. Xoá file = thôi gửi kèm prompt.
 | `lead_sets_effort` | `true` | Trưởng nhóm được gắn effort cho task (chỉ nhận mức trong `efforts`) |
 | `isolation` | `"shared"` | `"shared"` (chung thư mục) hoặc `"worktree"` (mỗi task một git worktree; cần chạy ở gốc repo đã có commit, không thì tự về shared) |
 | `merge` | `"auto"` | Chỉ với worktree: `"auto"` tự merge, `"review"` chờ `/merge` |
+| `quality` | `"auto"` | Preset chất lượng khi trưởng nhóm lập kế hoạch: `"fast"` (test chỉ khi rủi ro, không task review, bỏ review cuối khi mọi task xong và qua kiểm tra), `"auto"` (trưởng nhóm tự quyết test / task review cho thay đổi rủi ro hoặc lớn), `"strict"` (test bắt buộc; thiếu task review thì ateam thêm). Không có trong file mặc định; `quality` trong `<dự án>/.ateam/state.json` (popup *Luồng mặc định*) thắng. Kiểm tra cuối giống nhau ở mọi preset: có lệnh verify và ≥2 task chạy song song thì ateam thêm task `verify` |
 
 ## `[prices."<model>"]` (tuỳ chọn)
 
@@ -141,6 +143,7 @@ Mỗi bước:
 | `prompt` | tiêu đề | Nội dung task; `{goal}` được thay (mục tiêu luôn có trong prompt dù không dùng `{goal}`) |
 | `after` | bước liền trước | Số thứ tự bước (từ 1) phải xong trước; `[]` = chạy ngay |
 | `effort`, `model` | `""` | Riêng cho task của bước này (không bị lọc như effort trưởng nhóm đặt) |
+| `type` | `"code"` | `"code"` làm việc; `"review"` agent xem diff của các bước nó chờ, tự sửa lỗi nhỏ, giao lỗi lớn cho tác giả; `"verify"` ateam chạy lệnh `[verify]` một lần trên kết quả gộp của các bước nó chờ, fail mới gọi `agent` của bước sửa (chưa đặt lệnh → bước xong ngay). Workflow không bị thêm/bớt bước theo `quality` |
 
 ## Mặc định của 5 agent (config_version 9)
 

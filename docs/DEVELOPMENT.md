@@ -45,7 +45,7 @@ mkdir -p /tmp/cihome && HOME=/tmp/cihome GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_
 
 | Script | Hành vi |
 | --- | --- |
-| `claude` | Prompt có "you INTERVIEW the user" (/grill) → hỏi 2 câu (`Câu hỏi số N?`, phương án A/B), đủ 2 câu trả lời hoặc "STOP the interview" → `{"done": true, "spec"}`. Prompt có "git COMMIT MESSAGE" → trả commit message sau `SUMMARY:`. Prompt có "Reply with ONLY a JSON array" → kế hoạch 3 task (codex effort xhigh, grok, antigravity phụ thuộc 1+2 với effort sai). "Review round 1" → chưa xong, giao `Tạo c.txt` cho claude. Vòng sau → xong. Còn lại: tạo `c.txt`. |
+| `claude` | Prompt có "you INTERVIEW the user" (/grill) → hỏi 2 câu (`Câu hỏi số N?`, phương án A/B), đủ 2 câu trả lời hoặc "STOP the interview" → `{"done": true, "spec"}`. Prompt có "git COMMIT MESSAGE" → trả commit message sau `SUMMARY:`. Prompt có "Reply with ONLY a JSON array" → kế hoạch 3 task (codex effort xhigh, grok, antigravity phụ thuộc 1+2 với effort sai); mục tiêu có `CO_KIEMTRA` → kế hoạch có `type`: codex ∥ grok + task `review` cho claude (có lệnh verify thì ateam thêm kiểm tra cuối). Prompt task review ("You REVIEW") → `SUMMARY: no issues found`, mục tiêu có `CO_LOI` thì giao sửa cho codex bằng DELEGATE. "Review round 1" → chưa xong, giao `Tạo c.txt` cho claude. Vòng sau → xong. Còn lại (kể cả sửa kiểm tra cuối): tạo `c.txt`. |
 | `codex` | Tạo `a.txt`, giao README cho grok (nếu prompt cho phép DELEGATE), để NOTE. Prompt có "VERIFICATION COMMAND" → tạo `fixed.txt`. Làm trưởng nhóm thay khi prompt có "TEAM LEAD". |
 | `opencode` | Tạo `b.txt`, hoặc `README.md` nếu prompt nhắc README. |
 | `agy` | Không in gì nếu stdout không phải tty (như agy thật); in mã ANSI và `\r`. |
@@ -58,7 +58,7 @@ nội dung prompt, vd cú pháp `@file`). Lưu ý tên file hạn mức của Op
 `grok` (tên agent trong ateam), không phải `opencode`.
 
 Khi đổi prompt trong `prompts.py`, kiểm tra các chuỗi mà fakebin dò (`you INTERVIEW the user`, `git COMMIT MESSAGE`, `Reply with ONLY a JSON array`,
-`Review round`, `TEAM LEAD`, `VERIFICATION COMMAND`, `DELEGATE`, `#1 by codex`).
+`Review round`, `TEAM LEAD`, `VERIFICATION COMMAND`, `DELEGATE`, `#1 by codex`, `You REVIEW`).
 
 ### Kiểm tra giao diện
 

@@ -341,6 +341,22 @@ Sau mỗi task có thay đổi file, ateam chạy lệnh kiểm tra trong đúng
 kèm log lỗi (mặc định chính agent đó, tối đa 2 lần; đổi bằng `[verify] fix_agent`, `max_fix_attempts`).
 Vẫn fail thì task báo lỗi. Agent chỉ đọc/nghiên cứu có thể đặt `verify = false`.
 
+**Kiểm tra cuối**: kế hoạch có từ 2 task chạy song song thì ateam tự thêm task *Kiểm tra cuối* — chạy lệnh một lần
+trên kết quả gộp (sau khi đã merge, ở chế độ worktree), fail mới gọi agent sửa. Ở chế độ shared các task song song
+bỏ kiểm tra riêng (thay đổi dở của nhau làm lệnh fail giả). Chuỗi task tuần tự không cần: task cuối đã được kiểm
+tra trên kết quả gộp.
+
+**Viết test, review code**: trưởng nhóm tự quyết khi lập kế hoạch — test viết ngay trong task sửa code, hoặc task
+riêng cho agent khác khi logic lớn/rủi ro; task *review* (agent khác tác giả xem diff, tự sửa lỗi nhỏ, giao lỗi lớn
+lại cho tác giả) chỉ cho thay đổi rủi ro hoặc lớn. Mức độ theo **preset chất lượng** của dự án, chọn ở `/flow-setup`
+→ *★ Trưởng nhóm lập kế hoạch*:
+
+| Preset | Viết test | Review code | Review cuối của trưởng nhóm |
+| --- | --- | --- | --- |
+| Nhanh | chỉ khi rủi ro | không | bỏ khi mọi task xong và qua kiểm tra |
+| Trưởng nhóm tự quyết (mặc định) | khi đổi hành vi | khi rủi ro / lớn | luôn |
+| Chặt chẽ | bắt buộc | luôn (thiếu thì ateam thêm) | luôn |
+
 ## Quyền của agent và agent tuỳ chỉnh
 
 Mặc định agent **chỉ được sửa file**. Việc cần chạy lệnh (lint, build, `git commit/push`…) thì chọn **Toàn quyền**
@@ -568,9 +584,10 @@ hoạch* hay một workflow (kể cả workflow bạn tự tạo) — từ đó 
 định** / **☆ Bỏ mặc định**. Lựa chọn dùng chung cho terminal và web.
 
 **Luồng mặc định** (`/flow-setup`, nút *⚙ Luồng mặc định* ở tab Workflows, hoặc *⚙ Cấu hình luồng cố định…* ở bước
-*Kiểu làm việc* của `/setup`): chọn workflow chạy khi gõ mục tiêu và agent · model · effort cho từng bước (vd Thiết
-kế = trưởng nhóm, Viết code = codex `high`, Viết test = antigravity), bật/tắt trưởng nhóm review cuối. Sửa tiêu
-đề/prompt hay thêm bước thì dùng *Sửa* workflow ở tab Workflows. Mọi thứ lưu ở `~/.config/ateam/custom.toml`, file này **không bị
+*Kiểu làm việc* của `/setup`): một nơi chọn gõ mục tiêu sẽ chạy theo đâu — *★ Trưởng nhóm lập kế hoạch* với preset
+chất lượng của dự án (Nhanh · Trưởng nhóm tự quyết · Chặt chẽ, xem *Tự kiểm tra sau mỗi task*), hoặc một workflow với
+agent · model · effort cho từng bước (vd Thiết kế = trưởng nhóm, Viết code = codex `high`, Review code = claude),
+bật/tắt trưởng nhóm review cuối. Sửa tiêu đề/prompt hay thêm bước thì dùng *Sửa* workflow ở tab Workflows. Mọi thứ lưu ở `~/.config/ateam/custom.toml`, file này **không bị
 thay** khi `config.toml` được nâng cấp lên bản mới.
 
 **Thêm agent**: bất kỳ CLI nào có chế độ headless (nhận prompt, in kết quả rồi thoát). Chọn *Mẫu* để điền
@@ -582,10 +599,12 @@ cho thấy lệnh thật và CLI đã cài chưa. Lưu xong, agent vào đội n
 model/effort ở `/setup`, trưởng nhóm thấy nó khi lập kế hoạch).
 
 **Thêm workflow**: chuỗi bước dựng sẵn, chạy không cần trưởng nhóm lập kế hoạch. Mỗi bước gồm agent (hoặc
-*trưởng nhóm*), tiêu đề, prompt (`{goal}` = mục tiêu bạn gõ), *Sau bước* (trống = sau bước liền trước, `0`
-= chạy ngay song song, `1,2` = sau bước 1 và 2) và effort riêng. Có mẫu *tính năng mới* (thiết kế → code →
-test), *sửa lỗi* (tái hiện → sửa → test chống tái diễn), *review code*. Tick *Trưởng nhóm review khi
-xong* để trưởng nhóm review và giao thêm việc như mục tiêu thường.
+*trưởng nhóm*), loại (`code` làm việc · `review` agent khác xem thay đổi của các bước nó chờ, sửa lỗi nhỏ ·
+`verify` ateam chạy lệnh `/verify` trên kết quả gộp, fail mới gọi agent của bước sửa), tiêu đề, prompt (`{goal}` =
+mục tiêu bạn gõ), *Sau bước* (trống = sau bước liền trước, `0` = chạy ngay song song, `1,2` = sau bước 1 và 2) và
+effort riêng. Có mẫu *tính năng mới* (thiết kế → code + test → review), *sửa lỗi* (tái hiện + sửa + test chống tái
+diễn → review), *review code* — bước `*` của mẫu lấy agent giữ vai trò hợp (Code chính / Review code ở `/setup`).
+Tick *Trưởng nhóm review khi xong* để trưởng nhóm review và giao thêm việc như mục tiêu thường.
 
 Không muốn tự điền từng bước? Gõ quy trình bạn muốn vào ô **✨ Gợi ý** (vd: *"thiết kế API, hai agent code
 song song backend và frontend, rồi viết test e2e"*) rồi Enter / bấm *Gợi ý*: trưởng nhóm thiết kế các bước

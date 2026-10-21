@@ -50,6 +50,9 @@ nhưng chưa có báo cáo chạy thật. Cần xác nhận:
       terminal" (`INTERACTIVE_RESUME`): `claude --resume <id>`, `codex resume <id>`, `grok --resume <id>` mở đúng phiên
       vừa chat headless ở cùng thư mục; Ctrl+C / đổi cỡ cửa sổ trong xterm.js chạy đúng với TUI của từng CLI.
 - [ ] Agent thật có tuân thủ `<<<ASK>>>` (chỉ hỏi khi thật mơ hồ, JSON đúng mẫu) không.
+- [ ] Trưởng nhóm thật dùng `"type": "review"` / task viết test riêng đúng mức theo preset `quality` (không thêm cho
+      việc nhỏ); task review thật làm theo `review_rules` (đọc diff trước, tự sửa lỗi nhỏ, DELEGATE lỗi lớn cho tác giả)
+      — xem số lượt / token theo mục tiêu ở `/dash`.
 - [ ] `ateam web --tunnel` với cloudflared thật: dòng URL trong stderr khớp `TUNNEL_RE`; WebSocket qua tunnel;
       cookie `Secure` khi `X-Forwarded-Proto: https`; mã QR in ra terminal quét được bằng camera iPhone/Android.
 
