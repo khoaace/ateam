@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.39.0 — 21/10/2026
+
+- **Trưởng nhóm tự quyết khi nào viết test, khi nào review code; ateam tự kiểm tra cuối** — kế hoạch có thêm loại task
+  (`"type"`: `code` / `review` / `verify`). Thay đổi hành vi thì test viết ngay trong task code; thay đổi rủi ro (bảo
+  mật, dữ liệu, migration, API công khai…) hoặc lớn thì trưởng nhóm thêm task **review** cho agent khác tác giả —
+  reviewer đọc diff, tự sửa lỗi nhỏ, lỗi lớn giao lại tác giả.
+  - **Kiểm tra cuối**: có lệnh `/verify` và ≥2 task song song → ateam thêm một bước chạy lệnh kiểm tra *một lần* trên
+    kết quả gộp (sau merge nếu dùng worktree); các task đó bỏ verify riêng, nên không còn fail giả do task song song
+    thấy thay đổi dở của nhau. Bước này chạy lệnh ngay, không chờ suất agent; chỉ khi fail mới chờ trưởng nhóm sửa.
+  - Review cuối biết task nào được kiểm tra cuối bao và kết quả ra sao (trước ghi "passed" cả khi chưa ai kiểm tra sau merge).
+  - Task phân tích / thiết kế / review bàn giao tới ~40 dòng cho task sau (trước ~5 dòng).
+- **Preset chất lượng** theo dự án, chọn ở `/flow-setup`: **Nhanh** (test khi rủi ro, không review, bỏ review cuối khi
+  mọi thứ đều qua) · **Trưởng nhóm tự quyết** (mặc định) · **Chặt chẽ** (test và review bắt buộc). Khoá `quality` trong
+  `.ateam/state.json` / config.
+- **`/flow-setup` là một nơi chọn luồng**: ô đầu có **★ Trưởng nhóm lập kế hoạch** (kèm preset) hoặc một workflow.
+  Workflow có cột **Loại** cho từng bước (code / review / verify); mẫu gọn hơn, ít lượt gọi agent hơn:
+  `tinh-nang` = thiết kế → code + test → review, `sua-loi` = sửa (một phiên) → review; `*` chọn agent theo vai trò.
+- Sửa: lưu workflow ở form Sửa (TUI) làm mất model từng bước; review cuối của mục tiêu theo workflow không có tổng quan dự án.
+
 ## 0.38.0 — 21/10/2026
 
 - **Tab 📝 Code của TUI: danh sách file thành cây thư mục** — thư mục đứng trước file, nét `├ │ └`; Enter / `→` `l` mở
