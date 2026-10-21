@@ -77,6 +77,10 @@ class Run:
     async def start(self) -> int:
         try:
             return await asyncio.wait_for(self._run(), timeout=self.timeout)
+        except asyncio.CancelledError:  # app thoát / Ctrl+C / task bị huỷ: tiến trình ở session riêng nên phải tự dừng
+            self.cancelled = True
+            self._kill()
+            raise
         except asyncio.TimeoutError:
             self.timed_out = True
             self._kill()

@@ -31,7 +31,8 @@ SUMMARY_RULE = ("End your answer with a line starting with 'SUMMARY:' followed b
 def _plan_rules(cfg: Config, language_of: str, has_overview: bool = False) -> str:
     """Luật chia việc chung cho lập kế hoạch và kế hoạch tiếp: ít task, prompt ngắn, khám phá vừa đủ."""
     explore = ("""Rely on the PROJECT OVERVIEW above instead of re-exploring the project; open files only to confirm
-the specific places you name — members read the code themselves.""" if has_overview else
+the specific places you name — members read the code themselves. Members also receive the PROJECT OVERVIEW,
+so do not repeat it in task prompts.""" if has_overview else
                """Explore the project only as much as you need to split the work and name the right files — members
 read the code themselves, so do not read the whole codebase.""")
     return f"""{explore}
@@ -177,7 +178,8 @@ def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: st
         ]
     rules += ASK_RULES if can_ask else [ASK_DONE_RULE]
     rules += [
-        "- To leave information for the whole team, print: <<<NOTE>>>your note<<<END>>>",
+        "- To leave a short fact for the whole team (one line, e.g. a command or a port), print:"
+        " <<<NOTE>>>your note<<<END>>>",
         "- " + SUMMARY_RULE,
     ]
     parts.extend(rules)
@@ -245,6 +247,11 @@ def question_from(d: dict) -> dict | None:
             "rec": str(d.get("recommended") or "").strip()}
 
 
+# ateam tự chạy lại lệnh kiểm tra sau mỗi lượt sửa: agent chạy cả bộ test nữa là chạy hai lần
+FIX_CHECK_RULE = ("To check your fix, re-run only the failing tests — ateam runs the verification command again after "
+                  "you finish.")
+
+
 def fix_resume_prompt(*, command: str, rc: int, output: str, attempt: int, max_attempts: int) -> str:
     """Vòng sửa verify trong cùng phiên: agent nhớ task, chỉ gửi lỗi."""
     return f"""The project's verification command fails after your change. Fix attempt {attempt} of {max_attempts}.
@@ -256,7 +263,7 @@ OUTPUT (last lines):
 
 Fix the code so the verification command passes. Do not delete or weaken tests to make them pass,
 unless a test is clearly wrong — then say why. Keep the fix minimal: change only what the failure needs.
-Run the command yourself if you can.
+{FIX_CHECK_RULE}
 End your answer with a line starting with 'SUMMARY:' describing what you fixed (at most ~3 lines)."""
 
 
@@ -310,9 +317,15 @@ Do NOT modify any files.
 End your answer with a line 'SUMMARY:' followed by the bullet points (nothing after them)."""
 
 
-def init_prompt(*, cwd: str, current: str = "", changes: str = "", focus: str = "") -> str:
+def init_prompt(*, cwd: str, current: str = "", changes: str = "", focus: str = "",
+                native: list[str] | None = None) -> str:
     """/init: trưởng nhóm tìm hiểu dự án một lần và viết bản tổng quan (overview.py) — hoặc cập nhật bản cũ theo các
-    thay đổi kể từ lần trước. Viết tiếng Anh: chỉ agent đọc, ít token hơn."""
+    thay đổi kể từ lần trước. Viết tiếng Anh: chỉ agent đọc, ít token hơn. native: file hướng dẫn có sẵn trong repo
+    (rules.native_files) — AGENTS.md thì mọi CLI có sẵn tự nạp, chép lại là gửi hai lần."""
+    known = ("""
+AGENTS.md is loaded automatically by every member's CLI: do NOT repeat what it already says — cover only what
+it lacks (if it covers everything, keep the overview very short). Other instruction files (CLAUDE.md,
+GEMINI.md…) are read by only some members, so do include their essentials.""" if "AGENTS.md" in (native or []) else "")
     if current:
         task = f"""UPDATE the CURRENT OVERVIEW below. Re-check only the areas touched by the changes listed after it;
 keep the parts that are still correct (and anything the user edited by hand), fix or drop what is stale, add
@@ -330,7 +343,7 @@ tree, then open only the main entry points. Summarize — do not copy those file
 
 WRITE THE PROJECT OVERVIEW: a dense reference that ateam sends with every future planning and task prompt,
 so that you and the team members do not have to re-explore the codebase each time.
-{task}
+{task}{known}
 {(chr(10) + 'Focus from the user (cover this well): ' + focus + chr(10)) if focus else ''}
 Cover, as short bullet points with paths in backticks:
 - Purpose: what the project is, in 1-2 lines.
@@ -340,8 +353,9 @@ Cover, as short bullet points with paths in backticks:
 - Architecture: the main data flow and how the parts talk to each other.
 - Conventions: code style, naming, error handling, tests, i18n, anything a contributor must follow.
 - Gotchas: constraints, generated or vendored files not to edit, slow or flaky things.
-Skip what changes often (dependency versions, TODO lists) and anything a member can guess. At most ~800
-words. Write in English. DO NOT modify any files.
+Skip what changes often (dependency versions, TODO lists) and anything a member can guess. As short as
+possible — at most ~800 words. Read files only: do not install dependencies, build or run tests.
+Write in English. DO NOT modify any files.
 
 Reply with the overview in Markdown between these markers (nothing after them):
 <<<OVERVIEW>>>
@@ -569,8 +583,12 @@ def extract_overview(text: str) -> str | None:
     body = text[i + len("<<<OVERVIEW>>>"):]
     j = body.find("<<<END>>>")
     body = body[:j].strip() if j >= 0 else ""
-    if body.startswith("```") and body.endswith("```"):
-        body = "\n".join(body.splitlines()[1:-1]).strip()
+    lines = body.splitlines()
+    if len(lines) >= 2 and lines[-1].strip() == "```":  # agent bọc cả bản trong rào markdown
+        first = lines[0].strip()
+        inner = any(ln.strip().startswith("```") for ln in lines[1:-1])
+        if first in ("```markdown", "```md") or (first == "```" and not inner):
+            body = "\n".join(lines[1:-1]).strip()
     return body if body and body != "..." else None
 
 
@@ -725,5 +743,5 @@ OUTPUT (last lines):
 
 Fix the code so the verification command passes. Do not delete or weaken tests to make them pass,
 unless a test is clearly wrong — then say why. Keep the fix minimal: change only what the failure needs.
-Run the command yourself if you can.
+{FIX_CHECK_RULE}
 End your answer with a line starting with 'SUMMARY:' describing what you fixed (at most ~3 lines)."""

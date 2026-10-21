@@ -910,7 +910,7 @@ def test_overview_file_block_and_parser(tmp_path):
     text, meta = overview.load(tmp_path)
     assert text == "- Purpose: demo" and meta["commit"] == "abc123" and meta["date"]
     b = overview.block(text, meta, [f"f{i}.py" for i in range(45)], 7)
-    assert b.startswith("PROJECT OVERVIEW") and "(7 commits): f0.py" in b and "f39.py … (+5 more)" in b
+    assert b.startswith("PROJECT OVERVIEW") and "(7 commits): f0.py" in b and "f39.py, … (+5 more)" in b
     assert "truncated" in overview.block("x" * (overview.MAX_CHARS + 5), {})
     (tmp_path / ".ateam/project.md").write_text("người dùng tự viết\n")  # không có meta vẫn đọc được
     assert overview.load(tmp_path) == ("người dùng tự viết", {})
@@ -919,6 +919,20 @@ def test_overview_file_block_and_parser(tmp_path):
     assert P.extract_overview("đọc...\n<<<OVERVIEW>>>\n```markdown\n- a\n```\n<<<END>>>") == "- a"
     assert P.extract_overview("<<<OVERVIEW>>>\nchưa xong") is None
     assert "CURRENT OVERVIEW:\n- a" in P.init_prompt(cwd="/x", current="- a", changes="1 commits")
+    # khối code ở hai đầu của chính bản tổng quan: không bóc nhầm thành rào bọc ngoài
+    both = "```bash\nnpm i\n```\n- x\n```\ny\n```"
+    assert P.extract_overview(f"<<<OVERVIEW>>>\n{both}\n<<<END>>>") == both
+    assert P.extract_overview("<<<OVERVIEW>>>\n```markdown\n- a\n```bash\nx\n```\n```\n<<<END>>>") == "- a\n```bash\nx\n```"
+    # thay đổi gửi khi cập nhật có giới hạn (prompt đi qua argv)
+    status = "\n".join(f"?? f{i}" for i in range(80))
+    t = overview.changes_text(3, [f"a{i}.py" for i in range(250)], status)
+    assert t.startswith("3 commits; files changed: a0.py") and "a199.py, … (+50 more)" in t and "a200.py" not in t
+    assert "?? f49\n… (+30 more)" in t and "?? f50" not in t
+    assert overview.changes_text(None, [], "") == ""
+    # AGENTS.md mọi CLI tự nạp: không chép lại; /init không cài / build / chạy test
+    assert "do NOT repeat" in P.init_prompt(cwd="/x", native=["AGENTS.md", "CLAUDE.md"])
+    assert "do NOT repeat" not in P.init_prompt(cwd="/x", native=["CLAUDE.md"])
+    assert "do not install dependencies, build or run tests" in P.init_prompt(cwd="/x")
 
 
 def test_prompts_use_overview_only_when_present():
@@ -935,3 +949,48 @@ def test_prompts_use_overview_only_when_present():
     t = P.task_prompt(cfg, overview=ov, **kw)
     assert "- Test: pytest" in t and "Use the PROJECT OVERVIEW" in t
     assert "PROJECT OVERVIEW" not in P.task_prompt(cfg, **kw)
+    assert "do not repeat it in task prompts" in plan
+    assert "<<<NOTE>>>your note<<<END>>>" in t and "short fact" in t  # parse_notes vẫn lọc câu mẫu
+
+
+def test_fix_prompts_do_not_run_whole_suite_twice():
+    """ateam tự chạy lại lệnh kiểm tra sau mỗi lượt sửa: agent chỉ chạy lại test đang fail."""
+    kw = dict(command="pytest -q", rc=1, output="FAILED t", attempt=1, max_attempts=2)
+    for p in (P.fix_resume_prompt(**kw),
+              P.fix_prompt(agent="codex", task_id=1, title="t", prompt="p", cwd="/x", original_agent="claude", **kw)):
+        assert "VERIFICATION COMMAND: pytest -q" in p and "Run the command yourself" not in p
+        assert "re-run only the failing tests" in p
+
+
+def test_notes_and_overview_block_in_orchestrator(tmp_path):
+    """Ghi chú agent dài bị cắt trong prompt (ghi chú người dùng, /compact giữ nguyên); phiên trưởng nhóm đã nhận bản
+    tổng quan thì lượt tiếp phiên chỉ nhận một dòng nhắc, đổi bản tổng quan thì gửi lại cả bản."""
+    import asyncio
+
+    from ateam import overview
+    from ateam.config import Config
+    from ateam.db import DB
+    from ateam.orchestrator import NOTE_MAX, Orchestrator
+    db = DB(tmp_path / ".ateam/team.db")
+    cfg = Config()
+    cfg.agents["claude"] = AgentConfig("claude", ["claude", "-p", "{prompt}"])
+    o = Orchestrator(tmp_path, cfg, db)
+    db.add_note("codex", "x" * (NOTE_MAX + 300))
+    db.add_note("user", "u" * (NOTE_MAX + 300))
+    notes = o.notes_text()
+    assert "x" * NOTE_MAX + "…" in notes and "x" * (NOTE_MAX + 1) not in notes and "u" * (NOTE_MAX + 300) in notes
+
+    assert asyncio.run(o.overview_block(session="s1")) == ""  # chưa có bản tổng quan
+    overview.save(tmp_path, "- Test: pytest", "")
+    full = asyncio.run(o.overview_block(session="s1"))
+    assert full.startswith("PROJECT OVERVIEW") and "- Test: pytest" in full
+    gid = db.add_goal("G")
+    db.update_goal(gid, lead_session="s1", lead_session_agent="claude")
+    assert o._lead_session(db.goal(gid)) == "s1"
+    o._overview_seen(gid, full)
+    assert asyncio.run(o.overview_block(session="s1")) == overview.SEEN
+    assert asyncio.run(o.overview_block(session="s2")) == full  # phiên khác chưa nhận
+    overview.save(tmp_path, "- Test: make test", "")
+    assert "make test" in asyncio.run(o.overview_block(session="s1"))  # bản mới: gửi lại cả bản
+    db.update_goal(gid, lead_session_agent="codex")  # phiên của agent khác: trưởng nhóm không tiếp tục được
+    assert o._lead_session(db.goal(gid)) is None

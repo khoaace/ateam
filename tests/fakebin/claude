@@ -50,6 +50,7 @@ if [[ "$P" == *"you INTERVIEW the user"* ]]; then
   fi
 elif [[ "$P" == *"WRITE THE PROJECT OVERVIEW"* ]]; then
   # /init: không đụng file, trả bản tổng quan giữa <<<OVERVIEW>>> … <<<END>>>; có bản cũ thì "cập nhật"
+  [[ "$P" == *"TREO_INIT"* ]] && sleep 30  # khám phá lâu quá timeout
   echo "Đang đọc README..."
   echo "<<<OVERVIEW>>>"
   echo "- Purpose: dự án demo"

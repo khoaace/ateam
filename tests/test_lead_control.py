@@ -141,3 +141,22 @@ def test_web_ops_cancel_plan_and_reassign(env, project, monkeypatch):
         assert "Đã huỷ" in msg and o.db.goal(gid).status == "cancelled"
         assert "Dùng: /assign" in (await wa.handle({"op": "submit", "text": f"/assign {tid}"}))[0]
     asyncio.run(main())
+
+
+def test_init_timeout_does_not_fall_back_and_quit_sees_lead_run(env, project, monkeypatch):
+    """/init khám phá cả dự án: dùng timeout của agent (không phải lead_timeout) và hết giờ thì dừng — agent dự phòng
+    cũng phải khám phá lại từ đầu. Trong lúc chạy, all_runs() có lượt trưởng nhóm để thoát app thì dừng nó."""
+    o = _orch(env, project, monkeypatch)
+    o.cfg.lead_timeout = 600
+    o.cfg.agents["claude"].timeout = 1
+
+    async def main():
+        job = asyncio.ensure_future(o.init_overview("TREO_INIT"))
+        await _until(lambda: o.lead_live)
+        assert o.all_runs() and all(r.argv[0].endswith("claude") for r in o.all_runs())
+        ok, msg = await job
+        assert not ok and not o.lead_live
+        log = (project / ".ateam/logs/system.log").read_text()
+        assert "claude quá 1s chưa xong" in log and "codex làm thay" not in log
+    asyncio.run(main())
+

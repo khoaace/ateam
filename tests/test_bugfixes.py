@@ -197,3 +197,26 @@ def test_safe_path_blocks_git_dir_any_case(tmp_path):
     (tmp_path / ".git").mkdir()
     assert safe_path(tmp_path, ".GIT/config") is None and safe_path(tmp_path, ".git/config") is None
     assert safe_path(tmp_path, "src/a.py") == (tmp_path / "src/a.py").resolve()
+
+
+def test_cancelled_run_stops_its_process():
+    """Huỷ task đang chờ Run (thoát app, Ctrl+C): tiến trình ở session riêng phải bị dừng, không chạy mồ côi."""
+    import os
+
+    async def main():
+        run = Run(["sleep", "30"], ".", dict(os.environ), use_pty=False, timeout=60, on_line=lambda _l: None)
+        job = asyncio.ensure_future(run.start())
+        for _ in range(100):
+            await asyncio.sleep(0.02)
+            if run.proc:
+                break
+        job.cancel()
+        try:
+            await job
+        except asyncio.CancelledError:
+            pass
+        assert run.cancelled
+        await asyncio.wait_for(run.proc.wait(), 5)
+        return run.proc.returncode
+    assert asyncio.run(main()) != 0
+

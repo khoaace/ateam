@@ -163,6 +163,10 @@ nào cũng nhận, kể cả agent tuỳ chỉnh không đọc `AGENTS.md`. Lưu
 không đụng file người dùng tự viết, không lẫn vào commit, mở sửa được ở tab Code. Viết tiếng Anh: chỉ agent đọc, tốn ít
 token hơn tiếng Việt. Không tự cập nhật sau mỗi mục tiêu (tốn thêm một lượt trưởng nhóm): meta giữ commit lúc viết, prompt
 kèm danh sách file đã đổi từ đó, `/init` lại chỉ cập nhật theo các thay đổi; quá `STALE_COMMITS` commit thì nhắc.
-`/grill` chỉ gửi ở câu đầu, review không gửi (đều tiếp phiên lập kế hoạch). Người dùng chọn cách này (21/10/2026).
+Lượt trưởng nhóm tiếp phiên đã nhận bản tổng quan (các câu `/grill` sau, lập kế hoạch sau `/grill`, `/continue`) chỉ nhận
+một dòng nhắc; review không gửi. Người dùng chọn cách này (21/10/2026). Review cùng ngày bổ sung: `AGENTS.md` mọi CLI có
+sẵn tự nạp nên prompt `/init` dặn không chép lại nó (chép lại = gửi hai lần mỗi task); `/init` không có gì đổi thì không
+gọi agent; `/init` dùng timeout của agent và hết giờ không chuyển agent dự phòng (agent khác cũng phải khám phá lại
+từ đầu, tốn gấp đôi).
 **Xem lại nếu**: người dùng muốn bản tổng quan có tác dụng khi mở CLI ngoài ateam / chia sẻ qua git (xuất ra
 `AGENTS.md`), hoặc thấy nó cũ quá nhanh (khi đó cho trưởng nhóm cập nhật sau review).

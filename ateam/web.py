@@ -619,7 +619,7 @@ class WebApp:
             sess.kill_now()
         self.grid.shutdown()
         runs = [j.run for j in self.shell.jobs.values() if j.run and j.alive]
-        runs += [r for r in self.orch.runs.values() if r is not None]
+        runs += self.orch.all_runs()
         self.shell.stop_all()  # không để lại dev server mồ côi
         for run in runs:
             run.cancel()
@@ -972,7 +972,7 @@ class WebApp:
         return ws
 
     SLOW_GIT = ("ai_message", "ai_resolve", "commit", "push", "pull", "fetch")
-    SLOW_CMDS = ("/commit ", "/push", "/pull", "/fetch", "/usage")
+    SLOW_CMDS = ("/commit ", "/push", "/pull", "/fetch", "/usage", "/init", "/compact")
 
     def slow_op(self, d) -> bool:
         """Thao tác có thể chạy hàng chục giây (gọi AI, mạng, git hook). Còn lại chạy tuần tự để giữ thứ tự."""

@@ -7189,9 +7189,8 @@ class TeamApp(App):
             return
         self.shell.stop_all()  # không để lại dev server mồ côi sau khi thoát
         self.grid.shutdown()  # CLI trong các ô của tab 🔲 Lưới
-        for run in list(self.orch.runs.values()):
-            if run is not None:
-                run.cancel()
+        for run in self.orch.all_runs():  # cả lượt trưởng nhóm (lập kế hoạch, /init…): không để CLI chạy mồ côi
+            run.cancel()
         if self._loop_task:
             self._loop_task.cancel()
         self.exit()

@@ -130,6 +130,12 @@ EN: dict[str, str] = {
         "💡 No project overview yet — type /init so the lead studies the project once and later plans re-read less code.",
     "💡 Bản tổng quan dự án đã cũ ({n} commit từ lần /init) — gõ /init để cập nhật.":
         "💡 The project overview is getting old ({n} commits since /init) — type /init to update it.",
+    "⌛ {name} quá {v}s chưa xong ({label}).":
+        "⌛ {name} took over {v}s without finishing ({label}).",
+    "Bản tổng quan dự án vẫn mới — không có thay đổi nào từ lần /init trước (gõ /init <trọng tâm> để buộc cập nhật, xoá .ateam/project.md để viết lại)":
+        "The project overview is up to date — nothing changed since the last /init (type /init <focus> to force an update, delete .ateam/project.md to rewrite it)",
+    "Thêm --overview để trưởng nhóm viết bản tổng quan dự án: ateam init --overview {v}":
+        "Add --overview to have the lead write the project overview: ateam init --overview {v}",
     "Trưởng nhóm đang tìm hiểu dự án rồi, chờ chút…":
         "The lead is already studying the project, hold on…",
     "🔎 {lead} đang tìm hiểu dự án (/init)…":

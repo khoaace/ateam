@@ -132,8 +132,11 @@ thì là mục tiêu đó); task không thuộc mục tiêu thì `continue_task`
   bản cũ thì kèm nó + file đổi từ commit trong meta + `git status`, để chỉ cập nhật), bóc khối
   `<<<OVERVIEW>>>…<<<END>>>` (`extract_overview`) ghi vào `.ateam/project.md`. `overview_block()` đọc file, thêm danh
   sách file đã đổi kể từ commit đó và được truyền `overview=` vào `plan_prompt`, `followup_plan_prompt`, `grill_prompt`
-  (chỉ câu đầu — các câu sau tiếp phiên) và `task_prompt`; có overview thì luật "khám phá vừa đủ" đổi thành "dựa vào
-  PROJECT OVERVIEW". `_plan` nhắc `/init` một lần mỗi lần mở app khi chưa có file hoặc đã ≥ `STALE_COMMITS` commit.
+  và `task_prompt`; có overview thì luật "khám phá vừa đủ" đổi thành "dựa vào PROJECT OVERVIEW". Lượt trưởng nhóm tiếp
+  phiên đã nhận đúng khối đó (`_overview_sent[phiên] = digest`, ghi sau `_call_lead` ở `_plan`/`_grill_step`) chỉ nhận
+  dòng `overview.SEEN`. `/init` gọi `_call_lead(slow=True)`: timeout của agent thay `lead_timeout`, hết giờ không chuyển
+  agent dự phòng; không có commit mới, `git status` sạch, không trọng tâm → không gọi agent. `_plan` nhắc `/init` một lần
+  mỗi lần mở app khi chưa có file hoặc đã ≥ `STALE_COMMITS` commit.
 - `runs`: mỗi lượt gọi agent/test một dòng (`kind` = `task` | `fix` | `lead` | `test`, `status` =
   `ok` | `failed` | `timeout` | `empty` | `ratelimit` | `cancelled`), dùng cho `/usage` và dashboard. Cột
   `goal_id` (lượt lập kế hoạch/review/hỏi đáp của trưởng nhóm), `cwd`, `model`; sau mỗi lượt
@@ -205,6 +208,10 @@ Với mỗi task `queued` theo thứ tự id:
 - `pty=True`: mở pseudo-terminal 220×50 — cần cho `agy`, vốn không in gì khi stdout không phải tty.
 - Mỗi dòng qua `clean_line`: bỏ mã ANSI, xử lý `\r` (spinner), bỏ ký tự điều khiển.
 - Timeout bằng `asyncio.wait_for`; mã 124 khi quá giờ.
+- Task đang chờ `start()` bị huỷ (thoát app, Ctrl+C ở CLI) → `CancelledError` dừng luôn tiến trình: nó ở session riêng
+  nên không tự nhận tín hiệu của terminal, bỏ qua thì CLI chạy mồ côi tới hết, tốn hạn mức. Thêm vào đó, thoát app
+  (TUI `action_quit`, web `_shutdown`) huỷ `Orchestrator.all_runs()` = task + lượt trưởng nhóm (`lead_live`) — Python 3.9
+  (Textual chạy `run_until_complete`) không tự huỷ task còn treo.
 
 ## Dựng lệnh agent (`AgentConfig.argv`)
 

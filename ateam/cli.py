@@ -240,6 +240,10 @@ def cmd_lang(args) -> int:
 
 
 def cmd_init(args) -> int:
+    if args.focus and not args.overview:
+        print(tr("Thêm --overview để trưởng nhóm viết bản tổng quan dự án: ateam init --overview {v}",
+                 v=" ".join(args.focus)))
+        return 2
     setup_config()
     print(tr("Cấu hình chung: {GLOBAL_CONFIG}", GLOBAL_CONFIG=GLOBAL_CONFIG))
     if args.project:

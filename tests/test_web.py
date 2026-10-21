@@ -376,6 +376,8 @@ def test_web_slow_op_does_not_block_tab(env, project, monkeypatch):
             gate.set()
             assert (await reply(1))["git_msg"] == "feat: chậm mà chắc"
             assert wa.slow_op({"op": "submit", "text": "/push"}) and not wa.slow_op({"op": "submit", "text": "Làm X"})
+            # gọi trưởng nhóm vài phút: không được chặn các thao tác khác của tab
+            assert wa.slow_op({"op": "submit", "text": "/init"}) and wa.slow_op({"op": "submit", "text": "/compact x"})
             assert not wa.slow_op({"op": "git", "action": "stage"})
             await ws.close()
         finally:

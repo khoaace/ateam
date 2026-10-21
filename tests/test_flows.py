@@ -349,6 +349,17 @@ def test_init_overview_sent_with_plans_and_tasks(env, project, tmp_path):
     prompt = (tmp_path / "full.log").read_text().split("<<claude>>")[-1]
     assert "CURRENT OVERVIEW" in prompt and "- Purpose: dự án demo" in prompt and "moi.py" in prompt
     assert "- Updated: đã cập nhật" in (project / ".ateam/project.md").read_text()
+    # không có gì đổi từ lần /init trước: không gọi trưởng nhóm; có trọng tâm thì vẫn gọi
+    subprocess.run(["git", "add", "-A"], cwd=project, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"], cwd=project, check=True)
+    ateam(env, project, "init", "--overview")  # ghi commit mới vào meta
+    calls = (tmp_path / "full.log").read_text().count("<<claude>>")
+    r = ateam(env, project, "init", "--overview")
+    assert "vẫn mới" in r.stdout and (tmp_path / "full.log").read_text().count("<<claude>>") == calls, r.stdout
+    ateam(env, project, "init", "--overview", "lệnh", "test")
+    assert (tmp_path / "full.log").read_text().count("<<claude>>") == calls + 1
+    r = ateam(env, project, "init", "lệnh", "test", check=False)  # quên --overview
+    assert r.returncode == 2 and "--overview" in r.stdout
 
 
 def test_usage_asks_each_cli(env, project):
