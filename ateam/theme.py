@@ -67,6 +67,29 @@ def make_theme(base: str, accent: str) -> Theme | None:
     return dataclasses.replace(src, name=theme_id(base, accent), primary=color, accent=color)
 
 
+# nền xám ấm của giao diện web (app.css --bg/--surface/--surface-2…): theme tối của Textual pha primary vào panel,
+# thanh cuộn, dòng chọn mất focus → nền ngả xanh đậm/tím; giữ primary/accent làm màu nhấn
+GRAY = {"background": "#10110e", "surface": "#1c1d18", "panel": "#24261f"}
+GRAY_VARS = {
+    "footer-background": "#161713", "block-cursor-blurred-background": "#2c2e26",
+    "block-hover-background": "#2c2e26", "scrollbar": "#35372f", "scrollbar-hover": "#484b40",
+    "scrollbar-background": "#161713", "scrollbar-background-hover": "#161713",
+    "scrollbar-background-active": "#161713", "scrollbar-corner-color": "#161713",
+}
+
+
+def grayed(t: Theme) -> Theme:
+    """Theme tối `t` với nền xám (giữ tên — đăng ký đè theme dựng sẵn). Theme sáng / theme ANSI giữ nguyên."""
+    if not t.dark or (t.background or "").startswith("ansi"):
+        return t
+    secondary = t.secondary
+    if secondary and not secondary.startswith("ansi"):
+        c = Color.parse(secondary)
+        if c.brightness < 0.45:  # secondary xanh navy (textual-dark #004578): chữ "info" khó đọc trên nền xám
+            secondary = c.lighten(0.3).hex
+    return dataclasses.replace(t, **GRAY, secondary=secondary, variables={**t.variables, **GRAY_VARS})
+
+
 def _rich(value: str | None, fallback: str) -> str:
     """Màu theme (hex hoặc ansi_*) -> chuỗi màu Rich hiểu được."""
     if not value:

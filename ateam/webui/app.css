@@ -685,6 +685,9 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 .gdir { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .grow-acts { display: none; gap: 4px; margin-left: auto; flex: none; }
 .gfile:hover .grow-acts, .gfile.sel .grow-acts, .gcommit:hover .grow-acts, .gcommit.sel .grow-acts, .brow .grow-acts { display: flex; }
+.gfiles-bar { display: flex; justify-content: flex-end; padding: 4px 8px 0; }
+.gdirrow .gname { font-weight: 650; color: var(--text-2); }
+.gfold { width: 10px; color: var(--muted); font-size: 10px; flex: none; }
 .gclean { padding: 20px; text-align: center; color: var(--done); font-weight: 600; }
 .gcommitbox { border-top: 1px solid var(--border); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .gcommitbox textarea { min-height: 64px; font: 12px/1.5 var(--mono); }

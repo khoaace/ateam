@@ -42,8 +42,18 @@ def test_tui_agents_and_workflows_tabs(env, project, monkeypatch):
             await pilot.pause(0.5)
             agents = app.query_one("#agents-custom", CustomPanel)
             assert agents.query("#custom-add-agent") and not agents.query("#custom-add-flow")
-            assert any(a == "edit-agent" and n == "mine" for a, n in agents.ids.values())
-            assert "[tuỳ chỉnh]" in str(app.pane("mine").head.render())
+            # agent tuỳ chỉnh đang bật: nút Sửa/Xoá nằm trên dòng của nó (như web), khối dưới chỉ còn agent chưa bật
+            assert not any(n == "mine" for _a, n in agents.ids.values())
+            head = app.pane("mine").head.render()
+            assert "[tuỳ chỉnh]" in str(head) and "✎ Sửa" in str(head) and "rảnh" in str(head)
+            acts = [s.style.meta.get("@click") for s in head.spans if s.style and not isinstance(s.style, str)]
+            assert "app.agent_btn('mine', 'edit')" in acts and "app.agent_btn('mine', 'chat')" in acts
+            assert "Việc vặt" in str(head)  # mô tả vai trò như web
+            # bảng ⚡ Vai trò ngay trên tab, agent giữ vai trò đứng trước theo thứ tự vai trò
+            from ateam.tui import RolesTable
+            table = app.query_one("#roles-table", RolesTable)
+            assert table.query("#rt-cli-lead") and not table.dirty
+            assert app.pane_order()[0] == app.cfg.lead
             # danh sách: chỉ phần đầu; bấm vào agent mở log + ô chat của nó
             assert not app.pane("mine").body.display
             await pilot.click(app.pane("codex").head, offset=(2, 0))

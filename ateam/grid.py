@@ -28,6 +28,11 @@ DIRS = ("left", "right", "up", "down")
 SHELL = ":shell"         # agent của ô "terminal trống": shell của người dùng thay vì CLI agent (tên agent không có ":")
 
 
+def shell_argv() -> list[str]:
+    """Lệnh của ô terminal trống: shell đăng nhập của người dùng."""
+    return [os.environ.get("SHELL") or "/bin/sh", "-l"]
+
+
 def preset_names() -> dict[str, str]:
     return {
         "stack": tr("Một cột"),
@@ -380,7 +385,7 @@ class GridHub:
 
     def argv_for(self, cell: Cell) -> list | None:
         if cell.agent == SHELL:
-            return [os.environ.get("SHELL") or "/bin/sh", "-l"]
+            return shell_argv()
         a = self.cfg_getter().active_agents().get(cell.agent)
         if not a:
             return None

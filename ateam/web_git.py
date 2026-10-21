@@ -7,6 +7,7 @@ Diff gửi trình duyệt: mỗi dòng kèm token tô cú pháp (pygments) và �
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
@@ -115,7 +116,10 @@ def status_json(st: gitops.RepoStatus) -> dict:
             "ahead": st.ahead, "behind": st.behind, "stashes": st.stashes, "state": st.state, "error": st.error,
             "detached": st.detached, "clean": st.clean, "summary": gitops.summary_line(st),
             "groups": {"c": [row(f, False) for f in st.conflicts], "s": [row(f, True) for f in st.staged],
-                       "w": [row(f, False) for f in st.unstaged + st.untracked]}}
+                       "w": [row(f, False) for f in st.unstaged + st.untracked]},
+            # chế độ 📁 (cây thư mục): [độ sâu, đường dẫn, nhãn, là thư mục] — cùng gitops.tree_rows với TUI
+            "trees": {k: [list(r) for r in gitops.tree_rows([f.path for f in fs])] for k, fs in
+                      (("c", st.conflicts), ("s", st.staged), ("w", st.unstaged + st.untracked))}}
 
 
 class GitWeb:
@@ -124,6 +128,25 @@ class GitWeb:
     def __init__(self, app: "WebApp"):
         self.app = app
         self.repo = gitops.GitRepo(app.root)
+        self.changes = 0  # số file thay đổi — số trên mục Git ở thanh bên (ảnh chụp trạng thái "git_changes")
+        self._changes_at = 0.0
+        self._counting = False
+
+    def poll_changes(self, every: float = 5) -> None:
+        """Đếm lại số file thay đổi (chạy nền, tối đa mỗi `every` giây) — vòng gửi trạng thái gọi mỗi 0,5 giây."""
+        if self._counting or time.time() - self._changes_at < every:
+            return
+        self._counting = True
+
+        async def go() -> None:
+            try:
+                st = await self.repo.status()
+                self.changes = len(st.files) if st.is_repo else 0
+            except Exception:
+                pass
+            finally:
+                self._changes_at, self._counting = time.time(), False
+        asyncio.ensure_future(go())
 
     def routes(self) -> list:
         return [web.get("/api/git/status", self.api_status), web.get("/api/git/log", self.api_log),
@@ -133,6 +156,7 @@ class GitWeb:
 
     async def api_status(self, _r: web.Request) -> web.Response:
         st = await self.repo.status()
+        self.changes, self._changes_at = (len(st.files) if st.is_repo else 0), time.time()
         out = status_json(st)
         out["has_commits"] = bool(st.oid)
         out["busy"] = len(self.app.orch.runs)

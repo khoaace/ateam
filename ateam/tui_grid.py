@@ -24,7 +24,7 @@ from textual.widgets import Button, Checkbox, OptionList, Select, Static
 from textual.widgets.option_list import Option
 
 from . import vterm
-from .grid import SHELL, GridHub, preset_names
+from .grid import SHELL, GridHub, preset_names, shell_argv
 from .i18n import tr
 from .tui import BaseModal, Btn
 
@@ -303,6 +303,7 @@ class GridPanel(Vertical):
     def compose(self) -> ComposeResult:
         with Horizontal(id="grid-tools"):
             yield Btn(tr("＋ Thêm agent"), id="grid-add", variant="primary")
+            yield Btn(tr("⌨ Terminal"), id="grid-shell")
             for key, name in preset_names().items():
                 yield Btn(name, id=f"grid-preset-{key}", classes="grid-preset")
             yield Btn(tr("⇉ Gửi tất cả"), id="grid-bcast")
@@ -345,7 +346,8 @@ class GridPanel(Vertical):
             box = Vertical(Static(tr("Chưa có agent nào trong lưới.\n\nBấm ＋ Thêm agent hoặc chọn nhanh một agent "
                                      "dưới đây — mỗi ô là CLI thật, gõ trực tiếp được."), id="grid-empty"),
                            Horizontal(*[Btn(n, classes="grid-quick-btn", name=n)
-                                        for n in app.cfg.active_agents()], id="grid-quick"))
+                                        for n in app.cfg.active_agents()],
+                                      Btn(tr("⌨ Terminal"), classes="grid-quick-btn", name=SHELL), id="grid-quick"))
             await body.mount(box)
             self.refresh_tools()
             return
@@ -532,6 +534,8 @@ class GridPanel(Vertical):
         bid = event.button.id or ""
         if bid == "grid-add":
             self.add_agent()
+        elif bid == "grid-shell":  # ô terminal trống: shell của người dùng (như nút shell ở web)
+            self.app.run_worker(self._add({"agent": SHELL}), group="grid-add")
         elif bid.startswith("grid-preset-"):
             self.preset(bid[len("grid-preset-"):])
         elif bid == "grid-bcast":
@@ -546,7 +550,8 @@ class GridPanel(Vertical):
 
 
 class GridAddScreen(BaseModal):
-    """Popup Thêm agent vào lưới. Trả {agent, model, effort, resume} hoặc None."""
+    """Popup Thêm agent vào lưới. Trả {agent, model, effort, resume} hoặc None. Mục đầu "⌨ Terminal" (agent SHELL)
+    là shell của người dùng: không có model / effort / --resume."""
 
     DEFAULT_CSS = """
     GridAddScreen { align: center middle; }
@@ -564,13 +569,14 @@ class GridAddScreen(BaseModal):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
-        self.names = [n for n, a in cfg.active_agents().items() if a.interactive_argv() is not None]
+        self.names = [SHELL] + [n for n, a in cfg.active_agents().items() if a.interactive_argv() is not None]
 
     def compose(self) -> ComposeResult:
         with Vertical(id="ga-box"):
             yield self.title_bar(tr("Thêm agent vào lưới · mở CLI thật trong một ô mới"))
-            opts = []
-            for n in self.names:
+            opts = [Option(Text.assemble((tr("⌨ Terminal"), "bold"), ("  " + shell_argv()[0], "grey62"),
+                                         (tr("  shell của bạn trong thư mục dự án"), "grey62")), id=SHELL)]
+            for n in self.names[1:]:
                 a = self.cfg.agents[n]
                 t = Text.assemble((n, "bold"), ("  " + " ".join(a.command[:1]), "grey62"),
                                   ("  ✓" if a.installed() else tr("  ✗ chưa cài"), "green" if a.installed() else "red"))
@@ -590,9 +596,8 @@ class GridAddScreen(BaseModal):
 
     def on_mount(self) -> None:
         ol = self.query_one("#ga-agents", OptionList)
-        if self.names:
-            ol.highlighted = 0
-            self._fill(self.names[0])
+        ol.highlighted = 1 if len(self.names) > 1 else 0  # mặc định: agent đầu tiên
+        self._fill(self.names[ol.highlighted])
         ol.focus()
 
     def agent(self) -> str | None:
@@ -601,6 +606,14 @@ class GridAddScreen(BaseModal):
         return self.names[i] if i is not None and 0 <= i < len(self.names) else None
 
     def _fill(self, name: str) -> None:
+        shell_cell = name == SHELL
+        for wid in ("#ga-model", "#ga-effort", "#ga-resume"):
+            self.query_one(wid).disabled = shell_cell
+        if shell_cell:
+            self.query_one("#ga-model", Select).set_options([(tr("mặc định"), "")])
+            self.query_one("#ga-effort", Select).set_options([(tr("mặc định"), "")])
+            self._preview()
+            return
         a = self.cfg.agents[name]
         models = [(tr("mặc định ({m})", m=a.model or tr("CLI tự chọn")), "")] + [(m, m) for m in a.model_choices()]
         self.query_one("#ga-model", Select).set_options(models)
@@ -608,6 +621,8 @@ class GridAddScreen(BaseModal):
         self._fill_effort(name, "")
 
     def _fill_effort(self, name: str, model: str) -> None:
+        if name == SHELL:
+            return
         a = self.cfg.agents[name]
         efs = [(tr("mặc định"), "")] + [(e, e) for e in a.efforts_for(model or None)]
         sel = self.query_one("#ga-effort", Select)
@@ -618,6 +633,9 @@ class GridAddScreen(BaseModal):
     def _preview(self) -> None:
         r = self.result()
         if not r:
+            return
+        if r["agent"] == SHELL:
+            self.query_one("#ga-cmd", Static).update(Text("$ " + " ".join(shell_argv())))
             return
         a = self.cfg.agents[r["agent"]]
         argv = a.interactive_argv("<session>" if r["resume"] else None, model=r["model"] or None,
@@ -630,6 +648,8 @@ class GridAddScreen(BaseModal):
             return None
         m = self.query_one("#ga-model", Select).value
         e = self.query_one("#ga-effort", Select).value
+        if name == SHELL:
+            return {"agent": SHELL, "model": "", "effort": "", "resume": False}
         return {"agent": name, "model": m if isinstance(m, str) else "", "effort": e if isinstance(e, str) else "",
                 "resume": self.query_one("#ga-resume", Checkbox).value}
 
@@ -646,7 +666,7 @@ class GridAddScreen(BaseModal):
     @on(Select.Changed, "#ga-model")
     def _model_changed(self, event: Select.Changed) -> None:
         name = self.agent()
-        if name:
+        if name and name != SHELL:
             self._fill_effort(name, event.value if isinstance(event.value, str) else "")
 
     @on(Select.Changed, "#ga-effort")

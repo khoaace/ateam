@@ -41,9 +41,11 @@ def test_tui_click_effort_chip(env, project, monkeypatch):
             pane = app.pane("codex")
             efforts = app.cfg.agents["codex"].efforts_for()
             assert "high" in efforts
-            # dòng 3 của tiêu đề ô: "effort: low medium high …" (padding trái 1)
+            # dòng "effort: low medium high …" của tiêu đề ô (padding trái 1)
+            y = str(pane.head.render()).split("\n").index(next(
+                ln for ln in str(pane.head.render()).split("\n") if ln.startswith("effort: ")))
             x = 1 + len("effort: ") + sum(len(e) + 1 for e in efforts[:efforts.index("high")]) + 1
-            await pilot.click(pane.head, offset=(x, 2))
+            await pilot.click(pane.head, offset=(x, y))
             await pilot.pause(0.2)
             assert app.cfg.agents["codex"].effort == "high"
             assert not app.screen_stack[1:]  # không mở bảng chọn

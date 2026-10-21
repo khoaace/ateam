@@ -809,6 +809,32 @@ def file_icon(f: FileChange, staged: bool) -> tuple[str, str]:
                   "T": "yellow"}.get(code, "")
 
 
+def tree_rows(paths: list[str]) -> list[tuple[int, str, str, bool]]:
+    """Danh sách file thay đổi dạng cây thư mục (tab Git, chế độ 📁): (độ sâu, đường dẫn, nhãn, là thư mục).
+    Thư mục có "/" cuối và đứng trước file cùng cấp; chuỗi thư mục chỉ có một thư mục con được gộp ("src/app/")."""
+    root: dict = {}
+    for p in paths:
+        node = root
+        for part in p.split("/")[:-1]:
+            node = node.setdefault(part, {})
+        node.setdefault("", []).append(p)  # khoá "" giữ file (tên thư mục không bao giờ rỗng)
+    out: list[tuple[int, str, str, bool]] = []
+
+    def walk(node: dict, prefix: str, depth: int) -> None:
+        for name in sorted(k for k in node if k):
+            child, label = node[name], name
+            while not child.get("") and len(child) == 1:  # chỉ một thư mục con, không có file: gộp
+                only = next(iter(child))
+                child, label = child[only], f"{label}/{only}"
+            path = f"{prefix}{label}/"
+            out.append((depth, path, label + "/", True))
+            walk(child, path, depth + 1)
+        for p in sorted(node.get("", [])):
+            out.append((depth, p, p.rpartition("/")[2], False))
+    walk(root, "", 0)
+    return out
+
+
 def summary_line(st: RepoStatus) -> str:
     """Một dòng tóm tắt trạng thái (cho thanh trạng thái / thông báo)."""
     if not st.is_repo:

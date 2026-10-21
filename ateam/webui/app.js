@@ -393,6 +393,7 @@ function renderTop() {
   setCount("#count-team", busyAgents, busyAgents > 0);
   const liveJobs = st.jobs.filter((j) => j.status === "running").length;
   setCount("#count-term", liveJobs || "", liveJobs > 0);
+  setCount("#count-git", st.git_changes || 0);
   const pend = pendingCount(), base = "ateam · " + (S.meta.project || "");
   document.title = pend ? `(${pend}) ${base}` : base;
 }
@@ -885,7 +886,10 @@ async function loadJob(id) {
 }
 async function loadScripts() {
   S.scriptsAt = now();
+  const old = JSON.stringify(S.scripts);
   try { S.scripts = await (await fetch("/api/scripts")).json(); } catch (e) { S.scripts = []; }
+  // vào trang Terminal lần đầu: danh sách vẽ trước khi script về — vẽ lại ngay, không đợi trạng thái đổi
+  if (S.view === "term" && S.state && JSON.stringify(S.scripts) !== old) renderTerm();
 }
 
 /* ------------------------------------------------------------------ ngăn chi tiết task */
@@ -1422,6 +1426,14 @@ async function argSuggestions(cmd, args, tok) {
       if (tok.includes("@") && a) return { head: t("sg_effort", { v: a.name }), items: words(a.efforts, m[3] || "").map((i) => ({ ...i, value: tok.slice(0, tok.lastIndexOf("@") + 1) + i.value + " " })) };
       if (tok.includes(":") && a) return { head: t("sg_model", { v: a.name }), items: words(a.models, m[2] || "").map((i) => ({ ...i, value: m[1] + ":" + i.value })) };
       return { head: t("sg_agent_task"), items: agentItems(m[1] || "", " ") };
+    }
+    case "focus": return pos ? null : { head: t("sg_agent_focus"), items: agentItems(tok) };
+    case "chat": return pos ? null : { head: t("sg_agent_chat"), items: agentItems(tok, " ") };
+    case "grid": {  // agent có CLI tương tác + ô terminal trống (:shell)
+      if (pos) return null;
+      const tty = new Set(A.filter((a) => a.tty).map((a) => a.name));
+      const sh = ":shell".startsWith(tok.toLowerCase()) ? [{ label: "⌨ :shell", desc: t("sg_shell"), value: ":shell" }] : [];
+      return { head: t("sg_agent_grid"), items: sh.concat(agentItems(tok).filter((i) => tty.has(i.value))) };
     }
     case "model": case "effort": {
       if (pos === 0) return { head: t("sg_agent"), items: agentItems(tok, " ") };

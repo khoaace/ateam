@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.36.0 — 21/10/2026
+
+TUI và web đồng bộ hơn:
+- **Tab 🌿 Git**: số file thay đổi hiện ngay trên tab/mục Git (TUI + web); bấm vào file là mở diff (web, như Enter ở
+  TUI); xem theo **cây thư mục** (nút 📁 Thư mục / phím `t`, nhớ lựa chọn) — thu/mở thư mục, stage / bỏ stage / bỏ thay
+  đổi cả thư mục.
+- **Tab 💻 Terminal**: script dự án (package.json, Makefile, lệnh gần đây) hiện ngay khi vào tab — web trước đây chỉ hiện
+  khi bảng việc đổi; TUI có danh sách 📜 Script dự án, Enter/bấm để chạy.
+- **Lưới TUI**: thêm ô terminal trống (nút ⌨ Terminal, mục đầu trong popup Thêm, `/grid :shell`) như web.
+- `/focus`, `/chat`, `/grid` gợi ý tên agent như `/task` (`/grid` có thêm `:shell`) — TUI + web.
+- **Tab 🤖 Agents của TUI giống trang web**: bảng ⚡ Vai trò sửa CLI · model · effort ngay trên tab (✓ Lưu / Huỷ), agent
+  xếp theo vai trò, mỗi dòng có vai trò, nhãn trạng thái, nút 💬 Chat / ⌨ Terminal / ✎ Sửa / ✗ Xoá; agent tuỳ chỉnh chưa
+  bật hiện mờ.
+- **TUI nền xám đậm** thay nền ngả xanh/tím ở mọi theme tối (theo bảng màu web), giữ màu nhấn của theme.
+
 ## 0.35.1 — 21/10/2026
 
 Sửa lỗi sau khi review toàn bộ tính năng chính:

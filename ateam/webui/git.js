@@ -4,7 +4,9 @@
 "use strict";
 
 window.GitView = (() => {
-  const G = { st: null, log: [], sel: null, timer: null, ops: new Set(), amend: false, noVerify: false };  // ops: thao tác đang chạy
+  const G = { st: null, log: [], sel: null, timer: null, ops: new Set(), amend: false, noVerify: false,  // ops: thao tác đang chạy
+    tree: false, closed: new Set() };  // tree: danh sách dạng cây thư mục (nhớ theo trình duyệt); closed: "nhóm\0thư/mục/" đang thu
+  try { G.tree = localStorage.getItem("ateam.gitTree") === "1"; } catch (e) { /* chế độ riêng tư */ }
   const box = () => $("#git");
 
   async function refresh() {
@@ -43,11 +45,11 @@ window.GitView = (() => {
     const g = (G.st && G.st.groups) || { c: [], s: [], w: [] };
     return [["c", t("git_conflicts"), g.c], ["s", t("git_staged"), g.s], ["w", t("git_changes"), g.w]].filter((x) => x[2].length);
   }
-  function fileRow(code, f) {
+  function fileRow(code, f, depth) {  // depth: chế độ cây (thụt lề, không hiện thư mục cạnh tên)
     const sel = G.sel && G.sel.code === code && G.sel.path === f.path;
-    const name = f.path.split("/").pop(), dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
+    const name = f.path.split("/").pop(), dir = depth == null && f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
     const icon = { M: "review", A: "done", U: "done", D: "failed", R: "draft", C: "draft", "!": "failed" }[f.icon] || "queued";
-    return `<div class="gfile${sel ? " sel" : ""}" data-gact="sel" data-code="${code}" data-path="${esc(f.path)}" tabindex="-1">
+    return `<div class="gfile${sel ? " sel" : ""}" data-gact="sel" data-code="${code}" data-path="${esc(f.path)}" tabindex="-1"${depth ? ` style="padding-left:${8 + depth * 14}px"` : ""}>
       <span class="fstat s-${icon}">${esc(f.icon)}</span><span class="gname">${esc(name)}</span><span class="gdir">${esc(dir)}${f.orig ? " ← " + esc(f.orig) : ""}</span>
       <span class="grow-acts">
         <button class="mini" data-gact="diff" title="d">Δ</button>
@@ -56,6 +58,35 @@ window.GitView = (() => {
         ${code === "w" ? `<button class="mini danger" data-gact="discard" title="x">↺</button>` : ""}
         ${code !== "c" ? `<button class="mini" data-gact="toggle" title="space">${code === "s" ? "−" : "+"}</button>` : ""}
       </span></div>`;
+  }
+
+  function dirRow(code, depth, path, label, n) {  // hàng thư mục ở chế độ cây: bấm = thu/mở, +/− stage cả thư mục
+    const sel = G.sel && G.sel.code === code && G.sel.path === path, shut = G.closed.has(code + "\0" + path);
+    return `<div class="gfile gdirrow${sel ? " sel" : ""}" data-gact="sel" data-code="${code}" data-path="${esc(path)}" tabindex="-1" style="padding-left:${8 + depth * 14}px">
+      <span class="gfold">${shut ? "▸" : "▾"}</span><span class="gname">📁 ${esc(label)}</span><span class="gdir">${n}</span>
+      <span class="grow-acts">
+        ${code === "w" ? `<button class="mini danger" data-gact="discard" title="x">↺</button>` : ""}
+        ${code !== "c" ? `<button class="mini" data-gact="toggle" title="space">${code === "s" ? "−" : "+"}</button>` : ""}
+      </span></div>`;
+  }
+  function groupRows(code, list) {
+    if (!G.tree || !G.st.trees) return list.map((f) => fileRow(code, f)).join("");
+    const by = new Map(list.map((f) => [f.path, f]));
+    const shut = [...G.closed].filter((k) => k.startsWith(code + "\0")).map((k) => k.slice(2));
+    return G.st.trees[code].filter(([, path]) => !shut.some((d) => path !== d && path.startsWith(d)))
+      .map(([depth, path, label, isDir]) => isDir ? dirRow(code, depth, path, label, list.filter((f) => f.path.startsWith(path)).length)
+        : fileRow(code, by.get(path), depth)).join("");
+  }
+  // file của nhóm ứng với dòng đang chọn: chính file đó, hoặc mọi file trong thư mục (chế độ cây)
+  function groupPaths(sel) {
+    if (!sel.path.endsWith("/")) return [sel.path];
+    return ((G.st && G.st.groups[sel.code]) || []).map((f) => f.path).filter((p) => p.startsWith(sel.path));
+  }
+  function fold(sel) { const k = sel.code + "\0" + sel.path; if (!G.closed.delete(k)) G.closed.add(k); render(); }
+  function setTree(on) {
+    G.tree = on;
+    try { localStorage.setItem("ateam.gitTree", on ? "1" : "0"); } catch (e) { /* chế độ riêng tư */ }
+    render();
   }
 
   function commitAgent() {
@@ -81,7 +112,7 @@ window.GitView = (() => {
     const files = groups().map(([code, title, list]) => `<div class="ggroup"><div class="ghead">${esc(title)} <span class="n">${list.length}</span>
         ${code === "s" ? `<button class="mini" data-gact="unstage_all" title="u">${esc(t("git_unstage_all"))}</button>` : code === "w" ? `<button class="mini" data-gact="stage_all" title="a">${esc(t("git_stage_all"))}</button>` : code === "c" ? `<button class="mini" data-gact="ai_resolve">🤖 ${esc(t("cf_ai_all"))}</button>` : ""}
         ${code !== "c" && st.oid && !st.state && !st.groups.c.length ? `<button class="mini danger" data-gact="discard_all" title="X">${esc(t("git_discard_all"))}</button>` : ""}</div>
-        ${list.map((f) => fileRow(code, f)).join("")}</div>`).join("") || `<div class="gclean">✓ ${esc(t("git_clean"))}</div>`;
+        ${groupRows(code, list)}</div>`).join("") || `<div class="gclean">✓ ${esc(t("git_clean"))}</div>`;
     const nStaged = st.groups.s.length;
     const ph = G.amend ? t("git_msg_amend") : nStaged ? t("git_msg_staged", { n: nStaged }) : t("git_msg_all");
     const log = G.log.map((c, i) => `<div class="gcommit${G.selCommit === c.sha ? " sel" : ""}" data-gact="commit" data-sha="${esc(c.sha)}">
@@ -109,6 +140,7 @@ window.GitView = (() => {
       </div>
       <div class="gmain">
         <div class="gleft panel">
+          <div class="gfiles-bar"><button class="btn sm ghost" data-gact="tree" title="${esc(t("git_tree_hint"))}">${esc(t(G.tree ? "git_list" : "git_tree"))}</button></div>
           <div class="gfiles" id="git-files">${files}</div>
           <div class="gcommitbox">
             <textarea id="git-msg" class="field" rows="3" placeholder="${esc(ph)}">${esc(keepMsg)}</textarea>
@@ -134,10 +166,15 @@ window.GitView = (() => {
   }
   async function toggle(sel) {
     if (!sel || sel.code === "c") return;
-    await act(sel.code === "s" ? "unstage" : "stage", { path: sel.path });
+    await act(sel.code === "s" ? "unstage" : "stage", { paths: groupPaths(sel) });
   }
   async function discard(sel) {
     if (!sel || sel.code !== "w") return;
+    if (sel.path.endsWith("/")) {
+      const paths = groupPaths(sel);
+      if (paths.length && await confirmBox(t("git_discard_title"), t("git_discard_dir", { n: paths.length, path: sel.path }), t("git_discard_yes"))) await act("discard", { paths });
+      return;
+    }
     const f = G.st.groups.w.find((x) => x.path === sel.path);
     const untracked = f && f.icon === "U";
     if (await confirmBox(t("git_discard_title"), untracked ? t("git_discard_new", { path: sel.path }) : t("git_discard_q", { path: sel.path }), t("git_discard_yes"))) await act("discard", { path: sel.path });
@@ -150,7 +187,8 @@ window.GitView = (() => {
   }
   function diff(sel) {
     if (!sel) return;
-    DiffView.git({ kind: sel.code === "s" ? "staged" : sel.code === "c" ? "conflict" : "unstaged", path: sel.path });
+    const path = groupPaths(sel)[0];  // thư mục: file đầu tiên
+    if (path) DiffView.git({ kind: sel.code === "s" ? "staged" : sel.code === "c" ? "conflict" : "unstaged", path });
   }
   async function commit() {
     if (G.ops.has("commit")) return;
@@ -172,7 +210,11 @@ window.GitView = (() => {
     const b = e.target.closest("[data-gact]");
     if (!b) return;
     const a = b.dataset.gact;
-    if (a === "sel") { G.sel = selPath(b); $$(".gfile", box()).forEach((r) => r.classList.toggle("sel", r === b)); return; }
+    if (a === "sel") {  // bấm vào file = mở diff (xung đột: giải quyết) như Enter ở TUI; thư mục = thu/mở
+      G.sel = selPath(b); $$(".gfile", box()).forEach((r) => r.classList.toggle("sel", r === b));
+      if (G.sel.path.endsWith("/")) return fold(G.sel);
+      return G.sel.code === "c" ? resolve(G.sel.path) : diff(G.sel);
+    }
     const sel = selPath(b);
     if (b.closest(".gfile")) G.sel = sel;
     const sha = b.closest(".gcommit") && b.closest(".gcommit").dataset.sha;
@@ -185,6 +227,7 @@ window.GitView = (() => {
       case "ai_resolve": return act("ai_resolve");
       case "continue": return act("continue");
       case "edit": setView("code"); return CodeView.open(sel.path);
+      case "tree": return setTree(!G.tree);
       case "stage_all": case "unstage_all": case "init": case "abort": return act(a);
       case "fetch": case "pull": case "push":
         if (G.ops.has(a)) return;
@@ -237,11 +280,13 @@ window.GitView = (() => {
     else if (k === "u") act("unstage_all");
     else if (k === "x") discard(G.sel);
     else if (k === "X") discardAll();
+    else if (k === "t") setTree(!G.tree);
+    else if (k === "Enter" && G.sel && G.sel.path.endsWith("/")) fold(G.sel);
     else if ((k === "r" || k === "Enter") && G.sel && G.sel.code === "c") resolve(G.sel.path);
     else if (k === "g" && G.st && G.st.groups.c.length) act("ai_resolve");
     else if (k === "d" || k === "Enter") diff(G.sel);
     else if (k === "c") $("#git-msg").focus();
-    else if (k === "e" && G.sel) { setView("code"); CodeView.open(G.sel.path); }
+    else if (k === "e" && G.sel && !G.sel.path.endsWith("/")) { setView("code"); CodeView.open(G.sel.path); }
     else return;
     e.preventDefault();
   }

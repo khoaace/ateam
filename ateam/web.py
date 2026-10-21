@@ -211,6 +211,8 @@ def ui_strings() -> dict[str, str]:
         "git_working": tr("⏳ Đang chạy git…"),
         "git_discard_title": tr("↺ Bỏ thay đổi"), "git_discard_yes": tr("Bỏ thay đổi"),
         "git_discard_q": tr("Bỏ mọi thay đổi chưa stage của {path}?"),
+        "git_discard_dir": tr("Bỏ mọi thay đổi chưa stage (file chưa theo dõi bị XOÁ) của {n} file trong {path}?"),
+        "git_tree": tr("📁 Thư mục"), "git_list": tr("≡ Danh sách"), "git_tree_hint": tr("Danh sách / cây thư mục (t)"),
         "git_discard_all": tr("↺ Bỏ tất cả"), "git_discard_all_title": tr("↺ Bỏ tất cả thay đổi"),
         "git_discard_all_yes": tr("Bỏ tất cả"),
         "git_discard_all_q": tr("Bỏ MỌI thay đổi ({s} file đã stage, {w} file chưa stage) và XOÁ {u} file chưa "
@@ -332,6 +334,8 @@ def ui_strings() -> dict[str, str]:
         "code_running_tip": tr("Agent đang chạy task ngay trong thư mục dự án (chế độ shared) — file đang mở có thể bị sửa"),
         # --- gợi ý ô nhập
         "cmds": tr("Lệnh"), "sg_agent": tr("Agent"), "sg_agent_task": tr("Agent · thêm :model hoặc @effort"),
+        "sg_agent_focus": tr("Agent · phóng to để chat riêng"), "sg_agent_chat": tr("Agent · rồi gõ tin nhắn"),
+        "sg_agent_grid": tr("Mở CLI thật trong một ô lưới"), "sg_shell": tr("Terminal — shell của bạn trong thư mục dự án"),
         "sg_model": tr("Model của {v}"), "sg_effort": tr("Effort của {v}"), "sg_task": tr("Task"),
         "sg_task_or_file": tr("Task (hoặc @file để mở trong Code)"), "sg_goal": tr("Mục tiêu"),
         "sg_continue": tr("Tiếp tục mục tiêu / thread"), "sg_branch": tr("Nhánh"), "sg_minutes": tr("Số phút"),
@@ -767,6 +771,7 @@ class WebApp:
                 continue
             if not self.clients:
                 continue
+            self.git.poll_changes()
             try:
                 state = json.dumps(self.snapshot(tasks, goals), ensure_ascii=False)
                 live = json.dumps(self.live(), ensure_ascii=False)
@@ -820,7 +825,7 @@ class WebApp:
                 "grill": grill, "ask": ask, "jobs": jobs, "paused": o.paused, "worktree": o.use_worktree,
                 "lead": cfg.lead, "commit_agent": cfg.commit_agent, "workflow": cfg.default_workflow, "compacting": o.compacting,
                 "continue": reports.continue_candidates(self.db, tasks_all, goals_all), "busy": len(o.runs), "todos": todos.load(self.root),
-                "tags": todos.load_tags(self.root), "notes": notes.summaries(self.root)}
+                "tags": todos.load_tags(self.root), "notes": notes.summaries(self.root), "git_changes": self.git.changes}
 
     def hello(self) -> dict:
         from .tui import COMMANDS, HELP  # danh sách lệnh + trợ giúp dùng chung với TUI

@@ -4202,4 +4202,66 @@ EN: dict[str, str] = {
         '{agent} explains {v}',
     'Chép câu trả lời':
         'Copy answer',
+    'Danh sách / cây thư mục':
+        'List / folder tree',
+    '≡ Danh sách':
+        '≡ List',
+    '📁 Thư mục':
+        '📁 Folders',
+    'bỏ mọi thay đổi chưa stage (file chưa theo dõi bị XOÁ) của {n} file trong':
+        'discard all unstaged changes (untracked files are DELETED) of {n} files in',
+    'Bỏ mọi thay đổi chưa stage (file chưa theo dõi bị XOÁ) của {n} file trong {path}?':
+        'Discard all unstaged changes (untracked files are DELETED) of {n} files in {path}?',
+    '○ chưa bật (bật ở /setup) · ':
+        '○ disabled (enable in /setup) · ',
+    '✗ Xoá agent':
+        '✗ Delete agent',
+    "Xoá agent tuỳ chỉnh '{name}'?":
+        "Delete custom agent '{name}'?",
+    '⚡ Vai trò':
+        '⚡ Roles',
+    'CLI · model · effort của từng vai trò — đổi xong bấm ✓ Lưu':
+        'CLI · model · effort per role — press ✓ Save when done',
+    '⚙ Thiết lập đầy đủ':
+        '⚙ Full setup',
+    '✓ Lưu':
+        '✓ Save',
+    'terminal':
+        'terminal',
+    'shell của bạn trong thư mục dự án':
+        'your shell in the project folder',
+    '  shell của bạn trong thư mục dự án':
+        '  your shell in the project folder',
+    '/focus — phóng to agent để chat riêng':
+        '/focus — zoom an agent to chat with it',
+    '/chat — chọn agent rồi gõ tin nhắn':
+        '/chat — pick an agent, then type a message',
+    '/grid — mở CLI thật trong một ô lưới':
+        '/grid — open the real CLI in a grid cell',
+    '⚡ Đã lưu vai trò':
+        '⚡ Roles saved',
+    'nghỉ đến {v}':
+        'cooling down until {v}',
+    '💬 Chat':
+        '💬 Chat',
+    'đang chạy {n}':
+        'running {n}',
+    '✎ Sửa':
+        '✎ Edit',
+    '📜 Script dự án — Enter / bấm để chạy':
+        '📜 Project scripts — Enter / click to run',
+    '🤖 Agent':
+        '🤖 Agents',
+    '⌨ Terminal':
+        '⌨ Terminal',
+    'Danh sách / cây thư mục (t)':
+        'List / folder tree (t)',
+    'Agent · phóng to để chat riêng':
+        'Agent · zoom in to chat',
+    'Agent · rồi gõ tin nhắn':
+        'Agent · then type a message',
+    'Mở CLI thật trong một ô lưới':
+        'Open the real CLI in a grid cell',
+    'Terminal — shell của bạn trong thư mục dự án':
+        'Terminal — your shell in the project folder',
 }
