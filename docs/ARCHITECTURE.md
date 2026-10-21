@@ -354,6 +354,10 @@ stash/revert có cờ `-c user.*` dự phòng như `Orchestrator.git_ident`. M�
   `highlight_lines` (pygments → `{dòng: [(byte_đầu, byte_cuối, tên style)]}` — **offset byte UTF-8** vì
   `TextArea._render_line` đọc theo byte), `VimState.feed(phím, ký tự, dòng, con trỏ, cao)` trả danh sách thao
   tác (`move`/`move_v`/`edit`/`select`/`undo`/`redo`/`mode`/`ex`/`msg`) — test bằng `apply_ops`, không cần app.
+- Cây thư mục ở cột trái (TUI): `build_tree` dựng một lần mỗi khi chỉ mục `@file` đổi, `tree_rows(cây, code_open)`
+  trả dòng hiện (nét cây, đường dẫn, tên, là thư mục) — chỉ đi vào thư mục đang mở nên dự án lớn vẫn nhẹ. Id dòng:
+  `d:` thư mục, `t:` file trong cây, `f:` file đang mở / kết quả lọc (OptionList cần id duy nhất). Web có cây riêng
+  (nạp từng thư mục qua `/api/tree`).
 - `CodeEditor(TextArea)` ở `tui.py`: ở normal/visual `_on_key` đưa phím vào `VimState` rồi `apply`;
   `check_action` chặn binding sửa chữ của TextArea (Ctrl+U/K/W…) và `check_consume_key` chỉ nhận ký tự in được
   (để Ctrl+T, F1, Ctrl+Q của app vẫn chạy); `TeamApp.check_action` nhường Ctrl+D/R/K/G/O/Y/L cho editor khi

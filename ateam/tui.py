@@ -4688,7 +4688,15 @@ class CodeEditor(TextArea):
 
 
 class CodeFileList(OptionList):
-    """Danh sách file ở tab Code (buffer đang mở ở trên, kết quả lọc ở dưới)."""
+    """Danh sách file ở tab Code: buffer đang mở ở trên, dưới là cây thư mục (ô lọc trống) hoặc kết quả lọc.
+    Enter/→ mở thư mục, Enter/← thu gọn, ← trên file nhảy về thư mục cha."""
+
+    BINDINGS = [
+        Binding("right", "app.code_fold(1)", tr("Mở thư mục"), show=False),
+        Binding("l", "app.code_fold(1)", tr("Mở thư mục"), show=False),
+        Binding("left", "app.code_fold(0)", tr("Thu gọn thư mục"), show=False),
+        Binding("h", "app.code_fold(0)", tr("Thu gọn thư mục"), show=False),
+    ]
 
 
 class TaskTable(DataTable):
@@ -4925,6 +4933,8 @@ class TeamApp(App):
         self.search_state: dict = {}  # popup 🔍 Tìm & thay (F3): giữ từ khoá, tuỳ chọn giữa các lần mở
         self.code_order: list[str] = []
         self.code_cur: str | None = None
+        self.code_open: set[str] = set()  # cây thư mục tab Code: thư mục đang mở ("src/", "src/app/")
+        self._code_tree: tuple = (None, {})  # (danh sách chỉ mục đã dựng, cây) — dựng lại khi chỉ mục đổi
         self._code_check_at = 0.0
         self._quit_ok = False
         self._goal_status: dict[int, str] = {}  # để báo khi mục tiêu vừa kết thúc
@@ -5418,12 +5428,13 @@ class TeamApp(App):
         self._refresh_code_head()
 
     def refresh_code_files(self) -> None:
-        """Danh sách bên trái: buffer đang mở, rồi file khớp ô lọc (dùng chỉ mục @file có sẵn)."""
+        """Danh sách bên trái: buffer đang mở, rồi cây thư mục (ô lọc trống) hoặc file khớp ô lọc (chỉ mục @file)."""
         ol = self.query_one("#code-files", CodeFileList)
         q = self.query_one("#code-filter", Input).value.strip()
         ed = self.code_editor()
         opts: list = []
         seen = set()
+        cur = self.code_rel(self.code_cur) if self.code_cur else None
         if self.code_order:
             opts.append(Option(Text(tr("Đang mở"), "bold dim"), disabled=True))
             for key in self.code_order:
@@ -5436,21 +5447,73 @@ class TeamApp(App):
                 t.append(rel, "bold" if key == self.code_cur else "")
                 opts.append(Option(t, id="f:" + rel))
                 seen.add(rel)
-        entries = [e for e in self.query_one("#cmd", CommandInput).index.entries if not e.endswith("/")]
-        found = mentions.search(entries, q, limit=300) if q else sorted(entries, key=str.lower)[:300]
-        found = [f for f in found if f not in seen]
-        if found:
-            opts.append(Option(Text(tr("File"), "bold dim"), disabled=True))
-            opts += [Option(Text(f, no_wrap=True, overflow="ellipsis"), id="f:" + f) for f in found]
-        ids = [o.id for o in opts]
-        if ids == getattr(ol, "_ids", None) and q == getattr(ol, "_q", None):
+        entries = self.query_one("#cmd", CommandInput).index.entries
+        if not q:
+            if self._code_tree[0] is not entries:
+                self._code_tree = (entries, editor.build_tree([e for e in entries if not e.endswith("/")]))
+            rows = editor.tree_rows(self._code_tree[1], self.code_open)
+            if rows:
+                opts.append(Option(Text(tr("Thư mục dự án"), "bold dim"), disabled=True))
+            for guide, path, name, is_dir in rows:
+                t = Text(guide, "dim", no_wrap=True, overflow="ellipsis")
+                if is_dir:
+                    t.append("▾ " if path in self.code_open else "▸ ", "dim")
+                    t.append(name, f"bold {PAL.get('info', 'cyan')}")
+                    opts.append(Option(t, id="d:" + path))
+                else:
+                    t.append("" if guide else "  ")
+                    t.append(name, "bold" if path == cur else "")
+                    opts.append(Option(t, id="t:" + path))
+        else:
+            files = [e for e in entries if not e.endswith("/")]
+            found = [f for f in mentions.search(files, q, limit=300) if f not in seen]
+            if found:
+                opts.append(Option(Text(tr("File"), "bold dim"), disabled=True))
+                opts += [Option(Text(f, no_wrap=True, overflow="ellipsis"), id="f:" + f) for f in found]
+        key = [(o.id, o.prompt.plain) for o in opts]
+        if key == getattr(ol, "_ids", None) and q == getattr(ol, "_q", None):
             return
-        ol._ids, ol._q = ids, q
+        keep = ol.get_option_at_index(ol.highlighted).id if ol.highlighted is not None and ol.option_count else None
+        same_q = q == getattr(ol, "_q", None)
+        ol._ids, ol._q = key, q
         ol.clear_options()
         ol.add_options(opts)
+        ids = [o.id for o in opts]
+        if same_q and keep in ids:  # mở/thu gọn thư mục, lưu file…: con trỏ đứng yên chỗ cũ
+            ol.highlighted = ids.index(keep)
+            return
         first = next((i for i, o in enumerate(opts) if o.id and o.id[2:] not in seen), None)
         if q and first is not None:
             ol.highlighted = first
+
+    def action_code_fold(self, expand: int) -> None:
+        """→/l mở thư mục (đã mở thì xuống mục con đầu), ←/h thu gọn (trên file hoặc thư mục đã đóng: về thư mục cha)."""
+        ol = self.query_one("#code-files", CodeFileList)
+        if ol.highlighted is None:
+            return
+        oid = ol.get_option_at_index(ol.highlighted).id or ""
+        kind, path = oid[:2], oid[2:]
+        if expand:
+            if kind != "d:":
+                return
+            if path in self.code_open:
+                ol.action_cursor_down()
+            else:
+                self.code_fold(path)
+            return
+        if kind == "d:" and path in self.code_open:
+            self.code_fold(path)
+            return
+        parent = path.rstrip("/").rpartition("/")[0]
+        if parent and kind in ("d:", "t:"):
+            ids = [ol.get_option_at_index(i).id for i in range(ol.option_count)]
+            if "d:" + parent + "/" in ids:
+                ol.highlighted = ids.index("d:" + parent + "/")
+
+    def code_fold(self, path: str) -> None:
+        """Mở / thu gọn một thư mục của cây (đóng thư mục cha thì thư mục con vẫn nhớ trạng thái mở)."""
+        self.code_open.symmetric_difference_update({path})
+        self.refresh_code_files()
 
     # ------------------------------------------------------------------ 🔍 tìm & thay trong dự án (F3, /search)
     def action_search(self, query: str | None = None) -> None:
@@ -5509,9 +5572,22 @@ class TeamApp(App):
         key = str(path)
         ed = self.code_editor()
         if path.is_dir():
-            self.query_one("#code-filter", Input).value = self.code_rel(key).rstrip("/") + "/"
-            self.query_one("#code-filter", Input).focus()
+            rel = self.code_rel(key).rstrip("/") + "/"
+            if rel.startswith("../") or Path(rel).is_absolute():  # ngoài dự án: không có trong cây, lọc như cũ
+                self.query_one("#code-filter", Input).value = rel
+                self.query_one("#code-filter", Input).focus()
+                return
+            if rel != "./":
+                self.code_open.update(editor.parent_dirs(rel + "x") + [rel])  # mở cây tới thư mục đó
+            self.query_one("#code-filter", Input).value = ""
+            self.refresh_code_files()
+            ol = self.query_one("#code-files", CodeFileList)
+            ids = [ol.get_option_at_index(i).id for i in range(ol.option_count)]
+            if "d:" + rel in ids:
+                ol.highlighted = ids.index("d:" + rel)
+            ol.focus()
             return
+        self.code_open.update(editor.parent_dirs(self.code_rel(key)))  # cây thư mục mở tới file đang sửa
         self._stash_code()
         b = self.code_bufs.get(key)
         if b is not None and b.get("dirty"):
@@ -7468,8 +7544,11 @@ class TeamApp(App):
             return
         if event.option_list.id == "code-files":
             event.stop()
-            if event.option.id:
-                self.open_code(event.option.id[2:])
+            oid = event.option.id or ""
+            if oid.startswith("d:"):  # thư mục của cây: Enter/bấm = mở / thu gọn
+                self.code_fold(oid[2:])
+            elif oid:
+                self.open_code(oid[2:])
             return
         if event.option_list.id == "git-files":
             event.stop()
@@ -7855,7 +7934,7 @@ class TeamApp(App):
             idx = ol.highlighted if ol.highlighted is not None else 0
             for i in range(idx, ol.option_count):
                 oid = ol.get_option_at_index(i).id
-                if oid:
+                if oid and not oid.startswith("d:"):
                     self.open_code(oid[2:])
                     break
             return

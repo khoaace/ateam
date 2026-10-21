@@ -411,8 +411,9 @@ trong editor có tô màu cú pháp, số dòng, phím **vim**:
 - tìm `/ ? n N *`; `:w` lưu, `:q` đóng, `:wq`, `:q!` bỏ thay đổi, `:e!` nạp lại, `:42` tới dòng, `:bn` `:bp`
   đổi file, `:files` ẩn/hiện danh sách file.
 
-Không quen vim: `/vim off` (sửa như editor thường, Ctrl+S lưu). Cột trái liệt kê file đang mở và file của dự án
-(gõ để lọc). Agent sửa file bạn đang mở: chưa sửa gì thì tự nạp lại, đang sửa thì được báo — `:e!` lấy bản
+Không quen vim: `/vim off` (sửa như editor thường, Ctrl+S lưu). Cột trái liệt kê file đang mở và **cây thư mục** của dự án
+(thư mục đứng trước file, có nét `├ │ └`; Enter / `→` `l` mở thư mục, Enter / `←` `h` thu gọn, `←` trên file nhảy về
+thư mục cha; mở file nào thì cây tự mở tới file đó). Gõ vào ô trên cùng để lọc: danh sách thành kết quả tìm phẳng. Agent sửa file bạn đang mở: chưa sửa gì thì tự nạp lại, đang sửa thì được báo — `:e!` lấy bản
 trên đĩa, `:w!` ghi đè. Thoát app khi còn file chưa lưu sẽ được hỏi lại.
 
 Editor chỉ vẽ các dòng đang hiện; tô màu chạy nền sau khi bạn ngừng gõ ~0,2 giây, nên file lớn vẫn mượt. File
