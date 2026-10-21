@@ -490,13 +490,15 @@ def test_final_check_failure_is_fixed_by_its_agent(env, project, tmp_path):
 
 
 def test_final_check_runs_on_merged_head_in_worktree_mode(env, project, tmp_path):
-    """Worktree: mỗi task vẫn tự kiểm tra trong nhánh riêng; kiểm tra cuối chạy trên HEAD sau khi đã merge cả hai."""
+    """Worktree: task song song cũng bỏ kiểm tra riêng (một lần chạy thay cho N — tốc độ như bản cũ); kiểm tra cuối
+    chạy trên HEAD sau khi đã merge cả hai."""
     git_init(project)
     write_project_config(project, 'isolation = "worktree"\nauto_review = false\n')
     ts = _checks_run(env, project, tmp_path, "ls")
     chk = ts["verify"]
     for t in (ts["codex"], ts["grok"]):
-        assert "[kiểm tra]" in (project / f".ateam/logs/t{t.id}.log").read_text()
+        log = (project / f".ateam/logs/t{t.id}.log").read_text()
+        assert "[kiểm tra]" not in log and f"kiểm tra cuối #{chk.id}" in log
     log = (project / f".ateam/logs/t{chk.id}.log").read_text()
     assert "[test] a.txt" in log and "[test] b.txt" in log  # cả hai thay đổi đã gộp
     full = (tmp_path / "full.log").read_text()
@@ -559,3 +561,29 @@ title = "Kiểm tra"
     chk = next(t for t in tasks(project) if t.kind == "verify")
     assert chk.status == "done" and "Chưa đặt lệnh kiểm tra" in chk.result
     assert "claude ·" not in (project / f".ateam/logs/t{chk.id}.log").read_text()  # không gọi agent
+
+
+def test_final_check_runs_without_waiting_for_busy_agent(env, project, monkeypatch):
+    """Kiểm tra cuối chạy lệnh ngay cả khi agent sửa (claude) đang bận task khác — như lệnh kiểm tra chạy trong suất của
+    task ở bản cũ; chỉ khi fail mới chờ agent đó rảnh rồi sửa."""
+    import asyncio
+
+    from test_resume import _orch
+    ateam(env, project, "verify", 'test -f c.txt || { echo "FAIL: thiếu c.txt"; exit 1; }')
+    o = _orch(env, project, monkeypatch)
+    monkeypatch.setenv("ATEAM_FAKE_SLOW", "1")  # claude giả lập: 3 dòng, mỗi dòng 1 giây, xong mới tạo c.txt
+    gid = o.db.add_goal("G")
+    a = o.db.add_task("codex", "A", "a", goal_id=gid, status="done")
+    busy = o.db.add_task("claude", "bận", "việc dài", status="queued")  # chiếm suất duy nhất của claude
+    chk = o.db.add_task("claude", "Kiểm tra cuối", "", goal_id=gid, depends_on=[a], status="queued", kind="verify")
+
+    async def main():
+        await o.setup()
+        await o.run_until_idle()
+    asyncio.run(main())
+    c, b = o.db.task(chk), o.db.task(busy)
+    assert c.status == "done" and c.attempts == 1, (c.status, c.error)
+    assert c.started < b.finished  # lệnh kiểm tra chạy ngay, không đợi claude xong việc kia
+    fix = o.db.conn.execute("SELECT started FROM runs WHERE task_id=? AND kind='fix'", (chk,)).fetchone()
+    assert fix and fix["started"] >= b.finished  # sửa thì phải chờ claude rảnh
+    assert "chờ claude rảnh" in (project / ".ateam/logs/system.log").read_text()

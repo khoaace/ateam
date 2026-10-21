@@ -4343,6 +4343,8 @@ EN: dict[str, str] = {
         "All tasks done and checked — final review skipped (Fast preset)",
     "🏁 Mục tiêu #{id} xong: mọi task qua kiểm tra, bỏ review cuối (preset Nhanh).":
         "🏁 Goal #{id} done: every task passed its checks, final review skipped (Fast preset).",
+    "⏳ #{tid} chờ {agent} rảnh để sửa lỗi kiểm tra cuối":
+        "⏳ #{tid} waiting for {agent} to be free to fix the final check",
     "Loại bước: code = làm việc · review = agent khác xem thay đổi của các bước nó chờ, sửa lỗi nhỏ · verify = ateam "
     "chạy lệnh kiểm tra (/verify) trên kết quả gộp, fail mới gọi agent của bước sửa.":
         "Step type: code = do the work · review = another member reviews the changes of the steps it waits for and "

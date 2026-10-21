@@ -97,6 +97,8 @@ class Orchestrator:
         self._usage_jobs: set[asyncio.Task] = set()  # đọc token sau mỗi lượt (run_until_idle chờ xong)
         self._cancel_req: set[int] = set()
         self._requeues: dict[int, int] = {}  # task -> số lần đã tự xếp lại vì hết hạn mức / quá tải (MAX_REQUEUES)
+        # task kiểm tra cuối đang chạy lệnh kiểm tra (chưa gọi agent): không giữ suất của agent sửa
+        self._checking: set[int] = set()
         self._rules_sent: dict[str, str] = {}  # phiên CLI -> digest bộ rule đã gửi trong phiên đó
         self._chat_new: set[str] = set()  # agent mà tin chat kế tiếp bắt đầu cuộc mới
         self._wt_base: dict[int, str] = {}
@@ -1594,12 +1596,24 @@ class Orchestrator:
 
     # ------------------------------------------------------------------ lịch chạy
     def running_count(self, agent: str | None = None, index: dict | None = None) -> int:
-        """index: DB.task_index() đã đọc sẵn trong lượt tick."""
+        """index: DB.task_index() đã đọc sẵn trong lượt tick. Task kiểm tra cuối đang chạy lệnh kiểm tra (_checking)
+        không tính vào suất của agent: nó chưa gọi agent."""
         if agent is None:
             return len(self.runs)
+        tids = [tid for tid in self.runs if tid not in self._checking]
         if index is not None:
-            return sum(1 for tid in self.runs if tid in index and index[tid][1] == agent)
-        return sum(1 for tid in self.runs if (t := self.db.task(tid)) and t.agent == agent)
+            return sum(1 for tid in tids if tid in index and index[tid][1] == agent)
+        return sum(1 for tid in tids if (t := self.db.task(tid)) and t.agent == agent)
+
+    async def _wait_agent_free(self, agent: str, tid: int) -> None:
+        """Task kiểm tra cuối phải gọi agent sửa: chờ tới khi agent còn suất (max_concurrent) hoặc task bị huỷ."""
+        a = self.cfg.agents.get(agent)
+        waiting = False
+        while a and tid not in self._cancel_req and self.running_count(agent) >= a.max_concurrent:
+            if not waiting:
+                waiting = True
+                self.log(tr("⏳ #{tid} chờ {agent} rảnh để sửa lỗi kiểm tra cuối", tid=tid, agent=agent))
+            await asyncio.sleep(0.5)
 
     def is_idle(self) -> bool:
         """Không còn việc gì chạy được (task chỉ chờ agent hồi hạn mức thì không tính)."""
@@ -1637,7 +1651,10 @@ class Orchestrator:
             if any(s != DONE for _, s in dep_status):
                 continue
             chat = t.source == CHAT  # người dùng đang chờ trả lời: không xếp sau hàng đợi chung, không đổi agent
-            if not chat and (self.paused or len(self.runs) >= self.cfg.max_parallel):
+            # kiểm tra cuối: bước đầu chỉ chạy lệnh kiểm tra như ngay trong suất của task ở bản cũ — không chờ suất song
+            # song, agent hết hạn mức hay agent bận; fail mới cần agent sửa (_run_task tự chờ agent đó rảnh)
+            check = t.kind == KIND_VERIFY
+            if not chat and (self.paused or (not check and len(self.runs) >= self.cfg.max_parallel)):
                 continue
             if chat and self.in_cooldown(t.agent):
                 self.db.update_task(t.id, status=FAILED, finished=time.time(),
@@ -1645,7 +1662,7 @@ class Orchestrator:
                                              v=self.cooldown_label(t.agent)))
                 changed = True
                 continue
-            if self.in_cooldown(t.agent):
+            if self.in_cooldown(t.agent) and not check:
                 fb = self.pick_fallback(t.agent)
                 if not fb:
                     continue  # chờ hạn mức hồi lại
@@ -1654,7 +1671,7 @@ class Orchestrator:
                 t = self.db.task(t.id)
                 changed = True
             a = agents[t.agent]
-            if not chat and self.running_count(t.agent, index) >= a.max_concurrent:
+            if not chat and not check and self.running_count(t.agent, index) >= a.max_concurrent:
                 continue
             if not a.installed():
                 self.db.update_task(t.id, status=FAILED,
@@ -1668,6 +1685,8 @@ class Orchestrator:
                 continue
             index[t.id] = (RUNNING, t.agent)
             self.runs[t.id] = None  # type: ignore[assignment]
+            if check:
+                self._checking.add(t.id)
             self._spawn(self._run_task(t.id))
             changed = True
         if self._check_goals():
@@ -1979,8 +1998,9 @@ class Orchestrator:
                     diff=self._diff_hint(dep_tasks) if t.kind == KIND_REVIEW else "", handoff=handoff)
             prompt = t.resume if sess else full
             gate = bool(v.command) and (agent.verify or check) and not chat
-            # shared: task song song đang sửa dở cùng thư mục làm lệnh kiểm tra fail giả — kiểm tra cuối chạy một lần
-            cover = self._check_for(t, goal_tasks, pending=True) if gate and not check and not self.use_worktree else None
+            # có kiểm tra cuối phía sau: nó chạy một lần trên kết quả gộp thay cho kiểm tra riêng — shared thì task song
+            # song đang sửa dở cùng thư mục làm lệnh fail giả; cả hai chế độ đỡ N lần chạy test (tốc độ như bản cũ)
+            cover = self._check_for(t, goal_tasks, pending=True) if gate and not check else None
             if cover:
                 gate = False
             before = await self._fingerprint(workdir) if gate and v.only_when_changed and not check else None
@@ -2052,11 +2072,16 @@ class Orchestrator:
                     fsess = cur.session if cur and cur.session_agent == fixer else None
                 sent = P.fix_resume_prompt(command=v.command, rc=trc, output=tail, attempt=attempts,
                                            max_attempts=v.max_fix_attempts) if fsess else fprompt
+                if check:  # lệnh kiểm tra chạy không cần agent; sửa thì phải chờ agent sửa rảnh (max_concurrent)
+                    await self._wait_agent_free(fixer, tid)
+                    self._checking.discard(tid)
                 run, rc, res = await self._run_agent(
                     t, fa, sent, workdir, log_file, kind="fix",
                     title=tr("sửa lỗi test #{tid} ({attempts}/{max_fix_attempts})", tid=tid, attempts=attempts, max_fix_attempts=v.max_fix_attempts),
                     model=t.model if same else None, effort=t.effort if same else None,
                     session=fsess, full_prompt=fprompt)
+                if check:
+                    self._checking.add(tid)
                 outputs.append(P.strip_echo(run.output, sent, fprompt))
                 if res in ("ratelimit", "overloaded"):
                     self._set_cooldown(fixer, run.output, overloaded=res == "overloaded")
@@ -2100,6 +2125,7 @@ class Orchestrator:
                 log_file.close()
             self.runs.pop(tid, None)
             self._cancel_req.discard(tid)  # yêu cầu huỷ của lượt này không được ảnh hưởng lượt /retry sau
+            self._checking.discard(tid)
             if asked and status == DONE:
                 qa.append(dict(asked, a=None))
                 if self.auto_answer:  # không ai trả lời (ateam goal -y / run): theo đề xuất của agent
@@ -2235,7 +2261,7 @@ class Orchestrator:
             body = (t.result or t.error or "")[:1500]
             a = self.cfg.agents.get(t.agent)
             chk = self._check_for(t, tasks) if t.kind != KIND_VERIFY else None
-            if chk:  # task song song ở shared không chạy kiểm tra riêng: chỉ kết quả kiểm tra cuối là đúng
+            if chk:  # task được kiểm tra cuối bao không chạy kiểm tra riêng: chỉ kết quả kiểm tra cuối là đúng
                 body += f"\n(checked by final verify #{chk.id}: {chk.status})"
             elif cmd and t.status == DONE and a and a.verify and t.kind != KIND_VERIFY:  # trưởng nhóm khỏi chạy lại
                 body += f"\n(verification `{cmd}`: passed, or no file changes)"

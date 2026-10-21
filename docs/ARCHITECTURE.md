@@ -184,6 +184,11 @@ Với mỗi task `queued` theo thứ tự id:
 7. Chưa cài lệnh → `failed`.
 8. Đặt `running` *ngay* (chống chạy trùng), `self.runs[tid] = None`, spawn `_run_task`.
 
+Task `verify` (kiểm tra cuối) bỏ qua `max_parallel`, cooldown và `max_concurrent` (bước 4–6): bước đầu chỉ chạy lệnh
+kiểm tra, như lệnh kiểm tra chạy trong suất của task ở bản cũ. Khi đó nó nằm trong `_checking` nên `running_count`
+không tính nó vào suất của agent; phải sửa thì `_run_task` chờ agent sửa rảnh (`_wait_agent_free`), bỏ nó khỏi
+`_checking` trong lúc agent chạy.
+
 `is_idle()` (dùng cho `ateam run`/`goal`): không có gì đang chạy, trưởng nhóm rảnh, và mọi task
 `queued` còn lại đều chỉ đang chờ hạn mức hồi hoặc chờ người duyệt — để lệnh headless không treo.
 
@@ -203,9 +208,9 @@ Với mỗi task `queued` theo thứ tự id:
 5. `ratelimit`: `_set_cooldown`, chọn agent dự phòng, task quay về `queued`.
 6. Vòng verify: nếu không đổi file thì bỏ qua; chạy `/bin/sh -c <command>` trong thư mục task;
    fail thì `fix_prompt` (kèm 120 dòng cuối) cho `fix_agent` hoặc chính agent đó, tối đa
-   `max_fix_attempts`. Chế độ shared: task có một task `verify` chưa chạy phụ thuộc (bắc cầu) vào nó
-   (`_check_for(pending=True)`) bỏ vòng này — task song song đang sửa dở cùng thư mục làm lệnh kiểm tra fail giả;
-   worktree vẫn chạy (cô lập).
+   `max_fix_attempts`. Task có một task `verify` chưa chạy phụ thuộc (bắc cầu) vào nó (`_check_for(pending=True)`)
+   bỏ vòng này ở cả hai chế độ: kiểm tra cuối chạy một lần trên kết quả gộp thay cho N lần (shared còn tránh fail giả
+   do task song song đang sửa dở cùng thư mục).
    Loại task: `verify` bỏ bước 4–5, vào thẳng vòng này (không theo `agent.verify` / `only_when_changed`) trên kết quả
    gộp (shared: gốc; worktree: worktree từ HEAD sau khi task phụ thuộc đã merge), fail thì `check_fix_prompt` cho agent
    của task; chưa đặt lệnh verify thì xong ngay kèm ghi chú. `review` nhận `review_rules` + cách xem diff

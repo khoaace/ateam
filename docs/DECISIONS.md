@@ -189,8 +189,11 @@ song — không hỏi trưởng nhóm.
 phiên) rẻ hơn task riêng, review chỉ đáng khi rủi ro. Kiểm tra cuối chỉ phụ thuộc đồ thị phụ thuộc mà ateam biết
 chắc — hỏi LLM vừa tốn token vừa có thể sai; chuỗi tuần tự không cần vì task cuối đã được kiểm tra trên kết quả
 gộp. Worktree kiểm tra từng nhánh nhưng trước đây không ai kiểm tra sau khi merge (review cuối lại được báo
-"passed"); shared thì task song song thấy thay đổi dở của nhau (fail giả, sửa nhầm file của task kia) — nên ở shared
-task được kiểm tra cuối bao bỏ kiểm tra riêng, còn worktree giữ (cô lập, sửa trong phiên còn ấm). Chọn loại task
+"passed"); shared thì task song song thấy thay đổi dở của nhau (fail giả, sửa nhầm file của task kia). Task được
+kiểm tra cuối bao bỏ kiểm tra riêng ở cả hai chế độ, và task kiểm tra cuối chạy lệnh ngay không chờ suất song song /
+suất agent / hạn mức (chỉ khi fail mới chờ agent sửa rảnh) — tổng thời gian như bản cũ: N lần chạy test trong suất của
+từng task thành một lần sau khi gộp. Người dùng chọn tốc độ như bản cũ (21/10/2026); đổi lại ở worktree, lỗi do
+trưởng nhóm sửa trong phiên mới thay vì tác giả sửa trong phiên còn ấm. Chọn loại task
 thay vì đổi kế hoạch thành object: tương thích ngược, dùng lại bộ lập lịch, bảng việc, `/retry`, `/assign`. Task
 review tự sửa lỗi nhỏ, giao lỗi lớn cho tác giả qua `<<<DELEGATE>>>` (kiểm tra cuối được nối để chờ cả việc giao
 thêm) — ít lượt hơn để review cuối mở vòng mới. Task có task khác chờ (thiết kế, phân tích, review) bàn giao bằng

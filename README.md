@@ -342,9 +342,9 @@ kèm log lỗi (mặc định chính agent đó, tối đa 2 lần; đổi bằn
 Vẫn fail thì task báo lỗi. Agent chỉ đọc/nghiên cứu có thể đặt `verify = false`.
 
 **Kiểm tra cuối**: kế hoạch có từ 2 task chạy song song thì ateam tự thêm task *Kiểm tra cuối* — chạy lệnh một lần
-trên kết quả gộp (sau khi đã merge, ở chế độ worktree), fail mới gọi agent sửa. Ở chế độ shared các task song song
-bỏ kiểm tra riêng (thay đổi dở của nhau làm lệnh fail giả). Chuỗi task tuần tự không cần: task cuối đã được kiểm
-tra trên kết quả gộp.
+trên kết quả gộp (sau khi đã merge, ở chế độ worktree), fail mới gọi agent sửa. Các task song song đó bỏ kiểm tra
+riêng — một lần chạy thay cho nhiều lần, nên tổng thời gian như khi mỗi task tự kiểm tra (ở chế độ shared còn tránh
+fail giả do thay đổi dở của nhau). Chuỗi task tuần tự không cần: task cuối đã được kiểm tra trên kết quả gộp.
 
 **Viết test, review code**: trưởng nhóm tự quyết khi lập kế hoạch — test viết ngay trong task sửa code, hoặc task
 riêng cho agent khác khi logic lớn/rủi ro; task *review* (agent khác tác giả xem diff, tự sửa lỗi nhỏ, giao lỗi lớn
