@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.36.1 — 21/10/2026
+
+- **Web: nút nổi ✅ To-do** ở góc dưới phải (mọi tab trừ To-do; badge số việc chưa xong, đỏ khi có việc quá hạn): bấm
+  hiện popover việc chưa xong theo hạn — thêm nhanh (`#tag !cao @mai`), tick xong, bấm tên mở chi tiết ở tab To-do;
+  Esc / bấm ra ngoài để đóng. Nút nhạc lofi dời lên trên nút này.
+
 ## 0.36.0 — 21/10/2026
 
 TUI và web đồng bộ hơn:

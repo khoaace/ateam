@@ -1179,7 +1179,7 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 
 /* nhạc lofi (lofi.js): nút tròn góc dưới phải (trên ô nhập), bấm mới hiện popup điều khiển phía trên nút.
    Popup đóng chỉ ẩn đi (1px, trong suốt) — iframe YouTube vẫn nằm trong DOM nên nhạc không bị ngắt. */
-.lofi { position: fixed; right: 16px; bottom: 96px; z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.lofi { position: fixed; right: 16px; bottom: 148px; z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .lofi-pop { width: 320px; max-width: calc(100vw - 32px); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,.35); overflow: hidden; }
 .lofi:not(.pop) .lofi-pop { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; box-shadow: none; }
 .lofi-fab {
@@ -1212,6 +1212,30 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 .lofi-st.on { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .nav-item.playing svg { color: var(--accent); }
 @media (max-width: 480px) { .lofi { right: 8px; } .lofi-pop { max-width: calc(100vw - 16px); } }
+
+/* nút nổi To-do (todo.js TodoPop): góc dưới phải, dưới nút lofi; popover việc chưa xong mở phía trên nút */
+.tdfab { position: fixed; right: 16px; bottom: 96px; z-index: 35; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.tdfab-btn {
+  position: relative; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0; font-size: 17px;
+  background: var(--surface); border: 1px solid var(--border-strong); box-shadow: 0 6px 18px rgba(0,0,0,.3);
+}
+.tdfab-btn:hover, .tdfab.pop .tdfab-btn { border-color: var(--accent); }
+.tdfab.pop .tdfab-btn { background: var(--accent-soft); }
+.tdfab-n { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font: 600 11px/18px var(--mono);
+  background: var(--accent); color: var(--bg); text-align: center; }
+.tdfab-n:empty { display: none; }
+.tdfab-n.over { background: var(--failed); }
+.tdfab:not(.pop) .tdfab-pop { display: none; }
+.tdfab-pop { width: 380px; max-width: calc(100vw - 32px); max-height: min(520px, calc(100vh - 170px)); display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,.35); overflow: hidden; }
+.tdfab-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.tdfab-pop > .field { margin: 8px 10px; width: auto; }
+.tdfab-list { overflow-y: auto; flex: 1; min-height: 0; border-top: 1px solid var(--border); }
+.tdfab-list .tgh { padding: 6px 10px; cursor: default; }
+.tdfab-list .trow { gap: 8px; }
+.tdfab-list .ttl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tdfab-list .col-empty { padding: 18px; }
+@media (max-width: 480px) { .tdfab { right: 8px; } .tdfab-pop { max-width: calc(100vw - 16px); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 /* mở trên điện thoại + chế độ chỉ xem */
@@ -1438,7 +1462,7 @@ body.g-resizing-x .gterm, body.g-resizing-y .gterm { pointer-events: none; }
 .gplace .gopt { margin: 0; }
 /* ⛶ Toàn màn hình: ẩn thanh bên + ô nhập, lưới chiếm cả cửa sổ */
 html.grid-full .app { grid-template-columns: 1fr; }
-html.grid-full .side, html.grid-full .top, html.grid-full .composer { display: none; }
+html.grid-full .side, html.grid-full .top, html.grid-full .composer, html.grid-full .tdfab { display: none; }
 @media (max-width: 900px) {
   .ggrid { flex-direction: column; overflow: auto; }
   .ggutter { display: none; }

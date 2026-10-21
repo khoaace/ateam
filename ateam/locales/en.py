@@ -3779,6 +3779,10 @@ EN: dict[str, str] = {
         'Due — empty = none',
     'Không có việc nào khớp bộ lọc':
         'No to-dos match the filter',
+    'Mở tab To-do':
+        'Open the To-do tab',
+    'Không còn việc nào chưa xong 🎉':
+        'Nothing left to do 🎉',
     'Chưa có ghi chú nào — bấm n để tạo':
         'No notes yet — press n to create one',
     'Không có ghi chú khớp':

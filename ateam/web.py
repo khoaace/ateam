@@ -360,6 +360,7 @@ def ui_strings() -> dict[str, str]:
         "grp_manual": tr("Thủ công"), "f_due_all": tr("Hạn: tất cả"), "f_pri_all": tr("Ưu tiên: tất cả"),
         "pri_0": tr("Không"), "pri_1": tr("Thấp"), "pri_2": tr("Vừa"), "pri_3": tr("Cao"),
         "todo_hide_done": tr("Ẩn việc đã xong"), "todo_nomatch": tr("Không có việc nào khớp bộ lọc"),
+        "todo_pop_open": tr("Mở tab To-do"), "todo_pop_none": tr("Không còn việc nào chưa xong 🎉"),
         "tag_all": tr("tất cả"), "tag_manage": tr("⚙ quản lý"), "tag_manage_btn": tr("⚙ Quản lý tag"),
         "b_over": tr("Quá hạn"), "b_today": tr("Hôm nay"), "b_week": tr("Tuần này"), "b_later": tr("Sau này"),
         "b_none": tr("Không có hạn"), "b_done": tr("Đã xong"), "b_untagged": tr("Không có tag"), "b_all": tr("Việc"),

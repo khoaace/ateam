@@ -1834,6 +1834,7 @@ document.addEventListener("keydown", (e) => {
     if (e.target.closest && e.target.closest(".cm-editor")) return;  // Esc trong editor là của vim
     if (topModal()) { e.preventDefault(); closeModal(); }
     else if (window.Lofi && Lofi.popOpen()) Lofi.hidePop();
+    else if (window.TodoPop && TodoPop.isOpen()) TodoPop.close();
     else if (S.view === "todo" && window.TodoView && TodoView.escape()) e.preventDefault();
     else if (S.view === "notes" && window.NotesView && NotesView.escape()) e.preventDefault();
     else if (S.openTask != null) closeDrawer();

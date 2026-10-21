@@ -946,3 +946,14 @@ def test_web_code_ai_edit_and_explain(env, project, monkeypatch):
         finally:
             await client.close()
     asyncio.run(main())
+
+
+def test_web_todo_fab_wired():
+    """Nút nổi ✅ góc dưới phải (todo.js TodoPop): có chữ riêng, vẽ lại cùng TodoView, Esc đóng popover."""
+    from ateam.web import STATIC, ui_strings
+    s = ui_strings()
+    assert {"todo_pop_open", "todo_pop_none"} <= set(s)
+    js = (STATIC / "todo.js").read_text(encoding="utf-8")
+    assert "window.TodoPop" in js and "if (window.TodoPop) TodoPop.render();" in js
+    assert "TodoPop.close()" in (STATIC / "app.js").read_text(encoding="utf-8")
+    assert ".tdfab {" in (STATIC / "app.css").read_text(encoding="utf-8")

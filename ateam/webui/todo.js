@@ -739,6 +739,7 @@ window.TodoView = (() => {
   }
   function render() {
     navCount();
+    if (window.TodoPop) TodoPop.render();
     TD.drawTags(false);
     if (S.view !== "todo" || editing != null) return;
     layout();
@@ -767,5 +768,94 @@ window.TodoView = (() => {
     }
   });
 
-  return { render, escape, show() { sig = ""; drSig = ""; render(); const a = $("#todo-add"); if (a && sel == null) a.focus(); } };
+  return { render, escape, show() { sig = ""; drSig = ""; render(); const a = $("#todo-add"); if (a && sel == null) a.focus(); },
+    open(id) { if (item(id)) openItem(id); } };
+})();
+
+/* Nút nổi ✅ góc dưới phải (mọi tab trừ To-do): bấm hiện popover việc chưa xong theo hạn — thêm nhanh, tick xong,
+   bấm tên mở chi tiết ở tab To-do. Dữ liệu vẫn từ S.state.todos, vẽ lại cùng TodoView.render. */
+window.TodoPop = (() => {
+  let open = false, sig = "";
+  const items = () => (S.state && S.state.todos) || [];
+  const box = () => $("#todo-fab");
+  const BUCKETS = ["over", "today", "week", "later", "none"];
+
+  function mount() {
+    if (box()) return;
+    const d = document.createElement("div");
+    d.className = "tdfab";
+    d.id = "todo-fab";
+    d.innerHTML = `
+      <div class="tdfab-pop" role="dialog" aria-label="${esc(t("todo"))}">
+        <div class="tdfab-head"><b>✅ ${esc(t("todo"))}</b><span class="muted small" id="tdfab-left"></span><span class="tsp"></span>
+          <button class="mini" data-tp="tab" title="${esc(t("todo_pop_open"))}">↗</button>
+          <button class="mini" data-tp="close" title="${esc(t("close"))}">✕</button></div>
+        <input class="field one" id="tdfab-add" placeholder="${esc(t("todo_ph"))}" autocomplete="off" spellcheck="false" maxlength="500">
+        <div class="tdfab-list" id="tdfab-list"></div>
+      </div>
+      <button class="tdfab-btn" data-tp="fab" aria-label="${esc(t("todo"))}" title="${esc(t("todo"))}">✅<span class="tdfab-n" id="tdfab-n"></span></button>`;
+    document.body.appendChild(d);
+    const add = $("#tdfab-add", d);
+    add.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); setOpen(false); return; }
+      if (e.key !== "Enter" || e.isComposing || !add.value.trim()) return;
+      if (!TD.parseQuick(add.value).text.trim()) { toast(t("todo_empty"), "warn"); return; }
+      send("todo", { action: "add", text: add.value });
+      add.value = "";
+    });
+    d.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-tp]"), row = e.target.closest("[data-id]");
+      if (b && b.dataset.tp === "fab") { setOpen(!open); return; }
+      if (b && b.dataset.tp === "close") { setOpen(false); return; }
+      if (b && b.dataset.tp === "tab") { setOpen(false); setView("todo"); return; }
+      if (!row) return;
+      const id = +row.dataset.id;
+      if (e.target.closest(".tcb")) { send("todo", { action: "toggle", id }); return; }
+      setOpen(false);
+      setView("todo");
+      TodoView.open(id);
+    });
+  }
+  function setOpen(on) {
+    open = on;
+    sig = "";
+    render();
+    if (on) { const a = $("#tdfab-add"); if (a) a.focus(); }
+  }
+  function rowHtml(x) {
+    const d = TD.dueLabel(x), p = x.priority || 0;
+    return `<div class="trow" data-id="${x.id}">
+      <span class="tcb" role="checkbox" aria-checked="false"></span>
+      <span class="tpri p${p}">${p ? "!".repeat(p) : ""}</span>
+      <span class="ttl">${mdInline(x.text)}</span>
+      <span class="trtags">${(x.tags || []).map((i) => TD.chip(i)).join("")}</span>
+      <span class="tdue ${d.cls}">${esc(d.text)}</span>
+    </div>`;
+  }
+  function render() {
+    mount();
+    const b = box(), left = items().filter((x) => !x.done), over = left.filter((x) => TD.bucket(x) === "over").length;
+    b.classList.toggle("hidden", S.view === "todo");
+    b.classList.toggle("pop", open);
+    $(".tdfab-btn", b).setAttribute("aria-expanded", open ? "true" : "false");
+    const n = $("#tdfab-n", b);
+    n.textContent = left.length || "";
+    n.classList.toggle("over", over > 0);
+    if (!open) return;
+    const s = JSON.stringify([items(), TD.tags(), new Date().getMinutes()]);
+    if (s === sig) return;
+    sig = s;
+    $("#tdfab-left", b).textContent = left.length ? t("todo_left").replace("{n}", left.length) : "";
+    const byDue = (a, c) => { const da = a.due || "9999", dc = c.due || "9999"; return da < dc ? -1 : da > dc ? 1 : (c.priority || 0) - (a.priority || 0); };
+    const html = BUCKETS.map((k) => {
+      const g = left.filter((x) => TD.bucket(x) === k).sort(byDue);
+      return g.length ? `<div class="tgh ${k}">${k === "over" ? "⚠ " : k === "today" ? "◉ " : ""}${esc(t("b_" + k))}<span class="n">${g.length}</span></div>${g.map(rowHtml).join("")}` : "";
+    }).join("");
+    $("#tdfab-list", b).innerHTML = html || `<div class="col-empty">${esc(t(items().length ? "todo_pop_none" : "todo_empty"))}</div>`;
+  }
+  /* bấm ra ngoài → đóng; bỏ qua popup chung (chọn hạn, tag…) của TD */
+  window.addEventListener("pointerdown", (e) => {
+    if (open && box() && !box().contains(e.target)) setOpen(false);
+  });
+  return { render, isOpen: () => open, close: () => setOpen(false) };
 })();
