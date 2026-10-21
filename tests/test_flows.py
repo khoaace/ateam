@@ -539,3 +539,23 @@ after = [1, 2]
     assert chk.title == "Kiểm tra" and chk.status == "done" and 1 in chk.depends_on and 2 in chk.depends_on
     assert "[kiểm tra]" not in (project / ".ateam/logs/t1.log").read_text()
     assert (project / f".ateam/logs/t{chk.id}.log").read_text().count("[kiểm tra]") == 1
+
+
+def test_verify_step_without_check_command_finishes_with_note(env, project):
+    """Bước "verify" khi dự án chưa đặt /verify: xong ngay kèm ghi chú, không gọi agent, không chặn mục tiêu."""
+    write_project_config(project, """auto_review = false
+[workflows.kiem]
+[[workflows.kiem.steps]]
+agent = "grok"
+title = "B"
+prompt = "tạo b"
+[[workflows.kiem.steps]]
+agent = "lead"
+type = "verify"
+title = "Kiểm tra"
+""")
+    r = ateam(env, project, "flow", "-y", "-q", "kiem", "x")
+    assert "done" in r.stdout, r.stdout
+    chk = next(t for t in tasks(project) if t.kind == "verify")
+    assert chk.status == "done" and "Chưa đặt lệnh kiểm tra" in chk.result
+    assert "claude ·" not in (project / f".ateam/logs/t{chk.id}.log").read_text()  # không gọi agent
