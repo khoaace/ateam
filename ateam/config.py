@@ -818,9 +818,24 @@ def load_state() -> dict:
         return {}
 
 
+def atomic_write(path: Path, text: str) -> None:
+    """Ghi qua file tạm cùng thư mục rồi os.replace: tiến trình khác (dự án khác, `ateam goal`) đọc giữa chừng không gặp
+    JSON dở — load_state coi file hỏng là {} và lần ghi sau của nó sẽ xoá sạch cài đặt; tắt máy giữa lúc ghi cũng vậy."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+
+
 def save_state(state: dict) -> None:
-    GLOBAL_DIR.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write(STATE_FILE, json.dumps(state, ensure_ascii=False, indent=2))
 
 
 def save_agent_setting(agent: str, key: str, value: str | None) -> None:
@@ -893,9 +908,7 @@ def save_project_setting(root: Path, key: str, value) -> None:
         st.pop(key, None)
     else:
         st[key] = value
-    p = root / ".ateam" / "state.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write(root / ".ateam" / "state.json", json.dumps(st, ensure_ascii=False, indent=2))
 
 
 def _merge(base: dict, override: dict) -> dict:
@@ -1051,9 +1064,8 @@ CUSTOM_HEADER = tr("# Agent và workflow tuỳ chỉnh của ateam. Sửa trong 
 
 
 def save_custom(data: dict) -> None:
-    GLOBAL_DIR.mkdir(parents=True, exist_ok=True)
     clean = {k: v for k, v in data.items() if v}
-    CUSTOM_FILE.write_text(CUSTOM_HEADER + "\n" + dump_toml(clean), encoding="utf-8")
+    atomic_write(CUSTOM_FILE, CUSTOM_HEADER + "\n" + dump_toml(clean))
 
 
 def save_custom_item(kind: str, name: str, body: dict | None, old_name: str | None = None) -> None:

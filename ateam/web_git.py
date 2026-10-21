@@ -193,7 +193,7 @@ class GitWeb:
 
     # ------------------------------------------------------------------ thao tác
     BUSY = {"pull", "checkout", "create_branch", "merge", "stash_push", "stash_apply", "stash_pop", "revert",
-            "undo", "continue"}
+            "undo", "continue", "discard_all"}  # discard_all: reset --hard + clean xoá luôn phần agent đang sửa
 
     async def op(self, d: dict) -> tuple:
         """Một thao tác git. Trả (lời nhắn, mức[, thêm]) — mức ok/warn như TUI (git_do)."""

@@ -254,8 +254,11 @@ có ở gốc dự án được đổi sang tuyệt đối.
 
 ## Hạn mức
 
-`limits.looks_rate_limited(output, rc)` chỉ xét khi agent thất bại hoặc in ≤ 15 dòng (tránh nhầm
-với code nói về "rate limit"), tìm mẫu trong 30 dòng cuối. `reset_time` đọc giờ hồi từ
+`limits.looks_rate_limited(output, rc)` / `looks_overloaded` xét 30 dòng cuối khi agent thoát lỗi (mẫu rộng
+`LIMIT_RE`/`OVERLOAD_RE`); thoát mã 0 thì chỉ khi in ≤ 3 dòng, không phải câu trả lời theo giao thức (`ANSWER_RE`:
+`SUMMARY:`, JSON, `<<<…>>>`) và khớp mẫu chặt (`STRICT_LIMIT_RE`/`STRICT_OVERLOAD_RE`) — `claude -p` chỉ in câu trả lời
+cuối nên "Done.\nSUMMARY: thêm rate limiting" cũng ngắn. Task bị xếp lại vì hết hạn mức / quá tải quá `MAX_REQUEUES`
+lần trong phiên thì thành lỗi (`_requeues`). `reset_time` đọc giờ hồi từ
 `|<epoch>` (Claude), `try again in N minutes`, `resets at 3pm`; không có thì `cooldown_minutes`.
 Cooldown lưu ở `~/.config/ateam/state.json` (`cooldown`), dùng chung mọi dự án.
 
@@ -332,12 +335,14 @@ stash/revert có cờ `-c user.*` dự phòng như `Orchestrator.git_ident`. M�
   `base`/`head` của `diff_versions`: `""` = index (`git show :path`), `None` = file trong thư mục,
   commit đầu tiên so với cây rỗng `EMPTY_TREE`.
 - Commit message: `Orchestrator.commit_message()` gửi `prompts.commit_message_prompt` (diff đã stage, không có
-  thì mọi thay đổi; 8 commit gần nhất để bắt chước ngôn ngữ/kiểu) qua `_call_lead` (có dự phòng hạn mức), bóc
+  thì mọi thay đổi; tối đa `UNTRACKED_MAX` file chưa track; 8 commit gần nhất để bắt chước ngôn ngữ/kiểu) qua
+  `_call_lead(effort=QUICK_EFFORT)` (lượt nhanh: effort "low"; có dự phòng hạn mức — giải thích code ở tab Code cũng
+  vậy), bóc
   bằng `extract_commit_message` (sau `SUMMARY:` cuối). Ô nhập một dòng giữ tiêu đề; phần thân lưu ở
   `TeamApp._git_body` và được nối vào khi commit.
 - TUI: `refresh_git()` đọc status + 80 commit, vẽ khi mở tab, sau mỗi thao tác (`git_do`), và mỗi 3 giây khi tab
   đang mở (agent/editor ngoài sửa file). Danh sách file chỉ dựng lại khi danh sách id đổi, con trỏ đi theo file khi
-  nó chuyển nhóm. Thao tác đổi HEAD (checkout, tạo nhánh, pull, merge, stash, revert, bỏ commit) bị từ chối khi
+  nó chuyển nhóm. Thao tác đổi HEAD (checkout, tạo nhánh, pull, merge, stash, revert, bỏ commit, bỏ mọi thay đổi) bị từ chối khi
   `orch.runs` khác rỗng — agent đang sửa thư mục hoặc sắp merge nhánh task vào nhánh hiện tại. Thao tác không
   hoàn tác được (bỏ thay đổi, xoá hẳn nhánh, xoá stash, revert, bỏ commit) hỏi lại bằng `ConfirmScreen`.
   `/git <lệnh>` chạy `git <lệnh>` qua `ShellManager` (tab Terminal) cho các việc còn lại (rebase, tag…).

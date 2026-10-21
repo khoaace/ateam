@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.35.1 — chưa phát hành
+
+Sửa lỗi sau khi review toàn bộ tính năng chính:
+- **Không còn nhận nhầm "hết hạn mức"**: câu trả lời ngắn mà thành công nhắc "rate limit", "quota", 429, 503 (task về
+  rate limiting, lỗi ở dòng 503…) từng làm agent bị cho nghỉ 30 phút và task bị agent khác làm lại từ đầu. Lỗi lặp lại
+  thật sự khớp mẫu hết hạn mức / quá tải chỉ xếp lại tối đa 5 lần.
+- **Không mất cài đặt**: `state.json`, `custom.toml`, `.ateam/state.json` ghi nguyên tử — hai phiên (hai dự án, TUI +
+  `ateam goal`) đọc đúng lúc đang ghi từng có thể xoá sạch model/effort, agent bật/tắt, agent tuỳ chỉnh.
+- **Thoát app không để CLI chạy mồ côi**: lượt trưởng nhóm (lập kế hoạch, review, /init…) và Ctrl+C ở `ateam goal`/`run`
+  dừng luôn tiến trình agent.
+- Web: `/init`, `/compact`, `/models … làm mới` không làm đứng cả tab trong lúc chạy.
+- Tin chat / `/task` bắt đầu bằng "-" (gạch đầu dòng) không còn bị CLI hiểu là cờ.
+- Tab Git: "Bỏ mọi thay đổi" bị chặn khi agent đang chạy task (như đổi nhánh / pull / stash).
+- Kế hoạch có phụ thuộc vòng hay `depends_on` lạ không còn làm mục tiêu treo / lỗi; mục tiêu đã huỷ hết task không gọi
+  review; dọn bảng việc xoá kèm nhánh `ateam/tN` còn sót; file mới lưu từ tab Code có quyền như file thường.
+- **Nhanh hơn, ít token hơn**: viết commit message và giải thích code chạy effort low; vòng sửa lỗi test chỉ chạy lại test
+  đang fail; `/init` dùng timeout của agent, không chép lại AGENTS.md, không gọi agent khi dự án không đổi; không gửi lại
+  bản tổng quan trong phiên đã có; ghi chú dài của agent được cắt trong prompt.
+
 ## 0.35.0 — 21/10/2026
 
 - **`/init`** (hoặc `ateam init --overview [trọng tâm]`): trưởng nhóm tìm hiểu dự án một lần, viết bản tổng quan

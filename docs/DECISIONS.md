@@ -64,9 +64,12 @@ tránh chạy test cho task chỉ đọc/nghiên cứu. Ở chế độ shared, 
 
 ## 10. Nhận diện hết hạn mức bằng mẫu chữ, chỉ khi agent thất bại hoặc in ít
 
-**Lý do**: không CLI nào có mã thoát riêng cho rate limit. Giới hạn ở "rc ≠ 0 hoặc ≤ 15 dòng" để không
-nhầm task đang viết code về rate limiter. Cooldown lưu toàn cục vì hạn mức theo tài khoản, không theo
-dự án. **Xem lại nếu**: thêm CLI có output JSON nêu rõ lỗi hạn mức — nên đọc trường đó thay vì regex.
+**Lý do**: không CLI nào có mã thoát riêng cho rate limit. Thoát lỗi thì dò mẫu rộng ở 30 dòng cuối; thoát mã 0 chỉ
+khi in ≤ 3 dòng, không phải câu trả lời theo giao thức (SUMMARY / JSON / `<<<…>>>`) và khớp mẫu chặt ("usage limit
+reached", "you've hit your limit"…) — `claude -p` chỉ in câu trả lời cuối nên câu trả lời ngắn nhắc "rate limit", "quota",
+429, 503 từng bị coi là hết hạn mức: agent nghỉ 30 phút, task bị agent khác làm lại từ đầu (sửa 21/10/2026). Lỗi lặp lại
+khớp mẫu (quota hết hẳn, cấu hình sai) xếp lại tối đa `MAX_REQUEUES` lần rồi thành lỗi. Cooldown lưu toàn cục vì hạn mức
+theo tài khoản, không theo dự án. **Xem lại nếu**: thêm CLI có output JSON nêu rõ lỗi hạn mức — nên đọc trường đó thay vì regex.
 
 ## 11. UI tiếng Việt, prompt tiếng Anh
 

@@ -130,6 +130,14 @@ EN: dict[str, str] = {
         "💡 No project overview yet — type /init so the lead studies the project once and later plans re-read less code.",
     "💡 Bản tổng quan dự án đã cũ ({n} commit từ lần /init) — gõ /init để cập nhật.":
         "💡 The project overview is getting old ({n} commits since /init) — type /init to update it.",
+    "{agent} hết hạn mức / quá tải lặp lại {n} lần liên tiếp — /retry sau":
+        "{agent} hit its usage limit / overload {n} times in a row — /retry later",
+    "Mọi task đã bị huỷ":
+        "All tasks were cancelled",
+    "🏁 Mục tiêu #{id} kết thúc: mọi task đã bị huỷ.":
+        "🏁 Goal #{id} ended: all tasks were cancelled.",
+    "⚠ Bỏ phụ thuộc vòng #{a} → #{b} trong kế hoạch.":
+        "⚠ Dropped circular dependency #{a} → #{b} in the plan.",
     "⌛ {name} quá {v}s chưa xong ({label}).":
         "⌛ {name} took over {v}s without finishing ({label}).",
     "Bản tổng quan dự án vẫn mới — không có thay đổi nào từ lần /init trước (gõ /init <trọng tâm> để buộc cập nhật, xoá .ateam/project.md để viết lại)":

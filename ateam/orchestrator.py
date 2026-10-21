@@ -35,6 +35,9 @@ SYSTEM = 0  # id "task" của log hệ thống
 CHAT = "chat"  # nguồn task của lượt chat trực tiếp với agent (Orchestrator.chat): không hiện ở bảng việc
 MAX_ASKS = 3  # số câu <<<ASK>>> tối đa một task được hỏi người dùng
 NOTE_MAX = 500  # ký tự mỗi ghi chú của agent đưa vào prompt (notes_text)
+MAX_REQUEUES = 5  # số lần một task được tự xếp lại vì hết hạn mức / quá tải trong một phiên, quá thì báo lỗi
+QUICK_EFFORT = "low"  # lượt nhanh (viết commit message, giải thích code): không cần effort cao đặt cho lập kế hoạch
+UNTRACKED_MAX = 100  # số file chưa track gửi kèm khi viết commit message
 CHAT_REPLY_MAX = 12000  # độ dài câu trả lời chat giữ lại (thread / chuyển phiên)
 # --resume thất bại vì CLI không còn phiên đó (đã xoá, khác thư mục…) -> chạy lại với prompt đầy đủ
 SESSION_LOST_RE = re.compile(r"no conversation found|session[^\n]{0,60}not (?:be )?found|no (?:saved )?session"
@@ -92,6 +95,7 @@ class Orchestrator:
         self._bg: set[asyncio.Task] = set()
         self._usage_jobs: set[asyncio.Task] = set()  # đọc token sau mỗi lượt (run_until_idle chờ xong)
         self._cancel_req: set[int] = set()
+        self._requeues: dict[int, int] = {}  # task -> số lần đã tự xếp lại vì hết hạn mức / quá tải (MAX_REQUEUES)
         self._rules_sent: dict[str, str] = {}  # phiên CLI -> digest bộ rule đã gửi trong phiên đó
         self._chat_new: set[str] = set()  # agent mà tin chat kế tiếp bắt đầu cuộc mới
         self._wt_base: dict[int, str] = {}
@@ -180,6 +184,8 @@ class Orchestrator:
                                         file_ref=a.file_ref, file_args=a.file_args,
                                         image_args=a.image_args,
                                         attachment_limit=ATTACHMENT_MAX if (a.opencode_major or 0) >= 2 else None)
+        if prompt.startswith("-"):  # chat / `/task` gửi nguyên văn: "- sửa nút" bị clap/commander hiểu là cờ
+            prompt = " " + prompt
         return mentions.insert_args(a.argv(prompt, model=model, effort=effort, plan=plan, session=session,
                                            resume=resume), prompt, extra)
 
@@ -364,11 +370,12 @@ class Orchestrator:
         return gid
 
     async def _call_lead(self, prompt: str, label: str, first: str = "", goal_id: int | None = None,
-                         keep_session: bool = False, slow: bool = False) -> str | None:
+                         keep_session: bool = False, slow: bool = False, effort: str | None = None) -> str | None:
         """Gọi trưởng nhóm (hoặc `first` nếu có); nếu hết hạn mức thì lần lượt thử các agent trong lead_fallback.
         keep_session: lượt lập kế hoạch của mục tiêu goal_id — mở/tiếp tục phiên trưởng nhóm của mục tiêu đó
         (/continue m<id> nhờ vậy nhớ kế hoạch cũ). slow: lượt dài (/init khám phá cả dự án) — dùng timeout của agent
-        thay lead_timeout, hết giờ thì dừng (agent khác cũng phải khám phá lại từ đầu)."""
+        thay lead_timeout, hết giờ thì dừng (agent khác cũng phải khám phá lại từ đầu). effort: mức riêng cho lượt này
+        (lượt nhanh như viết commit message dùng "low" thay effort cao đặt cho lập kế hoạch)."""
         names = list(dict.fromkeys([first or self.cfg.lead, self.cfg.lead] + list(self.cfg.lead_fallback)))
         for name in names:
             if goal_id is not None and goal_id in self._lead_stop:
@@ -391,7 +398,8 @@ class Orchestrator:
                 g = self.db.goal(goal_id)
                 session = g.lead_session if g and g.lead_session_agent == name else None
             out, rc, kind = await self._lead_once(lead, prompt, label, goal_id, session=session,
-                                                  keep_session=keep_session and goal_id is not None, slow=slow)
+                                                  keep_session=keep_session and goal_id is not None, slow=slow,
+                                                  effort=effort)
             if kind == "cancelled":
                 return None
             if kind in ("ratelimit", "overloaded"):
@@ -418,14 +426,16 @@ class Orchestrator:
 
     async def _lead_once(self, lead: AgentConfig, prompt: str, label: str,
                          goal_id: int | None = None, session: str | None = None,
-                         keep_session: bool = False, slow: bool = False) -> tuple[str, int, str]:
+                         keep_session: bool = False, slow: bool = False,
+                         effort: str | None = None) -> tuple[str, int, str]:
         await self.prepare_agent(lead)
         if goal_id is not None and goal_id in self._lead_stop:  # huỷ trong lúc chuẩn bị: không chạy nữa
             return "", 1, "cancelled"
         resume = bool(session)
         if keep_session and not resume:
             session = self.new_session(lead)
-        first_argv = self.argv_for(lead, prompt, self.root, plan=True, session=session, resume=resume)
+        first_argv = self.argv_for(lead, prompt, self.root, plan=True, session=session, resume=resume,
+                                   effort=effort)
         span = [time.time(), None, label]
         self.lead_spans.append(span)
         act = self._begin_activity(lead.name, None, label, lead.label())
@@ -445,7 +455,8 @@ class Orchestrator:
 
             def make(argv=None) -> Run:
                 r = Run(argv if argv is not None else
-                        self.argv_for(lead, prompt, self.root, plan=True, session=session, resume=resume),
+                        self.argv_for(lead, prompt, self.root, plan=True, session=session, resume=resume,
+                                      effort=effort),
                         str(self.root), self.env_for(), use_pty=lead.pty,
                         timeout=lead.timeout if slow else self.lead_timeout(lead), on_line=on_line)
                 made.append(r)
@@ -463,7 +474,7 @@ class Orchestrator:
                     if goal_id is not None:
                         self.lead_runs[goal_id] = run
                     rc = await run.start()
-                if self.effort_rejected(lead, None, None, run, rc):
+                if self.effort_rejected(lead, None, effort, run, rc):
                     run = make()
                     if goal_id is not None:
                         self.lead_runs[goal_id] = run
@@ -888,11 +899,34 @@ class Orchestrator:
             id_map[str(item.get("id", i))] = tid
             created.append((tid, item.get("depends_on") or []))
             self.log(f"   #{tid} → {agent}{(' @' + effort) if effort else ''}: {title}")
+        graph: dict[int, list[int]] = {}
         for tid, deps in created:
-            real = [id_map[d] for d in deps if d in id_map and id_map[d] != tid]
+            if not isinstance(deps, list):  # "depends_on": 1 hoặc "1"
+                deps = [deps]
+            graph[tid] = list(dict.fromkeys(id_map[d] for d in deps
+                                            if isinstance(d, (int, str)) and d in id_map and id_map[d] != tid))
+        for tid, real in self._drop_cycles(graph).items():
             if real:
                 self.db.update_task(tid, depends_on=real)
         return [t for t, _ in created]
+
+    def _drop_cycles(self, graph: dict[int, list[int]]) -> dict[int, list[int]]:
+        """Bỏ phụ thuộc tạo vòng (1 chờ 2, 2 chờ 1) — không thì cả hai chờ nhau mãi, mục tiêu treo ở "running"."""
+        state: dict[int, int] = {}  # 1 = đang duyệt, 2 = xong
+
+        def visit(n: int) -> None:
+            state[n] = 1
+            for d in list(graph.get(n, [])):
+                if state.get(d) == 1:
+                    graph[n].remove(d)
+                    self.log(tr("⚠ Bỏ phụ thuộc vòng #{a} → #{b} trong kế hoạch.", a=n, b=d))
+                elif d in graph and not state.get(d):
+                    visit(d)
+            state[n] = 2
+        for n in graph:
+            if not state.get(n):
+                visit(n)
+        return graph
 
     def approve(self, gid: int | None = None) -> int:
         n = 0
@@ -940,6 +974,10 @@ class Orchestrator:
         tids, gids = self.finished_ids()
         if not tids and not gids:
             return 0, 0
+        # task lỗi / huỷ ở chế độ worktree giữ nhánh để xem lại — dọn khỏi bảng thì xoá luôn, không để mồ côi trong repo
+        for t in (self.db.task(i) for i in tids):
+            if t and t.branch:
+                self._spawn(self._git("branch", "-D", t.branch))
         self.db.delete(tids, gids)
         for tid in tids:
             try:
@@ -1267,6 +1305,7 @@ class Orchestrator:
         # cùng phiên: agent nhớ đề bài và lần làm trước, chỉ cần biết lý do chạy lại
         resume = P.retry_prompt(t.error or t.result or "", self.use_worktree) if t.session else None
         ask = dict(t.ask, parked=False) if t.ask else None
+        self._requeues.pop(tid, None)
         self.db.update_task(tid, status=QUEUED, error=None, result=None, started=None, finished=None,
                             resume=resume, ask=ask)
         for o in self.db.tasks(status=BLOCKED):
@@ -1423,14 +1462,16 @@ class Orchestrator:
             body = await repo.diff_text("HEAD")
             _, others = await repo.run("ls-files", "--others", "--exclude-standard")
             diff = (stat + "\n" + body[:60_000]).strip()
-            if others.strip():
-                diff += "\n\nNew untracked files:\n" + others.strip()
+            new = others.strip().splitlines()
+            if new:  # thư mục build / node_modules chưa ignore: hàng nghìn file — prompt đi qua argv
+                more = [f"… (+{len(new) - UNTRACKED_MAX} more)"] if len(new) > UNTRACKED_MAX else []
+                diff += "\n\nNew untracked files:\n" + "\n".join(new[:UNTRACKED_MAX] + more)
         if not diff.strip():
             return False, tr("Không có thay đổi nào để viết commit message")
         recent = "\n".join("- " + c.subject for c in await repo.log(8))
         writer = self.commit_agent()
         out = await self._call_lead(P.commit_message_prompt(diff=diff, recent=recent, cwd=str(self.root)),
-                                    tr("Viết commit message"), first=writer)
+                                    tr("Viết commit message"), first=writer, effort=QUICK_EFFORT)
         msg = P.extract_commit_message(out or "")
         if not msg:
             return False, tr("{agent} không trả về commit message (xem .ateam/logs/lead.log)", agent=writer)
@@ -1461,7 +1502,8 @@ class Orchestrator:
             return True, code
         prompt = P.code_explain_prompt(path=path, language=lang, before=before, selection=text[start:end], after=after,
                                        question=instruction.strip(), cwd=str(self.root), lang=get_lang())
-        out = await self._call_lead(prompt, tr("Giải thích code: {path}", path=path), first=who)
+        out = await self._call_lead(prompt, tr("Giải thích code: {path}", path=path), first=who,
+                                    effort=QUICK_EFFORT)
         answer = P.extract_answer(P.strip_echo(out or "", prompt))
         if not answer:
             return False, tr("{agent} không trả lời (xem .ateam/logs/lead.log)", agent=who)
@@ -1585,6 +1627,11 @@ class Orchestrator:
             if any(t.status in ACTIVE for t in tasks):
                 continue
             if not tasks:
+                continue
+            if all(t.status == CANCELLED for t in tasks):  # người dùng huỷ hết: khỏi tốn một lượt review
+                self.db.update_goal(g.id, status="cancelled", summary=tr("Mọi task đã bị huỷ"))
+                self.log(tr("🏁 Mục tiêu #{id} kết thúc: mọi task đã bị huỷ.", id=g.id))
+                changed = True
                 continue
             wf = self.cfg.workflows.get(g.workflow or "")
             review = wf.review if wf and wf.review is not None else self.cfg.auto_review
@@ -1951,7 +1998,16 @@ class Orchestrator:
                     self.db.update_task(tid, status=ASKING, ask={"qa": qa, "parked": parked}, error=None,
                                         result=None)
                     self.log(tr("❓ #{tid} {agent} hỏi bạn: {q}", tid=tid, agent=t.agent, q=asked["q"]))
+            elif status == QUEUED and self._requeues.get(tid, 0) >= MAX_REQUEUES:
+                # lỗi lặp lại mà khớp mẫu hết hạn mức / quá tải (quota tài khoản hết hẳn, cấu hình sai trả 503…):
+                # không xếp lại mãi — mỗi lượt vẫn tốn thời gian (và token)
+                self._requeues.pop(tid, None)
+                error = tr("{agent} hết hạn mức / quá tải lặp lại {n} lần liên tiếp — /retry sau", agent=t.agent,
+                           n=MAX_REQUEUES + 1)
+                self.db.update_task(tid, status=FAILED, error=error, finished=time.time())
+                self.log(f"✗ #{tid} {t.agent}: {FAILED} — {error}")
             elif status == QUEUED:  # hết hạn mức: xếp hàng lại, có thể đổi agent
+                self._requeues[tid] = self._requeues.get(tid, 0) + 1
                 fields = {"status": QUEUED, "started": None, "error": None}
                 if new_agent:
                     fields.update(agent=new_agent, model=None, effort=None)
@@ -1960,6 +2016,7 @@ class Orchestrator:
                                                      else tr(", chờ {agent} hết quá tải", agent=t.agent) if res == "overloaded"
                                                      else tr(", chờ {agent} hồi hạn mức", agent=t.agent)))
             else:
+                self._requeues.pop(tid, None)
                 self.db.update_task(tid, status=status, error=error, result=summary,
                                     finished=time.time())
                 icon = {DONE: "✓", CANCELLED: "■", CONFLICT: "⚠", REVIEW: "👀"}.get(status, "✗")

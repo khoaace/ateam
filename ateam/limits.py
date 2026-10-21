@@ -25,25 +25,37 @@ OVERLOAD_RE = re.compile(
     r"high (?:traffic|demand)|no capacity|overloaded|servers? (?:is |are )?(?:busy|at capacity)"
     r"|service (?:is )?(?:temporarily )?unavailable|temporarily unavailable|\b(?:503|529)\b", re.I)
 OVERLOAD_MINUTES = 3  # nghỉ ngắn rồi thử lại: quá tải thường hết sau vài phút
+# Agent thoát mã 0: chỉ tin câu báo lỗi rõ ràng của CLI — chữ "quota", "rate limit", số 429/503 trơn hay có trong câu
+# trả lời bình thường (task về rate limiting, lỗi ở dòng :503…)
+STRICT_LIMIT_RE = re.compile(
+    r"usage[ _-]?limit (?:reached|exceeded)|limit (?:reached|exceeded)|rate[ _-]?limit(?:ed| exceeded| reached)"
+    r"|too many requests|resource[_ ]exhausted|out of (?:credits|usage)|hit (?:your|the) (?:\w+ )?(?:usage )?limit"
+    r"|(?:have|'ve) reached (?:your|the) (?:\w+ )?(?:usage |rate )?limit|credit balance is too low"
+    r"|quota (?:exceeded|exhausted)",
+    re.I)
+STRICT_OVERLOAD_RE = re.compile(
+    r"high (?:traffic|demand)|no capacity available|overloaded_error|\(code (?:503|529)\)", re.I)
+# câu trả lời theo giao thức của ateam (SUMMARY, kế hoạch/review JSON, khối <<<…>>>): agent đã làm xong, không phải lỗi
+ANSWER_RE = re.compile(r"SUMMARY:|<<<[A-Z]+|^\s*[\[{]", re.M)
 
 
 def _tail(output: str, rc: int) -> str | None:
-    """30 dòng cuối, chỉ khi agent thất bại hoặc gần như không in gì — tránh nhầm câu trả lời ngắn có chữ
-    'rate limit' (vd SUMMARY "thêm rate limiting") với thông báo lỗi."""
+    """30 dòng cuối, chỉ khi agent thất bại hoặc chỉ in vài dòng không phải câu trả lời — `claude -p` chỉ in câu trả lời
+    cuối nên "Done.\\nSUMMARY: thêm rate limiting" cũng chỉ 2 dòng."""
     lines = [l for l in output.splitlines() if l.strip()]
-    if rc == 0 and len(lines) > 3:
+    if rc == 0 and (len(lines) > 3 or ANSWER_RE.search(output)):
         return None
     return "\n".join(lines[-30:])
 
 
 def looks_rate_limited(output: str, rc: int) -> bool:
     tail = _tail(output, rc)
-    return bool(tail and LIMIT_RE.search(tail))
+    return bool(tail and (LIMIT_RE if rc else STRICT_LIMIT_RE).search(tail))
 
 
 def looks_overloaded(output: str, rc: int) -> bool:
     tail = _tail(output, rc)
-    return bool(tail and OVERLOAD_RE.search(tail))
+    return bool(tail and (OVERLOAD_RE if rc else STRICT_OVERLOAD_RE).search(tail))
 
 
 def reset_time(output: str, default_minutes: int, now: float | None = None) -> float:

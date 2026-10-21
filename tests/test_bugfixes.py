@@ -220,3 +220,60 @@ def test_cancelled_run_stops_its_process():
         return run.proc.returncode
     assert asyncio.run(main()) != 0
 
+
+def test_short_successful_answers_are_not_limits():
+    """`claude -p` chỉ in câu trả lời cuối, thường 1-3 dòng: thoát mã 0 mà nhắc "rate limit", "quota", 429, :503 (task về
+    rate limiting, lỗi ở dòng 503…) không được coi là hết hạn mức / quá tải — trước đây agent bị cho nghỉ 30 phút và task
+    bị agent khác làm lại từ đầu. Thông báo lỗi thật của CLI (thoát 0) vẫn nhận ra."""
+    for out in ("Done. Added rate limiting to the API.\nSUMMARY: added rate limiter in api.py",
+                "SUMMARY: sửa lỗi 429 khi gọi API",
+                "Fixed the quota display.",
+                "Fixed crash at server.py:503",
+                '[{"id": 1, "agent": "codex", "title": "Add rate limiting", "prompt": "handle quota exceeded"}]',
+                '{"done": true, "summary": "Server is overloaded handling added", "new_tasks": []}',
+                "The API returns 429 when we exceed the rate limit."):
+        assert not limits.looks_rate_limited(out, 0) and not limits.looks_overloaded(out, 0), out
+    assert limits.looks_rate_limited("Claude AI usage limit reached|%d" % (time.time() + 60), 0)
+    assert limits.looks_rate_limited("You've hit your limit · resets 3pm", 0)
+    assert limits.looks_overloaded("Our servers are experiencing high traffic right now. (code 503)", 0)
+    # thoát lỗi: vẫn dùng mẫu rộng như trước
+    assert limits.looks_rate_limited("Error: quota", 1) and limits.looks_overloaded("HTTP 503", 1)
+
+
+def test_state_json_never_read_half_written(tmp_path, monkeypatch):
+    """state.json dùng chung mọi dự án: tiến trình khác đọc đúng lúc đang ghi không được thấy JSON dở (load_state coi là
+    {} và lần ghi sau của nó xoá sạch cài đặt). Ghi qua file tạm + os.replace."""
+    import threading
+
+    from ateam import config
+    monkeypatch.setattr(config, "STATE_FILE", tmp_path / "state.json")
+    big = {"agents": {f"a{i}": {"model": "m" * 200} for i in range(1500)}}
+    config.save_state(big)
+    stop = threading.Event()
+
+    def writer():
+        for i in range(150):
+            config.save_state(dict(big, n=i))
+        stop.set()
+    th = threading.Thread(target=writer)
+    th.start()
+    reads = 0
+    while not stop.is_set():
+        assert config.load_state().get("agents"), "đọc phải JSON dở"
+        reads += 1
+    th.join()
+    assert reads and config.load_state()["n"] == 149
+    assert [p.name for p in tmp_path.iterdir()] == ["state.json"]  # không sót file tạm
+
+
+def test_new_file_saved_from_editor_is_not_private(tmp_path):
+    """Lưu file mới ở tab Code (ghi qua mkstemp) phải có quyền như file tạo bình thường, không phải 0600."""
+    import os
+
+    from ateam import editor
+    new = editor.read_source(tmp_path / "moi.py")
+    assert editor.save_source(new, "x = 1\n") == ""
+    um = os.umask(0)
+    os.umask(um)
+    assert (tmp_path / "moi.py").stat().st_mode & 0o777 == 0o666 & ~um
+

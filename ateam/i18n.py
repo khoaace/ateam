@@ -81,8 +81,8 @@ def save_lang(code: str) -> None:
     except Exception:
         state = {}
     state["lang"] = normalize(code) or "vi"
-    sf.parent.mkdir(parents=True, exist_ok=True)
-    sf.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    from .config import atomic_write  # config import i18n: nạp muộn để khỏi vòng import
+    atomic_write(sf, json.dumps(state, ensure_ascii=False, indent=2))
 
 
 def _catalog() -> dict[str, str]:

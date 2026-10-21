@@ -972,7 +972,7 @@ class WebApp:
         return ws
 
     SLOW_GIT = ("ai_message", "ai_resolve", "commit", "push", "pull", "fetch")
-    SLOW_CMDS = ("/commit ", "/push", "/pull", "/fetch", "/usage", "/init", "/compact")
+    SLOW_CMDS = ("/commit ", "/push", "/pull", "/fetch", "/usage", "/init", "/compact", "/models ")
 
     def slow_op(self, d) -> bool:
         """Thao tác có thể chạy hàng chục giây (gọi AI, mạng, git hook). Còn lại chạy tuần tự để giữ thứ tự."""

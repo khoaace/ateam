@@ -17,6 +17,9 @@ MAX_EDIT_BYTES = 5 * 1024 * 1024  # lớn hơn: mở chỉ đọc
 MAX_HL_BYTES = 2 * 1024 * 1024  # lớn hơn: không tô màu
 MAX_HL_LINES = 20000
 BINARY_SNIFF = 8192
+# umask của tiến trình, đọc một lần lúc nạp module (os.umask đổi cho cả tiến trình — không gọi trong thread lưu file)
+_UMASK = os.umask(0)
+os.umask(_UMASK)
 
 
 # ---------------------------------------------------------------------------------------------- đọc / ghi
@@ -88,8 +91,8 @@ def save_source(sf: SourceFile, text: str, force: bool = False) -> str:
         try:
             with os.fdopen(fd, "w", encoding=enc, newline="") as f:
                 f.write(data)
-            if sf.path.exists():
-                os.chmod(tmp, sf.path.stat().st_mode & 0o7777)
+            # mkstemp tạo file 0600: file đã có giữ quyền cũ, file mới theo umask như file tạo bình thường
+            os.chmod(tmp, sf.path.stat().st_mode & 0o7777 if sf.path.exists() else 0o666 & ~_UMASK)
             os.replace(tmp, sf.path)
         except BaseException:
             try:

@@ -6103,8 +6103,8 @@ class TeamApp(App):
         u = len([f for f in st.files if f.untracked])
 
         def done(yes) -> None:
-            if yes:
-                self.git_do(self.git.discard_all)
+            if yes:  # reset --hard + clean: agent đang chạy task (chế độ shared) sẽ mất phần đang sửa
+                self.git_do(self.git.discard_all, busy_check=True)
         self.push_screen(ConfirmScreen(
             tr("↺ Bỏ tất cả thay đổi"),
             tr("Bỏ MỌI thay đổi ({s} file đã stage, {w} file chưa stage) và XOÁ {u} file chưa theo dõi? Thư mục "

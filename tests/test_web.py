@@ -337,7 +337,11 @@ def test_web_git_ops_and_diff(env, project, monkeypatch):
             wa.orch.runs[999] = None
             r = await wa.handle({"op": "git", "action": "checkout", "name": "master"})
             assert r[1] == "warn"
+            (project / "base.txt").write_text("base\nđang sửa\n")  # bỏ mọi thay đổi: xoá luôn phần agent đang sửa
+            assert (await wa.handle({"op": "git", "action": "discard_all"}))[1] == "warn"
+            assert "đang sửa" in (project / "base.txt").read_text()
             wa.orch.runs.clear()
+            assert (await wa.handle({"op": "git", "action": "discard_all"}))[1] == "ok"
             r = await wa.command("/commit --no-verify")
             assert r[1] == "warn"  # thiếu message
         finally:
@@ -378,6 +382,7 @@ def test_web_slow_op_does_not_block_tab(env, project, monkeypatch):
             assert wa.slow_op({"op": "submit", "text": "/push"}) and not wa.slow_op({"op": "submit", "text": "Làm X"})
             # gọi trưởng nhóm vài phút: không được chặn các thao tác khác của tab
             assert wa.slow_op({"op": "submit", "text": "/init"}) and wa.slow_op({"op": "submit", "text": "/compact x"})
+            assert wa.slow_op({"op": "submit", "text": "/models opencode làm mới"})
             assert not wa.slow_op({"op": "git", "action": "stage"})
             await ws.close()
         finally:

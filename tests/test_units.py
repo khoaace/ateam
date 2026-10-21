@@ -994,3 +994,71 @@ def test_notes_and_overview_block_in_orchestrator(tmp_path):
     assert "make test" in asyncio.run(o.overview_block(session="s1"))  # bản mới: gửi lại cả bản
     db.update_goal(gid, lead_session_agent="codex")  # phiên của agent khác: trưởng nhóm không tiếp tục được
     assert o._lead_session(db.goal(gid)) is None
+
+
+def _orch_unit(tmp_path):
+    from ateam.config import Config
+    from ateam.db import DB
+    from ateam.orchestrator import Orchestrator
+    cfg = Config()
+    cfg.agents["claude"] = AgentConfig("claude", ["claude", "-p", "{prompt}"], effort_args=["--effort", "{effort}"],
+                                       efforts=["low", "medium", "high"], effort="high")
+    cfg.agents["codex"] = AgentConfig("codex", ["codex", "exec", "{prompt}"])
+    cfg.lead = "claude"
+    return Orchestrator(tmp_path, cfg, DB(tmp_path / ".ateam/team.db"))
+
+
+def test_prompt_starting_with_dash_is_not_a_flag(tmp_path):
+    """Tin chat / `/task` gửi nguyên văn: "- sửa nút" (gạch đầu dòng) không được để CLI hiểu là cờ."""
+    o = _orch_unit(tmp_path)
+    for name in ("claude", "codex"):
+        argv = o.argv_for(o.cfg.agents[name], "- sửa nút\n- thêm test", tmp_path)
+        assert " - sửa nút\n- thêm test" in argv and not any(x.startswith("- ") for x in argv), argv
+    assert "làm X" in o.argv_for(o.cfg.agents["codex"], "làm X", tmp_path)
+
+
+def test_insert_plan_odd_and_circular_dependencies(tmp_path):
+    """depends_on là số / chuỗi / phần tử lạ không làm hỏng lập kế hoạch; vòng phụ thuộc bị bỏ (không thì treo mãi)."""
+    o = _orch_unit(tmp_path)
+    gid = o.db.add_goal("G")
+    plan = [{"id": 1, "agent": "codex", "title": "A", "prompt": "a", "depends_on": [2]},
+            {"id": 2, "agent": "codex", "title": "B", "prompt": "b", "depends_on": [1]},
+            {"id": 3, "agent": "codex", "title": "C", "prompt": "c", "depends_on": 1},
+            {"id": 4, "agent": "codex", "title": "D", "prompt": "d", "depends_on": "2"},
+            {"id": 5, "agent": "codex", "title": "E", "prompt": "e", "depends_on": [[1], {"x": 1}, 4]}]
+    ids = o._insert_plan(gid, plan, source="plan")
+    deps = {t.title: [ids.index(d) + 1 for d in t.depends_on] for t in o.db.tasks(goal_id=gid)}
+    assert deps == {"A": [2], "B": [], "C": [1], "D": [2], "E": [4]}, deps
+    assert "Bỏ phụ thuộc vòng" in (tmp_path / ".ateam/logs/system.log").read_text()
+
+
+def test_commit_message_quick_effort_and_bounded_untracked(tmp_path, monkeypatch):
+    """Viết commit message: chạy effort low (lượt nhanh), danh sách file chưa track có giới hạn (prompt đi qua argv);
+    giải thích code cũng effort low, ⌘I sửa code giữ effort của agent."""
+    import asyncio
+    import subprocess
+
+    from ateam.orchestrator import UNTRACKED_MAX
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"],
+                   cwd=tmp_path, check=True)
+    for i in range(UNTRACKED_MAX + 200):
+        (tmp_path / f"f{i}.txt").write_text("x")
+    o = _orch_unit(tmp_path)
+    calls = []
+
+    async def fake_lead(prompt, label, first="", goal_id=None, keep_session=False, slow=False, effort=None):
+        calls.append((prompt, effort))
+        return "SUMMARY:\n<<<CODE>>>\nx\n<<<END>>>\nthêm file"
+    monkeypatch.setattr(o, "_call_lead", fake_lead)
+    ok, _msg = asyncio.run(o.commit_message())
+    prompt, effort = calls[-1]
+    assert ok and effort == "low" and "… (+200 more)" in prompt and prompt.count(".txt") == UNTRACKED_MAX
+    asyncio.run(o.code_ai("explain", "a.py", "x = 1\n", 0, 5))
+    assert calls[-1][1] == "low"
+    asyncio.run(o.code_ai("edit", "a.py", "x = 1\n", 0, 5, instruction="đổi tên"))
+    assert calls[-1][1] is None
+    # effort riêng của lượt đi tới argv thay effort "high" của agent
+    argv = o.argv_for(o.cfg.agents["claude"], "p", tmp_path, plan=True, effort="low")
+    assert argv[argv.index("--effort") + 1] == "low"
+

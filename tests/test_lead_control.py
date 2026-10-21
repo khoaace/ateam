@@ -160,3 +160,60 @@ def test_init_timeout_does_not_fall_back_and_quit_sees_lead_run(env, project, mo
         assert "claude quá 1s chưa xong" in log and "codex làm thay" not in log
     asyncio.run(main())
 
+
+def test_task_requeued_for_limits_at_most_max_times(env, project, monkeypatch):
+    """Lỗi lặp lại mà khớp mẫu quá tải / hết hạn mức (quota hết hẳn, cấu hình sai trả 503…) không xếp task lại mãi."""
+    from ateam.db import FAILED, QUEUED, RUNNING
+    from ateam.orchestrator import MAX_REQUEUES
+    o = _orch(env, project, monkeypatch)
+    tid = o.db.add_task("codex", "t", "p", status=RUNNING)
+    o.cfg.agents["codex"].fallback = []
+
+    class FakeRun:
+        output, cancelled, timed_out = "HTTP 503 Service Unavailable", False, False
+
+    async def overloaded(t, a, prompt, workdir, log_file, **kw):
+        return FakeRun(), 1, "overloaded"
+    monkeypatch.setattr(o, "_run_agent", overloaded)
+    monkeypatch.setattr(o, "_set_cooldown", lambda *a, **k: None)
+
+    async def main():
+        for i in range(MAX_REQUEUES + 1):
+            o.db.update_task(tid, status=RUNNING)
+            await o._run_task(tid)
+            t = o.db.task(tid)
+            assert t.status == (QUEUED if i < MAX_REQUEUES else FAILED), (i, t.status)
+        assert "lặp lại" in o.db.task(tid).error
+        o.retry(tid)  # người dùng /retry: đếm lại từ đầu
+        assert tid not in o._requeues
+    asyncio.run(main())
+
+
+def test_goal_with_all_tasks_cancelled_skips_review(env, project, monkeypatch):
+    """Người dùng huỷ hết task của mục tiêu: kết thúc luôn, không gọi trưởng nhóm review (tốn một lượt)."""
+    from ateam.db import CANCELLED
+    o = _orch(env, project, monkeypatch)
+    gid = o.db.add_goal("G")
+    o.db.update_goal(gid, status="running")
+    o.db.add_task("codex", "t", "p", goal_id=gid, status=CANCELLED)
+    assert o._check_goals()
+    assert o.db.goal(gid).status == "cancelled" and gid not in o.lead_busy
+
+
+
+def test_clear_finished_deletes_leftover_task_branches(env, project, monkeypatch):
+    """Task lỗi ở chế độ worktree giữ nhánh ateam/tN để xem lại; dọn khỏi bảng việc thì xoá luôn nhánh đó."""
+    import subprocess
+
+    from ateam.db import FAILED
+    o = _orch(env, project, monkeypatch)
+    tid = o.db.add_task("codex", "t", "p", status=FAILED)
+    subprocess.run(["git", "branch", f"ateam/t{tid}"], cwd=project, check=True)
+    o.db.update_task(tid, branch=f"ateam/t{tid}")
+
+    async def main():
+        assert o.clear_finished() == (1, 0)
+        await asyncio.gather(*list(o._bg))
+    asyncio.run(main())
+    out = subprocess.run(["git", "branch", "--list", "ateam/*"], cwd=project, capture_output=True, text=True).stdout
+    assert not out.strip()
