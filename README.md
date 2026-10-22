@@ -237,6 +237,9 @@ ateam web --public-url https://ateam.ten-mien.com   # bạn tự chạy named tu
   `.ateam/web_token`, quyền 600). Terminal in URL kèm token và **mã QR** — quét bằng camera điện thoại là vào; nút
   **📱 Điện thoại** ở sidebar cũng hiện mã QR. Trình duyệt nhận cookie HttpOnly (30 ngày) rồi xoá token khỏi thanh
   địa chỉ; không có cookie thì hiện trang dán token.
+- Đang chạy `ateam web` thường (chỉ máy này)? Bấm **📱 Điện thoại → ↻ Chạy lại** (cùng Wi-Fi hoặc Cloudflare Tunnel):
+  server tự chạy lại ở chế độ từ xa, cùng cổng, trang tự đăng nhập lại và hiện mã QR — agent đang chạy sẽ bị dừng
+  (có hỏi trước).
 - Token có **toàn quyền** như trên máy (duyệt kế hoạch, trả lời agent, merge, `!lệnh`, sửa file, git push) — đừng
   gửi URL cho người khác. `--readonly`: chỉ xem. `--new-token`: đổi token, mọi thiết bị cũ phải quét lại. Sai token
   20 lần trong 10 phút thì khoá tạm.

@@ -251,8 +251,8 @@ def cmd_web(args) -> int:
         webbrowser.open(url)
     from .projects import touch_project
     touch_project(root)
-    nxt = web.serve(root, cfg, open_db(root), port, remote)
-    if nxt:  # /open trên web: server đã dừng (khoá phiên nhả khi execv) -> chạy lại ở dự án mới, cùng cổng
+    nxt, extra = web.serve(root, cfg, open_db(root), port, remote)
+    if nxt:  # /open, 📱 chạy lại từ xa trên web: server đã dừng (khoá phiên nhả khi execv) -> chạy lại, cùng cổng
         # (cổng thật, kể cả khi đã đổi vì cổng muốn bận: trình duyệt đang mở cổng này)
         argv, skip = [], False
         for a in sys.argv[1:]:
@@ -265,8 +265,9 @@ def cmd_web(args) -> int:
             if a in ("--open", "--new-token") or a.startswith("--port="):
                 continue
             argv.append(a)
-        print(tr("↪ Mở dự án {v}", v=nxt), flush=True)  # execv bỏ bộ đệm stdout chưa ghi
-        reexec(argv + ["--port", str(port)], nxt)
+        # execv bỏ bộ đệm stdout chưa ghi; extra: --host 0.0.0.0 / --tunnel (argparse lấy giá trị cuối)
+        print(tr("↻ Chạy lại ở chế độ từ xa…") if extra else tr("↪ Mở dự án {v}", v=nxt), flush=True)
+        reexec(argv + ["--port", str(port)] + extra, nxt)
     return 0
 
 

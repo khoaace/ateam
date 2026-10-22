@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -29,7 +30,7 @@ from . import (__version__, clipboard, mentions, notes, notify, palette, project
 from .config import Config, found_models, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import DB, GOAL_ENDED, Goal, Task
 from .qr import QR
-from .web_auth import Remote, auth_middleware, security_headers
+from .web_auth import Remote, auth_middleware, load_token, security_headers
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, tr
 from .orchestrator import SYSTEM, Orchestrator
 from .opencode import ATTACHMENT_MAX
@@ -64,6 +65,11 @@ def ui_strings() -> dict[str, str]:
         "phone_local": tr("Server đang chỉ nghe trên máy này. Để mở từ điện thoại, chạy lại với:"),
         "phone_local_lan": tr("cùng Wi-Fi (http, token đi dạng rõ trong LAN)"),
         "phone_local_tunnel": tr("mọi nơi qua Cloudflare Tunnel (https, cần cài cloudflared)"),
+        "phone_restart": tr("↻ Chạy lại"), "phone_restarting": tr("↻ Đang chạy lại server…"),
+        "phone_restart_fail": tr("Server chưa chạy lại được — xem terminal đang chạy `ateam web`"),
+        "phone_tunnel_wait": tr("⏳ Đang mở Cloudflare Tunnel…"),
+        "phone_busy_q": tr("{n} lượt agent đang chạy sẽ bị dừng khi chạy lại server (task dở thành lỗi). Chạy lại?"),
+        "phone_busy_yes": tr("Dừng & chạy lại"),
         "phone_copy": tr("Chép"), "copied": tr("Đã chép"),
         "readonly_banner": tr("👁 Chế độ chỉ xem — thao tác bị tắt"),
         "custom": tr("Workflows"), "dash": tr("Thống kê"), "dash_today": tr("Hôm nay"), "dash_week": tr("7 ngày"),
@@ -598,6 +604,7 @@ class WebApp:
         self.quota: dict = {"t": "quota", "items": None, "at": 0}  # hạn mức 5h/tuần gần nhất (quota.collect)
         self._quota_lock: asyncio.Lock | None = None  # tạo trong vòng lặp asyncio (_startup)
         self.next_root: Path | None = None  # /open: serve() trả về để cli.cmd_web chạy lại ở dự án này
+        self.next_args: list[str] = []  # 📱 chạy lại ở chế độ từ xa: đối số thêm cho lần chạy lại (remote_restart)
 
     # ------------------------------------------------------------------ dựng app
     def make_app(self) -> web.Application:
@@ -734,6 +741,25 @@ class WebApp:
                 return (tr("⧉ Đã mở {v} ở cửa sổ mới (cổng {port}) — Ctrl+C ở terminal dừng cả hai",
                            v=projects.shorten(path), port=got), "ok", {"url": f"http://127.0.0.1:{got}"})
         return tr("{v} chưa mở xong — xem {log}", v=projects.shorten(path), log=projects.shorten(logf)), "warn"
+
+    def remote_restart(self, d: dict) -> tuple:
+        """📱 Mở trên điện thoại: chạy lại server ở chế độ từ xa (như `ateam web --host 0.0.0.0` / `--tunnel`), cùng
+        cổng. Trả token để trình duyệt này đăng nhập vào server mới (từ xa thì cả máy này cũng cần token)."""
+        mode = d.get("mode")
+        if self.remote.enabled:
+            return tr("Server đã mở từ xa"), "warn"
+        if mode not in ("lan", "tunnel"):
+            return tr("Chế độ không hợp lệ: {v}", v=mode), "warn"
+        if mode == "tunnel" and not shutil.which("cloudflared"):  # cmd_web sẽ thoát ngay → server chết
+            return tr("Chưa cài cloudflared — cài bằng `brew install cloudflared` (macOS) rồi bấm lại."), "warn"
+        busy = len(self.orch.runs) + len(self.orch.lead_busy)
+        if busy and not d.get("force"):
+            return "", "", {"busy": busy}
+        self.next_root = self.root
+        self.next_args = ["--tunnel"] if mode == "tunnel" else ["--host", "0.0.0.0"]
+        asyncio.get_running_loop().call_later(0.3, self.stop_server)  # trả lời trình duyệt xong mới dừng
+        return tr("↻ Đang chạy lại server…"), "info", {"restarting": True,
+                                                       "token": load_token(self.root / ".ateam")}
 
     @staticmethod
     async def _listening(port: int) -> bool:
@@ -991,7 +1017,7 @@ class WebApp:
         urls = [{"label": lb, "url": u, "svg": "" if "//127.0.0.1:" in u else QR(u).to_svg(5)}
                 for lb, u in r.urls()] if r.enabled else []
         return web.json_response({"enabled": r.enabled, "readonly": r.readonly, "tunnel": r.tunnel,
-                                  "urls": urls}, headers={"Cache-Control": "no-store"})
+                                  "pending": r.tunnel and not r.tunnel_url, "urls": urls}, headers={"Cache-Control": "no-store"})
 
     async def page(self, _request: web.Request) -> web.StreamResponse:
         html = (STATIC / "index.html").read_text(encoding="utf-8")
@@ -1284,6 +1310,8 @@ class WebApp:
             return self.open_project(d)
         if op == "open_window":
             return await self.open_window(d)
+        if op == "remote_restart":
+            return self.remote_restart(d)
         if op == "approve":
             n = o.approve(d.get("goal"))
             return (tr("▶ Đã duyệt {n} task", n=n), "ok") if n else (tr("Không có task nháp nào cần duyệt"), "warn")
@@ -1797,8 +1825,8 @@ def print_remote(remote: Remote, only: str = "") -> None:
             print(QR(url).to_text())
 
 
-def serve(root: Path, cfg: Config, db: DB, port: int, remote: Remote | None = None) -> Path | None:
-    """Chạy server tới khi Ctrl+C (trả None) hoặc /open (trả thư mục dự án cần mở)."""
+def serve(root: Path, cfg: Config, db: DB, port: int, remote: Remote | None = None) -> tuple[Path | None, list[str]]:
+    """Chạy server tới khi Ctrl+C (trả None) hoặc /open, 📱 chạy lại từ xa (trả thư mục dự án cần mở + đối số thêm)."""
     wa = WebApp(root, cfg, db, port, remote)
     web.run_app(wa.make_app(), host=wa.remote.host, port=port, print=None, access_log=None)
-    return wa.next_root
+    return wa.next_root, wa.next_args

@@ -134,6 +134,54 @@ def test_local_mode_unchanged_without_token(env, project, monkeypatch):
     assert not wa.remote.enabled and not wa.remote.token and not (project / ".ateam/web_token").exists()
 
 
+def test_restart_into_remote_from_phone_popup(env, project, monkeypatch):
+    """📱 ↻ Chạy lại: server dừng rồi cli.cmd_web chạy lại cùng cổng với --host 0.0.0.0 / --tunnel; trình duyệt nhận
+    token (server mới đọc lại đúng token đó) để vào lại."""
+    from ateam.web_auth import load_token
+    wa = _app(env, project, monkeypatch)
+    stopped = []
+    wa.stop_server = lambda: stopped.append(1)
+
+    async def main():
+        assert (await wa.handle({"op": "remote_restart", "mode": "x"}))[1] == "warn"
+        wa.orch.runs[999] = None  # agent đang chạy: trình duyệt hỏi lại rồi gửi force
+        r = await wa.handle({"op": "remote_restart", "mode": "lan"})
+        assert r[2] == {"busy": 1} and wa.next_root is None
+        r = await wa.handle({"op": "remote_restart", "mode": "lan", "force": True})
+        wa.orch.runs.clear()
+        assert r[2]["restarting"] and wa.next_root == wa.root and wa.next_args == ["--host", "0.0.0.0"]
+        assert r[2]["token"] == load_token(project / ".ateam")
+        await asyncio.sleep(0.4)
+        assert stopped == [1]
+        r = await wa.handle({"op": "remote_restart", "mode": "tunnel"})  # fakebin có cloudflared
+        assert r[2]["restarting"] and wa.next_args == ["--tunnel"]
+        monkeypatch.setattr("ateam.web.shutil.which", lambda _n: None)
+        wa.next_args = []
+        r = await wa.handle({"op": "remote_restart", "mode": "tunnel"})
+        assert r[1] == "warn" and "brew install cloudflared" in r[0] and not wa.next_args
+        wa.remote.enabled = True
+        assert (await wa.handle({"op": "remote_restart", "mode": "lan"}))[1] == "warn"
+    asyncio.run(main())
+
+
+def test_api_remote_pending_until_tunnel_url(env, project, monkeypatch):
+    from aiohttp.test_utils import TestClient, TestServer
+    wa = _app(env, project, monkeypatch, tunnel=True)
+    wa._startup = wa._shutdown = lambda _app: asyncio.sleep(0)  # không chạy cloudflared / bộ lập lịch
+
+    async def main():
+        c = TestClient(TestServer(wa.make_app(), host="127.0.0.1", port=0))
+        await c.start_server()
+        try:
+            h = {"Authorization": f"Bearer {wa.remote.token}"}
+            assert (await (await c.get("/api/remote", headers=h)).json())["pending"]
+            wa.remote.tunnel_url = "https://x.trycloudflare.com"
+            assert not (await (await c.get("/api/remote", headers=h)).json())["pending"]
+        finally:
+            await c.close()
+    asyncio.run(main())
+
+
 def test_tunnel_learns_public_url(env, project, monkeypatch, capsys):
     wa = _app(env, project, monkeypatch, tunnel=True)
 

@@ -3012,6 +3012,26 @@ EN: dict[str, str] = {
         'same Wi-Fi (http, the token travels in clear text on the LAN)',
     'mọi nơi qua Cloudflare Tunnel (https, cần cài cloudflared)':
         'from anywhere via Cloudflare Tunnel (https, needs cloudflared)',
+    '↻ Chạy lại':
+        '↻ Restart',
+    '↻ Đang chạy lại server…':
+        '↻ Restarting the server…',
+    'Server chưa chạy lại được — xem terminal đang chạy `ateam web`':
+        'The server has not come back yet — check the terminal running `ateam web`',
+    '⏳ Đang mở Cloudflare Tunnel…':
+        '⏳ Opening Cloudflare Tunnel…',
+    '{n} lượt agent đang chạy sẽ bị dừng khi chạy lại server (task dở thành lỗi). Chạy lại?':
+        '{n} running agent turn(s) will be stopped when the server restarts (unfinished tasks become failed). Restart?',
+    'Dừng & chạy lại':
+        'Stop & restart',
+    'Server đã mở từ xa':
+        'The server is already open for remote access',
+    'Chế độ không hợp lệ: {v}':
+        'Invalid mode: {v}',
+    'Chưa cài cloudflared — cài bằng `brew install cloudflared` (macOS) rồi bấm lại.':
+        'cloudflared is not installed — install it with `brew install cloudflared` (macOS), then press again.',
+    '↻ Chạy lại ở chế độ từ xa…':
+        '↻ Restarting in remote mode…',
     'Chép':
         'Copy',
     'Đã chép':

@@ -88,12 +88,16 @@ def test_cmd_tui_and_web_relaunch_in_new_root(tmp_path, monkeypatch):
     assert Path.cwd().resolve() == other.resolve() and os.environ["PWD"] == str(other)
     assert "ATEAM_DB" not in os.environ
     # web: serve() trả thư mục mới (/open) -> chạy lại cùng cổng, bỏ --open
-    monkeypatch.setattr(ateam.web, "serve", lambda *a, **kw: other)
+    monkeypatch.setattr(ateam.web, "serve", lambda *a, **kw: (other, []))
     port = str(cli.free_port("127.0.0.1", 18123, 1000))  # cổng cố định có thể đang bận trên máy chạy test
     monkeypatch.setattr(cli.sys, "argv", ["ateam", "-C", str(tmp_path), "web", "--port", port, "--open"])
     monkeypatch.setattr("webbrowser.open", lambda url: None)
     assert cli.main(["-C", str(tmp_path), "web", "--port", port, "--open"]) == 0
     assert execs[-1][-5:] == ["-C", str(other), "web", "--port", port]
+    # 📱 ↻ chạy lại từ xa: cùng dự án, cùng cổng, thêm --tunnel
+    monkeypatch.setattr(ateam.web, "serve", lambda *a, **kw: (tmp_path, ["--tunnel"]))
+    assert cli.main(["-C", str(tmp_path), "web", "--port", port, "--open"]) == 0
+    assert execs[-1][-6:] == ["-C", str(tmp_path), "web", "--port", port, "--tunnel"]
 
 
 
@@ -106,7 +110,7 @@ def test_web_busy_port_uses_next_and_keeps_it_on_open(tmp_path, monkeypatch, cap
     other = tmp_path / "other"
     other.mkdir()
     served, execs = [], []
-    monkeypatch.setattr(ateam.web, "serve", lambda root, cfg, db, port, remote: served.append(port) or other)
+    monkeypatch.setattr(ateam.web, "serve", lambda root, cfg, db, port, remote: served.append(port) or (other, []))
     monkeypatch.setattr(cli, "ensure_global_config", lambda: [])
     monkeypatch.setattr("ateam.projects.touch_project", lambda root: None)
     monkeypatch.setattr(cli.os, "execv", lambda *a: execs.append(a[1]))

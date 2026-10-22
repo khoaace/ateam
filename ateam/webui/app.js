@@ -51,6 +51,7 @@ function connect() {
     setConn(false);
     // thao tác đang chờ sẽ không bao giờ được trả lời: tắt toast "đang chạy…", mở khoá nút
     for (const ref of Object.keys(S.pending)) { S.pending[ref]({ level: "error" }); delete S.pending[ref]; }
+    if (S.restartToken) { waitRestart(Date.now()); return; }  // 📱 chạy lại từ xa: vào lại bằng token
     setTimeout(connect, Math.min(5000, 500 * 2 ** S.retry++));
   };
   ws.onmessage = (ev) => {
@@ -97,7 +98,7 @@ async function busyBtn(btn, promise) {
 function setConn(ok) {
   S.connected = ok;
   $("#conn").classList.toggle("ok", ok);
-  $("#conn-text").textContent = ok ? t("connected") : t(S.switching ? "proj_switching" : "disconnected");
+  $("#conn-text").textContent = ok ? t("connected") : t(S.restartToken ? "phone_restarting" : S.switching ? "proj_switching" : "disconnected");
 }
 /* bản mới (server kiểm tra lúc mở + mỗi 6 giờ): ⬆ ở chân thanh bên + toast một lần mỗi phiên bản; chỉ báo,
    cập nhật vẫn bằng /update (bản cài từ mã nguồn: git pull, không có nút) */
@@ -147,6 +148,11 @@ function onHello(m) {
   if (S.openJob != null) loadJob(S.openJob);
   for (const name of S.agentNames) loadAgentTail(name);
   if (first && m.needs_setup && window.Setup) Setup.open(true);  // lần đầu dùng ateam: wizard thiết lập
+  if (first) {  // vừa chạy lại ở chế độ từ xa (remoteRestart): mở lại popup để quét mã QR
+    let ph = null;
+    try { ph = sessionStorage.getItem("ateam-phone"); sessionStorage.removeItem("ateam-phone"); } catch (e) { /* chặn lưu */ }
+    if (ph) phoneModal();
+  }
   if (S.state) render();
 }
 function applyPrefs(p) {
@@ -1244,21 +1250,60 @@ function reassignModal(tid) {
   });
 }
 
-/* mở trên điện thoại: URL kèm token + mã QR (GET /api/remote) */
+/* mở trên điện thoại: URL kèm token + mã QR (GET /api/remote); server chỉ nghe máy này thì có nút ↻ chạy lại từ xa */
 async function phoneModal() {
   let r;
   try { r = await fetch("/api/remote").then((x) => x.json()); } catch (e) { return; }
-  let body;
-  if (!r.enabled) {
-    body = `<p>${esc(t("phone_local"))}</p>
-      <div class="phone-cmd"><code>ateam web --host 0.0.0.0</code><span class="muted small">${esc(t("phone_local_lan"))}</span></div>
-      <div class="phone-cmd"><code>ateam web --tunnel</code><span class="muted small">${esc(t("phone_local_tunnel"))}</span></div>`;
-  } else {
-    body = `<p class="muted small">${esc(t("phone_hint"))}${r.readonly ? " " + esc(t("phone_ro")) : ""}</p>
-      <div class="phone-grid">${r.urls.map((u) => `<div class="phone-item"><b>${esc(u.label)}</b>${u.svg ? `<img class="phone-qr" alt="QR" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(u.svg)}">` : ""}
-        <div class="phone-url"><code>${esc(u.url)}</code><button class="btn sm" data-action="copy-url" data-url="${esc(u.url)}">${esc(t("phone_copy"))}</button></div></div>`).join("")}</div>`;
+  const m = openModal(`${modalHead("📱 " + esc(t("phone_title")))}<div class="modal-pad">${phoneBody(r)}</div>`);
+  m.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-mode]");
+    if (b) busyBtn(b, remoteRestart(b.dataset.mode, m));
+  });
+  // tunnel: cloudflared in URL sau vài giây -> hỏi lại tới khi có (hoặc popup đóng)
+  while (r.pending && m.isConnected) {
+    await new Promise((ok) => setTimeout(ok, 1500));
+    try { r = await fetch("/api/remote").then((x) => x.json()); } catch (e) { return; }
+    $(".modal-pad", m).innerHTML = phoneBody(r);
   }
-  openModal(`${modalHead("📱 " + esc(t("phone_title")))}<div class="modal-pad">${body}</div>`);
+}
+function phoneBody(r) {
+  const cmd = (mode, code, hint) => `<div class="phone-cmd"><div class="phone-cmd-row"><code>${code}</code>
+    <button class="btn sm" data-mode="${mode}">${esc(t("phone_restart"))}</button></div><span class="muted small">${esc(t(hint))}</span></div>`;
+  if (!r.enabled) {
+    return `<p>${esc(t("phone_local"))}</p>${cmd("lan", "ateam web --host 0.0.0.0", "phone_local_lan")}${cmd("tunnel", "ateam web --tunnel", "phone_local_tunnel")}`;
+  }
+  return `<p class="muted small">${esc(t("phone_hint"))}${r.readonly ? " " + esc(t("phone_ro")) : ""}</p>
+    ${r.pending ? `<p class="muted">${esc(t("phone_tunnel_wait"))}</p>` : ""}
+    <div class="phone-grid">${r.urls.map((u) => `<div class="phone-item"><b>${esc(u.label)}</b>${u.svg ? `<img class="phone-qr" alt="QR" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(u.svg)}">` : ""}
+      <div class="phone-url"><code>${esc(u.url)}</code><button class="btn sm" data-action="copy-url" data-url="${esc(u.url)}">${esc(t("phone_copy"))}</button></div></div>`).join("")}</div>`;
+}
+/* ↻ chạy lại server ở chế độ từ xa (cùng cổng): server mới cần token cả từ máy này -> waitRestart vào lại bằng token */
+async function remoteRestart(mode, m) {
+  let r = await request("remote_restart", { mode }, t("phone_restarting"));
+  if (r.busy) {
+    if (!await confirmBox(t("proj_busy"), t("phone_busy_q", { n: r.busy }), t("phone_busy_yes"))) return;
+    r = await request("remote_restart", { mode, force: true }, t("phone_restarting"));
+  }
+  if (!r.restarting) return;
+  S.restartToken = r.token;
+  closeModal(m);
+}
+/* server cũ còn trả /api/remote với enabled=false; server mới (từ xa) trả 401 — hoặc enabled=true nếu cookie lần chạy từ
+   xa trước còn hạn (token giữ qua các lần chạy) -> /?t=token đặt cookie rồi về "/" */
+async function waitRestart(since) {
+  let st = 0, on = false;
+  try {
+    const x = await fetch("/api/remote", { cache: "no-store" });
+    st = x.status;
+    on = x.ok && (await x.json()).enabled;
+  } catch (e) { /* chưa nghe */ }
+  if (st === 401 || on) {
+    try { sessionStorage.setItem("ateam-phone", "1"); } catch (e) { /* chặn lưu */ }
+    location.href = "/?t=" + encodeURIComponent(S.restartToken);
+    return;
+  }
+  if (Date.now() - since > 20000 && !S.restartWarned) { S.restartWarned = true; toast(t("phone_restart_fail"), "error"); }
+  setTimeout(() => waitRestart(since), 700);
 }
 
 /* ------------------------------------------------------------------ khung nổi (modal) xếp chồng */
