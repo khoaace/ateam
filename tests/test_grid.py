@@ -333,7 +333,7 @@ def test_web_grid_ops(env, project, monkeypatch):
             # ô cần người dùng: thông báo tới cả tab không mở mục Lưới
             other = await c.ws_connect("/ws", headers=hdr)
             await ws.send_json({"op": "grid_in", "id": cid, "data": "notify can ban\r"})
-            n = await recv_until(other, lambda m: m["t"] == "notice")
+            n = await recv_until(other, lambda m: m["t"] == "notice" and m["cell"] == cid)  # "gửi tất cả": ô grok cũng báo
             assert (n["kind"], n["cell"], n["body"], n["title"]) == ("grid_ask", cid, "can ban", "🔔 claude cần bạn")
             await other.close()
             # tab thứ hai mở sau: nhận lại bố cục + output gần nhất của từng ô

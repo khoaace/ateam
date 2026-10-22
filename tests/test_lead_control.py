@@ -217,3 +217,38 @@ def test_clear_finished_deletes_leftover_task_branches(env, project, monkeypatch
     asyncio.run(main())
     out = subprocess.run(["git", "branch", "--list", "ateam/*"], cwd=project, capture_output=True, text=True).stdout
     assert not out.strip()
+
+
+def test_delete_task_outside_plan(env, project, monkeypatch):
+    """/delete: xoá hẳn task ngoài kế hoạch cùng log + nhánh; task trong kế hoạch / đang chạy / chờ duyệt / còn task
+    khác chờ thì không."""
+    import subprocess
+
+    from ateam.db import DONE, FAILED, QUEUED, REVIEW, RUNNING
+    o = _orch(env, project, monkeypatch)
+    gid = o.db.add_goal("G")
+    in_plan = o.db.add_task("codex", "trong ke hoach", "p", goal_id=gid, status=DONE)
+    failed = o.db.add_task("codex", "loi", "p", status=FAILED)
+    subprocess.run(["git", "branch", f"ateam/t{failed}"], cwd=project, check=True)
+    o.db.update_task(failed, branch=f"ateam/t{failed}")
+    o.log_path(failed).parent.mkdir(parents=True, exist_ok=True)
+    o.log_path(failed).write_text("log")
+    running = o.db.add_task("codex", "dang chay", "p", status=RUNNING)
+    review = o.db.add_task("codex", "cho duyet", "p", status=REVIEW)
+    base = o.db.add_task("codex", "nen", "p", status=DONE)
+    o.db.add_task("claude", "phu thuoc", "p", status=QUEUED, depends_on=[base])
+
+    async def main():
+        assert "kế hoạch #" in o.delete_task(in_plan)
+        assert "/cancel" in o.delete_task(running)
+        assert "merge" in o.delete_task(review)
+        assert "bị chặn" in o.delete_task(base)
+        assert o.delete_task(failed) == f"Đã xoá task #{failed}"
+        assert "Không có task" in o.delete_task(failed)
+        await asyncio.gather(*list(o._bg))
+    asyncio.run(main())
+    left = {t.id for t in o.db.tasks()}
+    assert failed not in left and {in_plan, running, review, base} <= left
+    assert not o.log_path(failed).exists()
+    out = subprocess.run(["git", "branch", "--list", "ateam/*"], cwd=project, capture_output=True, text=True).stdout
+    assert not out.strip()

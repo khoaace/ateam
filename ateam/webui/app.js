@@ -1207,6 +1207,7 @@ function taskActions(x) {
   if (["failed", "cancelled", "blocked"].includes(st)) b.push(`<button class="btn sm" data-action="reassign" data-task="${x.id}" title="${esc(t("reassign_hint"))}">⇄ ${esc(t("reassign"))}</button>`);
   if (["done", "failed"].includes(st)) b.push(`<button class="btn sm" data-action="task-continue" data-task="${x.id}">↪ ${esc(t("continue_task"))}</button>`);
   if (["queued", "running", "draft", "review"].includes(st)) b.push(`<button class="btn sm danger" data-action="cancel" data-task="${x.id}">■ ${esc(t("cancel"))}</button>`);
+  if (x.goal == null && TASK_FILTERS.delete.includes(st)) b.push(`<button class="btn sm danger" data-action="delete-task" data-task="${x.id}">🗑 ${esc(t("delete_task"))}</button>`);
   return b.join("");
 }
 
@@ -1622,6 +1623,7 @@ const TASK_FILTERS = {
   retry: ["failed", "cancelled", "blocked", "done", "conflict"], cancel: ["draft", "queued", "running", "review"],
   merge: ["review", "conflict"], reject: ["review", "conflict"], edit: ["draft", "queued", "failed", "blocked", "cancelled"],
   assign: ["draft", "queued", "failed", "blocked", "cancelled"], set: ["draft", "queued", "failed", "blocked", "cancelled"],
+  delete: ["draft", "queued", "asking", "done", "failed", "blocked", "cancelled"],  // + chỉ task ngoài kế hoạch
 };
 function aliasOf(c) { return (S.meta.aliases || {})[c] || c; }
 function cmdAliases() {
@@ -1633,8 +1635,8 @@ function agentItems(q, extra = "") {
     .sort((a, b) => b.name.toLowerCase().startsWith(q.toLowerCase()) - a.name.toLowerCase().startsWith(q.toLowerCase()))
     .map((a) => ({ label: a.name + (a.lead ? " ★" : ""), desc: a.label + (a.role ? " · " + a.role : ""), value: a.name + extra }));
 }
-function taskItems(q, statuses) {
-  const ts = ((S.state && S.state.tasks) || []).slice().reverse().filter((x) => !statuses || statuses.includes(x.status));
+function taskItems(q, statuses, keep) {
+  const ts = ((S.state && S.state.tasks) || []).slice().reverse().filter((x) => (!statuses || statuses.includes(x.status)) && (!keep || keep(x)));
   return ts.filter((x) => !q || String(x.id).startsWith(q.replace("#", "")) || x.title.toLowerCase().includes(q.toLowerCase()))
     .slice(0, 30).map((x) => ({ label: "#" + x.id, desc: `${t(x.status)} · ${x.agent} · ${x.title}`, value: String(x.id) }));
 }
@@ -1710,8 +1712,8 @@ async function argSuggestions(cmd, args, tok) {
       if (pos) return null;
       if (tok.startsWith("@")) return { kind: "file", head: t("files"), items: await fileItems(tok.slice(1)) };
       return { head: t("sg_task_or_file"), items: taskItems(tok, TASK_FILTERS.edit).map((i) => ({ ...i, value: i.value + " " })) };
-    case "retry": case "cancel": case "merge": case "reject": case "diff":
-      return pos ? null : { head: t("sg_task"), items: taskItems(tok, TASK_FILTERS[cmd]).map((i) => ({ ...i, value: i.value + (cmd === "reject" ? " " : "") })) };
+    case "retry": case "cancel": case "merge": case "reject": case "diff": case "delete":
+      return pos ? null : { head: t("sg_task"), items: taskItems(tok, TASK_FILTERS[cmd], cmd === "delete" ? (x) => x.goal == null : null).map((i) => ({ ...i, value: i.value + (cmd === "reject" ? " " : "") })) };
     case "log":
       return pos ? null : { head: t("sg_task"), items: [{ label: "sys", desc: t("syslog"), value: "sys" }].concat(taskItems(tok)) };
     case "go": case "drop":
@@ -2033,6 +2035,10 @@ const ACTIONS = {
   "plan-unedit": () => { S.editing = null; delete $("#plan").dataset.sig; renderPlan(); },
   "retry": (el) => send("retry", { task: +el.dataset.task }),
   "cancel": (el) => send("cancel", { task: +el.dataset.task }),
+  "delete-task": async (el) => {
+    const id = +el.dataset.task;
+    if (await confirmBox(t("delete_task_q", { id }), t("delete_task_text"), t("delete_task"))) send("delete_task", { task: id });
+  },
   "merge": (el) => { send("merge", { task: +el.dataset.task }); const m = el.closest(".modal"); if (m) closeModal(m); },
   "reject": (el) => { const m = el.closest(".modal"); if (m) closeModal(m); if (S.openTask !== +el.dataset.task) openTask(+el.dataset.task); S.rejecting = true; renderDrawer(true); },
   "reject-send": (el) => { send("reject", { task: +el.dataset.task, feedback: $("#reject-fb").value }); S.rejecting = false; renderDrawer(true); },

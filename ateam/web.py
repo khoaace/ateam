@@ -140,7 +140,9 @@ def ui_strings() -> dict[str, str]:
         "cu_make_default": tr("★ Đặt mặc định"), "cu_unset_default": tr("☆ Bỏ mặc định"),
         "placeholder_grill": tr("Trả lời câu hỏi của trưởng nhóm (Enter) · gõ số để chọn phương án"),
         "send_hint": tr("Enter gửi · Shift+Enter xuống dòng · ⌘V / kéo-thả để dán ảnh"),
-        "retry": tr("Chạy lại"), "cancel": tr("Huỷ task"), "diff": tr("Xem diff"), "merge": tr("Merge"),
+        "retry": tr("Chạy lại"), "cancel": tr("Huỷ task"), "delete_task": tr("Xoá"),
+        "delete_task_q": tr("Xoá task #{id}?"),
+        "delete_task_text": tr("Xoá hẳn task khỏi bảng việc cùng file log và nhánh git của nó — không hoàn tác được."), "diff": tr("Xem diff"), "merge": tr("Merge"),
         "reject": tr("Từ chối"), "reject_ph": tr("Góp ý (để trống = chỉ từ chối, có góp ý = giao làm lại)"),
         "continue_task": tr("Hỏi tiếp"), "close": tr("Đóng"),
         "tab_log": tr("Log"), "tab_prompt": tr("Nội dung"), "tab_result": tr("Kết quả"),
@@ -1237,6 +1239,8 @@ class WebApp:
             return o.retry(int(d["task"])), "info"
         if op == "cancel":
             return o.cancel(int(d["task"])), "info"
+        if op == "delete_task":
+            return o.delete_task(int(d["task"])), "info"
         if op == "merge":
             return await o.merge(int(d["task"])), "info"
         if op == "reject":
@@ -1647,6 +1651,8 @@ class WebApp:
             return o.retry(num(rest)), "info"
         if cmd == "cancel":
             return o.cancel_command(rest), "info"
+        if cmd == "delete":
+            return o.delete_task(num(rest)), "info"
         if cmd == "review":
             return o.force_review(num(rest)), "info"
         if cmd == "continue":

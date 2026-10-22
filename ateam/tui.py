@@ -126,6 +126,7 @@ Giao việc:
   /set <task> effort|model <giá trị>
                                     đổi effort/model riêng cho 1 task ('-' = theo agent)
   /retry <task>   /cancel <task>    chạy lại (F5 hoặc Ctrl+R) / huỷ (Ctrl+K) task
+  /delete <task>                    xoá hẳn 1 task ngoài kế hoạch (cùng log và nhánh)
   /review <mục tiêu>                bắt trưởng nhóm review ngay
   /plan [mục tiêu]                  xem lại kế hoạch kể cả khi đã duyệt / xong (nút 📋 ở thẻ mục tiêu trên web)
   /continue <m12|t40> <yêu cầu>     tiếp tục mục tiêu (m) hoặc thread /task (t) đã xong: trưởng nhóm
@@ -292,6 +293,7 @@ COMMANDS = [
     ("set", tr("<task> effort|model <giá trị>"), tr("effort/model riêng cho 1 task")),
     ("retry", "<task>", tr("chạy lại task")),
     ("cancel", tr("<task|m<mục tiêu>>"), tr("huỷ task; m<số>: huỷ lượt lập kế hoạch đang chạy")),
+    ("delete", "<task>", tr("xoá hẳn 1 task ngoài kế hoạch (cùng log và nhánh)")),
     ("review", tr("<mục tiêu>"), tr("bắt trưởng nhóm review ngay")),
     ("search", tr("[từ khoá]"), tr("tìm & thay trong toàn dự án (F3), như VS Code")),
     ("plan", tr("[mục tiêu]"), tr("xem lại kế hoạch của mục tiêu, kể cả đã duyệt / đã xong")),
@@ -8627,6 +8629,8 @@ class TeamApp(App):
             self.notify(o.retry(num(rest)))
         elif cmd == "cancel":
             self.notify(o.cancel_command(rest))
+        elif cmd == "delete":
+            self.notify(o.delete_task(num(rest)))
         elif cmd == "review":
             self.notify(o.force_review(num(rest)))
         elif cmd == "note":

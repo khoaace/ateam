@@ -1053,6 +1053,34 @@ class Orchestrator:
         self.emit("changed")
         return len(tids), len(gids)
 
+    def delete_task(self, tid: int) -> str:
+        """Xoá hẳn một task ngoài kế hoạch (giao tay, giao việc chéo) cùng file log và nhánh của nó. Task trong kế
+        hoạch thuộc về mục tiêu (review, /continue) nên không xoá lẻ; đang chạy / chờ duyệt / xung đột còn việc dở
+        trên nhánh → huỷ, merge hoặc bỏ trước."""
+        t = self.db.task(tid)
+        if not t:
+            return tr("Không có task #{tid}", tid=tid)
+        if t.goal_id is not None:
+            return tr("Task #{tid} thuộc kế hoạch #{gid} — chỉ xoá được task ngoài kế hoạch", tid=tid, gid=t.goal_id)
+        if t.status == RUNNING:
+            return tr("Task #{tid} đang chạy — huỷ trước (/cancel {tid}) rồi xoá", tid=tid)
+        if t.status in (REVIEW, CONFLICT):
+            return tr("Task #{tid} đang chờ duyệt — merge hoặc bỏ trước rồi xoá", tid=tid)
+        waiting = [x.id for x in self.db.tasks() if tid in x.depends_on and x.status not in (DONE,) + FINISHED_BAD]
+        if waiting:
+            return tr("Task {v} còn chờ task #{tid} — xoá thì chúng bị chặn", tid=tid,
+                      v=", ".join(f"#{i}" for i in waiting))
+        if t.branch:
+            self._spawn(self._git("branch", "-D", t.branch))
+        self.db.delete([tid], [])
+        try:
+            self.log_path(tid).unlink()
+        except OSError:
+            pass
+        self.log(tr("🗑 Đã xoá task #{tid}: {title}", tid=tid, title=t.title))
+        self.emit("changed")
+        return tr("Đã xoá task #{tid}", tid=tid)
+
     # ------------------------------------------------------------------ giao tay / chỉnh sửa
     def add_task(self, agent: str, prompt: str, title: str | None = None, *,
                  model: str | None = None, effort: str | None = None) -> int:
