@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.45.0 — 22/10/2026
+
+- **Xoá từng task ngoài kế hoạch** — nút 🗑 Xoá trong popup task (web, có hỏi lại) và lệnh `/delete <task>` (TUI +
+  web): xoá hẳn task khỏi bảng việc cùng file log và nhánh git. Task đang chạy phải huỷ trước, task chờ duyệt / xung
+  đột phải merge hoặc bỏ trước, task còn task khác chờ thì không xoá (chúng sẽ bị chặn); task trong kế hoạch vẫn dọn
+  theo mục tiêu (`/clear`).
+- **CI xanh lại trên Ubuntu** — test thông báo của Lưới ở 0.44.0 chờ nhầm thông báo của ô khác khi đang bật "gửi tới tất cả".
+
 ## 0.44.0 — 22/10/2026
 
 - **Lưới báo khi một ô cần bạn** — web hiện toast + âm thanh (và thông báo trình duyệt theo `/notify`) khi CLI trong
