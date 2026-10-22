@@ -411,15 +411,15 @@ def test_web_tells_new_version(env, project, monkeypatch):
 
     from ateam import update
     wa = _web_app(env, project, monkeypatch)
-    gate = asyncio.Event()
-
-    async def check_new():
-        await gate.wait()  # tab đầu kết nối trước khi kiểm tra xong
-        return "99.0.0"
-    monkeypatch.setattr(update, "check_new", check_new)
     monkeypatch.setattr(update, "editable_source", lambda: None)
 
     async def main():
+        gate = asyncio.Event()  # tạo trong vòng lặp: Python 3.9 gắn Event vào get_event_loop() lúc tạo
+
+        async def check_new():
+            await gate.wait()  # tab đầu kết nối trước khi kiểm tra xong
+            return "99.0.0"
+        monkeypatch.setattr(update, "check_new", check_new)
         client = TestClient(TestServer(wa.make_app(), host="127.0.0.1", port=wa.port))
         await client.start_server()
         try:
