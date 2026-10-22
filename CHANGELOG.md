@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.41.1 — 22/10/2026
+
+- **Log TUI không còn thành chữ dọc** — log ghi trong lúc bạn ở màn hình khác từng hiện mỗi ký tự một dòng khi quay
+  lại; giờ được vẽ lại đúng bề rộng.
+- **Rời tab Git không bị kéo về** — đang chọn danh sách file Git rồi bấm sang màn hình khác từng nhảy ngược về Git.
+
 ## 0.41.0 — 21/10/2026
 
 - **TUI gọn và đẹp hơn** — thanh bên trái thay thanh tab khi terminal đủ rộng (≥ 120 cột): dự án + nhánh, các màn
