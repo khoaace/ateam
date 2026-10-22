@@ -137,10 +137,13 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
   .side-min .nav-item { justify-content: center; padding: 8px 0; position: relative; }
   .side-min .nav-count { position: absolute; top: 1px; right: 2px; min-width: 14px; padding: 0 3px; font-size: 9px; line-height: 12px; background: var(--side); }
   .side-min .conn { justify-content: center; padding: 4px 0 0; }
+  .side-min .quota { align-items: center; padding: 0 0 8px; }
+  .side-min .q-head, .side-min .q-row, .side-min .q-n { display: none; }
 }
 .side {
   background: var(--side); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 12px 8px 10px; gap: 14px; min-height: 0;
+  overflow-y: auto;  /* màn hình thấp: khối hạn mức ở chân không đẩy "Đã kết nối" ra ngoài */
 }
 .brand { display: flex; align-items: center; gap: 8px; padding: 2px 8px 8px; border-bottom: 1px solid var(--border); }
 .logo { display: none; }
@@ -174,6 +177,30 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 .conn .dot { width: 7px; height: 7px; border-radius: 1px; background: var(--failed); }
 .conn.ok .dot { background: var(--done); }
 .ver { font-size: 11px; color: var(--muted); padding: 0 8px; }
+/* hạn mức 5h/tuần (quota.js): chân thanh bên + đầu trang Thống kê */
+.quota { display: flex; flex-direction: column; gap: 6px; padding: 0 8px 8px; border-bottom: 1px solid var(--border); font-size: 11px; }
+.quota:empty, .dash-quota:empty { display: none; }
+.q-head { display: flex; align-items: center; justify-content: space-between; font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.q-refresh { background: none; border: 0; padding: 0 2px; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; line-height: 1; letter-spacing: 0; }
+.q-refresh:hover { color: var(--text); }
+.q-refresh.busy { animation: q-spin 1s linear infinite; cursor: default; }
+@keyframes q-spin { to { transform: rotate(360deg); } }
+.q-cli { display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.q-cli:hover .q-n { color: var(--text); }
+.q-name { display: flex; align-items: center; gap: 6px; color: var(--text-2); }
+.q-dot { width: 7px; height: 7px; border-radius: 1px; background: var(--q); flex: none; }
+.q-row { display: grid; grid-template-columns: 30px 1fr 30px; align-items: center; gap: 6px; color: var(--muted); }
+.q-v { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.qbar { height: 4px; background: var(--surface-3); border-radius: var(--radius-sm); overflow: hidden; }
+.qbar.big { height: 8px; margin: 4px 0 2px; }
+.qbar i { display: block; height: 100%; background: var(--q); transition: width .4s; }
+.q-lo { --q: var(--accent); } .q-mid { --q: var(--review); } .q-hi { --q: var(--failed); }
+.qcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; padding-top: 6px; }
+.qcard { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.q-line { display: flex; align-items: baseline; gap: 8px; }
+.q-line > :last-child { margin-left: auto; }
+.q-pct { font-variant-numeric: tabular-nums; color: var(--text-2); }
+.dash-quota { padding-bottom: 0; }
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .top {
@@ -855,6 +882,7 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
   .brand-proj, .side-foot .ver, .side-foot .conn span:last-child, .soon, .nav-item span[data-t] { display: none; }
   .nav { flex-direction: row; }
   .side-foot { margin: 0 0 0 auto; flex-direction: row; align-items: center; border-top: 0; padding-top: 0; }
+  .side-foot .quota { display: none; }
   .nav-item { width: auto; padding: 6px; }
   .nav-item.active { box-shadow: inset 0 -2px 0 var(--accent); }
   .top, .view { padding-left: 12px; padding-right: 12px; }

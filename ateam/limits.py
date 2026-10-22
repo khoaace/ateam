@@ -116,9 +116,9 @@ def _window(minutes) -> str:
     return tr("{m} phút", m=m)
 
 
-def codex_rate_limits(home=None, max_files: int = 30) -> list[str] | None:
-    """Hạn mức Codex lấy từ ảnh chụp `rate_limits` mà codex ghi vào file phiên (sự kiện token_count) —
-    codex không có lệnh headless nào in hạn mức mà không gọi model. None nếu chưa có phiên nào."""
+def codex_snapshot(home=None, max_files: int = 30) -> tuple[dict | None, str | None]:
+    """Ảnh chụp `rate_limits` mới nhất mà codex ghi vào file phiên (sự kiện token_count) và lúc ghi —
+    codex không có lệnh headless nào in hạn mức mà không gọi model. (None, None) nếu chưa có phiên nào."""
     import json
     import os
     from pathlib import Path
@@ -126,7 +126,7 @@ def codex_rate_limits(home=None, max_files: int = 30) -> list[str] | None:
     try:
         files = sorted(root.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)[:max_files]
     except OSError:
-        return None
+        return None, None
     for f in files:
         snap, when = None, None
         try:
@@ -142,35 +142,42 @@ def codex_rate_limits(home=None, max_files: int = 30) -> list[str] | None:
                     snap, when = rl, ev.get("timestamp")
         except OSError:
             continue
-        if not snap:
+        if snap:
+            return snap, when
+    return None, None
+
+
+def codex_rate_limits(home=None, max_files: int = 30) -> list[str] | None:
+    """Hạn mức Codex dạng chữ cho /usage (codex_snapshot). None nếu chưa có phiên nào."""
+    snap, when = codex_snapshot(home, max_files)
+    if not snap:
+        return None
+    out = []
+    if snap.get("plan_type"):
+        out.append(tr("Gói: {v}", v=snap['plan_type']))
+    for key, label in (("primary", tr("Hạn mức chính")), ("secondary", tr("Hạn mức phụ"))):
+        w = snap.get(key)
+        if not isinstance(w, dict):
             continue
-        out = []
-        if snap.get("plan_type"):
-            out.append(tr("Gói: {v}", v=snap['plan_type']))
-        for key, label in (("primary", tr("Hạn mức chính")), ("secondary", tr("Hạn mức phụ"))):
-            w = snap.get(key)
-            if not isinstance(w, dict):
-                continue
-            used = w.get("used_percent")
-            line = tr("{label} ({v}): đã dùng {used:g}%", label=label, v=_window(w.get('window_minutes')), used=used) if isinstance(
-                used, (int, float)) else f"{label}: ?"
-            if w.get("resets_at"):
-                line += tr(" · hồi lúc ") + time.strftime("%H:%M %d/%m", time.localtime(int(w["resets_at"])))
-            out.append(line)
-        cr = snap.get("credits")
-        if isinstance(cr, dict) and (cr.get("has_credits") or cr.get("unlimited")):
-            out.append("Credits: " + (tr("không giới hạn") if cr.get("unlimited") else str(cr.get("balance"))))
-        if snap.get("rate_limit_reached_type"):
-            out.append(tr("⚠ Đang chạm hạn mức: {v}", v=snap['rate_limit_reached_type']))
-        if when:
-            try:
-                t = dt.datetime.fromisoformat(str(when).replace("Z", "+00:00")).timestamp()
-                out.append(tr("(số liệu lúc ") + time.strftime("%H:%M %d/%m", time.localtime(t))
-                           + tr(" — lần chạy codex gần nhất)"))
-            except ValueError:
-                pass
-        return out
-    return None
+        used = w.get("used_percent")
+        line = tr("{label} ({v}): đã dùng {used:g}%", label=label, v=_window(w.get('window_minutes')), used=used) if isinstance(
+            used, (int, float)) else f"{label}: ?"
+        if w.get("resets_at"):
+            line += tr(" · hồi lúc ") + time.strftime("%H:%M %d/%m", time.localtime(int(w["resets_at"])))
+        out.append(line)
+    cr = snap.get("credits")
+    if isinstance(cr, dict) and (cr.get("has_credits") or cr.get("unlimited")):
+        out.append("Credits: " + (tr("không giới hạn") if cr.get("unlimited") else str(cr.get("balance"))))
+    if snap.get("rate_limit_reached_type"):
+        out.append(tr("⚠ Đang chạm hạn mức: {v}", v=snap['rate_limit_reached_type']))
+    if when:
+        try:
+            t = dt.datetime.fromisoformat(str(when).replace("Z", "+00:00")).timestamp()
+            out.append(tr("(số liệu lúc ") + time.strftime("%H:%M %d/%m", time.localtime(t))
+                       + tr(" — lần chạy codex gần nhất)"))
+        except ValueError:
+            pass
+    return out
 
 
 def grok_home():

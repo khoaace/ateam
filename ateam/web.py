@@ -23,8 +23,8 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import (__version__, clipboard, mentions, notes, notify, palette, projects, reports, rules, shell, theme, todos,
-               update, wizard)
+from . import (__version__, clipboard, mentions, notes, notify, palette, projects, quota, reports, rules, shell, theme,
+               todos, update, wizard)
 from .config import Config, found_models, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import DB, GOAL_ENDED, Goal, Task
 from .qr import QR
@@ -44,6 +44,7 @@ LOG_TAIL = 600       # số dòng cuối của log gửi khi mở 1 task
 LOG_FLUSH = 0.1      # gom dòng log rồi gửi một lần (agent in hàng trăm dòng/giây)
 IMAGE_MAX = 20 * 1024 ** 2  # ảnh dán vào ô nhập
 TASK_LIMIT = 400     # bảng việc gửi tối đa ngần này task gần nhất
+QUOTA_EVERY = 60     # giây giữa hai lần hỏi hạn mức 5h/tuần của các CLI (khi có trình duyệt đang mở)
 
 
 def code_prefs(st: dict) -> dict:
@@ -69,6 +70,10 @@ def ui_strings() -> dict[str, str]:
         "dash_chart": tr("Token theo ngày (14 ngày)"), "dash_by_agent": tr("Theo agent (30 ngày)"),
         "dash_by_model": tr("Theo model (30 ngày)"), "dash_history": tr("Lịch sử mục tiêu"),
         "dash_no_goals": tr("Chưa có mục tiêu nào. Gõ mục tiêu ở ô dưới để bắt đầu."),
+        "quota": tr("Hạn mức"), "quota_title": tr("Hạn mức 5 giờ / tuần"), "quota_refresh": tr("Hỏi lại hạn mức"),
+        "quota_loading": tr("Đang hỏi hạn mức các CLI…"), "quota_none": tr("Chưa có CLI nào báo hạn mức (claude, codex, agy)"),
+        "quota_used": tr("đã dùng {v}%"), "quota_reset_in": tr("hồi sau {v}"), "quota_reset_past": tr("đã tới giờ hồi"),
+        "quota_at": tr("số liệu lúc {v}"),
         "dash_col_runs": tr("Lượt"), "dash_col_time": tr("Thời gian"), "dash_col_failed": tr("Lỗi"),
         "dash_col_real": tr("Số thật"), "dash_result": tr("Kết quả:"), "dash_continue": tr("Tiếp tục mục tiêu"),
         "dash_goal_stats": tr("{n} lượt chạy · {v} · {tok} token ({real}/{n} số thật) · {cost}"), "cu_default": tr("mặc định"), "ob_flow": tr("Cấu hình luồng cố định…"),
@@ -581,6 +586,8 @@ class WebApp:
         self._flushing = False
         self.notices = notify.Watcher()  # báo trình duyệt khi task lỗi / chờ duyệt (như TUI)
         self._bg: set[asyncio.Task] = set()
+        self.quota: dict = {"t": "quota", "items": None, "at": 0}  # hạn mức 5h/tuần gần nhất (quota.collect)
+        self._quota_lock: asyncio.Lock | None = None  # tạo trong vòng lặp asyncio (_startup)
         self.next_root: Path | None = None  # /open: serve() trả về để cli.cmd_web chạy lại ở dự án này
 
     # ------------------------------------------------------------------ dựng app
@@ -603,6 +610,7 @@ class WebApp:
             web.get("/api/continue", self.api_continue),
             web.get("/api/dashboard", self.api_dashboard),
             web.get("/api/goals", self.api_goals),
+            web.get("/api/quota", self.api_quota),
             web.static("/static", STATIC),
         ] + self.git.routes() + self.code.routes() + self.setup.routes())
         app.on_startup.append(self._startup)
@@ -615,6 +623,8 @@ class WebApp:
             self.orch.log("ℹ " + n)
         self._spawn(self.orch.run_forever())
         self._spawn(self._push_loop())
+        self._quota_lock = asyncio.Lock()
+        self._spawn(self._quota_loop())
         if self.remote.tunnel:
             self._spawn(self._tunnel())
         if not needs_setup():  # như TUI: hỏi model của CLI chưa từng hỏi (wizard tự hỏi khi mở)
@@ -656,6 +666,8 @@ class WebApp:
             await ws.close()
         for t in list(self._bg):
             t.cancel()
+        if self._bg:  # chờ task bị huỷ dọn tiến trình con (claude -p /usage của quota…) trước khi vòng lặp đóng
+            await asyncio.wait(list(self._bg), timeout=2)
 
     # ------------------------------------------------------------------ mở folder / dự án khác (/open)
     def open_project(self, d: dict) -> tuple:
@@ -804,6 +816,27 @@ class WebApp:
                 out.append(live)
             for data in out:  # gửi song song: một trình duyệt chậm (điện thoại qua tunnel) không giữ chân cả nhóm
                 await asyncio.gather(*(self._send(ws, data) for ws in list(self.clients) if not ws.closed))
+
+    async def _quota_loop(self) -> None:
+        while True:
+            if self.clients:
+                await self.refresh_quota()
+            await asyncio.sleep(QUOTA_EVERY)
+
+    async def refresh_quota(self) -> dict:
+        """Hỏi lại hạn mức 5h/tuần của các CLI rồi gửi mọi tab. Đang có lượt hỏi thì chờ lượt đó, không hỏi chồng."""
+        if self._quota_lock.locked():
+            async with self._quota_lock:
+                return self.quota
+        async with self._quota_lock:
+            try:
+                items = await quota.collect(self.orch)
+            except Exception as e:  # CLI in lạ, file phiên hỏng…: giữ số cũ, lần sau hỏi lại
+                self.orch.log(f"⚠ quota: {e}")
+                return self.quota
+            self.quota = {"t": "quota", "items": items, "at": time.time()}
+        self.broadcast(self.quota)
+        return self.quota
 
     def live(self) -> dict:
         """Dòng cuối của từng task đang chạy (thẻ Kanban)."""
@@ -956,6 +989,11 @@ class WebApp:
         # cùng số liệu với tab 📊 Thống kê của TUI
         return web.json_response(self._cached(("dash",), lambda: reports.dashboard(self.db)))
 
+    async def api_quota(self, r: web.Request) -> web.Response:
+        if r.query.get("refresh") or self.quota["items"] is None:
+            await self.refresh_quota()
+        return web.json_response(self.quota)
+
     async def api_goals(self, r: web.Request) -> web.Response:
         n = int(r.query.get("limit", "50") or 50)
         return web.json_response(self._cached(("goals", n), lambda: reports.goal_history(self.db, n)))
@@ -972,6 +1010,10 @@ class WebApp:
         try:
             await ws.send_str(json.dumps(self.hello(), ensure_ascii=False))
             await ws.send_str(json.dumps(self.snapshot(), ensure_ascii=False))
+            if self.quota["items"] is not None:
+                await ws.send_str(json.dumps(self.quota, ensure_ascii=False))
+            elif self._quota_lock and not self._quota_lock.locked():  # tab đầu tiên: không chờ vòng 60 giây
+                self._spawn(self.refresh_quota())
             async for msg in ws:
                 if msg.type != WSMsgType.TEXT:
                     continue

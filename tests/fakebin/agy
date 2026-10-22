@@ -28,7 +28,7 @@ if fake_overloaded agy; then  # nguyên văn agy thật (20/10/2026), thoát mã
   exit 3
 fi
 if [ "$P" = "/usage" ]; then
-  printf 'Quota:\r\nGemini Models  Weekly Limit Remaining  29%%  2026-10-21 09:25 +07\r\n'
+  printf 'Quota:\r\nGemini Models  Weekly Limit Remaining  29%%  2026-10-21 09:25 +07\r\nGemini Models  Five Hour Limit Remaining  80%%  2026-10-20 14:00 +07\r\n'
   exit 0
 fi
 body="$(if [[ "$P" == *"#1 by codex"* ]]; then echo "thấy kết quả task 1"; fi

@@ -4405,4 +4405,22 @@ EN: dict[str, str] = {
         "Terminal narrower than {n} columns: the sidebar hides itself",
     "💻 {v} lệnh đang chạy":
         "💻 {v} command(s) running",
+    "Hạn mức":
+        "Quota",
+    "Hạn mức 5 giờ / tuần":
+        "5-hour / weekly quota",
+    "Hỏi lại hạn mức":
+        "Refresh quota",
+    "Đang hỏi hạn mức các CLI…":
+        "Asking the CLIs for their quota…",
+    "Chưa có CLI nào báo hạn mức (claude, codex, agy)":
+        "No CLI has reported a quota yet (claude, codex, agy)",
+    "đã dùng {v}%":
+        "{v}% used",
+    "hồi sau {v}":
+        "resets in {v}",
+    "đã tới giờ hồi":
+        "reset time reached",
+    "số liệu lúc {v}":
+        "as of {v}",
 }

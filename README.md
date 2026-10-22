@@ -181,7 +181,8 @@ ngăn chi tiết task (log trực tiếp, diff, merge/từ chối, chạy lại,
 (stage, commit — AI viết message, amend, nhánh, stash, pull/push, lịch sử, revert), **Code** (cây thư mục,
 editor CodeMirror có phím vim `:w :q :wq :e! :bn`, nhiều file, tự nạp lại khi agent sửa file, file `.md` có
 Sửa / Chia đôi / Xem trước), diff kiểu VS Code
-(2 cột, chữ đổi trong dòng, tô cú pháp), `/setup`, `/custom`, `/help`, `/usage`, `/models`… Sáng/tối, màu nhấn dùng
+(2 cột, chữ đổi trong dòng, tô cú pháp), **thanh hạn mức 5 giờ / tuần** của claude, codex, antigravity ở chân thanh bên
+(tự cập nhật mỗi phút, chi tiết + giờ hồi ở trang Thống kê), `/setup`, `/custom`, `/help`, `/usage`, `/models`… Sáng/tối, màu nhấn dùng
 chung với terminal, dùng được trên điện thoại.
 
 ```bash

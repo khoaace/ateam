@@ -68,6 +68,7 @@ function connect() {
     else if (m.t === "toast") onToast(m);
     else if (m.t === "notice") onNotice(m);
     else if (m.t === "prefs") applyPrefs(m);
+    else if (m.t === "quota" && window.QuotaView) QuotaView.onState(m);
     else if (m.t === "discovered" && window.Setup) Setup.discovered();
   };
 }
@@ -1965,6 +1966,8 @@ const ACTIONS = {
   "open-project": () => projectModal(),
   "rules": () => RulesView.open(),
   "lofi": () => Lofi.open(),
+  "quota-refresh": (el, e) => { e.stopPropagation(); QuotaView.refresh(); },
+  "quota-open": () => setView("dash"),
   "side-toggle": () => setSideMin(!document.documentElement.classList.contains("side-min")),
   "roles": () => Setup.rolesModal(),
   "goal-plan": (el, e) => { e.stopPropagation(); planModal(+el.dataset.goal); },

@@ -84,6 +84,7 @@
         <svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h6M9 8h3"/></svg>
         <span data-t="syslog"></span>
       </button>
+      <div class="quota" id="quota"></div>
       <div class="conn" id="conn"><span class="dot"></span><span id="conn-text"></span></div>
       <div class="ver" id="ver"></div>
     </div>
@@ -140,6 +141,7 @@
         <div class="notes" id="notes"></div>
       </section>
       <section class="view hidden" id="view-dash">
+        <div class="dash dash-quota" id="dash-quota"></div>
         <div class="dash" id="dash"></div>
       </section>
       <section class="view hidden" id="view-custom">
@@ -170,6 +172,7 @@
 <script src="/static/code.js?v={{V}}"></script>
 <script src="/static/setup.js?v={{V}}"></script>
 <script src="/static/dash.js?v={{V}}"></script>
+<script src="/static/quota.js?v={{V}}"></script>
 <script src="/static/lofi.js?v={{V}}"></script>
 <script src="/static/todo.js?v={{V}}"></script>
 <script src="/static/notes.js?v={{V}}"></script>
