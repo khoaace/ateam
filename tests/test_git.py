@@ -417,3 +417,34 @@ def test_commit_no_verify_skips_hooks(env, project, monkeypatch):
             assert app.query_one("#git-no-verify").value is True
             await pilot.press("ctrl+q")
     asyncio.run(tui_level())
+
+
+def test_tui_leave_git_tab_stays_left(env, project, monkeypatch):
+    """Rời tab Git khi danh sách file đang có focus: Textual blur sang ô commit (cũng ở tab Git) → bị kéo về Git."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+    (project / "base.txt").write_text("base\nsửa\n")
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import TeamApp
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.3)
+            app.run_command("/git")
+            await pilot.pause(0.5)
+            app.query_one("#git-files").focus()
+            await pilot.pause(0.2)
+            app.action_goto_tab(TeamApp.TAB_ORDER.index("tab-board"))
+            for _ in range(4):
+                await pilot.pause(0.2)
+            assert app.query_one("#tabs").active == "tab-board", app.focused
+    asyncio.run(main())

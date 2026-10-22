@@ -860,6 +860,7 @@ class ReflowLog(RichLog):
         self._items: deque = deque(maxlen=self.max_lines or 5000)
         self._width = 0
         self._reflowing = False
+        self._stale = False
 
     def write(self, content, *args, **kw):
         if not self._reflowing:
@@ -867,6 +868,10 @@ class ReflowLog(RichLog):
             if not self._size_known:
                 # ô chưa từng hiện (tab Agents chưa mở): RichLog sẽ hoãn vào hàng đợi không giới hạn rồi phát lại qua
                 # write() (thành dòng đôi trong _items). Chỉ giữ ở _items (có giới hạn), vẽ một lần khi có kích thước.
+                return self
+            if not self.scrollable_content_region.width:
+                # tab đang ẩn: bề rộng 0 → RichLog cắt mỗi ký tự một dòng. Vẽ lại khi hiện lên (on_resize).
+                self._stale = True
                 return self
         return super().write(content, *args, **kw)
 
@@ -878,7 +883,10 @@ class ReflowLog(RichLog):
         first = not self._size_known
         super().on_resize(event)  # RichLog: ghi các dòng hoãn lại lúc chưa biết kích thước
         width = self.scrollable_content_region.width
-        if first and self._size_known and self._items:
+        if not width:
+            return  # bị ẩn — giữ bề rộng cũ để so khi hiện lại
+        if (first or self._stale) and self._size_known and self._items:
+            self._stale = False
             self._reflow()  # các dòng ghi lúc ô còn ẩn
         elif self._width and width != self._width and self._items:
             self.set_timer(0.15, self._reflow, name="reflow")
@@ -7216,6 +7224,10 @@ class TeamApp(App):
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         if event.tabbed_content.id == "tabs":
+            if self.focused is not None and event.pane not in self.focused.ancestors_with_self:
+                # Textual: widget có focus ở tab vừa ẩn tự blur sang widget cạnh nó — cũng ở tab đó — rồi TabPane
+                # kích hoạt lại tab cũ (bấm thanh bên từ tab Git bị kéo về Git). Chuyển focus đi trước khi bị ẩn.
+                self.query_one("#cmd").focus()
             self.refresh_view()
             if event.pane.id == "tab-git":
                 self.run_worker(self.refresh_git(), exclusive=False)

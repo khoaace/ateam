@@ -76,3 +76,33 @@ def test_reflow_log_hidden_pane_keeps_lines_once():
             assert len(log._items) == 50  # trước đây phát lại qua write() → dòng đôi
             assert len(log.lines) == 50 and "dòng 119" in log.lines[-1].text
     asyncio.run(main())
+
+
+def test_reflow_log_written_while_tab_hidden_not_vertical():
+    """Ghi log lúc tab bị ẩn (bề rộng 0) từng thành mỗi ký tự một dòng khi quay lại."""
+    from textual.app import App
+    from textual.widgets import Static, TabbedContent, TabPane
+    from ateam.tui import ReflowLog
+
+    class A(App):
+        def compose(self):
+            with TabbedContent(id="tc"):
+                with TabPane("a", id="a"):
+                    yield ReflowLog(id="log", wrap=True, min_width=1)
+                with TabPane("b", id="b"):
+                    yield Static("x")
+
+    async def main():
+        app = A()
+        async with app.run_test(size=(80, 20)) as pilot:
+            log = app.query_one(ReflowLog)
+            log.write("trước khi ẩn")
+            await pilot.pause()
+            app.query_one("#tc").active = "b"
+            await pilot.pause()
+            log.write("ghi lúc tab đang ẩn")
+            app.query_one("#tc").active = "a"
+            await pilot.pause()
+            await pilot.pause()
+            assert [s.text.rstrip() for s in log.lines] == ["trước khi ẩn", "ghi lúc tab đang ẩn"]
+    asyncio.run(main())
