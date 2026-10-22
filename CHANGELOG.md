@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.42.1 — 22/10/2026
 
 - **TUI không còn lỗi khi đang dựng lại danh sách agent** — lưu bảng vai trò đúng lúc agent đang in log có thể làm
   app báo lỗi `NoMatches('.pane-log')`; giờ log tới ô chưa dựng xong được bỏ qua.
