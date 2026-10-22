@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.44.0 — 22/10/2026
 
 - **Lưới báo khi một ô cần bạn** — web hiện toast + âm thanh (và thông báo trình duyệt theo `/notify`) khi CLI trong
   ô Lưới gửi thông báo terminal (Claude Code xin quyền / chờ bạn, Codex xong lượt khi ô không được chọn; OSC 9,
