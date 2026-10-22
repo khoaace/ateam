@@ -116,7 +116,11 @@ def test_sidebar_active_bg_is_valid_rich_color_for_every_theme(env, project, mon
     tui, app, _ = _app(env, project, monkeypatch)
     names = [n for n in app.available_themes if n.startswith("ansi")]
     assert names
-    for name in names:
-        app.theme = name
-        bg = tui.Sidebar().active_bg(app)
-        RichColor.parse(bg)  # không ném ColorParseError
+
+    async def main():  # đổi theme phải ở trong vòng lặp (Python 3.9: không có event loop thì RuntimeError)
+        for name in names:
+            app.theme = name
+            bg = tui.Sidebar().active_bg(app)
+            RichColor.parse(bg)  # không ném ColorParseError
+
+    asyncio.run(main())
