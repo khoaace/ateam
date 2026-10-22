@@ -86,9 +86,15 @@ def test_tui_input_mode_picker_and_star_button(env, project, monkeypatch):
             # nút ★ Mặc định ở tab 🧩 Tuỳ chỉnh
             app.run_command("/custom")
             panel = app.query_one("#custom-tab", CustomPanel)
-            assert await wait(lambda: any(a == "default-flow" for a, _n in panel.ids.values()))
-            bid = next(b for b, (a, n) in panel.ids.items() if a == "default-flow" and n == "nhanh")
+            def star():  # id nút có trong panel.ids trước khi nút vào DOM (CI chậm): chờ nút thật
+                bid = next((b for b, (a, n) in panel.ids.items() if a == "default-flow" and n == "nhanh"), None)
+                return bid if bid and panel.query("#" + bid) else None
+            assert await wait(star)
+            bid = star()
             panel.query_one("#" + bid).press()
             assert await wait(lambda: app.cfg.default_workflow == "nhanh" and "⚙ nhanh" in label())
+            # /custom dựng lại bảng vai trò ở tab Agents: thoát giữa chừng thì Textual gỡ Select chưa mount xong
+            roles = app.query_one("#roles-table")
+            assert await wait(lambda: not roles._lock.locked() and roles.base is not None)
             await pilot.press("ctrl+q")
     asyncio.run(main())

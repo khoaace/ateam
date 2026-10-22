@@ -209,7 +209,7 @@ def test_tui_git_tab(env, project, monkeypatch):
         ensure_global_config()
         app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
 
-        async def wait(cond, n=40):
+        async def wait(cond, n=200):  # CI chậm: chờ tới 30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.15)
                 if cond():
@@ -247,7 +247,7 @@ def test_tui_git_tab(env, project, monkeypatch):
             # ✨ trưởng nhóm (claude giả lập) viết message, Enter để commit — chỉ file đã stage
             app.run_command("/commit")
             box = app.query_one("#git-msg")
-            assert await wait(lambda: box.value == "Thêm file mới cho bản demo", 80)
+            assert await wait(lambda: box.value == "Thêm file mới cho bản demo"), (box.value, [n.message for n in app._notifications])
             assert "claude giả lập" in app._git_body
             box.focus()
             await pilot.press("enter")
@@ -262,7 +262,7 @@ def test_tui_git_tab(env, project, monkeypatch):
             assert await wait(lambda: app.cfg.commit_agent == "codex")
             assert load_state()["commit_agent"] == "codex"
             app.git_button("git-ai")
-            assert await wait(lambda: box.value == "Codex viết message này", 80)
+            assert await wait(lambda: box.value == "Codex viết message này")
             app.query_one("#git-ai-agent").value = ""
             assert await wait(lambda: "commit_agent" not in load_state())
             box.value = ""
@@ -275,20 +275,20 @@ def test_tui_git_tab(env, project, monkeypatch):
             names = [b.name for b in app.screen.branches]
             assert set(names) == {"feature/demo", "master"} or set(names) == {"feature/demo", "main"}
             ol = app.screen.query_one("#gb-list")
-            await pilot.press("m", "a")  # ô lọc có focus sẵn: chỉ còn main/master
-            await pilot.pause(0.1)
-            assert ol.option_count == 1
+            assert await wait(lambda: app.screen.query_one("#gb-filter").has_focus)  # on_mount đặt focus vào ô lọc
+            await pilot.press("m", "a")  # chỉ còn main/master
+            assert await wait(lambda: ol.option_count == 1)  # CI chậm: lọc lại sau Input.Changed, không chờ cố định
             await pilot.press("x", "y", "z")
-            await pilot.pause(0.1)
-            assert ol.option_count == 0
+            assert await wait(lambda: ol.option_count == 0)
             await pilot.press("backspace", "backspace", "backspace")
-            await pilot.pause(0.1)
+            assert await wait(lambda: ol.option_count == 1)
             await pilot.press("enter")  # chuyển sang nhánh khớp đầu tiên
             assert await wait(lambda: app.git_status.branch in ("master", "main"))
 
             # stash qua popup rồi /stash pop
             app.git_button("git-stash")
-            assert await wait(lambda: isinstance(app.screen, GitStashScreen))
+            # popup vừa đẩy lên chưa chắc đã dựng xong con (CI chậm): chờ mount xong rồi mới bấm
+            assert await wait(lambda: isinstance(app.screen, GitStashScreen) and app.screen.is_mounted)
             app.screen.query_one("#gs-push").press()  # không theo toạ độ (popup vừa mở)
             assert await wait(lambda: app.git_status.clean and app.git_status.stashes == 1)
             app.run_command("/stash pop")

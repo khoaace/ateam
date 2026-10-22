@@ -1528,6 +1528,12 @@ class RolesTable(Vertical):
             self.base = None  # Select.Changed lúc dựng không tính là sửa
             await box.remove_children()
             await box.mount_all(rows)
+            # Mount của Select (dựng danh sách lựa chọn) chạy sau mount_all: lượt dựng sau (Huỷ/Lưu rồi _rebuild_panes
+            # nạp lại liền) mà gỡ hàng trước khi nó chạy thì Textual lỗi NoMatches('SelectOverlay') — chờ xong mới nhả khoá
+            for _ in range(250):
+                if all(s.is_mounted for s in box.query(Select)):
+                    break
+                await asyncio.sleep(0.02)
             self._mark_dirty(False)
             gen = self._gen
             self.call_after_refresh(lambda: self._ready(gen))
@@ -1549,7 +1555,8 @@ class RolesTable(Vertical):
         if not sid.startswith("rt-"):
             return
         event.stop()
-        if self.base is None:
+        # đang dựng lại (reload giữ khoá): Select cũ có thể đã mất phần con — đụng vào là NoMatches('SelectOverlay')
+        if self.base is None or self._lock.locked():
             return
         if sid.startswith("rt-cli-"):  # đổi CLI: model/effort gợi ý theo CLI mới
             role = sid[len("rt-cli-"):]

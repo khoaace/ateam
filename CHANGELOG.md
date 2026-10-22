@@ -1,5 +1,10 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Bảng ⚡ Vai trò ổn định hơn** — Huỷ/Lưu rồi bảng dựng lại liên tiếp không còn có thể làm app lỗi
+  `NoMatches('SelectOverlay')`.
+
 ## 0.42.1 — 22/10/2026
 
 - **TUI không còn lỗi khi đang dựng lại danh sách agent** — lưu bảng vai trò đúng lúc agent đang in log có thể làm

@@ -263,6 +263,8 @@ def test_tui_roles_table_edit_cancel_save(env, project, monkeypatch):
             table.query_one("#rt-save").press()
             assert await wait(lambda: not table.dirty and app.cfg.agents[app.cfg.lead].effort == choices[0])
             assert app.cfg.lead == lead
+            # Lưu dựng lại bảng (2 lượt): thoát giữa chừng thì Textual gỡ Select chưa mount xong → NoMatches
+            assert await wait(lambda: not table._lock.locked() and table.base is not None)
             await pilot.press("ctrl+q")
     asyncio.run(main())
 
