@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.42.0 — 22/10/2026
+
+- **Web: hạn mức 5 giờ / tuần dạng thanh tiến độ** — chân thanh bên luôn hiện % đã dùng của claude, codex, antigravity
+  (vàng từ 70%, đỏ từ 90%), tự cập nhật mỗi phút hoặc bấm ⟳; trang Thống kê có chi tiết từng nhóm model và đếm ngược
+  giờ hồi. Số liệu lấy như `/usage` (`claude -p /usage`, `agy -p /usage`, file phiên codex) — không gọi model.
+  Grok không có lệnh nào in hạn mức nên không hiện.
+
 ## 0.41.1 — 22/10/2026
 
 - **Log TUI không còn thành chữ dọc** — log ghi trong lúc bạn ở màn hình khác từng hiện mỗi ký tự một dòng khi quay
