@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 
-from conftest import git_init, write_project_config
+from conftest import git_init, wait_for, write_project_config
 
 
 def test_tui_smoke(env, project, monkeypatch):
@@ -1695,22 +1695,20 @@ def test_tui_todo_tags_due_and_notes(env, project, monkeypatch):
             await pilot.pause(0.1)
             assert todos.load(project)[0]["priority"] == 0
             await pilot.press("u")                         # hạn: trống = bỏ hạn
-            await pilot.pause(0.2)
-            assert isinstance(app.screen, PromptScreen)
+            assert await wait_for(pilot, lambda: isinstance(app.screen, PromptScreen))
             app.screen.query_one("#prompt-in").value = ""
             await pilot.press("enter")
             await pilot.pause(0.1)
             assert not todos.load(project)[0].get("due")
             await pilot.press("t")                         # tag: thay bằng danh sách mới
-            await pilot.pause(0.2)
+            assert await wait_for(pilot, lambda: isinstance(app.screen, PromptScreen))
             app.screen.query_one("#prompt-in").value = "ui, docs"
             await pilot.press("enter")
             await pilot.pause(0.1)
             assert todos.tag_names(project, todos.load(project)[0]["tags"]) == ["ui", "docs"]
             await pilot.press("enter")                     # chi tiết
-            await pilot.pause(0.3)
+            assert await wait_for(pilot, lambda: isinstance(app.screen, TodoEditScreen))
             scr = app.screen
-            assert isinstance(scr, TodoEditScreen)
             scr.query_one("#td-due").value = "24/12 9h"
             scr.query_one("#td-desc", TextArea).load_text("- bước 1")
             await pilot.press("ctrl+s")
@@ -1719,16 +1717,14 @@ def test_tui_todo_tags_due_and_notes(env, project, monkeypatch):
             assert x["due"].endswith("-12-24T09:00") and x["desc"] == "- bước 1"
 
             app.run_command("/tags")
-            await pilot.pause(0.3)
-            assert isinstance(app.screen, TagScreen)
+            assert await wait_for(pilot, lambda: isinstance(app.screen, TagScreen))
             names = [t["name"] for t in todos.load_tags(project)]
             assert names == ["bug", "ui", "docs"]
             await pilot.press("d")                         # xoá "bug": chỉ gỡ tag
-            await pilot.pause(0.2)
-            assert isinstance(app.screen, ConfirmScreen)
+            assert await wait_for(pilot, lambda: isinstance(app.screen, ConfirmScreen))
             app.screen.action_yes()
-            await pilot.pause(0.2)
-            assert [t["name"] for t in todos.load_tags(project)] == ["ui", "docs"] and todos.load(project)
+            assert await wait_for(pilot, lambda: [t["name"] for t in todos.load_tags(project)] == ["ui", "docs"])
+            assert todos.load(project)
             await pilot.press("escape")
             await pilot.pause(0.2)
 
@@ -1752,11 +1748,9 @@ def test_tui_todo_tags_due_and_notes(env, project, monkeypatch):
             body.insert("\nthêm")
             await pilot.pause(0.1)
             await pilot.press("ctrl+s")
-            await pilot.pause(0.2)
-            assert isinstance(app.screen, ConfirmScreen)
+            assert await wait_for(pilot, lambda: isinstance(app.screen, ConfirmScreen))
             await pilot.press("escape")                    # huỷ = tải lại bản mới
-            await pilot.pause(0.3)
-            assert app.query_one("#note-body", TextArea).text == "bản web"
+            assert await wait_for(pilot, lambda: app.query_one("#note-body", TextArea).text == "bản web")
             app.query_one(NoteList).focus()
             await pilot.press("p")                         # ghim
             await pilot.pause(0.1)

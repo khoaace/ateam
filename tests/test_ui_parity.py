@@ -265,3 +265,23 @@ def test_tui_roles_table_edit_cancel_save(env, project, monkeypatch):
             assert app.cfg.lead == lead
             await pilot.press("ctrl+q")
     asyncio.run(main())
+
+
+def test_tui_log_to_agent_pane_being_rebuilt(env, project, monkeypatch):
+    """Lưu bảng vai trò dựng lại các ô agent: log của agent tới đúng lúc ô vừa mount (chưa compose) không được làm
+    app lỗi NoMatches('.pane-log') — CI chậm từng gặp."""
+    git_init(project)
+    app = _app(env, project, monkeypatch)
+    from ateam.tui import AgentPane
+
+    async def main():
+        async with app.run_test(size=(180, 50)) as pilot:
+            await pilot.pause(0.3)
+            grid = app.query_one("#team-grid")
+            grid.mount(AgentPane("moi"))  # không await: ô đã vào DOM nhưng chưa có con
+            app.on_orch_event("log", {"agent": "moi", "line": "x", "raw": "x"})
+            app.on_orch_event("activity", {"agent": "moi", "end": {"status": "done", "started": 0}})
+            await pilot.pause(0.2)
+            app.pane("moi").body  # mount xong thì ghi bình thường
+            await pilot.press("ctrl+q")
+    asyncio.run(main())

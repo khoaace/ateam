@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "aiohttp>=3.8"]  # aiohttp: test giao diện web
+dev = ["pytest>=7", "pytest-xdist>=3", "aiohttp>=3.8"]  # aiohttp: test giao diện web; xdist: chạy test song song
 web = ["aiohttp>=3.8", "textual-serve>=1.1"]  # `ateam web` (aiohttp); `ateam web --tui` (textual-serve)
 
 [project.scripts]

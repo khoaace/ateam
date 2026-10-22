@@ -5399,9 +5399,11 @@ class TeamApp(App):
 
     def pane(self, agent: str) -> AgentPane | None:
         try:
-            return self.query_one(f"#{safe_id(agent)}", AgentPane)
+            p = self.query_one(f"#{safe_id(agent)}", AgentPane)
         except Exception:
             return None
+        # vừa mount (chưa compose) hoặc đang gỡ khi dựng lại danh sách agent: chưa/không còn ô log để ghi
+        return p if p.query(".pane-log") else None
 
     # ------------------------------------------------------------------ sự kiện từ điều phối
     def on_orch_event(self, kind: str, data: dict) -> None:

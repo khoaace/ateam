@@ -64,6 +64,15 @@ def git_init(path: Path) -> None:
     g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init")
 
 
+async def wait_for(pilot, cond, timeout: float = 20) -> bool:
+    """TUI: chờ tới khi cond() đúng — CI chậm có thể mất vài giây mới đẩy xong popup; xong sớm thì thoát sớm."""
+    for _ in range(int(timeout / 0.1)):
+        await pilot.pause(0.1)
+        if cond():
+            return True
+    return False
+
+
 def write_project_config(project: Path, text: str) -> None:
     (project / ".ateam").mkdir(exist_ok=True)
     (project / ".ateam" / "config.toml").write_text(text, encoding="utf-8")

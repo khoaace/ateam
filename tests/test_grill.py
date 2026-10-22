@@ -58,7 +58,7 @@ def test_tui_grill_flow(env, project, monkeypatch, tmp_path):
         ensure_global_config()
         app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
 
-        async def wait(cond, n=60):
+        async def wait(cond, n=200):  # CI chậm: chờ tới 30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.15)
                 if cond():
@@ -87,7 +87,7 @@ def test_tui_grill_flow(env, project, monkeypatch, tmp_path):
             box.value = "Chỉ đăng nhập bằng email"
             await pilot.press("enter")
             # đủ 2 câu: claude giả lập chốt đặc tả -> lập kế hoạch -> chờ duyệt
-            assert await wait(lambda: app.db.goal(gid).status == "awaiting", 80)
+            assert await wait(lambda: app.db.goal(gid).status == "awaiting")
             g = app.db.goal(gid)
             assert g.spec.startswith("- Đăng nhập bằng email") and "Đã trả lời 2 câu" in g.spec
             assert [x["a"] for x in g.grill["qa"]] == ["Phương án B", "Chỉ đăng nhập bằng email"]
@@ -104,7 +104,7 @@ def test_tui_grill_flow(env, project, monkeypatch, tmp_path):
             app.action_grill_pick(1)
             assert await wait(lambda: bar.question is not None and bar.question["q"] == "Câu hỏi số 2?")
             app.run_command("/grill xong")
-            assert await wait(lambda: app.db.goal(gid2).status == "awaiting", 80)
+            assert await wait(lambda: app.db.goal(gid2).status == "awaiting")
             assert "Đã trả lời 1 câu" in app.db.goal(gid2).spec
             app.run_command(f"/drop {gid2}")
 

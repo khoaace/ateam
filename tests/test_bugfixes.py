@@ -71,12 +71,13 @@ def test_runner_keep_lines_limits_memory():
 
 def test_runner_pipe_does_not_wait_for_background_child():
     t = time.time()
-    run, rc, got = _run(["/bin/sh", "-c", "sleep 30 & echo xong"], use_pty=False, timeout=25)
+    # "sleep 37" chỉ test này dùng: pkill dọn tiến trình nền mà không giết "sleep 30" của test chạy song song (xdist)
+    run, rc, got = _run(["/bin/sh", "-c", "sleep 37 & echo xong"], use_pty=False, timeout=25)
     try:
         assert rc == 0 and "xong" in got and time.time() - t < 10
     finally:
         run.kill_now()
-        subprocess.run(["pkill", "-f", "sleep 30"], capture_output=True)
+        subprocess.run(["pkill", "-f", "sleep 37"], capture_output=True)
 
 
 def test_child_pwd_follows_cwd(tmp_path):

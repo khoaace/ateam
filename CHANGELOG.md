@@ -1,5 +1,11 @@
 # Changelog
 
+## Chưa phát hành
+
+- **TUI không còn lỗi khi đang dựng lại danh sách agent** — lưu bảng vai trò đúng lúc agent đang in log có thể làm
+  app báo lỗi `NoMatches('.pane-log')`; giờ log tới ô chưa dựng xong được bỏ qua.
+- **CI nhanh hơn** — test chạy song song (`pytest -n auto`, pytest-xdist); sửa ba test TUI hay hỏng trên máy CI chậm.
+
 ## 0.42.0 — 22/10/2026
 
 - **Web: hạn mức 5 giờ / tuần dạng thanh tiến độ** — chân thanh bên luôn hiện % đã dùng của claude, codex, antigravity

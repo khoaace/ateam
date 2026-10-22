@@ -21,7 +21,7 @@ jobs:
       - name: Cài đặt
         run: pip install -e ".[dev]"
       - name: Chạy test (agent giả lập trong tests/fakebin)
-        run: python -m pytest -q -rfE tests 2>&1 | tee pytest.log; exit ${PIPESTATUS[0]}
+        run: python -m pytest -q -rfE -n auto tests 2>&1 | tee pytest.log; exit ${PIPESTATUS[0]}  # song song theo số nhân
         shell: bash
       - name: Báo test hỏng thành annotation
         if: failure()

@@ -6,7 +6,7 @@
 git clone https://github.com/khoaace/ateam && cd ateam
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-python -m pytest -q
+python -m pytest -q -n auto   # song song (pytest-xdist); bỏ -n auto để chạy tuần tự
 ```
 
 Yêu cầu Python ≥ 3.9 (macOS có sẵn 3.9.6; CI chạy 3.9 và 3.13 trên Ubuntu + macOS). Phụ thuộc duy nhất
