@@ -108,3 +108,15 @@ def test_sidebar_off_is_remembered(env, project, monkeypatch):
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
+
+
+def test_sidebar_active_bg_is_valid_rich_color_for_every_theme(env, project, monkeypatch):
+    """Theme ANSI có nền panel trong suốt: màu pha ra có alpha (#RRGGBBAA) — Rich không đọc được, TUI sập lúc mở."""
+    from rich.color import Color as RichColor
+    tui, app, _ = _app(env, project, monkeypatch)
+    names = [n for n in app.available_themes if n.startswith("ansi")]
+    assert names
+    for name in names:
+        app.theme = name
+        bg = tui.Sidebar().active_bg(app)
+        RichColor.parse(bg)  # không ném ColorParseError

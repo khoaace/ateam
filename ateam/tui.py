@@ -3286,7 +3286,8 @@ class Sidebar(Static):
             from textual.color import Color
             v = app.get_css_variables()
             try:
-                bg = Color.parse(v["primary"]).blend(Color.parse(v["panel"]), 0.6).hex
+                # hex6: theme ANSI có panel trong suốt -> màu pha có alpha (#RRGGBBAA), Rich không đọc được
+                bg = Color.parse(v["primary"]).blend(Color.parse(v["panel"]), 0.6).hex6
             except Exception:
                 bg = "grey30"
             self._bg = (app.theme, bg)
