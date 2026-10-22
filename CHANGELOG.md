@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.46.0 — 22/10/2026
+
+- **Báo khi có bản ateam mới** — mở TUI hoặc `ateam web` là kiểm tra ngầm (mất mạng thì im lặng; web để chạy lâu thì
+  hỏi lại mỗi 6 giờ). Có bản mới: TUI hiện thông báo + ghi log hệ thống; web hiện toast có nút **Cập nhật** và
+  `⬆ <bản mới>` ở chân thanh bên (bấm để chạy `/update`). Chỉ báo, không tự cài — agent đang chạy không bị ngắt. Bản cài
+  từ mã nguồn được chỉ dẫn `git pull`. Tắt bằng `ATEAM_NO_UPDATE_CHECK=1`.
+- **Web: mở folder ở cửa sổ mới** — popup Mở folder / dự án khác có nút ⧉ ở mỗi dòng (hoặc ⌘/Ctrl+Enter): dự án đó
+  mở ở cửa sổ trình duyệt mới, dự án đang mở giữ nguyên. Server chạy thêm một `ateam web` cho dự án kia ở cổng kế
+  tiếp (log ở `.ateam/web.log` của dự án đó); dự án đó đã mở ở `ateam web` khác thì dùng lại. Ctrl+C ở terminal dừng cả hai.
+
 ## 0.45.0 — 22/10/2026
 
 - **Xoá từng task ngoài kế hoạch** — nút 🗑 Xoá trong popup task (web, có hỏi lại) và lệnh `/delete <task>` (TUI +
