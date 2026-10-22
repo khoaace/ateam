@@ -756,21 +756,21 @@ def test_tui_missing_args_show_usage_and_compact(env, project, monkeypatch):
             await pilot.pause(0.3)
             seen.clear()
             app.run_command("/compact")
-            for _ in range(40):
+            for _ in range(300):
                 await pilot.pause(0.1)
                 if seen:
                     break
             assert seen[-1] == ("warning", "Chưa có ghi chú hay mục tiêu nào để thu gọn."), seen
             app.run_command("/note API chạy cổng 8080")
             app.run_command("/compact giữ cổng")
-            for _ in range(80):
+            for _ in range(300):  # CI macOS chậm: chờ tới ~30 giây
                 await pilot.pause(0.1)
                 if app.db.recent_notes()[0][0] == "compact":
                     break
             assert [a for a, _ in app.db.recent_notes()] == ["compact"]
             seen.clear()
             app.run_command("/init")  # /init: trưởng nhóm viết .ateam/project.md
-            for _ in range(80):
+            for _ in range(300):  # CI macOS chậm: chờ tới ~30 giây
                 await pilot.pause(0.1)
                 if seen:
                     break
