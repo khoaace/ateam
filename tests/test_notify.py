@@ -39,6 +39,20 @@ def test_watcher_reports_only_new_transitions():
     assert w.diff([], [G(3, "done"), G(4, "incomplete")]) == []
 
 
+
+def test_watcher_task_done_outside_plan():
+    """Task ngoài kế hoạch (goal_id rỗng — /add, giao tay) chạy xong → "task_done" (web phát âm riêng). Task trong
+    kế hoạch đã có thông báo mục tiêu xong; review/conflict → done là người dùng tự duyệt merge, không báo lại.
+    Task ngắn xong giữa hai lần đọc (queued → done) vẫn được báo."""
+    w = notify.Watcher()
+    w.diff([T(1, "running", goal_id=None), T(2, "running"), T(3, "review", goal_id=None),
+            T(4, "conflict", goal_id=None), T(5, "queued", goal_id=None)], [])
+    out = w.diff([T(1, "done", goal_id=None), T(2, "done"), T(3, "done", goal_id=None), T(4, "done", goal_id=None),
+                  T(5, "done", goal_id=None)], [])
+    assert [(n.kind, n.task_id, n.level) for n in out] == [("task_done", 1, "info"), ("task_done", 5, "info")]
+    assert "#1" in out[0].body
+    assert w.diff([T(1, "done", goal_id=None)], []) == []
+
 def test_notify_command_and_desktop(env, monkeypatch, tmp_path):
     for k, v in env.items():
         monkeypatch.setenv(k, v)

@@ -1,5 +1,5 @@
 """Thông báo khi có việc cần người dùng: kế hoạch chờ duyệt, task chờ duyệt diff, task lỗi/xung đột, agent hỏi,
-mục tiêu kết thúc (web phát âm thanh riêng theo `kind`).
+mục tiêu kết thúc, task ngoài kế hoạch xong (web phát âm thanh riêng theo `kind`).
 
 `Watcher` so trạng thái task/mục tiêu giữa hai lần đọc DB (TUI mỗi lượt vẽ, web mỗi lượt đẩy ảnh chụp) —
 không chèn vào từng chỗ đổi trạng thái trong orchestrator. `desktop()` hiện thông báo của hệ điều hành.
@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass
 
 from .config import load_state, save_state
-from .db import ASKING, CONFLICT, FAILED, REVIEW
+from .db import ASKING, CONFLICT, DONE, FAILED, REVIEW
 from .i18n import tr
 
 MODES = ("all", "app", "off")
@@ -22,7 +22,7 @@ MODES = ("all", "app", "off")
 
 @dataclass
 class Notice:
-    kind: str  # failed | conflict | review | plan | ask | done | goal_end
+    kind: str  # failed | conflict | review | plan | ask | done | goal_end | task_done
     title: str
     body: str
     task_id: int | None = None
@@ -86,6 +86,10 @@ class Watcher:
                 q = t.question() if hasattr(t, "question") else None
                 out.append(Notice("ask", tr("❓ Agent hỏi bạn"), head + (" — " + _short(q["q"], 140) if q else ""),
                                   task_id=t.id, goal_id=t.goal_id))
+            elif t.status == DONE and t.goal_id is None and old_t.get(t.id) not in (REVIEW, CONFLICT):
+                # task ngoài kế hoạch (/add, giao tay): không có thông báo mục tiêu xong. Task ngắn có thể queued ->
+                # done giữa hai lần đọc; review/conflict -> done là người dùng tự duyệt merge, không báo lại
+                out.append(Notice("task_done", tr("✅ Task xong"), head, task_id=t.id))
         return out
 
 

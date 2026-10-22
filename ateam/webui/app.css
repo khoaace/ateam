@@ -464,6 +464,7 @@ button.ag-model:hover { border-color: var(--border); background: var(--surface);
 .log .l-sum { color: var(--term-ok); font-weight: 600; }
 .log .l-del { color: var(--term-del); }
 .log .l-note { color: var(--term-warn); }
+.log .l-ask { color: var(--term-cyan); }
 .log .l-sys { color: var(--term-fg); }
 .log .l-dim { color: var(--term-dim); }
 .log a { color: var(--term-link); }
@@ -500,8 +501,10 @@ button.ag-model:hover { border-color: var(--border); background: var(--surface);
 .md-table table { border-collapse: collapse; font: inherit; }
 .md-table th, .md-table td { border: 1px solid var(--border); padding: 3px 10px; text-align: left; vertical-align: top; white-space: normal; }
 .md-table th { background: var(--term-blank); font-weight: 700; }
-.l.md-note, .l.md-del, .l.md-sum { --c: var(--term-warn); border-left: 2px solid var(--c); background: color-mix(in srgb, var(--c) 9%, transparent); padding: 0 12px; color: var(--term-fg); }
+.l.md-note, .l.md-del, .l.md-ask, .l.md-sum { --c: var(--term-warn); border-left: 2px solid var(--c); background: color-mix(in srgb, var(--c) 9%, transparent); padding: 0 12px; color: var(--term-fg); }
 .l.md-del { --c: var(--term-del); }
+.l.md-ask { --c: var(--term-cyan); }
+.md-ask-why { color: var(--term-dim); }
 .l.md-sum { --c: var(--term-ok); padding: 8px 12px; margin: 10px 0 4px; }
 .l.md-start { padding-top: 8px; margin-top: 10px; }
 .l.md-end { padding-bottom: 8px; margin-bottom: 6px; }

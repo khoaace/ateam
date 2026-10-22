@@ -2918,6 +2918,10 @@ EN: dict[str, str] = {
         ' · the token has full control, same as on this machine',
     '❓ Agent hỏi bạn':
         '❓ An agent asks you',
+    '✅ Task xong':
+        '✅ Task done',
+    'Hỏi bạn':
+        'Asks you',
     'Đã trả lời — {agent} làm tiếp task #{tid}':
         'Answered — {agent} continues task #{tid}',
     'Task #{tid} không có câu hỏi nào đang chờ':

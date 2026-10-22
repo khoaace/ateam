@@ -186,6 +186,7 @@ function lineClass(s) {
   if (/^\s*(SUMMARY:|✔ Summary)/i.test(s)) return "l-sum";
   if (/(<<<DELEGATE|⇒|➕)/.test(s)) return "l-del";  // khối giao việc / log "➕ Task #… giao cho …"
   if (/(<<<NOTE|📝)/.test(s)) return "l-note";
+  if (/<<<ASK/.test(s)) return "l-ask";
   if (/^\s*(✗|error\b|Error\b|ERROR\b|Traceback|fatal:)/.test(s) || /^\[[\d:]+\]\s*✗/.test(s)) return "l-err";
   if (/^\s*(⚠|warning\b|Warning\b|WARN)/.test(s) || /^\[[\d:]+\]\s*⚠/.test(s)) return "l-warn";
   if (/^\[[\d:]+\]\s*(✓|✔|▶|🏁)/.test(s)) return "l-ok";
@@ -205,7 +206,7 @@ function lineHtml(s, st) {
 }
 
 /* markdown của agent (log, kết quả, nội dung task) — từng dòng một vì log đến theo dòng;
-   st giữ trạng thái giữa các dòng: đang trong ``` hay trong khối <<<NOTE>>>/<<<DELEGATE>>> */
+   st giữ trạng thái giữa các dòng: đang trong ``` hay trong khối <<<NOTE>>>/<<<DELEGATE>>>/<<<ASK>>> */
 function mdInline(s) {
   const keep = [];
   const stash = (h) => `\u0000${keep.push(h) - 1}\u0000`;
@@ -221,12 +222,24 @@ function mdCells(s) {
   return s.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
 }
 const MD_TSEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
-function mdBlockOpen(s, st) {  // <<<NOTE>>> / <<<DELEGATE to=… title=…>>> — có thể kết thúc ngay trên dòng này
-  const m = /<<<(NOTE|DELEGATE)\b([^>]*)>>>/.exec(s);
+function mdAsk(body) {  // {"question","why","options","recommended"} trọn một dòng -> câu hỏi + phương án (chỉ xem)
+  let q;
+  try { q = JSON.parse(body); } catch (e) { return null; }
+  if (!q || typeof q.question !== "string") return null;
+  const opts = Array.isArray(q.options) ? q.options.map(String) : [], rec = String(q.recommended || "");
+  const star = `<span class="md-who">★ ${esc(t("recommended"))}</span>`;
+  return `<b>${esc(q.question)}</b>${q.why ? `<br><span class="md-ask-why">${esc(String(q.why))}</span>` : ""}`
+    + opts.map((o, i) => `<br>${i + 1}. ${esc(o)}${i === opts.indexOf(rec) ? " " + star : ""}`).join("")
+    + (rec && !opts.includes(rec) ? `<br>${star}${esc(rec)}` : "");
+}
+function mdBlockOpen(s, st) {  // <<<NOTE>>> / <<<DELEGATE to=… title=…>>> / <<<ASK>>> — có thể kết thúc ngay trên dòng này
+  const m = /<<<(NOTE|DELEGATE|ASK)\b([^>]*)>>>/.exec(s);
   if (!m) return null;
   let rest = s.slice(m.index + m[0].length), head;
-  const kind = m[1] === "NOTE" ? "note" : "del";
-  if (kind === "note") {
+  const kind = { NOTE: "note", DELEGATE: "del", ASK: "ask" }[m[1]];
+  if (kind === "ask") {
+    head = `<span class="md-tag">❓ ${esc(t("md_ask"))}</span>`;
+  } else if (kind === "note") {
     const who = /^\s*\[([^\]]+)\]\s*/.exec(rest);
     if (who) rest = rest.slice(who[0].length);
     head = `<span class="md-tag">📝 ${esc(t("md_note"))}</span>${who ? `<span class="md-who">${esc(who[1])}</span>` : ""}`;
@@ -237,8 +250,10 @@ function mdBlockOpen(s, st) {  // <<<NOTE>>> / <<<DELEGATE to=… title=…>>> �
   const end = rest.indexOf("<<<END>>>");
   if (end >= 0) rest = rest.slice(0, end); else st.block = kind;
   const pre = s.slice(0, m.index).trim();
+  const ask = kind === "ask" && end >= 0 ? mdAsk(rest.trim()) : null;
+  const body = ask || (rest.trim() ? mdInline(rest.trim()) : "");
   return (pre ? `<div class="l">${mdInline(pre)}</div>` : "")
-    + `<div class="l md-${kind} md-start${end >= 0 ? " md-end" : ""}">${head}${rest.trim() ? (kind === "note" ? " " : "<br>") + mdInline(rest.trim()) : ""}</div>`;
+    + `<div class="l md-${kind} md-start${end >= 0 ? " md-end" : ""}">${head}${body ? (kind === "note" ? " " : "<br>") + body : ""}</div>`;
 }
 function mdLine(s, st) {
   if (st.fence) {  // st.fence = số cấp thụt lề của ``` (khối code nằm trong danh sách) + 1
@@ -1437,7 +1452,7 @@ function themeModal() {
   const on = $("#snd-on", m), vol = $("#snd-vol", m);
   on.addEventListener("change", () => { vol.disabled = !on.checked; setSoundVolume(on.checked ? +vol.value : 0); if (on.checked) soundDemo(["review"]); });
   vol.addEventListener("change", () => { setSoundVolume(+vol.value); soundDemo(["review"]); });
-  $("#snd-test", m).addEventListener("click", () => soundDemo(["plan", "ask", "failed", "done"], on.checked ? +vol.value : 60));
+  $("#snd-test", m).addEventListener("click", () => soundDemo(["plan", "ask", "failed", "task_done", "done"], on.checked ? +vol.value : 60));
   m.addEventListener("click", async (e) => {
     const mode = e.target.closest("[data-mode]"), acc = e.target.closest("[data-acc]");
     if (mode) { setThemeMode(mode.dataset.mode); $$(".seg", m).forEach((b) => b.classList.toggle("on", b === mode)); }
@@ -1473,6 +1488,7 @@ document.addEventListener("pointerdown", askNotifyPermission, { once: true });
    (localStorage "ateam-sound", 0 = tắt). Trình duyệt chỉ cho phát sau một thao tác của người dùng → mở khoá
    AudioContext ở mỗi lần bấm/gõ (iOS tạm dừng lại khi tab bị ẩn). */
 const SOUNDS = {  // nốt: [tần số Hz, bắt đầu (giây), dài (giây)]
+  task_done: { wave: "sine", notes: [[784, 0, .3], [1047, .1, .45]] },  // task ngoài kế hoạch xong: nhẹ hơn mục tiêu xong
   plan: { wave: "sine", notes: [[659, 0, .2], [880, .13, .35]] },
   review: { wave: "sine", notes: [[1047, 0, .5]] },
   ask: { wave: "sine", notes: [[784, 0, .16], [988, .11, .16], [1175, .22, .38]] },
@@ -1481,7 +1497,7 @@ const SOUNDS = {  // nốt: [tần số Hz, bắt đầu (giây), dài (giây)]
 };
 SOUNDS.conflict = SOUNDS.goal_end = SOUNDS.failed;
 SOUNDS.test = SOUNDS.review;
-const SOUND_RANK = ["test", "done", "review", "plan", "ask", "goal_end", "conflict", "failed"];  // sau = ưu tiên
+const SOUND_RANK = ["test", "task_done", "done", "review", "plan", "ask", "goal_end", "conflict", "failed"];  // sau = ưu tiên
 let audioCtx = null, soundAt = 0, soundNext = null, soundTimer = 0;
 function soundVolume() {
   try { const v = localStorage.getItem("ateam-sound"); return v == null ? 60 : Math.max(0, Math.min(100, +v || 0)); } catch (e) { return 60; }

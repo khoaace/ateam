@@ -173,7 +173,7 @@ def ui_strings() -> dict[str, str]:
         "g_close_q": tr("Dừng CLI {agent} trong ô này và bỏ ô khỏi lưới?"), "g_close_yes": tr("Đóng"),
         "g_split_r": tr("◫ Chia dọc · thêm agent bên phải"), "g_split_b": tr("⊟ Chia ngang · thêm agent bên dưới"),
         "no_log": tr("Chưa có log."), "no_result": tr("Chưa có kết quả."), "error": tr("Lỗi"),
-        "md_note": tr("Ghi chú"), "md_summary": tr("Tóm tắt"), "md_delegate": tr("Giao việc"),
+        "md_note": tr("Ghi chú"), "md_summary": tr("Tóm tắt"), "md_delegate": tr("Giao việc"), "md_ask": tr("Hỏi bạn"),
         "started": tr("Bắt đầu"), "duration": tr("Thời gian"),
         "deps": tr("Phụ thuộc"), "attempts": tr("Lần thử"), "branch": tr("Nhánh"),
         "lead": tr("trưởng nhóm"), "idle": tr("rảnh"), "not_installed": tr("chưa cài"),
