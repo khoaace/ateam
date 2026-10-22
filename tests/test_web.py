@@ -339,7 +339,13 @@ def test_web_git_ops_and_diff(env, project, monkeypatch):
             assert (await wa.handle({"op": "git", "action": "stash_push", "message": "tạm"}))[1] == "ok"
             assert (await client.get("/api/git/stashes")).status == 200
             assert len(await (await client.get("/api/git/stashes")).json()) == 1
-            assert (await wa.handle({"op": "git", "action": "stash_pop"}))[1] == "ok"
+            (project / "base.txt").write_text("base\nsửa hai\n")
+            assert (await wa.handle({"op": "git", "action": "stash_push", "message": "hai"}))[1] == "ok"
+            # tên stash ở khoá "stash" — "ref" là mã chờ trả lời của trình duyệt (trùng thì toast "đang chạy" treo)
+            assert (await wa.handle({"op": "git", "action": "stash_pop", "stash": "stash@{1}", "ref": 7}))[1] == "ok"
+            assert "sửa tạm" in (project / "base.txt").read_text()
+            left = await (await client.get("/api/git/stashes")).json()
+            assert len(left) == 1 and "hai" in left[0]["subject"]
             assert (await wa.handle({"op": "git", "action": "discard", "path": "base.txt"}))[1] == "ok"
             assert "sửa tạm" not in (project / "base.txt").read_text()
             # chọn agent viết commit message (mặc định trưởng nhóm) — lưu state.json, dùng chung TUI

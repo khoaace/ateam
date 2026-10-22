@@ -419,8 +419,8 @@ window.GitView = (() => {
       if (!b) return;
       const ref = b.closest(".brow") && b.closest(".brow").dataset.ref, a = b.dataset.sact;
       if (a === "push") { closeModal(m); return act("stash_push", { message: $("#gs-msg", m).value.trim() }); }
-      if (a === "drop") { if (await confirmBox(t("git_stash_drop"), t("git_stash_drop_q", { ref }), t("remove"))) { closeModal(m); await act("stash_drop", { ref }); stash(); } return; }
-      closeModal(m); return act(a === "pop" ? "stash_pop" : "stash_apply", { ref });
+      if (a === "drop") { if (await confirmBox(t("git_stash_drop"), t("git_stash_drop_q", { ref }), t("remove"))) { closeModal(m); await act("stash_drop", { stash: ref }); stash(); } return; }
+      closeModal(m); return act(a === "pop" ? "stash_pop" : "stash_apply", { stash: ref });
     });
     $("#gs-msg", m).addEventListener("keydown", (e) => { if (e.key === "Enter") m.querySelector("[data-sact=push]").click(); });
   }

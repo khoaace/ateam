@@ -87,7 +87,8 @@ function request(op, data = {}, busy = "") {
   const timer = busy ? setTimeout(() => { bt = busyToast(busy); }, 300) : 0;
   return new Promise((resolve) => {
     S.pending[ref] = (m) => { clearTimeout(timer); if (bt) bt.done(); resolve(m); };
-    if (!send(op, Object.assign({ ref }, data))) { const f = S.pending[ref]; delete S.pending[ref]; f({ level: "error" }); }
+    // ref đặt sau cùng: dữ liệu có khoá "ref" cũng không ghi đè được mã chờ (nếu không, toast "đang chạy" treo mãi)
+    if (!send(op, Object.assign({}, data, { ref }))) { const f = S.pending[ref]; delete S.pending[ref]; f({ level: "error" }); }
   });
 }
 /* nút đang chạy: khoá + spinner tới khi promise xong (nút không bị vẽ lại trong lúc chờ) */
