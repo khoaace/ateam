@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.47.0 — 22/10/2026
+
+- **Web: mở từ điện thoại bằng một nút** — popup 📱 Điện thoại khi server chỉ nghe máy này có nút **↻ Chạy lại**
+  cạnh hai lệnh (cùng Wi-Fi / Cloudflare Tunnel): server tự chạy lại ở chế độ từ xa, cùng cổng, trang tự đăng nhập
+  lại và hiện mã QR (tunnel: chờ tới khi có URL rồi tự hiện). Agent đang chạy sẽ bị dừng — có hỏi trước; chưa cài
+  `cloudflared` thì báo kèm lệnh cài.
+
 ## 0.46.0 — 22/10/2026
 
 - **Báo khi có bản ateam mới** — mở TUI hoặc `ateam web` là kiểm tra ngầm (mất mạng thì im lặng; web để chạy lâu thì
