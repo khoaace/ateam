@@ -42,6 +42,8 @@ dòng đầu `<!-- ateam:init commit=<sha> date=<YYYY-MM-DD> -->`, còn lại l�
 giữ phần người dùng sửa. Xoá file = thôi gửi kèm prompt.
 
 `XDG_CONFIG_HOME` đổi được vị trí thư mục `~/.config`.
+`ATEAM_NO_UPDATE_CHECK=1` tắt việc hỏi trang docs có bản ateam mới mỗi lần mở TUI / `ateam web` (web hỏi lại mỗi 6
+giờ); test đặt sẵn trong `tests/conftest.py`.
 
 ## Khoá cấp cao
 

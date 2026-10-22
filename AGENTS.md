@@ -43,7 +43,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/todos.py`, `ateam/notes.py` | To-do (tag, hạn, ưu tiên, mô tả; bóc `#tag !cao @mai 17:00`), tag dùng chung, ghi chú markdown (xung đột theo `updated`) — JSON theo dự án ở `~/.config/ateam/`, ngoài repo |
 | `ateam/rules.py` | `/rules`: rule của dự án mọi agent phải tuân theo — lưu ngoài repo, bật/tắt, chọn agent/vai trò; `Orchestrator.with_rules` gửi kèm mọi prompt |
 | `ateam/overview.py` | `/init` (`ateam init --overview`): bản tổng quan dự án trưởng nhóm viết một lần vào `.ateam/project.md` (meta commit), gửi kèm prompt của trưởng nhóm (lập kế hoạch, `/grill`, kế hoạch tiếp, task giao cho trưởng nhóm) — thành viên nhận phần cần thiết qua prompt task |
-| `ateam/projects.py` | `/open`: mở folder / dự án khác (dự án gần đây, gợi ý thư mục, kiểm tra đích); TUI/web chạy lại với `-C` |
+| `ateam/projects.py` | `/open`: mở folder / dự án khác (dự án gần đây, gợi ý thư mục, kiểm tra đích); TUI/web chạy lại với `-C`; web ⧉ mở ở cửa sổ mới = chạy thêm một `ateam web` (`WebApp.open_window`, cổng ghi trong `.ateam/tui.lock` — `cli.web_port`) |
 | `ateam/palette.py` | Command palette tab Code (TUI + web): bảng lệnh, file gần đây, symbol (hàm/class/heading), lọc mờ, tạo/đổi tên/xoá file vào Thùng rác |
 | `ateam/diffview.py` | Màn hình diff kiểu VS Code: bóc `git diff`, ghép dòng hai cột, tô cú pháp (pygments qua rich) và chữ đổi trong dòng; `DiffScreen` ở `tui.py` dùng |
 | `ateam/mentions.py` | `@file`: gợi ý file/thư mục cho TUI, đổi `@đường/dẫn` sang cú pháp từng CLI (`SYNTAX`) |

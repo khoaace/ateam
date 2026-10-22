@@ -633,6 +633,31 @@ def test_diffview_render_fits_width():
     assert added_file("a.bin", None).binary
 
 
+def test_check_new_version_on_start(monkeypatch):
+    """Mở TUI / web: báo khi có bản mới hơn; mất mạng / đã mới nhất / tắt bằng ATEAM_NO_UPDATE_CHECK thì im."""
+    import asyncio
+
+    from ateam import __version__, update
+    calls = []
+
+    def latest(v):
+        async def f():
+            calls.append(v)
+            return v
+        return f
+    monkeypatch.setattr(update, "latest_version", latest("99.0.0"))
+    assert asyncio.run(update.check_new()) is None and not calls  # conftest đặt ATEAM_NO_UPDATE_CHECK
+    monkeypatch.delenv("ATEAM_NO_UPDATE_CHECK")
+    assert asyncio.run(update.check_new()) == "99.0.0"
+    for v in (__version__, "0.0.1", None):
+        monkeypatch.setattr(update, "latest_version", latest(v))
+        assert asyncio.run(update.check_new()) is None
+    monkeypatch.setattr(update, "editable_source", lambda: None)
+    assert "gõ /update" in update.new_version_text("99.0.0") and __version__ in update.new_version_text("99.0.0")
+    monkeypatch.setattr(update, "editable_source", lambda: Path("/src/ateam"))
+    assert "git -C /src/ateam pull" in update.new_version_text("99.0.0")
+
+
 def test_self_update(monkeypatch):
     """/update: đã mới nhất -> không làm gì; cài từ mã nguồn -> chỉ dẫn git pull; có bản mới -> chạy get.sh."""
     import asyncio

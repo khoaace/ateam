@@ -16,6 +16,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 # test so chuỗi tiếng Việt: cố định ngôn ngữ (test tiếng Anh tự đặt ATEAM_LANG=en)
 os.environ["ATEAM_LANG"] = "vi"
+# không hỏi trang docs có bản mới mỗi lần mở TUI / web trong test (test_units tự bỏ để thử check_new)
+os.environ["ATEAM_NO_UPDATE_CHECK"] = "1"
 FAKEBIN = Path(__file__).resolve().parent / "fakebin"
 
 

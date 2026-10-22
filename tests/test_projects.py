@@ -206,3 +206,32 @@ def test_free_port_ignores_time_wait():
         conn.close()  # phía server đóng trước -> TIME_WAIT nằm ở cổng server
         cl.close()
     assert cli.free_port("127.0.0.1", port, tries=1) == port
+
+
+def test_web_open_window_runs_second_server(env, project, tmp_path, monkeypatch):
+    """⧉ Mở ở cửa sổ mới: chạy thêm `ateam web` cho dự án kia (cổng khác), trả địa chỉ khi nó đã nghe; mở lần nữa
+    thì dùng lại; server này dừng (không phải /open) thì server kia dừng theo."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    import urllib.request
+
+    from conftest import ROOT
+    from test_web import _web_app
+    monkeypatch.setenv("PYTHONPATH", str(ROOT))  # tiến trình con chạy đúng mã nguồn đang test
+    other, _code = _dirs(tmp_path)
+    wa = _web_app(env, project, monkeypatch)
+
+    async def main():
+        text, level, extra = await wa.open_window({"path": str(other)})
+        assert level == "ok" and "cửa sổ mới" in text, text
+        url = extra["url"]
+        assert url != f"http://127.0.0.1:{wa.port}"
+        html = await asyncio.to_thread(lambda: urllib.request.urlopen(url, timeout=10).read().decode())
+        assert "<html" in html.lower()
+        again = await wa.open_window({"path": str(other)})
+        assert again[2]["url"] == url and len(wa.windows) == 1 and "mở sẵn" in again[0]
+        assert (await wa.open_window({"path": str(project)}))[1] == "warn"  # chính dự án này
+        await wa._shutdown(None)
+        await asyncio.wait_for(wa.windows[0].wait(), 15)
+        assert cli.web_port(other.resolve()) is None
+    asyncio.run(main())

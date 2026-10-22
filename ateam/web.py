@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shlex
+import sys
 import time
 from pathlib import Path
 
@@ -140,7 +141,7 @@ def ui_strings() -> dict[str, str]:
         "cu_make_default": tr("★ Đặt mặc định"), "cu_unset_default": tr("☆ Bỏ mặc định"),
         "placeholder_grill": tr("Trả lời câu hỏi của trưởng nhóm (Enter) · gõ số để chọn phương án"),
         "send_hint": tr("Enter gửi · Shift+Enter xuống dòng · ⌘V / kéo-thả để dán ảnh"),
-        "retry": tr("Chạy lại"), "cancel": tr("Huỷ task"), "delete_task": tr("Xoá"),
+        "update_now": tr("Cập nhật"), "retry": tr("Chạy lại"), "cancel": tr("Huỷ task"), "delete_task": tr("Xoá"),
         "delete_task_q": tr("Xoá task #{id}?"),
         "delete_task_text": tr("Xoá hẳn task khỏi bảng việc cùng file log và nhánh git của nó — không hoàn tác được."), "diff": tr("Xem diff"), "merge": tr("Merge"),
         "reject": tr("Từ chối"), "reject_ph": tr("Góp ý (để trống = chỉ từ chối, có góp ý = giao làm lại)"),
@@ -270,10 +271,12 @@ def ui_strings() -> dict[str, str]:
         "pal_nofile": tr("Không có file nào khớp — > để xem lệnh"),
         "pal_noopen": tr("Chưa mở file nào — gõ tên file để mở"),
         "proj_ph": tr("Tên dự án gần đây, hoặc đường dẫn: ~/code/app, ../app-khac"),
-        "proj_foot": tr("↑↓ chọn · Tab đi vào thư mục · Enter mở · Esc đóng"),
+        "proj_foot": tr("↑↓ chọn · Tab đi vào thư mục · Enter mở · ⌘/Ctrl+Enter mở ở cửa sổ mới · Esc đóng"),
         "proj_recent": tr("Dự án gần đây"), "proj_current": tr("(đang mở)"),
         "proj_none": tr("Không có thư mục nào khớp"), "proj_hint": tr("Gõ đường dẫn thư mục, vd ~/code/app"),
         "proj_open": tr("Mở folder / dự án khác"),
+        "proj_window": tr("Mở ở cửa sổ mới (dự án này vẫn mở)"),
+        "proj_popup": tr("Trình duyệt chặn cửa sổ mới — bấm để mở"), "proj_popup_open": tr("Mở"),
         "proj_busy": tr("Đang có agent chạy"),
         "proj_busy_q": tr("{n} lượt agent đang chạy sẽ bị dừng (task dở thành lỗi — quay lại dự án này thì "
                           "/retry).\nMở {v}?"),
@@ -589,6 +592,8 @@ class WebApp:
         self._out: list[dict] = []    # dòng log / output lệnh chờ gửi (gom theo LOG_FLUSH)
         self._flushing = False
         self.notices = notify.Watcher()  # báo trình duyệt khi task lỗi / chờ duyệt (như TUI)
+        self.latest: str | None = None  # bản ateam mới hơn bản đang chạy (_update_loop)
+        self.windows: list = []  # `ateam web` của dự án mở ở cửa sổ mới (open_window) — dừng cùng server này
         self._bg: set[asyncio.Task] = set()
         self.quota: dict = {"t": "quota", "items": None, "at": 0}  # hạn mức 5h/tuần gần nhất (quota.collect)
         self._quota_lock: asyncio.Lock | None = None  # tạo trong vòng lặp asyncio (_startup)
@@ -629,6 +634,7 @@ class WebApp:
         self._spawn(self._push_loop())
         self._quota_lock = asyncio.Lock()
         self._spawn(self._quota_loop())
+        self._spawn(self._update_loop())
         if self.remote.tunnel:
             self._spawn(self._tunnel())
         if not needs_setup():  # như TUI: hỏi model của CLI chưa từng hỏi (wizard tự hỏi khi mở)
@@ -650,6 +656,10 @@ class WebApp:
 
     async def _shutdown(self, _app) -> None:
         await self.remote.stop_tunnel()
+        if not self.next_root:  # /open chạy lại server ở dự án khác: cửa sổ kia vẫn dùng tiếp
+            for p in self.windows:
+                if p.returncode is None:
+                    p.terminate()
         for sess, _ws in list(self.ptys.values()):
             sess.kill_now()
         self.grid.shutdown()
@@ -688,6 +698,51 @@ class WebApp:
         self.next_root = path
         asyncio.get_running_loop().call_later(0.3, self.stop_server)  # trả lời trình duyệt xong mới dừng
         return tr("↪ Đang mở {v}…", v=projects.shorten(path)), "info", {"switching": True}
+
+    async def open_window(self, d: dict) -> tuple:
+        """Mở dự án khác ở cửa sổ trình duyệt mới, dự án này vẫn mở: một `ateam web` riêng (cổng kế tiếp) chạy kèm
+        server này — Ctrl+C ở terminal dừng cả hai. Dự án đó đang mở ở `ateam web` khác thì dùng lại server đó."""
+        from .cli import free_port, web_port
+        if self.remote.enabled:
+            return tr("Đang mở web từ xa — chỉ đổi được dự án khác khi chạy trên máy này"), "warn"
+        want = projects.expand(str(d.get("path") or ""), self.root)
+        port = web_port(want.resolve()) if want.is_dir() else None
+        if port:
+            return (tr("⧉ {v} đã mở sẵn ở cổng {port}", v=projects.shorten(want.resolve()), port=port), "info",
+                    {"url": f"http://127.0.0.1:{port}"})
+        path, err = projects.check_target(str(d.get("path") or ""), self.root)
+        if path is None:
+            return err, "warn"
+        port = free_port("127.0.0.1", self.port + 1)
+        if port is None:
+            return tr("Không còn cổng trống từ {v}", v=self.port + 1), "error"
+        logf = path / ".ateam" / "web.log"
+        logf.parent.mkdir(parents=True, exist_ok=True)
+        with open(logf, "w", encoding="utf-8") as out:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "ateam", "-C", str(path), "web", "--port", str(port), cwd=str(path),
+                stdin=asyncio.subprocess.DEVNULL, stdout=out, stderr=asyncio.subprocess.STDOUT)
+        self.windows.append(proc)
+        for _ in range(150):  # server mới nghe thì mới mở cửa sổ (tránh trang lỗi kết nối)
+            await asyncio.sleep(0.1)
+            if proc.returncode is not None:
+                tail = [x for x in logf.read_text(encoding="utf-8", errors="replace").splitlines() if x.strip()]
+                return tr("Không mở được {v}: {e}", v=projects.shorten(path), e=tail[-1] if tail else proc.returncode), "error"
+            got = web_port(path)
+            if got and await self._listening(got):
+                self.orch.log(tr("⧉ Mở {v} ở cửa sổ mới: http://127.0.0.1:{port}", v=projects.shorten(path), port=got))
+                return (tr("⧉ Đã mở {v} ở cửa sổ mới (cổng {port}) — Ctrl+C ở terminal dừng cả hai",
+                           v=projects.shorten(path), port=got), "ok", {"url": f"http://127.0.0.1:{got}"})
+        return tr("{v} chưa mở xong — xem {log}", v=projects.shorten(path), log=projects.shorten(logf)), "warn"
+
+    @staticmethod
+    async def _listening(port: int) -> bool:
+        try:
+            _r, w = await asyncio.open_connection("127.0.0.1", port)
+        except OSError:
+            return False
+        w.close()
+        return True
 
     def rules_state(self) -> dict:
         return {"rules": rules.load(self.root), "native": rules.native_files(self.root),
@@ -791,6 +846,24 @@ class WebApp:
         except (ConnectionError, RuntimeError):
             pass
 
+    UPDATE_EVERY = 6 * 3600  # web hay để chạy nhiều ngày: hỏi lại bản mới định kỳ
+
+    def update_info(self) -> dict:
+        """Bản mới (nếu có) cho tin hello / update: chân thanh bên hiện ⬆, toast có nút Cập nhật."""
+        if not self.latest:
+            return {}
+        return {"latest": self.latest, "update_text": update.new_version_text(self.latest),
+                "update_src": update.editable_source() is not None}
+
+    async def _update_loop(self) -> None:
+        while True:
+            latest = await update.check_new()
+            if latest and latest != self.latest:
+                self.latest = latest
+                self.orch.log("ℹ " + update.new_version_text(latest))
+                self.broadcast(dict(self.update_info(), t="update"))
+            await asyncio.sleep(self.UPDATE_EVERY)
+
     async def _push_loop(self) -> None:
         """Ảnh chụp bảng việc mỗi 0,5 giây — chỉ gửi khi khác lần trước (task/agent khác cũng ghi vào DB).
         Dòng cuối của agent đang chạy đổi liên tục nên đi riêng trong tin "live" nhỏ, để ảnh chụp lớn chỉ gửi
@@ -884,7 +957,7 @@ class WebApp:
     def hello(self) -> dict:
         from .tui import COMMANDS, HELP  # danh sách lệnh + trợ giúp dùng chung với TUI
         st = load_state()
-        return {"t": "hello", "version": __version__, "project": self.root.name, "root": str(self.root),
+        return {"t": "hello", "version": __version__, **self.update_info(), "project": self.root.name, "root": str(self.root),
                 "todo_file": str(todos.path_for(self.root)).replace(str(Path.home()), "~", 1),
                 "notes_file": str(notes.path_for(self.root)).replace(str(Path.home()), "~", 1),
                 "remote": self.remote.enabled, "readonly": self.remote.readonly,
@@ -1051,7 +1124,7 @@ class WebApp:
             return d.get("action") in self.SLOW_GIT
         if op == "submit":
             return str(d.get("text") or "").strip().startswith(self.SLOW_CMDS)
-        return op in ("workflow_suggest", "code_format", "code_ai")
+        return op in ("workflow_suggest", "code_format", "code_ai", "open_window")
 
     async def _answer(self, ws: web.WebSocketResponse, data) -> None:
         """Chạy một thao tác rồi trả lời bằng toast (kèm ref nếu trình duyệt đang chờ)."""
@@ -1209,6 +1282,8 @@ class WebApp:
             return "", "", {"items": projects.candidates(str(d.get("q") or ""), self.root)}
         if op == "open_project":
             return self.open_project(d)
+        if op == "open_window":
+            return await self.open_window(d)
         if op == "approve":
             n = o.approve(d.get("goal"))
             return (tr("▶ Đã duyệt {n} task", n=n), "ok") if n else (tr("Không có task nháp nào cần duyệt"), "warn")

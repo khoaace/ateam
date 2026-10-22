@@ -75,3 +75,21 @@ async def run_update(on_line: Callable[[str], None], force: bool = False) -> tup
         return False, tr("Cập nhật thất bại (mã thoát {code}) — xem log ở trên, hoặc chạy tay: "
                          "curl -fsSL {GET_SH} | bash", code=code, GET_SH=GET_SH)
     return True, tr("Đã cập nhật lên {latest}. Thoát (Ctrl+Q) rồi mở lại ateam để dùng bản mới.", latest=latest)
+
+
+async def check_new() -> Optional[str]:
+    """Kiểm tra lúc mở app: phiên bản mới hơn bản đang chạy, hoặc None (đã mới nhất, mất mạng, hoặc tắt bằng biến
+    môi trường ATEAM_NO_UPDATE_CHECK)."""
+    if os.environ.get("ATEAM_NO_UPDATE_CHECK"):
+        return None
+    latest = await latest_version()
+    return latest if latest and parse_version(latest) > parse_version(__version__) else None
+
+
+def new_version_text(latest: str) -> str:
+    src = editable_source()
+    if src is not None:
+        return tr("⬆ Có bản ateam {latest} (đang dùng {version}) — cập nhật bằng `git -C {src} pull`",
+                  latest=latest, version=__version__, src=src)
+    return tr("⬆ Có bản ateam {latest} (đang dùng {version}) — gõ /update để cập nhật",
+              latest=latest, version=__version__)

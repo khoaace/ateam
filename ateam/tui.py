@@ -5332,6 +5332,15 @@ class TeamApp(App):
             self.open_setup()
         else:
             self.run_worker(self._discover_missing_models(), exclusive=False)
+        self.run_worker(self._check_update(), exclusive=False)
+
+    async def _check_update(self) -> None:
+        """Mở app: có bản mới thì báo (cập nhật vẫn bằng /update — không ngắt agent đang chạy)."""
+        latest = await update.check_new()
+        if latest:
+            text = update.new_version_text(latest)
+            self.orch.log("ℹ " + text)
+            self.notify(text, timeout=20)
 
     def on_resize(self, event: events.Resize) -> None:
         self._layout(event.size.width)

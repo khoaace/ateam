@@ -67,6 +67,7 @@ function connect() {
     else if (m.t === "live") { S.live = m.last || {}; if (S.state && S.view === "board") renderBoard(); }
     else if (m.t === "toast") onToast(m);
     else if (m.t === "notice") onNotice(m);
+    else if (m.t === "update") { Object.assign(S.meta, m); showUpdate(); }
     else if (m.t === "prefs") applyPrefs(m);
     else if (m.t === "quota" && window.QuotaView) QuotaView.onState(m);
     else if (m.t === "discovered" && window.Setup) Setup.discovered();
@@ -98,6 +99,23 @@ function setConn(ok) {
   $("#conn").classList.toggle("ok", ok);
   $("#conn-text").textContent = ok ? t("connected") : t(S.switching ? "proj_switching" : "disconnected");
 }
+/* bản mới (server kiểm tra lúc mở + mỗi 6 giờ): ⬆ ở chân thanh bên + toast một lần mỗi phiên bản; chỉ báo,
+   cập nhật vẫn bằng /update (bản cài từ mã nguồn: git pull, không có nút) */
+function showUpdate() {
+  const m = S.meta, ver = $("#ver");
+  ver.textContent = "ateam " + m.version;
+  if (!m.latest) return;
+  const can = !m.update_src && !m.readonly;
+  const up = document.createElement(can ? "button" : "span");
+  up.className = "ver-up";
+  up.textContent = "⬆ " + m.latest;
+  up.title = m.update_text;
+  if (can) up.addEventListener("click", () => send("submit", { text: "/update" }));
+  ver.append(" · ", up);
+  if (S.updShown === m.latest) return;
+  S.updShown = m.latest;
+  toast(m.update_text, "info", can ? { label: t("update_now"), run: () => send("submit", { text: "/update" }) } : null);
+}
 function onHello(m) {
   // /open: server đã chạy lại ở dự án khác -> nạp lại trang (mọi view, buffer đều thuộc dự án cũ)
   if (S.meta.root && m.root !== S.meta.root) { S.switching = true; location.reload(); return; }
@@ -108,7 +126,7 @@ function onHello(m) {
   $("#proj").textContent = m.project;
   $("#proj").title = m.remote ? m.root : m.root + " — " + t("proj_open");
   $("#proj").disabled = !!m.remote;
-  $("#ver").textContent = "ateam " + m.version;
+  showUpdate();
   $$("[data-t]").forEach((el) => { el.textContent = t(el.dataset.t); });
   // màn hình hẹp chỉ còn icon: nút vẫn có tên cho trình đọc màn hình và tooltip (kèm phím Alt+số)
   $$(".nav-item").forEach((b) => {
@@ -1362,7 +1380,7 @@ function projectModal(q = "") {
     P.labels = items.map((it) => it.label);
     P.sel = P.vals.findIndex((v) => v);
     const head = !inp.value.trim() && items.length ? `<div class="pal-head">${esc(t("proj_recent"))}</div>` : "";
-    list.innerHTML = head + (items.map((it, i) => `<div class="pal-item${it.kind === "current" ? " off" : ""}" data-i="${i}" role="option">${it.kind === "recent" ? "🕘" : "📁"} ${esc(it.name)}<span class="pal-where"><bdi>${esc(it.where)}</bdi></span>${it.kind === "current" ? ` <span class="pal-dim">${esc(t("proj_current"))}</span>` : ""}</div>`).join("")
+    list.innerHTML = head + (items.map((it, i) => `<div class="pal-item${it.kind === "current" ? " off" : ""}" data-i="${i}" role="option">${it.kind === "recent" ? "🕘" : "📁"} ${esc(it.name)}<span class="pal-where"><bdi>${esc(it.where)}</bdi></span>${it.kind === "current" ? ` <span class="pal-dim">${esc(t("proj_current"))}</span>` : `<button class="pal-win" data-win="${i}" title="${esc(t("proj_window"))}" aria-label="${esc(t("proj_window"))}">⧉</button>`}</div>`).join("")
       || `<div class="pal-head">${esc(t(inp.value.trim() ? "proj_none" : "proj_hint"))}</div>`);
     paint();
   };
@@ -1378,23 +1396,28 @@ function projectModal(q = "") {
     const on = $(".pal-item.on", list);
     if (on) on.scrollIntoView({ block: "nearest" });
   };
-  const choose = (i) => {
+  const choose = (i, win) => {
     const v = P.vals[i] || (inp.value.trim() && P.sel < 0 ? inp.value.trim() : "");
-    if (v) { closeModal(m); openProject(v); }
+    if (v) { closeModal(m); win ? openWindow(v) : openProject(v); }
   };
   inp.value = q;
   inp.addEventListener("input", refill);
   inp.addEventListener("keydown", (e) => {
     const d = { ArrowDown: 1, ArrowUp: -1, PageDown: 10, PageUp: -10 }[e.key];
     if (d) { e.preventDefault(); move(d); }
-    else if (e.key === "Enter") { e.preventDefault(); choose(P.sel); }
+    else if (e.key === "Enter") { e.preventDefault(); choose(P.sel, e.metaKey || e.ctrlKey); }
     else if (e.key === "Tab" && P.vals[P.sel]) {
       e.preventDefault();
       inp.value = P.labels[P.sel] + "/";
       refill();
     }
   });
-  list.addEventListener("click", (e) => { const r = e.target.closest(".pal-item[data-i]"); if (r) choose(+r.dataset.i); });
+  list.addEventListener("click", (e) => {
+    const w = e.target.closest(".pal-win");
+    if (w) { e.stopPropagation(); choose(+w.dataset.win, true); return; }
+    const r = e.target.closest(".pal-item[data-i]");
+    if (r) choose(+r.dataset.i, e.metaKey || e.ctrlKey);
+  });
   refill();
 }
 async function openProject(path) {
@@ -1409,6 +1432,17 @@ async function openProject(path) {
   S.switching = true;
   // dự án mới gửi hello -> trang nạp lại; quá lâu (cổng bị chiếm, server lỗi) thì chỉ người dùng xem terminal
   setTimeout(() => { if (!S.connected) toast(t("proj_switch_fail"), "error"); }, 20000);
+}
+
+/* mở dự án ở cửa sổ mới (⧉, ⌘/Ctrl+Enter): server chạy thêm một `ateam web` cho dự án đó. Cửa sổ mở ngay lúc bấm
+   (sau await thì trình duyệt coi là popup tự bật và chặn), rồi trỏ tới địa chỉ khi server mới sẵn sàng. */
+async function openWindow(path) {
+  const w = window.open("", "_blank");
+  if (w) { w.opener = null; w.document.title = "ateam…"; }
+  const r = await request("open_window", { path }, t("busy_opening_proj"));
+  if (!r.url) { if (w) w.close(); return; }
+  if (w) w.location.href = r.url;
+  else toast(t("proj_popup"), "warn", { label: t("proj_popup_open"), run: () => window.open(r.url, "_blank", "noopener") });
 }
 
 /* ------------------------------------------------------------------ giao diện sáng/tối + màu nhấn */

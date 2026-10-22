@@ -81,13 +81,36 @@ def acquire_session_lock(root: Path):
         return True
     path = root / ".ateam" / "tui.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
-    f = open(path, "w")
+    f = open(path, "a+")  # không cắt file trước khi có khoá: phiên đang giữ khoá ghi cổng web vào đó (web_port)
     try:
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         f.close()
         return None
+    f.seek(0)
+    f.truncate()
     return f
+
+
+def web_port(root: Path) -> int | None:
+    """Cổng của `ateam web` đang giữ khoá phiên của dự án (ghi trong tui.lock), None nếu không có (chưa mở, hoặc
+    đang mở trong terminal) — web mở dự án đó ở cửa sổ mới thì dùng lại server này."""
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    path = Path(root) / ".ateam" / "tui.lock"
+    if not path.exists():
+        return None
+    with open(path, "a+") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            f.seek(0)
+            m = re.match(r"web (\d+)", f.read())
+            return int(m.group(1)) if m else None
+        fcntl.flock(f, fcntl.LOCK_UN)
+    return None
 
 
 def free_port(host: str, start: int, tries: int = 20) -> int | None:
@@ -207,6 +230,9 @@ def cmd_web(args) -> int:
     port = pick_port(args.host, args.port)  # dự án khác đang giữ cổng -> cổng kế tiếp
     if port is None:
         return 1
+    if lock is not True and not remote_args:  # cửa sổ web khác mở dự án này thì dùng lại server (web_port); từ xa cần token
+        lock.write(f"web {port}\n")
+        lock.flush()
     remote = Remote(root / ".ateam", host=args.host, port=port, public_url=args.public_url or "",
                     tunnel=args.tunnel, readonly=args.readonly, new_token=args.new_token)
     url = f"http://127.0.0.1:{port}"

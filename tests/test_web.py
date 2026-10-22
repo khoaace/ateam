@@ -96,6 +96,19 @@ def test_session_lock_allows_one(tmp_path):
     again.close()
 
 
+def test_web_port_from_session_lock(tmp_path):
+    """`ateam web` ghi cổng vào tui.lock: cửa sổ web khác mở dự án này thì dùng lại server; TUI / chưa mở → None."""
+    assert cli.web_port(tmp_path) is None
+    lock = cli.acquire_session_lock(tmp_path)
+    assert cli.web_port(tmp_path) is None  # TUI giữ khoá, không ghi cổng
+    lock.write("web 8123\n")
+    lock.flush()
+    assert cli.web_port(tmp_path) == 8123
+    assert cli.acquire_session_lock(tmp_path) is None and cli.web_port(tmp_path) == 8123  # thử khoá không xoá cổng
+    lock.close()
+    assert cli.web_port(tmp_path) is None  # file còn chữ nhưng không ai giữ khoá
+
+
 def test_busy_app_shows_message_and_quits():
     from textual.widgets import Static
 
@@ -384,6 +397,45 @@ def test_web_quota_bars(env, project, monkeypatch):
             r = await (await client.get("/api/quota?refresh=1")).json()
             assert r["t"] == "quota" and r["at"] >= m["at"] and len(r["items"]) == 3
             await ws.close()
+        finally:
+            await client.close()
+
+    asyncio.run(main())
+
+
+def test_web_tells_new_version(env, project, monkeypatch):
+    """Mở `ateam web`: có bản mới thì tab đang mở nhận tin "update", tab mở sau thấy trong hello (⬆ + nút Cập nhật)."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from ateam import update
+    wa = _web_app(env, project, monkeypatch)
+    gate = asyncio.Event()
+
+    async def check_new():
+        await gate.wait()  # tab đầu kết nối trước khi kiểm tra xong
+        return "99.0.0"
+    monkeypatch.setattr(update, "check_new", check_new)
+    monkeypatch.setattr(update, "editable_source", lambda: None)
+
+    async def main():
+        client = TestClient(TestServer(wa.make_app(), host="127.0.0.1", port=wa.port))
+        await client.start_server()
+        try:
+            hdr = {"Origin": f"http://127.0.0.1:{wa.port}"}
+            ws = await client.ws_connect("/ws", headers=hdr)
+            m = await ws.receive_json(timeout=30)
+            assert m["t"] == "hello" and "latest" not in m
+            gate.set()
+            while m.get("t") != "update":
+                m = await ws.receive_json(timeout=30)
+            assert m["latest"] == "99.0.0" and "gõ /update" in m["update_text"] and not m["update_src"]
+            ws2 = await client.ws_connect("/ws", headers=hdr)
+            h = await ws2.receive_json(timeout=30)
+            assert h["t"] == "hello" and h["latest"] == "99.0.0"
+            await ws.close()
+            await ws2.close()
         finally:
             await client.close()
 

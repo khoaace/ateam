@@ -2936,6 +2936,32 @@ EN: dict[str, str] = {
         '🗑 Deleted task #{tid}: {title}',
     'Đã xoá task #{tid}':
         'Deleted task #{tid}',
+    '⬆ Có bản ateam {latest} (đang dùng {version}) — cập nhật bằng `git -C {src} pull`':
+        '⬆ ateam {latest} is available (you have {version}) — update with `git -C {src} pull`',
+    '⬆ Có bản ateam {latest} (đang dùng {version}) — gõ /update để cập nhật':
+        '⬆ ateam {latest} is available (you have {version}) — type /update to update',
+    'Cập nhật':
+        'Update',
+    'Mở ở cửa sổ mới (dự án này vẫn mở)':
+        'Open in a new window (this project stays open)',
+    'Trình duyệt chặn cửa sổ mới — bấm để mở':
+        'The browser blocked the new window — click to open it',
+    '↑↓ chọn · Tab đi vào thư mục · Enter mở · ⌘/Ctrl+Enter mở ở cửa sổ mới · Esc đóng':
+        '↑↓ select · Tab goes into a folder · Enter opens · ⌘/Ctrl+Enter opens in a new window · Esc closes',
+    'Đang mở web từ xa — chỉ đổi được dự án khác khi chạy trên máy này':
+        'This is remote web — other projects can only be opened when running on this machine',
+    '⧉ {v} đã mở sẵn ở cổng {port}':
+        '⧉ {v} is already open on port {port}',
+    'Không còn cổng trống từ {v}':
+        'No free port from {v}',
+    'Không mở được {v}: {e}':
+        'Could not open {v}: {e}',
+    '⧉ Mở {v} ở cửa sổ mới: http://127.0.0.1:{port}':
+        '⧉ Opened {v} in a new window: http://127.0.0.1:{port}',
+    '⧉ Đã mở {v} ở cửa sổ mới (cổng {port}) — Ctrl+C ở terminal dừng cả hai':
+        '⧉ Opened {v} in a new window (port {port}) — Ctrl+C in the terminal stops both',
+    '{v} chưa mở xong — xem {log}':
+        '{v} has not finished opening — see {log}',
     '✅ Task xong':
         '✅ Task done',
     'Ô trong Lưới đang chờ bạn':

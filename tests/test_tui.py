@@ -1966,3 +1966,37 @@ def test_tui_task_table_grouped_by_plan(env, project, monkeypatch):
             assert app.task_groups and app._gorder[0] == "g:adhoc" and f"g:{g2}" in app._gorder
 
     asyncio.run(main())
+
+
+def test_tui_tells_new_version(env, project, monkeypatch):
+    """Mở TUI: có bản mới thì báo (toast + log hệ thống), cập nhật vẫn bằng /update."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam import update
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import TeamApp
+
+    async def check_new():
+        return "99.0.0"
+    monkeypatch.setattr(update, "check_new", check_new)
+    monkeypatch.setattr(update, "editable_source", lambda: None)
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(160, 48)) as pilot:
+            syslog = project / ".ateam" / "logs" / "system.log"
+            for _ in range(40):
+                await pilot.pause(0.25)
+                if syslog.exists() and "99.0.0" in syslog.read_text():
+                    break
+            assert "Có bản ateam 99.0.0" in syslog.read_text() and "/update" in syslog.read_text()
+            assert any("99.0.0" in str(n.message) for n in app._notifications)
+    asyncio.run(main())
