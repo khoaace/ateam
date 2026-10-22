@@ -92,14 +92,26 @@ def acquire_session_lock(root: Path):
 
 def free_port(host: str, start: int, tries: int = 20) -> int | None:
     """Cổng trống đầu tiên từ `start` (nhiều dự án chạy `ateam web` cùng lúc, như mở nhiều terminal TUI). Thử bind
-    không đặt SO_REUSEADDR: trên macOS có cờ đó vẫn bind được cổng mà server khác đang nghe ở 0.0.0.0."""
+    không đặt SO_REUSEADDR: trên macOS có cờ đó vẫn bind được cổng mà server khác đang nghe ở 0.0.0.0. bind() lỗi mà
+    không ai nghe (chỉ còn kết nối TIME_WAIT — vd /open vừa tắt server cũ) thì vẫn là cổng trống: aiohttp bind với
+    SO_REUSEADDR."""
     import socket
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    h = host.strip("[]")
+    probe = {"": "127.0.0.1", "0.0.0.0": "127.0.0.1", "::": "::1"}.get(h, h)
     for port in range(start, min(start + tries, 65536)):
         try:
             with socket.socket(family) as s:
-                s.bind((host.strip("[]"), port))
+                s.bind((h, port))
         except OSError:
+            try:
+                with socket.socket(family) as s:
+                    s.settimeout(0.3)
+                    s.connect((probe, port))
+            except ConnectionRefusedError:
+                return port
+            except OSError:
+                pass
             continue
         return port
     return None

@@ -3250,6 +3250,10 @@ EN: dict[str, str] = {
         '{n} running agent turn(s) will be stopped (unfinished tasks become failed — /retry them when you come back to this project).\nOpen {v}?',
     'Dừng & mở':
         'Stop & open',
+    '↪ Đang mở dự án khác…':
+        '↪ Opening another project…',
+    'Không kết nối lại được — xem terminal đang chạy `ateam web` (có thể đã đổi cổng)':
+        'Could not reconnect — check the terminal running `ateam web` (the port may have changed)',
     'Mở folder / dự án khác':
         'Open another folder / project',
     'Tab 📝 Code còn file chưa lưu: {v}\nBỏ các thay đổi và mở dự án khác?':

@@ -96,7 +96,7 @@ async function busyBtn(btn, promise) {
 function setConn(ok) {
   S.connected = ok;
   $("#conn").classList.toggle("ok", ok);
-  $("#conn-text").textContent = ok ? t("connected") : t("disconnected");
+  $("#conn-text").textContent = ok ? t("connected") : t(S.switching ? "proj_switching" : "disconnected");
 }
 function onHello(m) {
   // /open: server đã chạy lại ở dự án khác -> nạp lại trang (mọi view, buffer đều thuộc dự án cũ)
@@ -1389,7 +1389,10 @@ async function openProject(path) {
     if (!await confirmBox(t("proj_busy"), t("proj_busy_q", { n: r.busy, v: r.path }), t("proj_busy_yes"))) return;
     r = await request("open_project", { path, force: true }, t("busy_opening_proj"));
   }
-  if (r.switching) S.switching = true;
+  if (!r.switching) return;
+  S.switching = true;
+  // dự án mới gửi hello -> trang nạp lại; quá lâu (cổng bị chiếm, server lỗi) thì chỉ người dùng xem terminal
+  setTimeout(() => { if (!S.connected) toast(t("proj_switch_fail"), "error"); }, 20000);
 }
 
 /* ------------------------------------------------------------------ giao diện sáng/tối + màu nhấn */

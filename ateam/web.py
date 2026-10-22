@@ -276,6 +276,8 @@ def ui_strings() -> dict[str, str]:
         "proj_busy_q": tr("{n} lượt agent đang chạy sẽ bị dừng (task dở thành lỗi — quay lại dự án này thì "
                           "/retry).\nMở {v}?"),
         "proj_busy_yes": tr("Dừng & mở"),
+        "proj_switching": tr("↪ Đang mở dự án khác…"),
+        "proj_switch_fail": tr("Không kết nối lại được — xem terminal đang chạy `ateam web` (có thể đã đổi cổng)"),
         "proj_unsaved_q": tr("Tab 📝 Code còn file chưa lưu: {v}\nBỏ các thay đổi và mở dự án khác?"),
         "proj_unsaved_yes": tr("Bỏ thay đổi & mở"),
         "rules_title": tr("📏 Rule của dự án"),

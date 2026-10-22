@@ -191,3 +191,18 @@ def test_web_open_project(env, project, monkeypatch, tmp_path):
     assert asyncio.run(wa.handle({"op": "open_project", "path": str(other)}))[1] == "warn"
     assert asyncio.run(wa.handle({"op": "submit", "text": "/open"}))[1] == "warn"
     assert wa.next_root is None
+
+
+def test_free_port_ignores_time_wait():
+    """/open trên web: server vừa tắt tự đóng kết nối của trình duyệt -> cổng còn TIME_WAIT. bind() dò (không
+    SO_REUSEADDR) bị từ chối nhưng không ai nghe -> vẫn là cổng trống, không nhảy sang cổng kế tiếp."""
+    import socket
+    with socket.socket() as srv:
+        srv.bind(("127.0.0.1", 0))
+        srv.listen()
+        port = srv.getsockname()[1]
+        cl = socket.create_connection(("127.0.0.1", port))
+        conn, _ = srv.accept()
+        conn.close()  # phía server đóng trước -> TIME_WAIT nằm ở cổng server
+        cl.close()
+    assert cli.free_port("127.0.0.1", port, tries=1) == port
