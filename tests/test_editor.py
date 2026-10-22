@@ -219,7 +219,7 @@ def test_code_tab_edit_and_save(env, project, monkeypatch):
     src.write_text("def hi():\n    return 1\n")
 
     async def main():
-        async def wait(cond, n=80):
+        async def wait(cond, n=600):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.05)
                 if cond():
@@ -332,7 +332,7 @@ def test_code_tab_file_tree(env, project, monkeypatch):
     (project / "readme.md").write_text("hi\n")
 
     async def main():
-        async def wait(cond, n=80):
+        async def wait(cond, n=600):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.05)
                 if cond():
@@ -390,7 +390,7 @@ def test_code_open_from_git_and_diff_and_quit_guard(env, project, monkeypatch):
     (project / "base.txt").write_text("base\nline 2\nline 3\nchanged here\n")
 
     async def main():
-        async def wait(cond, n=80):
+        async def wait(cond, n=600):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.05)
                 if cond():

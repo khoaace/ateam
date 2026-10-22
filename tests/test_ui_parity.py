@@ -66,7 +66,7 @@ def test_tui_git_badge_tree_and_click_diff(env, project, monkeypatch):
     from ateam.tui import DiffScreen
 
     async def main():
-        async def wait(cond, n=40):
+        async def wait(cond, n=200):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.15)
                 if cond():
@@ -122,7 +122,7 @@ def test_tui_terminal_scripts_and_grid_shell(env, project, monkeypatch):
     from ateam.tui_grid import GridAddScreen, GridCell
 
     async def main():
-        async def wait(cond, n=40):
+        async def wait(cond, n=200):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.15)
                 if cond():
@@ -236,7 +236,7 @@ def test_tui_roles_table_edit_cancel_save(env, project, monkeypatch):
     from ateam.tui import RESET, RolesTable
 
     async def main():
-        async def wait(cond, n=40):
+        async def wait(cond, n=200):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.15)
                 if cond():

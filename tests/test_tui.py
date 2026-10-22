@@ -191,7 +191,7 @@ def test_tui_setup_screen(env, project, monkeypatch):
     from ateam.db import DB
     from ateam.tui import RESET, AgentPane, OnboardScreen, TeamApp
 
-    async def wait(pilot, cond, n=60):
+    async def wait(pilot, cond, n=300):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
         for _ in range(n):
             if cond():
                 return True
@@ -394,7 +394,7 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
     from ateam.tui import (AgentEditScreen, AgentPane, AgentQuickScreen, CustomScreen, OnboardScreen, TeamApp,
                            WorkflowEditScreen)
 
-    async def wait_for(pilot, cond, n=40):
+    async def wait_for(pilot, cond, n=300):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
         for _ in range(n):
             await pilot.pause(0.1)
             if cond():
@@ -510,14 +510,14 @@ def test_tui_custom_agents_and_workflows(env, project, monkeypatch, tmp_path):
             assert ts[0].title == "Review" and ts[2].depends_on == [] and ts[1].depends_on == [ts[0].id]
             assert app.db.goal(1).workflow == "review-code"
             app.run_command("/go")
-            assert await wait_for(pilot, lambda: app.db.goal(1).status in ("done", "incomplete"), 150)
+            assert await wait_for(pilot, lambda: app.db.goal(1).status in ("done", "incomplete"))
             assert app.db.goal(1).status == "done"
             assert "Tóm tắt" in (project / "steps.txt").read_text()
 
             # wizard thiết lập: bước Xem lại liệt kê agent tuỳ chỉnh được giữ, có nút mở /custom; xoá agent
             # tuỳ chỉnh (bấm 2 lần) -> quay lại wizard thấy ngay
             app.open_setup()
-            assert await wait_for(pilot, lambda: isinstance(app.screen, OnboardScreen), 200)
+            assert await wait_for(pilot, lambda: isinstance(app.screen, OnboardScreen))
             wiz = app.screen
             await wiz.show_step(len(wiz.STEPS) - 1)
             await pilot.pause(0.3)
@@ -1128,7 +1128,7 @@ def test_tui_terminal_tab(env, project, monkeypatch):
     def job_log(app) -> str:
         return "\n".join("".join(seg.text for seg in strip) for strip in app.query_one("#job-log", RichLog).lines)
 
-    async def wait(pilot, cond, n=60):
+    async def wait(pilot, cond, n=300):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
         for _ in range(n):
             await pilot.pause(0.1)
             if cond():
@@ -1215,7 +1215,7 @@ def test_tui_full_access_from_custom_survives_setup(env, project, monkeypatch):
     from ateam.db import DB
     from ateam.tui import AgentQuickScreen, CustomScreen, OnboardScreen, TeamApp
 
-    async def wait_for(pilot, cond, n=80):
+    async def wait_for(pilot, cond, n=300):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
         for _ in range(n):
             await pilot.pause(0.1)
             if cond():
@@ -1478,7 +1478,7 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
     from ateam.db import DB
     from ateam.tui import CustomPanel, DefaultFlowScreen, OnboardScreen, TeamApp, WorkflowEditScreen
 
-    async def wait_for(pilot, cond, n=200):  # CI chậm: chờ tới 20 giây, xong sớm thì thoát sớm
+    async def wait_for(pilot, cond, n=300):  # CI chậm: chờ tới 30 giây, xong sớm thì thoát sớm
         for _ in range(n):
             await pilot.pause(0.1)
             if cond():

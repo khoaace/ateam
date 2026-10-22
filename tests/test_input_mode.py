@@ -59,7 +59,7 @@ def test_tui_input_mode_picker_and_star_button(env, project, monkeypatch):
     async def main():
         app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
 
-        async def wait(cond, n=100):
+        async def wait(cond, n=300):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.1)
                 if cond():

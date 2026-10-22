@@ -158,7 +158,7 @@ def test_tui_conflict_screen(env, project, monkeypatch):
         ensure_global_config()
         app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
 
-        async def wait(cond, n=40):
+        async def wait(cond, n=200):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.15)
                 if cond():

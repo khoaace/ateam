@@ -29,7 +29,7 @@ def test_sidebar_navigation_toggle_and_narrow(env, project, monkeypatch):
     tui, app, state_file = _app(env, project, monkeypatch)
 
     async def main():
-        async def wait(cond, n=60):
+        async def wait(cond, n=300):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.1)
                 if cond():

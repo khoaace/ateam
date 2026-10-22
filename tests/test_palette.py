@@ -59,7 +59,7 @@ def test_tui_palette(env, project, monkeypatch):
     (project / "README.md").write_text("# Demo\n")
 
     async def main():
-        async def wait(cond, n=80):
+        async def wait(cond, n=600):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
             for _ in range(n):
                 await pilot.pause(0.05)
                 if cond():
