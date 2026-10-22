@@ -1,7 +1,16 @@
 # Changelog
 
-## Chưa phát hành
+## 0.43.0 — 22/10/2026
 
+- **Web báo khi task ngoài kế hoạch xong** — task giao tay (`/add`, `/task`, ô 💬) chạy xong có thông báo
+  "✅ Task xong" và âm thanh riêng (nhẹ hơn âm mục tiêu hoàn thành); TUI có toast + chuông + thông báo hệ điều hành
+  theo `/notify`.
+- **Log web: khối `<<<ASK>>>` thành thẻ ❓ Hỏi bạn** — như thẻ Giao việc / Ghi chú: câu hỏi, lý do và các phương án
+  (★ khuyên dùng), thay vì JSON thô.
+- **Web mở dự án khác giữ đúng cổng** — chọn dự án khác (/open) từng làm server chạy lại ở cổng kế tiếp (8000 → 8001)
+  trong khi trình duyệt cứ chờ cổng cũ; giờ giữ nguyên cổng và trang tự nạp lại. Trong lúc đổi, thanh trạng thái hiện
+  "Đang mở dự án khác…", quá 20 giây chưa nối lại thì nhắc xem terminal. Ctrl+C rồi chạy lại `ateam web` ngay cũng không
+  còn bị nhảy cổng.
 - **Bảng ⚡ Vai trò ổn định hơn** — Huỷ/Lưu rồi bảng dựng lại liên tiếp không còn có thể làm app lỗi
   `NoMatches('SelectOverlay')`.
 
