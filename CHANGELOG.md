@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.48.0 — 22/10/2026
+
+- **TUI: hạn mức 5 giờ / tuần như web** — chân thanh bên hiện % đã dùng của claude, codex, antigravity (mỗi khung lấy
+  nhóm model dùng nhiều nhất, xanh / vàng / đỏ theo mức), ⟳ để hỏi lại ngay, bấm tên CLI sang tab 📊 Thống kê. Đầu tab
+  Thống kê có đủ mọi khung kèm giờ hồi và lúc lấy số liệu. Chỉ hỏi CLI (mỗi phút) khi thanh bên hoặc tab Thống kê
+  đang hiện.
+
 ## 0.47.0 — 22/10/2026
 
 - **Web: mở từ điện thoại bằng một nút** — popup 📱 Điện thoại khi server chỉ nghe máy này có nút **↻ Chạy lại**
