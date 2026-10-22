@@ -70,3 +70,58 @@ def test_codex_quota_by_window_minutes(tmp_path):
                                     "secondary": {"used_percent": 3, "window_minutes": 10080, "resets_at": later}})
     ws, _ = quota.codex_quota(tmp_path / "b")
     assert [(w["kind"], w["used"]) for w in ws] == [("5h", 0), ("week", 3)]
+
+
+def test_worst_and_reset_left():
+    item = {"windows": [quota.window("week", 12, None, "Claude"), quota.window("5h", 0, None, "Gemini"),
+                        quota.window("week", 89, None, "Gemini"), quota.window("5h", 5, None, "Claude")]}
+    assert [(w["kind"], w["used"]) for w in quota.worst(item)] == [("5h", 5), ("week", 89)]
+    assert quota.reset_left(NOW - 1, NOW) == "đã tới giờ hồi"
+    assert quota.reset_left(NOW + 3 * 86400 + 4 * 3600, NOW) == "hồi sau 3d 4h"
+    assert quota.reset_left(NOW + 2 * 3600 + 5 * 60, NOW) == "hồi sau 2h 05m"
+    assert quota.reset_left(NOW + 20, NOW) == "hồi sau 1m"
+
+
+def test_tui_sidebar_and_dash_show_quota(env, project, monkeypatch):
+    """TUI như web: hạn mức ở chân thanh bên (bấm tên → tab Thống kê) + chi tiết đầu tab Thống kê, ⟳ hỏi lại."""
+    import asyncio
+    import importlib
+
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    importlib.reload(importlib.import_module("ateam.config"))
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import TeamApp
+    ensure_global_config()
+    app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+
+    async def main():
+        async def wait(cond, n=300):  # CI chạy song song có thể chậm: chờ tới ~30 giây
+            for _ in range(n):
+                await pilot.pause(0.1)
+                if cond():
+                    return True
+            return False
+
+        def side() -> list[str]:
+            return str(app.query_one("#side").render()).splitlines()
+
+        async with app.run_test(size=(160, 60)) as pilot:
+            # thanh bên đang hiện: tự hỏi hạn mức (claude, agy giả lập in /usage; codex chưa có phiên)
+            assert await wait(lambda: app.quota_items is not None and any("41%" in ln for ln in side()))
+            lines = side()
+            i = next(i for i, ln in enumerate(lines) if ln.strip() == "● claude")
+            assert "5h" in lines[i + 1] and "41%" in lines[i + 1] and "━" in lines[i + 1]
+            assert "tuần" in lines[i + 2] and "26%" in lines[i + 2]
+            assert all(len(ln) <= 22 for ln in lines[i:])  # vừa cột thanh bên (24 trừ padding)
+            await pilot.click("#side", offset=(4, i + 1))  # +1: padding trên
+            assert await wait(lambda: app.query_one("#tabs").active == "tab-dash")
+            await pilot.pause(0.3)
+            dash = str(app.query_one("#dash-quota").render())
+            assert "Hạn mức 5 giờ / tuần" in dash and "đã dùng 41%" in dash and "số liệu lúc" in dash
+            assert "Chưa có phiên codex nào ghi hạn mức" in dash
+            at = app._quota_at
+            app.action_quota_refresh()
+            assert await wait(lambda: app._quota_at > at and not app.quota_busy)
+    asyncio.run(main())

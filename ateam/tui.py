@@ -32,8 +32,8 @@ from textual.widgets import (Button, Checkbox, DataTable, Input, OptionList,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, projects, reports, rules, search,
-               shell, theme, todos, update, wizard)
+from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, projects, quota, reports, rules,
+               search, shell, theme, todos, update, wizard)
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
 from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TASK_KINDS, TIERS,
                      WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan, task_kind,
@@ -3260,7 +3260,18 @@ def side_groups() -> list[tuple[str, list[str]]]:
 
 
 SIDE_WIDTH = 24  # cột thanh bên (cả padding)
+QUOTA_EVERY = 60  # giây giữa hai lần hỏi hạn mức 5h/tuần (khi thanh bên hoặc tab Thống kê đang hiện)
+QUOTA_NAMES = {"agy": "antigravity"}
 SIDE_MIN = 120  # terminal hẹp hơn: ẩn thanh bên, hiện lại thanh tab
+
+
+def quota_color(used: float) -> str:
+    return PAL["err"] if used >= 90 else PAL["warn"] if used >= 70 else PAL["ok"]
+
+
+def quota_bar(used: float, width: int) -> Text:
+    n = round(used / 100 * width)
+    return Text.assemble(("━" * n, quota_color(used)), ("─" * (width - n), "dim"))
 
 
 class Sidebar(Static):
@@ -3338,6 +3349,22 @@ class Sidebar(Static):
                 t.append(" ○ ", "dim")
                 t.append(name + star, Style(dim=True) + click)
             t.append("\n")
+        # hạn mức 5h/tuần như chân thanh bên ở web: mỗi khung lấy nhóm model dùng nhiều nhất; bấm tên → tab Thống kê
+        items = [i for i in app.quota_items or [] if i["windows"]]
+        if items:
+            t.append("\n" + tr("Hạn mức"), "dim bold")
+            t.append(" " + (SPIN[app._frame] if app.quota_busy else "⟳"),
+                     Style(dim=True, meta={"@click": "app.quota_refresh"}))
+            t.append("\n")
+            for i in items:
+                ws = quota.worst(i)
+                t.append(" ● ", quota_color(max(w["used"] for w in ws)))
+                t.append(QUOTA_NAMES.get(i["cli"], i["cli"]), Style(bold=True, meta={"@click": "app.quota_open"}))
+                t.append("\n")
+                for w in ws:
+                    t.append(f"  {w['label']:<4} ", "dim")
+                    t.append_text(quota_bar(w["used"], width - 12))
+                    t.append(f" {round(w['used']):>3}%\n")
         return t
 
 
@@ -4985,7 +5012,7 @@ class TeamApp(App):
     #custom-tab { height: 1fr; padding: 1 2 0 2; }
     #dash { height: 1fr; padding: 0 2; }
     #todo-tab, #notes-tab { padding: 1 1 0 1; }
-    #dash-cards, #dash-chart, #dash-goal, #dash-note { height: auto; margin-top: 1; }
+    #dash-quota, #dash-cards, #dash-chart, #dash-goal, #dash-note { height: auto; margin-top: 1; }
     #dash .dash-title { height: 1; margin-top: 1; color: $text-muted; text-style: bold; }
     #dash-agents { height: auto; max-height: 12; }
     #dash-goals { height: auto; max-height: 16; }
@@ -5098,6 +5125,9 @@ class TeamApp(App):
         self.focus_agent: str | None = None  # agent đang phóng to ở tab Agents (F7, /focus)
         self.sidebar_on = True  # thanh bên (Ctrl+B ẩn/hiện, nhớ trong state.json; hẹp thì tự ẩn)
         self._todo_n: tuple[float, int] = (0.0, 0)  # số to-do chưa xong cho thanh bên: (lúc đọc, số)
+        self.quota_items: list | None = None  # hạn mức 5h/tuần gần nhất (quota.collect, như web)
+        self.quota_busy = False
+        self._quota_at = 0.0
         self.start_setup = setup
         # tắt hiệu ứng chuyển động (gạch chân tab trượt, cuộn mượt): mỗi lần đổi tab/cuộn phải vẽ lại nhiều
         # khung hình — trên terminal là giật, lag
@@ -5275,6 +5305,7 @@ class TeamApp(App):
                 yield NotesPanel(self.root, id="notes-tab")
             with TabPane(labels["tab-dash"], id="tab-dash"):
                 with VerticalScroll(id="dash"):
+                    yield Static(id="dash-quota")
                     yield Static(id="dash-cards")
                     yield Static(id="dash-chart")
                     yield Static(tr("Theo agent · model (30 ngày)"), classes="dash-title")
@@ -7031,6 +7062,10 @@ class TeamApp(App):
         elif tab != "tab-git" and time.time() - self._git_at > 10 and not self._git_loading:
             # thanh trạng thái hiện nhánh git: ngoài tab Git đọc lại thưa hơn
             self.run_worker(self.refresh_git(), exclusive=False)
+        if (self.sidebar_shown() or tab == "tab-dash") and not self.quota_busy \
+                and time.time() - self._quota_at >= QUOTA_EVERY:  # chỉ hỏi khi đang có chỗ hiện, như web
+            self._quota_at = time.time()  # lượt vẽ sau (worker chưa kịp chạy) không hỏi chồng
+            self.run_worker(self.refresh_quota(), exclusive=False)
         fns += [self._refresh_sidebar, self._refresh_statusbar]
         try:
             for fn in fns:
@@ -7062,6 +7097,7 @@ class TeamApp(App):
         if not force and time.time() - getattr(self, "_dash_at", 0) < 2:
             return
         self._dash_at = time.time()
+        self._refresh_dash_quota()
         # không đổi gì (cùng phút — "hôm nay"/"x phút trước" vẫn đúng) thì không dựng lại hai bảng
         sig = (self.db.change_sig(), int(time.time() // 60))
         if not force and sig == getattr(self, "_dash_sig", None):
@@ -7121,6 +7157,59 @@ class TeamApp(App):
         self.query_one("#dash-goals").display = bool(self._dash_hist)
         set_static(self.query_one("#dash-note", Static), Text(d["note"], "dim"))
         self._show_dash_goal()
+
+    async def refresh_quota(self) -> None:
+        """Hỏi lại hạn mức 5h/tuần của claude, codex, agy (quota.collect — chung với web); refresh_view vẽ lại."""
+        if self.quota_busy:
+            return
+        self.quota_busy = True
+        try:
+            self.quota_items = await quota.collect(self.orch)
+        except Exception as e:  # CLI in lạ, file phiên hỏng…: giữ số cũ, lần sau hỏi lại
+            self.orch.log(f"⚠ quota: {e}")
+        finally:
+            self.quota_busy = False
+            self._quota_at = time.time()
+
+    def action_quota_refresh(self) -> None:
+        self.run_worker(self.refresh_quota(), exclusive=False)
+
+    def action_quota_open(self) -> None:
+        self.query_one("#tabs", TabbedContent).active = "tab-dash"
+        self.refresh_view()
+
+    def _refresh_dash_quota(self) -> None:
+        """Đầu tab Thống kê: mọi khung hạn mức của từng CLI — thanh %, giờ hồi (như đầu trang Thống kê ở web)."""
+        t = Text()
+        t.append(" " + tr("Hạn mức 5 giờ / tuần") + "   ", "bold")
+        t.append((SPIN[self._frame] if self.quota_busy else "⟳") + " " + tr("Hỏi lại hạn mức"),
+                 Style(color=PAL["info"], meta={"@click": "app.quota_refresh"}))
+        t.append("\n")
+        items = self.quota_items
+        if items is None:
+            t.append(" " + tr("Đang hỏi hạn mức các CLI…") + "\n", "dim")
+        elif not items:
+            t.append(" " + tr("Chưa có CLI nào báo hạn mức (claude, codex, agy)") + "\n", "dim")
+        now = time.time()
+        for i in items or []:
+            t.append(f" {QUOTA_NAMES.get(i['cli'], i['cli']):<12} ", "bold")
+            t.append(tr("số liệu lúc {v}", v=time.strftime("%a %d/%m %H:%M", time.localtime(i["at"]))) + "\n",
+                     "dim")
+            if not i["windows"]:
+                t.append("   " + i["error"] + "\n", "dim")
+            gw = min(24, max(len(w["group"]) for w in i["windows"])) if i["windows"] else 0
+            for w in i["windows"]:
+                t.append(f"   {w['label']:<5}", "bold")
+                if gw:
+                    t.append(f"{w['group'][:gw]:<{gw + 1}}", "dim")
+                t.append_text(quota_bar(w["used"], 30))
+                used = tr("đã dùng {v}%", v=round(w["used"]))
+                t.append(f"  {used:<14}")
+                if w["resets_at"]:
+                    t.append(quota.reset_left(w["resets_at"], now) + " · "
+                             + time.strftime("%a %d/%m %H:%M", time.localtime(w["resets_at"])), "dim")
+                t.append("\n")
+        set_static(self.query_one("#dash-quota", Static), t)
 
     def dash_goal(self) -> dict | None:
         hist = getattr(self, "_dash_hist", None) or []

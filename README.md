@@ -259,8 +259,9 @@ ateam web --public-url https://ateam.ten-mien.com   # bạn tự chạy named tu
   `ateam --lang en <lệnh>` hoặc `ATEAM_LANG=en` (một lần). Lần đầu dùng, ngôn ngữ theo `LANG` của máy.
 - **Thanh bên** (terminal từ 120 cột): tên dự án và nhánh, các màn hình theo nhóm — *Làm việc* (Bảng việc, Lưới,
   Agents, Workflows), *Dự án* (Code, Git, Terminal), *Của bạn* (To-do, Ghi chú, Thống kê) — kèm số đếm (task đang
-  chạy/chờ, file đổi, việc chưa xong), và trạng thái từng agent (bấm tên để chat riêng). **Ctrl+B** ẩn/hiện (nhớ cho
-  lần sau); terminal hẹp hơn thì thanh bên tự ẩn và thanh tab hiện lại. Alt+1…0 / Ctrl+T vẫn chuyển màn hình.
+  chạy/chờ, file đổi, việc chưa xong), trạng thái từng agent (bấm tên để chat riêng), và **thanh hạn mức 5 giờ /
+  tuần** của claude, codex, antigravity như ở web (tự cập nhật mỗi phút, ⟳ hỏi lại ngay, bấm tên CLI để xem chi tiết ở
+  tab Thống kê). **Ctrl+B** ẩn/hiện (nhớ cho lần sau); terminal hẹp hơn thì thanh bên tự ẩn và thanh tab hiện lại. Alt+1…0 / Ctrl+T vẫn chuyển màn hình.
 - Thanh trạng thái dưới cùng: nhánh git ↑↓, số task đang chạy / chờ / chờ duyệt / lỗi, lệnh terminal đang chạy,
   agent đang nghỉ vì hết hạn mức; bên phải là phím tắt chính (F1 trợ giúp — đủ mọi phím).
 
@@ -548,7 +549,8 @@ riêng của agent cũ được bỏ). `/assign <task> <agent>` làm thẳng kh�
 
 ## Thống kê: token, cost, lịch sử mục tiêu (`/dash`)
 
-Tab **📊 Thống kê** (web: mục *Thống kê*): token (input · output · cache), cost, số lượt, thời gian chạy của hôm
+Tab **📊 Thống kê** (web: mục *Thống kê*): đầu tab là hạn mức 5 giờ / tuần của từng CLI (mọi nhóm model, % đã
+dùng, giờ hồi — hỏi lại mỗi phút khi đang xem); token (input · output · cache), cost, số lượt, thời gian chạy của hôm
 nay / 7 / 30 ngày; biểu đồ token 14 ngày; bảng theo agent và theo model; **lịch sử mục tiêu** (đề bài, trạng
 thái, task xong/lỗi, agent tham gia, token, cost, kết quả) — Enter (web: nút *Tiếp tục mục tiêu*) để giao thêm
 việc bằng `/continue`.

@@ -49,7 +49,7 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/mentions.py` | `@file`: gợi ý file/thư mục cho TUI, đổi `@đường/dẫn` sang cú pháp từng CLI (`SYNTAX`) |
 | `ateam/clipboard.py` | Ctrl+V dán ảnh: đọc clipboard (osascript/pngpaste/wl-paste/xclip), lưu `.ateam/images/`, nhận ảnh kéo-thả |
 | `ateam/limits.py` | Nhận diện thông báo hết hạn mức, đoán giờ hồi, lưu cooldown |
-| `ateam/quota.py` | Hạn mức 5h/tuần dạng số cho web: bóc `claude -p /usage`, `agy -p /usage`, `rate_limits` trong file phiên codex; `WebApp._quota_loop` hỏi lại mỗi 60 giây, đẩy tin `quota` qua WebSocket |
+| `ateam/quota.py` | Hạn mức 5h/tuần dạng số cho web + TUI (thanh bên, đầu tab Thống kê — `TeamApp.refresh_quota`): bóc `claude -p /usage`, `agy -p /usage`, `rate_limits` trong file phiên codex; `WebApp._quota_loop` hỏi lại mỗi 60 giây, đẩy tin `quota` qua WebSocket |
 | `ateam/usage_logs.py` | Token & cost thật của một lượt: đọc file phiên Claude Code / Codex, bảng giá (`[prices]`) — dashboard, `/usage` |
 | `ateam/notify.py` | Thông báo kế hoạch/diff chờ duyệt, task lỗi: `Watcher` so trạng thái, `desktop()` (osascript/notify-send), `/notify` |
 | `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `grok` (Grok Build), `opencode`, `mycli` (agent tuỳ chỉnh), `code` (VS Code, cho phím `o` ở màn hình diff), `ruff` (format ở tab Code) |

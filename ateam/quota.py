@@ -148,3 +148,22 @@ async def collect(orch: "Orchestrator") -> list[dict]:
             item["error"] = next((ln.strip() for ln in lines if ln.strip()), "")[:160]
         return item
     return [i for i in await asyncio.gather(*(one(c) for c in QUOTA_CLIS)) if i]
+
+
+def worst(item: dict) -> list[dict]:
+    """Mỗi loại khung lấy nhóm model dùng nhiều nhất (giới hạn chạm trước), 5h trước tuần — như quota.js."""
+    by: dict[str, dict] = {}
+    for w in item["windows"]:
+        if w["kind"] not in by or w["used"] > by[w["kind"]]["used"]:
+            by[w["kind"]] = w
+    order = ("5h", "week")
+    return sorted(by.values(), key=lambda w: order.index(w["kind"]) if w["kind"] in order else 9)
+
+
+def reset_left(ts: float, now: float | None = None) -> str:
+    """"hồi sau 2h 05m" / "hồi sau 3d 4h" / "đã tới giờ hồi"."""
+    s = int(ts - (now or time.time()))
+    if s <= 0:
+        return tr("đã tới giờ hồi")
+    d, h, m = s // 86400, s % 86400 // 3600, s % 3600 // 60
+    return tr("hồi sau {v}", v=f"{d}d {h}h" if d else f"{h}h {m:02d}m" if h else f"{max(1, m)}m")
