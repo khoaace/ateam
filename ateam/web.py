@@ -33,7 +33,7 @@ from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, t
 from .orchestrator import SYSTEM, Orchestrator
 from .opencode import ATTACHMENT_MAX
 from .pty_session import PtySession
-from .grid import WHERE, GridHub, preset_names
+from .grid import SHELL, WHERE, GridHub, preset_names
 from .logtail import read_tail
 from .web_code import CodeWeb
 from .web_git import GitWeb
@@ -1114,6 +1114,16 @@ class WebApp:
 
     # ------------------------------------------------------------------ mục 🔲 Lưới
     def _on_grid(self, cid: str, kind: str, payload) -> None:
+        if kind == "notice":  # ô cần người dùng: báo mọi tab, kể cả tab không ở mục Lưới
+            agent = tr("Terminal") if payload["agent"] == SHELL else payload["agent"]
+            wait = tr("Ô trong Lưới đang chờ bạn")
+            if payload["kind"] == "done":
+                n = notify.Notice("grid_done", tr("✅ {agent} đã xong lượt", agent=agent), wait, cell=cid)
+            else:
+                n = notify.Notice("grid_ask", tr("🔔 {agent} cần bạn", agent=agent), payload["text"] or wait,
+                                  level="warn", cell=cid)
+            self.push_notices([n])
+            return
         if not self.grid_ws:
             return
         if kind == "data":

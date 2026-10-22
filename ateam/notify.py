@@ -22,16 +22,17 @@ MODES = ("all", "app", "off")
 
 @dataclass
 class Notice:
-    kind: str  # failed | conflict | review | plan | ask | done | goal_end | task_done
+    kind: str  # failed | conflict | review | plan | ask | done | goal_end | task_done | grid_ask | grid_done
     title: str
     body: str
     task_id: int | None = None
     goal_id: int | None = None
     level: str = "info"  # info | warn
+    cell: str = ""       # ô trong tab 🔲 Lưới (grid_*)
 
     def to_json(self) -> dict:
         return {"t": "notice", "kind": self.kind, "title": self.title, "body": self.body,
-                "task": self.task_id, "goal": self.goal_id, "level": self.level}
+                "task": self.task_id, "goal": self.goal_id, "level": self.level, "cell": self.cell}
 
 
 def _short(s: str, n: int = 120) -> str:

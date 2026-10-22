@@ -205,6 +205,80 @@ def test_grid_hub_runs_cli(env, project, monkeypatch):
     asyncio.run(main())
 
 
+
+def test_attention_signals():
+    """Ô cần người dùng: OSC 9 / OSC 777 / BEL, bỏ qua tiêu đề + thanh tiến trình + bíp lúc gõ; đoán "xong lượt"."""
+    from ateam.grid import Attention
+    a = Attention()
+    assert a.feed(b"x\x1b]9;Claude needs", 10) == []  # OSC bị cắt giữa hai chunk
+    assert a.feed(b" your permission\x07rest", 10.1) == [("ask", "Claude needs your permission")]
+    assert a.feed(b"\x1b]9;4;3;\x07\x1b]0;tieu de\x07\x1b]2;x\x1b\\", 20) == []
+    assert a.feed(b"\x1b", 30) == [] and a.feed(b"]777;notify;Codex;Turn complete\x1b\\", 30) == [("ask", "Turn complete")]
+    assert a.feed(b"\x07", 31) == []  # dồn dập: một thông báo mỗi QUIET_S giây
+    assert a.feed(b"\x07", 40) == [("ask", "")]
+    a.typed(b"x", 50)
+    assert a.feed(b"\x07", 50.5) == []  # bíp ngay sau phím gõ
+    # xong lượt: Enter → output ≥ MIN_TURN_S → im IDLE_S
+    a.typed(b"lam di\r", 60)
+    a.feed(b"...", 61)
+    a.feed(b"...", 66)
+    assert a.idle(68) == []  # chưa đủ im
+    assert a.idle(71) == []  # chưa đủ IDLE_S
+    assert a.idle(73) == [("done", "")] and a.idle(80) == []
+    assert a.feed(b"\x1b]9;Claude needs your permission\x07", 74) == [("ask", "Claude needs your permission")]
+    a.typed(b"\r", 90)
+    a.feed(b">", 90.2)
+    assert a.idle(97.2) == []  # lượt ngắn
+    a.typed(b"hoi\r", 100)
+    a.feed(b"...", 101)
+    a.feed(b"\x1b]9;waiting\x07", 106)
+    assert a.idle(113) == []  # đã có thông báo thật trong lượt
+    shell = Attention(guess=False)
+    shell.typed(b"npm run dev\r", 0)
+    shell.feed(b"...", 1)
+    shell.feed(b"...", 9)
+    assert shell.idle(16) == []
+
+
+def test_grid_hub_attention(env, project, monkeypatch):
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    importlib.reload(importlib.import_module("ateam.config"))
+    from ateam import grid
+    from ateam.config import ensure_global_config, load_config
+    monkeypatch.setattr(grid, "IDLE_S", 0.6)
+    monkeypatch.setattr(grid, "MIN_TURN_S", 0.4)
+    monkeypatch.setattr(grid, "QUIET_S", 0)
+    monkeypatch.setenv("SHELL", "/bin/sh")
+    monkeypatch.setenv("TERM_PROGRAM", "vscode")
+    ensure_global_config()
+    cfg = load_config(project)
+
+    async def main():
+        hub = grid.GridHub(project, lambda: cfg, lambda a: None)
+        notes = []
+        hub.listen(lambda cid, kind, p: kind == "notice" and notes.append((cid, p)))
+        cid, _ = await hub.add("claude")
+        out = lambda: bytes(hub.terms[cid].buf)  # noqa: E731
+        assert await _until(lambda: b"gia lap tuong tac" in out())
+        hub.write(cid, b"termprog\r")  # Claude Code chỉ gửi OSC 9 khi tưởng đang ở iTerm
+        assert await _until(lambda: b"TP=iTerm.app" in out())
+        hub.write(cid, b"title\r")
+        hub.write(cid, b"notify xin quyen\r")
+        assert await _until(lambda: notes)
+        assert notes == [(cid, {"kind": "ask", "text": "xin quyen", "agent": "claude"})]
+        hub.write(cid, b"work\r")
+        assert await _until(lambda: len(notes) == 2)
+        assert notes[1] == (cid, {"kind": "done", "text": "", "agent": "claude"})
+        sh, _ = await hub.add(grid.SHELL)
+        hub.write(sh, b"echo TP=$TERM_PROGRAM-; for i in 1 2 3 4; do sleep 0.2; done; echo xong-$((2+3))\r")
+        assert await _until(lambda: b"xong-5" in bytes(hub.terms[sh].buf))
+        assert b"TP=vscode-" in bytes(hub.terms[sh].buf)  # ô shell giữ env thật
+        await asyncio.sleep(1.2)
+        assert len(notes) == 2  # ô shell không đoán "xong lượt"
+        hub.shutdown()
+    asyncio.run(main())
+
 # ---------------------------------------------------------------- web
 def test_web_grid_ops(env, project, monkeypatch):
     import pytest
@@ -256,6 +330,12 @@ def test_web_grid_ops(env, project, monkeypatch):
             assert {x["id"]: x["h"] for x in st["cols"][0]["cells"]}[cid] == 3
             await ws.send_json({"op": "grid_bcast", "on": True})
             await recv_until(ws, lambda m: m["t"] == "grid" and m["bcast"])
+            # ô cần người dùng: thông báo tới cả tab không mở mục Lưới
+            other = await c.ws_connect("/ws", headers=hdr)
+            await ws.send_json({"op": "grid_in", "id": cid, "data": "notify can ban\r"})
+            n = await recv_until(other, lambda m: m["t"] == "notice")
+            assert (n["kind"], n["cell"], n["body"], n["title"]) == ("grid_ask", cid, "can ban", "🔔 claude cần bạn")
+            await other.close()
             # tab thứ hai mở sau: nhận lại bố cục + output gần nhất của từng ô
             ws2 = await c.ws_connect("/ws", headers=hdr)
             await ws2.send_json({"op": "grid_attach"})

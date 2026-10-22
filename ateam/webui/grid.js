@@ -426,5 +426,5 @@ window.GridView = (() => {
   }
 
   /* /grid <agent> từ ô nhập: server đã thêm ô, chỉ cần mở mục Lưới */
-  return { show, reset, onState, onData, onExit, render, addModal };
+  return { show, reset, onState, onData, onExit, render, addModal, focusCell, focused: () => G.focus };
 })();

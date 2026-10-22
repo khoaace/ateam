@@ -20,7 +20,8 @@ if [ -n "${ATEAM_FAKE_FULL_LOG:-}" ]; then
   echo "<<$fake_name>> $*" >> "$ATEAM_FAKE_FULL_LOG"
 fi
 # Chế độ tương tác (tab 🔲 Lưới, ⌨ Mở trong terminal): stdin là terminal và không có cờ headless → REPL nhỏ:
-# in lại dòng gõ vào; "size" in kích thước pty; "exit" thoát
+# in lại dòng gõ vào; "size" in kích thước pty; "exit" thoát; "notify …" / "bell" / "title": thông báo OSC 9 / chuông /
+# tiêu đề OSC 0; "termprog": $TERM_PROGRAM; "work": in vài dòng trong ~1 giây rồi im (thử báo "xong lượt" của Lưới)
 fake_headless=0
 for a in "$@"; do case "$a" in -p|--print|exec|run) fake_headless=1 ;; esac; done
 if [ "$fake_headless" = 0 ] && [ -t 0 ]; then
@@ -29,6 +30,11 @@ if [ "$fake_headless" = 0 ] && [ -t 0 ]; then
     case "$line" in
       exit) exit 0 ;;
       size) stty size ;;
+      notify\ *) printf '\033]9;%s\007' "${line#notify }" ;;
+      bell) printf '\007' ;;
+      title) printf '\033]0;tieu de\007' ;;
+      termprog) printf 'TP=%s\n' "${TERM_PROGRAM:-}" ;;
+      work) for i in 1 2 3 4 5; do printf 'lam %s\n' "$i"; sleep 0.2; done ;;
       *) printf '\033[36m%s>\033[0m %s\n' "$fake_name" "$line" ;;
     esac
   done

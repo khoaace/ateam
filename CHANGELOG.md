@@ -1,5 +1,14 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Lưới báo khi một ô cần bạn** — web hiện toast + âm thanh (và thông báo trình duyệt theo `/notify`) khi CLI trong
+  ô Lưới gửi thông báo terminal (Claude Code xin quyền / chờ bạn, Codex xong lượt khi ô không được chọn; OSC 9,
+  OSC 777, chuông BEL), hoặc — với CLI không tự báo — khi ô agent chạy một lượt rồi im 7 giây ("✅ … đã xong lượt").
+  Báo tới mọi tab, kể cả tab không ở mục Lưới; không báo nếu bạn đang nhìn đúng ô đó; bấm thông báo nhảy tới ô.
+  Ô agent chạy với `TERM_PROGRAM=iTerm.app` để Claude Code / Codex chịu gửi thông báo.
+- **Âm "xong" (task ngoài kế hoạch, ô Lưới xong lượt) dài và to hơn** — 4 nốt đi lên (~2 giây) thay vì 2 nốt ngắn.
+
 ## 0.43.0 — 22/10/2026
 
 - **Web báo khi task ngoài kế hoạch xong** — task giao tay (`/add`, `/task`, ô 💬) chạy xong có thông báo

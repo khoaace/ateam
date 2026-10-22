@@ -1464,15 +1464,18 @@ function themeModal() {
 /* Thông báo (notify.py): toast luôn; thông báo của trình duyệt khi tab đang ẩn (hoặc /notify test).
    Xin quyền ở lần bấm đầu tiên trên trang — trình duyệt chỉ cho hỏi sau một thao tác của người dùng. */
 function onNotice(m) {
+  if (m.cell && S.view === "grid" && !document.hidden && document.hasFocus() && window.GridView
+      && GridView.focused() === m.cell) return;  // đang nhìn đúng ô đó trong Lưới
   toast(m.title + " — " + m.body, m.level === "warn" ? "warn" : "info");
   playSound(m.kind);
   if (!m.desktop || !("Notification" in window) || Notification.permission !== "granted") return;
   if (!document.hidden && !m.force) return;
   try {
-    const n = new Notification(m.title, { body: m.body, tag: "ateam-" + m.kind + "-" + (m.task || m.goal || "")});
+    const n = new Notification(m.title, { body: m.body, tag: "ateam-" + m.kind + "-" + (m.task || m.goal || m.cell || "")});
     n.onclick = () => {
       window.focus(); n.close();
-      if (m.task != null) openTask(m.task);
+      if (m.cell) { setView("grid"); setTimeout(() => GridView.focusCell(m.cell), 60); }
+      else if (m.task != null) openTask(m.task);
       else if (m.goal != null) setView("board");
     };
   } catch (e) { /* trình duyệt chặn (vd chạy trong iframe) */ }
@@ -1487,8 +1490,8 @@ document.addEventListener("pointerdown", askNotifyPermission, { once: true });
 /* Âm thanh (Web Audio, không file): mỗi loại thông báo một giai điệu ngắn. Âm lượng lưu theo trình duyệt
    (localStorage "ateam-sound", 0 = tắt). Trình duyệt chỉ cho phát sau một thao tác của người dùng → mở khoá
    AudioContext ở mỗi lần bấm/gõ (iOS tạm dừng lại khi tab bị ẩn). */
-const SOUNDS = {  // nốt: [tần số Hz, bắt đầu (giây), dài (giây)]
-  task_done: { wave: "sine", notes: [[784, 0, .3], [1047, .1, .45]] },  // task ngoài kế hoạch xong: nhẹ hơn mục tiêu xong
+const SOUNDS = {  // nốt: [tần số Hz, bắt đầu (giây), dài (giây)]; gain: độ to so với mặc định (1)
+  task_done: { wave: "sine", gain: 2.4, notes: [[784, 0, .5], [1047, .18, .55], [1319, .36, .6], [1568, .54, 1.5]] },  // task ngoài kế hoạch / ô Lưới xong
   plan: { wave: "sine", notes: [[659, 0, .2], [880, .13, .35]] },
   review: { wave: "sine", notes: [[1047, 0, .5]] },
   ask: { wave: "sine", notes: [[784, 0, .16], [988, .11, .16], [1175, .22, .38]] },
@@ -1497,7 +1500,9 @@ const SOUNDS = {  // nốt: [tần số Hz, bắt đầu (giây), dài (giây)]
 };
 SOUNDS.conflict = SOUNDS.goal_end = SOUNDS.failed;
 SOUNDS.test = SOUNDS.review;
-const SOUND_RANK = ["test", "task_done", "done", "review", "plan", "ask", "goal_end", "conflict", "failed"];  // sau = ưu tiên
+SOUNDS.grid_done = SOUNDS.task_done;  // ô Lưới xong lượt / cần bạn
+SOUNDS.grid_ask = SOUNDS.ask;
+const SOUND_RANK = ["test", "grid_done", "task_done", "done", "review", "plan", "grid_ask", "ask", "goal_end", "conflict", "failed"];  // sau = ưu tiên
 let audioCtx = null, soundAt = 0, soundNext = null, soundTimer = 0;
 function soundVolume() {
   try { const v = localStorage.getItem("ateam-sound"); return v == null ? 60 : Math.max(0, Math.min(100, +v || 0)); } catch (e) { return 60; }
@@ -1525,7 +1530,7 @@ function playTune(kind, vol, delay) {
     o.type = s.wave;
     o.frequency.value = f;
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(.35, t + .012);
+    g.gain.linearRampToValueAtTime(.35 * (s.gain || 1), t + .012);
     g.gain.exponentialRampToValueAtTime(.0001, t + dur);
     o.connect(g).connect(master);
     o.start(t);

@@ -5,13 +5,17 @@ Bố cục là danh sách cột, mỗi cột xếp các ô từ trên xuống �
 hiện lại nhưng CLI chưa chạy (mỗi ô có nút mở lại) để không bật hàng loạt CLI một lúc.
 
 `GridHub` giữ `PtySession` của từng ô, bộ đệm output gần nhất (tab web mở sau vẫn thấy lại màn hình) và báo cho
-người nghe (TUI vẽ bằng `vterm.Screen`, web đẩy byte cho xterm.js)."""
+người nghe (TUI vẽ bằng `vterm.Screen`, web đẩy byte cho xterm.js). `Attention` đọc output để biết khi nào một ô
+cần người dùng (web báo toast + âm thanh)."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
+import re
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -26,6 +30,11 @@ MIN_SIZE = 0.15          # cột / ô không nhỏ hơn tỉ lệ này so với 
 WHERE = ("center", "left", "right", "top", "bottom")
 DIRS = ("left", "right", "up", "down")
 SHELL = ":shell"         # agent của ô "terminal trống": shell của người dùng thay vì CLI agent (tên agent không có ":")
+IDLE_S = 7.0             # ô agent im chừng này sau một lượt → đoán "xong lượt" (Claude Code báo xin quyền sau ~6 giây im)
+MIN_TURN_S = 4.0         # lượt ngắn hơn (Enter ở dòng trống, chọn menu) không báo
+QUIET_S = 5.0            # mỗi ô tối đa một thông báo cùng loại trong khoảng này
+TYPE_BELL_S = 2.0        # BEL ngay sau phím gõ là tiếng bíp gõ sai / tab completion, không báo
+OSC_MAX = 2048           # OSC chưa đóng dài hơn thì bỏ (không phải thông báo)
 
 
 def shell_argv() -> list[str]:
@@ -323,14 +332,96 @@ def save_layout(root: Path, layout: Layout) -> None:
         pass
 
 
+class Attention:
+    """Đọc output của một ô để biết CLI cần người dùng. Trả (kind, text): "ask" — thông báo terminal (OSC 9: Claude
+    Code, Codex khi tưởng đang ở iTerm; OSC 777;notify kiểu Ghostty) hoặc chuông BEL; "done" — CLI không tự báo nhưng
+    vừa chạy một lượt (từ lúc gõ Enter) rồi im IDLE_S giây (`guess`, tắt cho ô shell: dev server im lặng là bình thường)."""
+
+    def __init__(self, guess: bool = True):
+        self.guess = guess
+        self.pend = b""                 # OSC chưa đóng / ESC cuối chunk trước
+        self.typed_at = -1e9
+        self.turn: float | None = None  # lúc gõ Enter; None = không có lượt đang chờ
+        self.busy = False               # có output sau Enter
+        self.last_out = 0.0
+        self.told = False               # lượt này đã có thông báo thật — không báo đôi "xong lượt"
+        self.said: tuple = ("", -1e9)   # (loại, lúc) thông báo gần nhất
+
+    def typed(self, data: bytes, now: float) -> None:
+        self.typed_at = now
+        if b"\r" in data or b"\n" in data:
+            self.turn, self.busy, self.told = now, False, False
+
+    def feed(self, data: bytes, now: float) -> list:
+        self.last_out = now
+        if self.turn is not None:
+            self.busy = True
+        out: list = []
+        data, self.pend = self.pend + data, b""
+        pos = 0
+        while pos < len(data):
+            o, b = data.find(b"\x1b]", pos), data.find(b"\x07", pos)
+            if b != -1 and (o == -1 or b < o):  # BEL ngoài OSC
+                if now - self.typed_at >= TYPE_BELL_S:
+                    out.append("")
+                pos = b + 1
+                continue
+            if o == -1:
+                if data.endswith(b"\x1b"):
+                    self.pend = b"\x1b"
+                break
+            ends = [e for e in (data.find(b"\x07", o + 2), data.find(b"\x1b\\", o + 2)) if e != -1]
+            if not ends:
+                self.pend = data[o:] if len(data) - o <= OSC_MAX else b""
+                break
+            e = min(ends)
+            text = self._osc(data[o + 2:e].decode("utf-8", "replace"))
+            if text is not None:
+                out.append(text)
+            pos = e + (1 if data[e:e + 1] == b"\x07" else 2)
+        res: list = []
+        for text in out[:1]:
+            self.told = True
+            res += self._say("ask", text, now)
+        return res
+
+    @staticmethod
+    def _osc(body: str) -> str | None:
+        """Chữ của OSC thông báo, None nếu là OSC khác (tiêu đề, màu, thanh tiến trình 9;4…)."""
+        if body.startswith("9;"):
+            rest = body[2:]
+            return None if re.match(r"\d+(;|$)", rest) else rest
+        if body.startswith("777;notify;"):
+            parts = body.split(";", 3)[2:] + [""]
+            return parts[1] or parts[0]
+        return None
+
+    def idle(self, now: float) -> list:
+        """Gọi khi ô im IDLE_S giây: hết lượt; báo "done" nếu lượt đủ dài và chưa có thông báo thật."""
+        if self.turn is None or now - self.last_out < IDLE_S - 0.05:
+            return []
+        turn, self.turn = self.turn, None
+        if not self.guess or not self.busy or self.told or self.last_out - turn < MIN_TURN_S:
+            return []
+        return self._say("done", "", now)
+
+    def _say(self, kind: str, text: str, now: float) -> list:
+        if self.said[0] == kind and now - self.said[1] < QUIET_S:  # "xong lượt" không chặn "cần bạn" ngay sau
+            return []
+        self.said = (kind, now)
+        return [(kind, re.sub(r"[\x00-\x1f\x7f]", " ", text).strip()[:200])]
+
+
 class Term:
     """CLI của một ô: phiên pty + output gần nhất."""
 
-    def __init__(self, cell_id: str, argv: list):
+    def __init__(self, cell_id: str, argv: list, guess: bool = True):
         self.cell_id, self.argv = cell_id, argv
         self.session: PtySession | None = None
         self.buf = bytearray()
         self.rc: int | None = None
+        self.attn = Attention(guess)
+        self.idle_h: asyncio.TimerHandle | None = None
 
     @property
     def alive(self) -> bool:
@@ -344,7 +435,8 @@ class Term:
 
 class GridHub:
     """Bố cục + CLI của các ô cho một dự án. Người nghe nhận (cell_id, kind, payload):
-    kind "data" (bytes), "exit" (mã thoát), "layout" (None — bố cục / trạng thái đổi)."""
+    kind "data" (bytes), "exit" (mã thoát), "layout" (None — bố cục / trạng thái đổi),
+    "notice" ({kind: "ask" | "done", text, agent} — ô cần người dùng, xem `Attention`)."""
 
     def __init__(self, root: Path, cfg_getter: Callable, session_for: Callable[[str], str | None]):
         self.root = Path(root)
@@ -435,20 +527,40 @@ class GridHub:
         if not argv:
             return tr("Không biết cách mở {agent} ở chế độ tương tác (agent tuỳ chỉnh) — tự mở trong terminal khác",
                       agent=cell.agent)
-        t = Term(cid, argv)
+        t = Term(cid, argv, guess=cell.agent != SHELL)
         if old:
             t.buf = old.buf  # mở lại: giữ output cũ phía trên
+        loop = asyncio.get_running_loop()
+
+        def tell(sigs: list) -> None:
+            for kind, text in sigs:
+                self._emit(cid, "notice", {"kind": kind, "text": text, "agent": cell.agent})
+
+        def on_idle() -> None:
+            t.idle_h = None
+            tell(t.attn.idle(time.monotonic()))
 
         def on_data(b: bytes) -> None:
             t.keep(b)
             self._emit(cid, "data", b)
+            tell(t.attn.feed(b, time.monotonic()))
+            if t.attn.turn is not None:
+                if t.idle_h:
+                    t.idle_h.cancel()
+                t.idle_h = loop.call_later(IDLE_S, on_idle)
 
         def on_exit(rc: int) -> None:
             t.rc = rc
+            if t.idle_h:
+                t.idle_h.cancel()
             self._emit(cid, "exit", rc)
             self._emit(cid, "layout")
 
-        t.session = PtySession(argv, str(self.root), dict(os.environ), on_data=on_data, on_exit=on_exit,
+        env = dict(os.environ)
+        if cell.agent != SHELL:  # Claude Code / Codex chỉ gửi thông báo (OSC 9) khi nhận ra terminal hỗ trợ
+            env["TERM_PROGRAM"] = "iTerm.app"
+            env.pop("TERM_PROGRAM_VERSION", None)
+        t.session = PtySession(argv, str(self.root), env, on_data=on_data, on_exit=on_exit,
                                rows=max(2, int(rows)), cols=max(10, int(cols)))
         self.terms[cid] = t
         try:
@@ -467,9 +579,11 @@ class GridHub:
         """Phím gõ ở ô `cid`; đang "gửi tới tất cả" (và ô này nằm trong nhóm) thì gửi cho cả nhóm."""
         cell = self.layout.cell(cid)
         targets = [c.id for c in self.layout.cells() if c.bcast] if self.bcast and cell and cell.bcast else [cid]
+        now = time.monotonic()
         for x in targets:
             t = self.terms.get(x)
             if t and t.alive:
+                t.attn.typed(data, now)
                 t.session.write(data)
 
     def resize(self, cid: str, rows: int, cols: int) -> None:

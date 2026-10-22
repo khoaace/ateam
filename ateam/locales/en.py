@@ -2920,6 +2920,12 @@ EN: dict[str, str] = {
         '❓ An agent asks you',
     '✅ Task xong':
         '✅ Task done',
+    'Ô trong Lưới đang chờ bạn':
+        'A Grid cell is waiting for you',
+    '✅ {agent} đã xong lượt':
+        '✅ {agent} finished its turn',
+    '🔔 {agent} cần bạn':
+        '🔔 {agent} needs you',
     'Hỏi bạn':
         'Asks you',
     'Đã trả lời — {agent} làm tiếp task #{tid}':
