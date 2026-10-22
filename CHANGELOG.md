@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.48.1 — 22/10/2026
+
+- **Sửa TUI sập lúc mở với theme ANSI** (`ansi-dark`, `ansi-light`): màu nền mục đang chọn ở thanh bên không hợp lệ
+  (`ColorParseError`) nên TUI thoát ngay khi vẽ thanh bên.
+- **Web: sửa Pop / Apply / Xoá stash treo toast "Đang chạy git"** — thao tác vẫn chạy xong nhưng toast quay mãi
+  (Xoá còn không mở lại popup Stash).
+
 ## 0.48.0 — 22/10/2026
 
 - **TUI: hạn mức 5 giờ / tuần như web** — chân thanh bên hiện % đã dùng của claude, codex, antigravity (mỗi khung lấy
