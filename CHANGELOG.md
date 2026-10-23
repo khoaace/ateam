@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.48.2 — 23/10/2026
+
+- **Tab Code: thấy và sửa được file `.env`** — file `.env*` bị `.gitignore` (`.env`, `.env.local`, `api/.env`…) giờ hiện
+  trong cây thư mục, palette mở nhanh và gợi ý `@file`. Các file bị ignore khác (`.DS_Store`, `node_modules/`…) vẫn ẩn.
+
 ## 0.48.1 — 22/10/2026
 
 - **Sửa TUI sập lúc mở với theme ANSI** (`ansi-dark`, `ansi-light`): màu nền mục đang chọn ở thanh bên không hợp lệ
