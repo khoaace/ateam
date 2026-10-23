@@ -225,6 +225,22 @@ def test_mentions_search_ranking():
     assert mentions.search(entries, "zzz") == []
 
 
+def test_file_index_keeps_ignored_env_files(tmp_path):
+    # .env bị .gitignore vẫn phải hiện ở tab Code / @ để mở sửa; file ignore khác và bên trong thư mục ignore thì không
+    import asyncio
+    import subprocess
+    from ateam import mentions
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".gitignore").write_text(".env*\n.DS_Store\nnode_modules/\n*.log\n")
+    for f in ["app.py", ".env", ".env.local", "api/.env", "node_modules/x/.env", ".DS_Store", "run.log"]:
+        (tmp_path / f).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / f).write_text("x")
+    entries = asyncio.run(mentions.FileIndex(tmp_path).refresh())
+    files = [e for e in entries if not e.endswith("/")]
+    assert sorted(files) == [".env", ".env.local", ".gitignore", "api/.env", "app.py"]
+    assert "api/" in entries and "node_modules/" not in entries
+
+
 def test_parse_models_from_cli_listing():
     from ateam.config import parse_models
     out = "Available models:\n  gemini-3-pro      (default)\n- gemini-3-flash\n\nNAME\nxai/grok-4.7\nxai/grok-4.7\n"

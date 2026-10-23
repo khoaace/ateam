@@ -261,7 +261,7 @@ OpenCode) được chèn trước prompt bằng `mentions.insert_args`. DB luôn
 làm (`/assign`, dự phòng hạn mức) vẫn ra đúng cú pháp của người mới.
 
 TUI: `CommandInput` (con của `Input`) dò `@…` ngay trước con trỏ ở mỗi `Input.Changed`, lọc
-`FileIndex` (`git ls-files -co --exclude-standard`, không phải repo git thì `os.walk` bỏ thư mục rác;
+`FileIndex` (`git ls-files -co --exclude-standard` + file `.env*` bị .gitignore để tab Code vẫn mở/sửa được, không phải repo git thì `os.walk` bỏ thư mục rác;
 làm mới tối đa 20 giây/lần, chạy bất đồng bộ) và hiện `MentionList` (OptionList nổi trên lớp
 `overlay`). Khi danh sách mở, ↑↓/Tab/Enter/Esc thuộc về nó; khi đóng, Enter gửi lệnh và Tab chuyển
 focus như cũ.

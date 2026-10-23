@@ -271,18 +271,27 @@ class FileIndex:
         return entries
 
     async def _git_files(self) -> list[str] | None:
-        """File theo git (tôn trọng .gitignore, gồm cả file chưa add). None nếu không phải repo git."""
+        """File theo git (tôn trọng .gitignore, gồm cả file chưa add) + file `.env*` bị .gitignore (người dùng vẫn
+        cần mở/sửa ở tab Code; không lấy mọi file bị ignore vì kéo theo .DS_Store, cache…). None nếu không phải repo git."""
         if not (self.root / ".git").exists():
             return None
+        files = await self._ls_files("-co")
+        if files is None:
+            return None
+        # --directory: thư mục bị ignore (node_modules/…) chỉ ra một dòng có "/" ở cuối, không liệt kê bên trong
+        ignored = await self._ls_files("-oi", "--directory") or []
+        files = sorted(files + [f for f in ignored if not f.endswith("/") and f.rsplit("/", 1)[-1].startswith(".env")])
+        files = [f for f in files if not any(p in IGNORE_DIRS for p in f.split("/")[:-1])]
+        return with_dirs(files[:MAX_ENTRIES])
+
+    async def _ls_files(self, *args: str) -> list[str] | None:
         try:
             proc = await asyncio.create_subprocess_exec(
-                "git", "ls-files", "-co", "--exclude-standard", "-z", cwd=str(self.root),
+                "git", "ls-files", *args, "--exclude-standard", "-z", cwd=str(self.root),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
             out, _ = await proc.communicate()
         except Exception:
             return None
         if proc.returncode != 0:
             return None
-        files = [f for f in out.decode("utf-8", "replace").split("\0") if f]
-        files = [f for f in files if not any(p in IGNORE_DIRS for p in f.split("/")[:-1])]
-        return with_dirs(files[:MAX_ENTRIES])
+        return [f for f in out.decode("utf-8", "replace").split("\0") if f]
