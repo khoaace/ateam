@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.49.0 — 23/10/2026
+
+- **TUI: giao nhanh task ngoài kế hoạch ngay trên bảng việc** — như ô ＋ ở nhóm 📌 trên web: dòng ＋ trên bảng task
+  gồm ô nhập, chọn agent (nhớ agent lần trước, mặc định trưởng nhóm) và nút **Giao**; Enter là giao, ô giữ con trỏ để
+  giao tiếp. Phím `n` trong bảng nhảy tới ô này.
+- **TUI: Ctrl+W đóng file đang mở ở tab 📝 Code** — dùng được cả khi bật hay tắt phím vim; file chưa lưu thì chặn
+  như `:q`. Trong ô nhập, Ctrl+W vẫn xoá chữ như cũ.
+
 ## 0.48.2 — 23/10/2026
 
 - **Tab Code: thấy và sửa được file `.env`** — file `.env*` bị `.gitignore` (`.env`, `.env.local`, `api/.env`…) giờ hiện
