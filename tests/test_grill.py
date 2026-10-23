@@ -91,7 +91,8 @@ def test_tui_grill_flow(env, project, monkeypatch, tmp_path):
             g = app.db.goal(gid)
             assert g.spec.startswith("- Đăng nhập bằng email") and "Đã trả lời 2 câu" in g.spec
             assert [x["a"] for x in g.grill["qa"]] == ["Phương án B", "Chỉ đăng nhập bằng email"]
-            assert not bar.display and "Trả lời câu hỏi" not in box.placeholder
+            assert await wait(lambda: not bar.display)  # DB đổi trước, thanh ẩn ở lượt vẽ sau (CI macOS chậm)
+            assert "Trả lời câu hỏi" not in box.placeholder
             plan_prompts = [ln for ln in full.read_text().split("<<claude>>") if "JSON array" in ln]
             assert plan_prompts and "CLARIFIED REQUIREMENTS" in plan_prompts[-1]
             assert "Đã trả lời 2 câu" in plan_prompts[-1]
