@@ -530,14 +530,20 @@ class GitRepo:
 
     # ------------------------------------------------------------------ nhánh
     async def checkout(self, name: str) -> tuple[bool, str]:
-        """Chuyển nhánh; nhánh remote (origin/x) thì tạo nhánh local theo dõi nó."""
-        local = {b.name for b in await self.branches(remote=False)}
+        """Chuyển nhánh; nhánh remote (origin/x) thì tạo nhánh local theo dõi nó — đã có nhánh local x chưa theo dõi gì
+        thì gắn upstream origin/x (không thì Pull đòi Push trước, Push lại bị từ chối vì remote có commit khác)."""
+        local = {b.name: b for b in await self.branches(remote=False)}
         if name not in local and "/" in name:
             remote_names = await self.remotes()
             rem, _, short = name.partition("/")
             if rem in remote_names and short:
                 if short in local:
-                    return await self._do(tr("Đã chuyển sang {short}", short=short), "checkout", "-q", short)
+                    ok, msg = await self._do(tr("Đã chuyển sang {short}", short=short), "checkout", "-q", short)
+                    if ok and not local[short].upstream:
+                        rc, _ = await self.run("branch", f"--set-upstream-to={name}", short)
+                        if rc == 0:
+                            msg = tr("Đã chuyển sang {short} (theo dõi {name})", short=short, name=name)
+                    return ok, msg
                 return await self._do(tr("Đã tạo nhánh {short} theo dõi {name}", short=short, name=name), "checkout", "-q", "--track", name)
         return await self._do(tr("Đã chuyển sang {name}", name=name), "checkout", "-q", name)
 
@@ -697,7 +703,7 @@ class GitRepo:
 
     async def pull(self) -> tuple[bool, str]:
         st = await self.status()
-        if not st.upstream:
+        if not st.upstream and not (st.branch and await self._track_remote(st.branch)):
             return False, (tr("Nhánh {v} chưa có upstream — Push trước để tạo nhánh trên remote", v=st.branch or '(detached)'))
         pre = await self.ident()
         async with self.lock:
@@ -710,6 +716,18 @@ class GitRepo:
         if "CONFLICT" in out:
             return False, tr("Pull bị xung đột — sửa file rồi stage và commit, hoặc 'Huỷ merge'")
         return False, short_error(out)
+
+    async def _track_remote(self, branch: str) -> bool:
+        """Nhánh chưa có upstream mà remote (origin, như push) đã có nhánh cùng tên: gắn upstream để pull được."""
+        remotes = await self.remotes()
+        if not remotes:
+            return False
+        remote = "origin" if "origin" in remotes else remotes[0]
+        rc, _ = await self.run("fetch", "-q", remote, branch, timeout=NET_TIMEOUT)
+        if rc != 0:  # remote chưa có nhánh này
+            return False
+        rc, _ = await self.run("branch", f"--set-upstream-to={remote}/{branch}", branch)
+        return rc == 0
 
     async def push(self, force: bool = False) -> tuple[bool, str]:
         st = await self.status()

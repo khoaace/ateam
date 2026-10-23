@@ -60,6 +60,48 @@ def test_branch_names_and_commit_message_parsing():
     assert extract_commit_message("không có gì") == ""
 
 
+def test_local_branch_without_upstream_tracks_remote(tmp_path, monkeypatch):
+    """Nhánh local `feature` chưa theo dõi gì, remote có `origin/feature` với commit khác: chọn origin/feature (hoặc
+    Pull thẳng) gắn upstream rồi pull — trước đây Pull đòi Push trước còn Push bị từ chối, kẹt cả hai."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    a = tmp_path / "a"
+    subprocess.run(["git", "clone", "-q", str(remote), str(a)], check=True, capture_output=True)
+    ident = ["-c", "user.name=a", "-c", "user.email=a@b"]
+    git(a, "checkout", "-q", "-b", "main")
+    git(a, *ident, "commit", "-q", "--allow-empty", "-m", "init")
+    git(a, "push", "-q", "-u", "origin", "main")
+    git(a, "checkout", "-q", "-b", "feature")
+    (a / "f.txt").write_text("f\n")
+    git(a, "add", ".")
+    git(a, *ident, "commit", "-q", "-m", "feature")
+    git(a, "push", "-q", "origin", "feature")
+
+    async def main():
+        for how in ("origin/feature", "feature"):
+            b = tmp_path / f"b-{how.replace('/', '-')}"
+            subprocess.run(["git", "clone", "-q", str(remote), str(b)], check=True, capture_output=True)
+            git(b, "checkout", "-q", "-b", "feature", "main")  # cùng tên, không upstream
+            git(b, "checkout", "-q", "main")
+            g = gitops.GitRepo(b)
+            ok, msg = await g.checkout(how)
+            assert ok, msg
+            assert (await g.status()).upstream == ("origin/feature" if how == "origin/feature" else "")
+            ok, msg = await g.pull()
+            assert ok, msg
+            assert (await g.status()).upstream == "origin/feature" and (b / "f.txt").exists()
+            assert (await g.push())[0]
+        # remote chưa có nhánh: Pull vẫn báo Push trước
+        git(b, "checkout", "-q", "-b", "chi-o-may")
+        ok, msg = await g.pull()
+        assert not ok and "Push trước" in msg
+
+    asyncio.run(main())
+
+
 def test_gitrepo_operations(tmp_path, monkeypatch):
     # như máy CI: không có git identity — commit/merge/stash vẫn phải chạy (cờ -c user.* dự phòng)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
