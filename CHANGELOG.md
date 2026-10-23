@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.50.0 — 23/10/2026
+
+- **TUI: ✨ AI trong editor như web** — tab 📝 Code: **Ctrl+E** (terminal coi Ctrl+I là Tab) gõ yêu cầu, chọn agent
+  (nhớ lần trước); agent trả đoạn mới, popup hiện diff cũ / mới — Enter chấp nhận (chưa lưu, `u` hoàn tác), Esc bỏ.
+  F8 → **✨ Giải thích**: agent giải thích đoạn chọn (chưa chọn: hàm đang đứng), câu trả lời trong popup.
+- **Git: sửa kẹt Pull ↔ Push trên nhánh chưa có upstream** — nhánh local trùng tên nhánh trên remote nhưng chưa theo
+  dõi nó: Pull đòi "Push trước", Push lại bị từ chối vì remote có commit khác. Giờ chọn `origin/x` sẽ gắn upstream cho
+  nhánh `x` có sẵn, và Pull tự gắn upstream khi remote đã có nhánh cùng tên.
+
 ## 0.49.0 — 23/10/2026
 
 - **TUI: giao nhanh task ngoài kế hoạch ngay trên bảng việc** — như ô ＋ ở nhóm 📌 trên web: dòng ＋ trên bảng task
