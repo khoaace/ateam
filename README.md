@@ -75,9 +75,10 @@ tại). Agent tuỳ chỉnh bạn tự thêm ở `/custom` được giữ nguyê
 * **Giao tay**: `/task codex viết unit test cho utils.py` (gõ `/task ` để chọn agent từ danh sách); agent
   nhận đúng nguyên văn bạn gõ.
 * **Bảng task nhóm theo kế hoạch**: nhóm **📌 Ngoài kế hoạch** (task giao tay) luôn ở trên cùng, rồi từng kế hoạch mới
-  nhất trước (tiến độ ngay ở dòng tiêu đề), kế hoạch đã xong tự thu gọn. Trong bảng: **Enter** trên dòng tiêu đề để
-  thu/mở, `[` `]` nhảy nhóm, `n` giao task ngoài kế hoạch (điền sẵn `/task `), `c` tiếp tục kế hoạch đang chọn, `g`
-  đổi về bảng phẳng theo id (nhớ lựa chọn).
+  nhất trước (tiến độ ngay ở dòng tiêu đề), kế hoạch đã xong tự thu gọn. Dòng **＋** trên bảng giao nhanh task ngoài
+  kế hoạch: gõ nội dung, chọn agent (nhớ agent lần trước), Enter hoặc nút **Giao**. Trong bảng: **Enter** trên dòng
+  tiêu đề để thu/mở, `[` `]` nhảy nhóm, `n` tới ô giao nhanh, `c` tiếp tục kế hoạch đang chọn, `g` đổi về bảng phẳng
+  theo id (nhớ lựa chọn).
 * **Tiếp tục mục tiêu / thread đã xong**: chọn một task trong bảng rồi **F6** (hoặc **Ctrl+O**), bấm nút
   **↪ Tiếp tục** cạnh mục tiêu đã xong, hoặc gõ `/continue ` để chọn từ danh sách — ô nhập điền sẵn
   `/continue m12 ` (mục tiêu) / `/continue t40 ` (task giao tay), dòng phía trên cho biết sẽ tiếp tục gì; gõ
@@ -437,10 +438,10 @@ trong editor có tô màu cú pháp, số dòng, phím **vim**:
 - `i a I A o O` vào chế độ sửa, `Esc` về normal; di chuyển `h j k l w b e 0 ^ $ gg G Ctrl+D/U`, có số đếm
   (`5j`, `3dd`, `2dw`);
 - sửa: `x dd D dw cw cc yy p P J r`, hoàn tác `u` / `Ctrl+R`, chọn `v` / `V` rồi `d y c > <`;
-- tìm `/ ? n N *`; `:w` lưu, `:q` đóng, `:wq`, `:q!` bỏ thay đổi, `:e!` nạp lại, `:42` tới dòng, `:bn` `:bp`
+- tìm `/ ? n N *`; `:w` lưu, `:q` (TUI: cả Ctrl+W) đóng, `:wq`, `:q!` bỏ thay đổi, `:e!` nạp lại, `:42` tới dòng, `:bn` `:bp`
   đổi file, `:files` ẩn/hiện danh sách file.
 
-Không quen vim: `/vim off` (sửa như editor thường, Ctrl+S lưu). Cột trái liệt kê file đang mở và **cây thư mục** của dự án
+Không quen vim: `/vim off` (sửa như editor thường, Ctrl+S lưu; TUI: Ctrl+W đóng file). Cột trái liệt kê file đang mở và **cây thư mục** của dự án
 (thư mục đứng trước file, có nét `├ │ └`; Enter / `→` `l` mở thư mục, Enter / `←` `h` thu gọn, `←` trên file nhảy về
 thư mục cha; mở file nào thì cây tự mở tới file đó). Gõ vào ô trên cùng để lọc: danh sách thành kết quả tìm phẳng. Agent sửa file bạn đang mở: chưa sửa gì thì tự nạp lại, đang sửa thì được báo — `:e!` lấy bản
 trên đĩa, `:w!` ghi đè. Thoát app khi còn file chưa lưu sẽ được hỏi lại.

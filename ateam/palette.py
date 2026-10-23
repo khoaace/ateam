@@ -33,7 +33,7 @@ CODE_COMMANDS: list[tuple[str, str, str, str]] = [
     ("task_agent", tr("Giao task cho agent với file / đoạn đang chọn…"), "", ""),
     ("save", tr("Lưu file"), "Ctrl+S", "Ctrl/⌘+S"),
     ("save_all", tr("Lưu tất cả"), "", ""),
-    ("close", tr("Đóng file"), ":q", ":q"),
+    ("close", tr("Đóng file"), "Ctrl+W · :q", ":q"),
     ("next", tr("File kế tiếp"), ":bn", ":bn"),
     ("prev", tr("File trước"), ":bp", ":bp"),
     ("new_file", tr("File mới…"), "", ""),

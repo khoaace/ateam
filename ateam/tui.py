@@ -235,9 +235,9 @@ Xem & sửa code (tab 📝 Code — Ctrl+T xoay tới, hoặc /code):
                                     xem trước chữ thay; Enter mở file đúng chỗ · r thay trong file · Ctrl+R thay tất cả
   phím vim                          i a I A o O sửa · Esc về normal · h j k l w b e 0 ^ $ gg G Ctrl+D/U
                                     x dd D dw cw cc yy p P J r u Ctrl+R · v V chọn · / ? n N * tìm
-                                    :w lưu · :q đóng · :wq · :q! bỏ thay đổi · :e! nạp lại · :<số> tới dòng
+                                    :w lưu · :q (Ctrl+W) đóng · :wq · :q! bỏ thay đổi · :e! nạp lại · :<số> tới dòng
                                     :bn :bp đổi file · :files ẩn/hiện danh sách · số đếm: 5j, 3dd, 2dw
-  /vim off   /vim on                tắt phím vim (sửa như editor thường, Ctrl+S lưu) / bật lại
+  /vim off   /vim on                tắt phím vim (sửa như editor thường, Ctrl+S lưu, Ctrl+W đóng) / bật lại
                                     file bị agent sửa trong lúc mở: tự nạp lại nếu bạn chưa sửa, không thì
                                     báo để :e! hoặc :w! (ghi đè); file > 2 MB tắt tô màu, > 5 MB chỉ đọc
 
@@ -4971,6 +4971,13 @@ class TeamApp(App):
     #tasks > .datatable--header { background: transparent; color: $text-muted; text-style: bold; }
     #tasks { height: 1fr; }
     #board-tools { height: 1; align: right top; display: none; }
+    /* giao nhanh task ngoài kế hoạch (như ô ＋ ở nhóm 📌 trên web): một dòng ô nhập · agent · Giao */
+    #adhoc-bar { height: 1; margin-bottom: 1; }
+    #adhoc-plus { width: 2; color: $text-muted; }
+    #adhoc-text { width: 1fr; height: 1; border: none; padding: 0 1; background: $boost; }
+    #adhoc-text:focus { background: $accent 15%; }
+    #adhoc-agent { width: 24; height: 1; margin: 0 1; }
+    #adhoc-agent > SelectCurrent { border: none; height: 1; padding: 0 1; }
     #term { height: 1fr; padding: 0 1; }
     #jobs-side { width: 34%; min-width: 30; max-width: 70; }
     #jobs { height: 1fr; border: none; }
@@ -5112,6 +5119,7 @@ class TeamApp(App):
         # Command palette (tab 📝 Code) như VS Code; terminal thường không phân biệt Ctrl+Shift+P với Ctrl+P
         # nên lệnh / symbol có thêm F8 / F9
         Binding("ctrl+p", "palette('')", tr("Mở nhanh file"), show=False, priority=True),
+        Binding("ctrl+w", "code_close_file", tr("Đóng file"), show=False, priority=True),
         Binding("f8,ctrl+shift+p", "palette('>')", tr("Lệnh"), show=False, priority=True),
         Binding("f9,ctrl+shift+o", "palette('@')", tr("Symbol"), show=False, priority=True),
         Binding("f10", "grid_arrange", tr("Sắp xếp lưới"), show=False, priority=True),
@@ -5199,6 +5207,13 @@ class TeamApp(App):
                         yield Static(id="goals")
                         with Horizontal(id="board-tools"):
                             yield Btn(tr("🗑 Dọn task đã xong"), id="board-clear")
+                        with Horizontal(id="adhoc-bar"):
+                            yield Static("＋", id="adhoc-plus")
+                            yield TextInput(id="adhoc-text",
+                                            placeholder=tr("Giao nhanh task ngoài kế hoạch — Enter để giao"))
+                            opts = self.adhoc_agent_options()
+                            yield Select(opts, value=self.adhoc_agent(opts), allow_blank=False, id="adhoc-agent")
+                            yield Btn(tr("Giao"), id="adhoc-go", variant="primary")
                         yield TaskTable(id="tasks", cursor_type="row", zebra_stripes=True)
                         yield Static(id="tasks-empty")
                     with Vertical(id="right", classes="box"):
@@ -5692,6 +5707,9 @@ class TeamApp(App):
                 return False  # Ctrl+R, Ctrl+T, Ctrl+O… trong CLI: nhường cho CLI
         if action == "palette" and isinstance(self.screen, ModalScreen):
             return False  # đang mở popup khác (kể cả chính palette): để phím cho popup đó
+        if action == "code_close_file":  # chỉ ở tab Code có file mở; ô nhập giữ Ctrl+W xoá chữ
+            return (self.query_one("#tabs", TabbedContent).active == "tab-code" and bool(self.code_cur)
+                    and not isinstance(self.screen, ModalScreen) and not isinstance(self.focused, Input))
         if action == "retry" and isinstance(self.screen, SearchScreen):
             return False  # Ctrl+R trong popup 🔍 = thay tất cả
         if action in self.CODE_YIELD:
@@ -5951,6 +5969,9 @@ class TeamApp(App):
         self.refresh_code_files()
         self._refresh_code_head()
         self.query_one("#code-filter", Input).focus()
+
+    def action_code_close_file(self) -> None:
+        self.code_close()
 
     def code_cycle(self, delta: int) -> None:
         if len(self.code_order) < 2 or self.code_cur not in self.code_order:
@@ -6431,7 +6452,7 @@ class TeamApp(App):
                     status.append(tr("   i sửa · :w lưu · :q đóng · / tìm · u hoàn tác · /vim off tắt phím vim"),
                                   "dim")
             else:
-                status.append(ed.message or tr("Ctrl+S lưu · /vim on bật phím vim"), "dim")
+                status.append(ed.message or tr("Ctrl+S lưu · Ctrl+W đóng · /vim on bật phím vim"), "dim")
         set_static(self.query_one("#code-head", Static), head)
         set_static(self.query_one("#code-status", Static), status)
 
@@ -7449,6 +7470,12 @@ class TeamApp(App):
         tids, gids = self.orch.finished_ids(tasks, self.snap_goals())
         tools = self.query_one("#board-tools")
         tools.display = bool(tids or gids)
+        opts = self.adhoc_agent_options()
+        if opts != getattr(self, "_adhoc_opts", None):  # /setup, /custom đổi đội → cập nhật danh sách
+            self._adhoc_opts = opts
+            sel = self.query_one("#adhoc-agent", Select)
+            sel.set_options(opts)
+            sel.value = self.adhoc_agent(opts)
         if tids or gids:
             self.query_one("#board-clear", Button).label = tr("🗑 Dọn {v} task đã xong", v=len(tids))
         if not tasks:
@@ -7628,10 +7655,29 @@ class TeamApp(App):
             table.move_cursor(row=nxt[0] if delta > 0 else nxt[-1])
 
     def action_adhoc_task(self) -> None:
-        """n: điền sẵn /task để giao việc cho một agent, ngoài mọi kế hoạch."""
-        box = self.query_one("#cmd", Input)
-        box.value = "/task "
-        box.cursor_position = len(box.value)
+        """n: tới ô giao nhanh task ngoài kế hoạch (trên bảng task)."""
+        self.query_one("#adhoc-text", Input).focus()
+
+    def adhoc_agent_options(self) -> list[tuple[str, str]]:
+        return [(n + (" ★" if n == self.cfg.lead else ""), n) for n in self.cfg.active_agents()]
+
+    def adhoc_agent(self, opts: list[tuple[str, str]]) -> str:
+        """Agent chọn sẵn ở ô giao nhanh: agent giao lần trước (state.json), không còn thì trưởng nhóm."""
+        names = [v for _l, v in opts]
+        last = load_state().get("adhoc_agent")
+        return last if last in names else (self.cfg.lead if self.cfg.lead in names else names[0])
+
+    def submit_adhoc(self) -> None:
+        """Giao task ở ô giao nhanh — cùng lệnh /task <agent> <nội dung> như ô nhập dưới cùng."""
+        box = self.query_one("#adhoc-text", Input)
+        text = box.value.strip()
+        agent = self.query_one("#adhoc-agent", Select).value
+        if not text or agent is Select.BLANK:
+            box.focus()
+            return
+        box.value = ""
+        self.run_command(f"/task {agent} {text}")
+        self._refresh_table()
         box.focus()
 
     def action_continue_group(self) -> None:
@@ -7820,6 +7866,10 @@ class TeamApp(App):
         if bid == "board-clear":
             event.stop()
             self.clear_board()
+            return
+        if bid == "adhoc-go":
+            event.stop()
+            self.submit_adhoc()
             return
         if bid == "log-clear":
             event.stop()
@@ -8266,6 +8316,13 @@ class TeamApp(App):
         self.push_screen(InputModeScreen(self.cfg), done)
 
     def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "adhoc-agent" and event.value is not Select.BLANK:
+            event.stop()
+            st = load_state()
+            if st.get("adhoc_agent") != event.value:
+                st["adhoc_agent"] = event.value
+                save_state(st)
+            return
         if event.select.id != "git-ai-agent" or event.value is Select.BLANK:
             return
         event.stop()
@@ -8305,6 +8362,10 @@ class TeamApp(App):
         if event.input.id == "git-msg":
             event.stop()
             self.git_button("git-commit")
+            return
+        if event.input.id == "adhoc-text":
+            event.stop()
+            self.submit_adhoc()
             return
         text = event.value.strip()
         event.input.value = ""

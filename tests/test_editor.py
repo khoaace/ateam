@@ -239,7 +239,7 @@ def test_code_tab_edit_and_save(env, project, monkeypatch):
             await pilot.press("ctrl+d")
             assert not isinstance(app.screen, tui.DiffScreen)
             # phím xoá/sửa của TextArea không được chạy ở chế độ normal
-            await pilot.press("ctrl+u", "backspace", "ctrl+k", "ctrl+w", "ctrl+x", "ctrl+v")
+            await pilot.press("ctrl+u", "backspace", "ctrl+k", "ctrl+x", "ctrl+v")
             assert ed.text == before and not ed.dirty
             # Ctrl+T của app vẫn đổi tab khi đang ở editor
             await pilot.press("ctrl+t")
@@ -280,6 +280,22 @@ def test_code_tab_edit_and_save(env, project, monkeypatch):
             assert await wait(lambda: not ed.dirty)
             assert src.read_text().endswith("!\n") or "!" in src.read_text()
             app.run_command("/vim on")
+            # Ctrl+W đóng file: chưa lưu thì chặn như :q
+            await pilot.pause(0.1)
+            ed.focus()
+            await pilot.press("x", "ctrl+w")
+            assert ed.buffer is not None and ed.dirty
+            await pilot.press("colon", "w", "enter")
+            assert await wait(lambda: not ed.dirty)
+            await pilot.press("ctrl+w")
+            assert await wait(lambda: ed.buffer is None)
+            # hết file: Ctrl+W trong ô lọc vẫn là xoá chữ của ô nhập
+            box = app.query_one("#code-filter", tui.Input)
+            assert box.has_focus
+            box.value = "abc def"
+            box.cursor_position = len(box.value)
+            await pilot.press("ctrl+w")
+            assert box.value == "abc "
 
     asyncio.run(main())
 

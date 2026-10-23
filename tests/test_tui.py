@@ -1907,7 +1907,7 @@ def test_tui_search_replace(env, project, monkeypatch):
 
 def test_tui_task_table_grouped_by_plan(env, project, monkeypatch):
     """Bảng task nhóm theo kế hoạch: 📌 task ngoài kế hoạch luôn trên cùng, kế hoạch đã xong thu gọn, Enter trên tiêu
-    đề thu/mở, [ ] nhảy nhóm, c tiếp tục kế hoạch, n điền /task, g đổi sang bảng phẳng."""
+    đề thu/mở, [ ] nhảy nhóm, c tiếp tục kế hoạch, n tới ô giao nhanh task ngoài kế hoạch, g đổi sang bảng phẳng."""
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     git_init(project)
@@ -1916,7 +1916,7 @@ def test_tui_task_table_grouped_by_plan(env, project, monkeypatch):
 
     import ateam.config
     importlib.reload(ateam.config)
-    from ateam.config import ensure_global_config, load_config
+    from ateam.config import ensure_global_config, load_config, load_state
     from ateam.db import DB
     from ateam.tui import TeamApp
 
@@ -1955,7 +1955,24 @@ def test_tui_task_table_grouped_by_plan(env, project, monkeypatch):
             table.focus()
             await pilot.press("n")
             await pilot.pause(0.2)
-            assert app.query_one("#cmd").value == "/task "
+            box, sel = app.query_one("#adhoc-text"), app.query_one("#adhoc-agent")
+            assert box.has_focus and sel.value == app.cfg.lead  # chưa giao lần nào: trưởng nhóm
+            other = next(n for n in app.cfg.active_agents() if n != app.cfg.lead)
+            sel.value = other
+            await pilot.pause(0.2)
+            assert load_state()["adhoc_agent"] == other  # nhớ agent cho lần sau
+            await pilot.press("enter")  # ô trống: không giao gì
+            box.value = "viết test cho utils"
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            n = len(db.tasks())
+            t = db.tasks()[-1]
+            assert (t.agent, t.prompt, t.goal_id, t.source) == (other, "viết test cho utils", None, "user")
+            assert box.value == "" and box.has_focus
+            box.value = "việc thứ hai"
+            await pilot.click("#adhoc-go")
+            await pilot.pause(0.3)
+            assert db.tasks()[-1].prompt == "việc thứ hai" and len(db.tasks()) == n + 1
             table.focus()
             await pilot.press("g")  # bảng phẳng theo id như cũ
             await pilot.pause(0.3)
