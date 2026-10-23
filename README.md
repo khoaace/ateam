@@ -462,6 +462,9 @@ trên 2 MB / 20 000 dòng không tô màu, trên 5 MB mở chỉ đọc, file nh
   thư mục thì thư mục được tạo luôn.
 - **Hỏi agent về đoạn đang chọn** / **Giao task cho agent**: chọn agent, gõ câu hỏi — agent nhận `@file (dòng a–b)`
   kèm câu hỏi (hỏi = chat 💬 ở tab Agents; giao task = hiện trên Bảng việc).
+- **✨ AI sửa trên TUI (Ctrl+E** — terminal coi Ctrl+I là Tab): gõ yêu cầu, chọn agent (nhớ lần trước); agent trả đoạn
+  mới, popup hiện diff cũ / mới — Enter chấp nhận (chưa lưu file, `u` hoàn tác), Esc bỏ. F8 → **✨ Giải thích**: câu
+  trả lời trong popup (`c` chép). Web có thêm duyệt từng đoạn (xem dưới).
 
 **Chỉ có ở tab Code của `ateam web`:**
 

@@ -237,6 +237,8 @@ Xem & sửa code (tab 📝 Code — Ctrl+T xoay tới, hoặc /code):
                                     x dd D dw cw cc yy p P J r u Ctrl+R · v V chọn · / ? n N * tìm
                                     :w lưu · :q (Ctrl+W) đóng · :wq · :q! bỏ thay đổi · :e! nạp lại · :<số> tới dòng
                                     :bn :bp đổi file · :files ẩn/hiện danh sách · số đếm: 5j, 3dd, 2dw
+  Ctrl+E                            ✨ sửa đoạn đang chọn bằng AI: gõ yêu cầu, chọn agent, duyệt diff rồi
+                                    chấp nhận / bỏ. F8 → ✨ Giải thích: agent giải thích đoạn chọn / hàm đang đứng
   /vim off   /vim on                tắt phím vim (sửa như editor thường, Ctrl+S lưu, Ctrl+W đóng) / bật lại
                                     file bị agent sửa trong lúc mở: tự nạp lại nếu bạn chưa sửa, không thì
                                     báo để :e! hoặc :w! (ghi đè); file > 2 MB tắt tô màu, > 5 MB chỉ đọc
@@ -3915,6 +3917,138 @@ class PromptScreen(BaseModal):
             self.dismiss(text)
 
 
+class AiEditScreen(BaseModal):
+    """✨ Sửa đoạn đang chọn bằng AI (Ctrl+E ở tab Code, như ⌘I của web): gõ yêu cầu, chọn agent.
+    Trả (yêu cầu, agent) hoặc None (Esc)."""
+
+    DEFAULT_CSS = """
+    AiEditScreen { align: center middle; }
+    #ai-box { width: 90; max-width: 100%; height: auto; border: round $primary 70%; background: $surface;
+              padding: 0 1; }
+    #ai-row { height: 1; margin-top: 1; }
+    #ai-agent { width: 28; height: 1; }
+    #ai-agent > SelectCurrent { border: none; height: 1; padding: 0 1; }
+    #ai-hint { width: 1fr; color: $text-muted; padding: 0 1; }
+    """
+
+    def __init__(self, title: str, agents: list[tuple[str, str]], agent: str):
+        super().__init__()
+        self.title_text, self.agents, self.agent = title, agents, agent
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="ai-box"):
+            yield self.title_bar(self.title_text)
+            yield TextInput(placeholder=tr("Muốn sửa gì? vd: thêm xử lý lỗi, đổi sang async, viết docstring…"),
+                            id="ai-q")
+            with Horizontal(id="ai-row"):
+                yield Select(self.agents, value=self.agent, allow_blank=False, id="ai-agent")
+                yield Static(tr("Enter gửi · Esc huỷ"), id="ai-hint")
+                yield Btn(tr("Sửa"), id="ai-go", variant="primary")
+
+    def on_mount(self) -> None:
+        self.query_one("#ai-q", TextInput).focus()
+
+    def go(self) -> None:
+        box = self.query_one("#ai-q", TextInput)
+        text = box.value.strip()
+        if not text:
+            box.focus()
+            return
+        self.dismiss((text, str(self.query_one("#ai-agent", Select).value)))
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        self.go()
+
+    @on(Button.Pressed, "#ai-go")
+    def _go_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.go()
+
+
+class AiReviewScreen(BaseModal):
+    """Duyệt đoạn ✨ AI vừa sửa: diff cả file cũ → mới (số dòng như trong file). Enter / y chấp nhận, Esc / n bỏ.
+    Trả True hoặc None."""
+
+    BINDINGS = [Binding("enter,y", "accept", tr("Chấp nhận")), Binding("n", "request_close", show=False)]
+    DEFAULT_CSS = """
+    AiReviewScreen { align: center middle; }
+    #air-box { width: 124; max-width: 100%; height: 92%; border: round $primary 70%; background: $surface;
+               padding: 0 1; }
+    #air-scroll { height: 1fr; }
+    #air-body { width: auto; min-width: 100%; }
+    #air-foot { height: 1; }
+    #air-foot Button { margin-right: 1; }
+    #air-hint { width: 1fr; color: $text-muted; }
+    """
+
+    def __init__(self, title: str, path: str, old: str, new: str):
+        super().__init__()
+        self.title_text, self.path, self.old, self.new = title, path, old, new
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="air-box"):
+            yield self.title_bar(self.title_text)
+            with VerticalScroll(id="air-scroll"):
+                yield Static(id="air-body")
+            with Horizontal(id="air-foot"):
+                yield Btn(tr("✓ Chấp nhận"), id="air-ok", variant="success")
+                yield Btn(tr("✗ Bỏ"), id="air-no", variant="error")
+                yield Static(tr("Enter / y chấp nhận (chưa lưu file, u hoàn tác) · Esc / n bỏ"), id="air-hint")
+
+    def on_mount(self) -> None:
+        self.query_one("#air-scroll").focus()
+        self.call_after_refresh(self.redraw)
+
+    def redraw(self) -> None:
+        diff = "\n".join(difflib.unified_diff(self.old.splitlines(), self.new.splitlines(), "a/" + self.path,
+                                               "b/" + self.path, lineterm=""))
+        fds = diffview.parse_unified(f"diff --git a/{self.path} b/{self.path}\n{diff}")
+        if fds:
+            body, _ = diffview.render(fds[0], max(40, self.query_one("#air-scroll").size.width), split=False)
+            self.query_one("#air-body", Static).update(body)
+
+    def action_accept(self) -> None:
+        self.dismiss(True)
+
+    @on(Button.Pressed, "#air-ok, #air-no")
+    def _pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.dismiss(True if event.button.id == "air-ok" else None)
+
+
+class AiExplainScreen(BaseModal):
+    """Câu trả lời ✨ Giải thích (palette F8 ở tab Code, như ⌘⇧E của web): markdown, phím c chép."""
+
+    BINDINGS = [Binding("c", "copy", tr("Chép"))]
+    DEFAULT_CSS = """
+    AiExplainScreen { align: center middle; }
+    #aix-box { width: 110; max-width: 100%; height: 85%; border: round $primary 70%; background: $surface;
+               padding: 0 1; }
+    #aix-body { height: 1fr; }
+    #aix-foot { height: 1; color: $text-muted; }
+    """
+
+    def __init__(self, title: str, answer: str):
+        super().__init__()
+        self.title_text, self.answer = title, answer
+
+    def compose(self) -> ComposeResult:
+        from rich.markdown import Markdown
+        with Vertical(id="aix-box"):
+            yield self.title_bar("✨ " + self.title_text)
+            with VerticalScroll(id="aix-body"):
+                yield Static(Markdown(self.answer), id="aix-text")
+            yield Static(tr("↑↓ / PgUp PgDn cuộn · c chép câu trả lời · Esc đóng"), id="aix-foot")
+
+    def on_mount(self) -> None:
+        self.query_one("#aix-body").focus()
+
+    def action_copy(self) -> None:
+        self.app.copy_to_clipboard(self.answer)
+        self.notify(tr("Đã chép câu trả lời"))
+
+
 class TextAreaVN(TextArea):
     """Ô soạn nhiều dòng gõ tiếng Việt không lỗi dấu — cùng cách xử lý với TextInput: nuốt ký tự mồi U+202F của
     OpenKey cùng Backspace theo sau, Backspace xoá trọn chữ cùng dấu (xử lý ngay trong `_on_key`), gộp dòng đang
@@ -5120,6 +5254,7 @@ class TeamApp(App):
         # nên lệnh / symbol có thêm F8 / F9
         Binding("ctrl+p", "palette('')", tr("Mở nhanh file"), show=False, priority=True),
         Binding("ctrl+w", "code_close_file", tr("Đóng file"), show=False, priority=True),
+        Binding("ctrl+e", "code_ai_edit", tr("✨ Sửa bằng AI"), show=False, priority=True),  # Ctrl+I = Tab trong terminal
         Binding("f8,ctrl+shift+p", "palette('>')", tr("Lệnh"), show=False, priority=True),
         Binding("f9,ctrl+shift+o", "palette('@')", tr("Symbol"), show=False, priority=True),
         Binding("f10", "grid_arrange", tr("Sắp xếp lưới"), show=False, priority=True),
@@ -5178,6 +5313,7 @@ class TeamApp(App):
         self.code_open: set[str] = set()  # cây thư mục tab Code: thư mục đang mở ("src/", "src/app/")
         self._code_tree: tuple = (None, {})  # (danh sách chỉ mục đã dựng, cây) — dựng lại khi chỉ mục đổi
         self._code_check_at = 0.0
+        self._ai_busy = False  # ✨ đang chờ agent sửa đoạn code (Ctrl+E): chặn gửi lần hai
         self._quit_ok = False
         self._goal_status: dict[int, str] = {}  # để báo khi mục tiêu vừa kết thúc
         self._log_cut: dict[int, int] = {}  # nút Xoá log: vị trí (byte) trong file log bắt đầu hiện
@@ -5707,7 +5843,7 @@ class TeamApp(App):
                 return False  # Ctrl+R, Ctrl+T, Ctrl+O… trong CLI: nhường cho CLI
         if action == "palette" and isinstance(self.screen, ModalScreen):
             return False  # đang mở popup khác (kể cả chính palette): để phím cho popup đó
-        if action == "code_close_file":  # chỉ ở tab Code có file mở; ô nhập giữ Ctrl+W xoá chữ
+        if action in ("code_close_file", "code_ai_edit"):  # chỉ ở tab Code có file mở; ô nhập giữ Ctrl+W / Ctrl+E
             return (self.query_one("#tabs", TabbedContent).active == "tab-code" and bool(self.code_cur)
                     and not isinstance(self.screen, ModalScreen) and not isinstance(self.focused, Input))
         if action == "retry" and isinstance(self.screen, SearchScreen):
@@ -5973,6 +6109,116 @@ class TeamApp(App):
     def action_code_close_file(self) -> None:
         self.code_close()
 
+    def _code_ai_range(self, explain: bool = False) -> tuple[int, int, str]:
+        """Đoạn gửi agent (offset trong ed.text) và nhãn, như web: cả dòng của vùng chọn (chưa chọn: dòng con trỏ;
+        chọn tới đầu dòng sau thì bỏ dòng đó). Giải thích khi chưa chọn: cả hàm / class đang đứng (tới symbol kế
+        tiếp cùng cấp)."""
+        ed = self.code_editor()
+        doc = ed.document
+        (r1, _c1), (r2, c2) = sorted((ed.selection.start, ed.selection.end))
+        empty = ed.selection.start == ed.selection.end
+        if not empty and c2 == 0 and r2 > r1:
+            r2 -= 1
+        label = ""
+        if explain and empty:
+            syms = self.code_symbols()
+            s = palette.symbol_at(syms, r1 + 1)
+            if s:
+                nxt = next((x for x in syms if x["line"] > s["line"] and x["depth"] <= s["depth"]), None)
+                r1, r2 = s["line"] - 1, max(s["line"], nxt["line"] - 1 if nxt else doc.line_count) - 1
+                label = s["name"]
+        label = label or (tr("(dòng {a})", a=r1 + 1) if r1 == r2 else tr("(dòng {a}–{b})", a=r1 + 1, b=r2 + 1))
+        start = doc.get_index_from_location((r1, 0))
+        end = doc.get_index_from_location((r2, len(doc.get_line(r2))))
+        return start, end, label
+
+    def _code_ai_agent(self) -> str:
+        """Agent ✨ dùng lần trước (state.json), không còn thì agent viết commit / trưởng nhóm — như web."""
+        last = load_state().get("ai_agent")
+        return last if last in self.cfg.active_agents() else self.orch.commit_agent()
+
+    def action_code_ai_edit(self) -> None:
+        """Ctrl+E / F8 "✨ Sửa đoạn đang chọn bằng AI": gõ yêu cầu → agent trả đoạn mới → duyệt diff → áp vào editor."""
+        ed = self.code_editor()
+        sf = ed.buffer
+        if sf is None:
+            self.notify(tr("Chưa mở file nào"), severity="warning")
+            return
+        if ed.read_only:
+            self.notify(tr("Chỉ đọc: {v}", v=sf.note), severity="warning")
+            return
+        if self._ai_busy:
+            self.notify(tr("AI đang sửa đoạn trước — chờ xong đã"))
+            return
+        start, end, label = self._code_ai_range()
+
+        def done(res) -> None:
+            if not res:
+                ed.focus()
+                return
+            instruction, agent = res
+            st = load_state()
+            st["ai_agent"] = agent
+            save_state(st)
+            self.run_worker(self._code_ai_run(sf, ed.text, start, end, label, instruction, agent), group="code-ai")
+        self.push_screen(AiEditScreen(tr("Sửa {v} bằng AI", v=label), self.adhoc_agent_options(),
+                                      self._code_ai_agent()), done)
+
+    async def _code_ai_run(self, sf, text: str, start: int, end: int, label: str, instruction: str,
+                           agent: str) -> None:
+        ed = self.code_editor()
+        rel = self.code_rel(str(sf.path))
+        self._ai_busy = True
+        try:
+            with self.busy(tr("✨ {agent} đang sửa…", agent=agent)):
+                ok, code = await self.orch.code_ai("edit", rel, text, start, end, instruction, agent)
+        finally:
+            self._ai_busy = False
+        if not ok:
+            self.notify(code, severity="warning")
+            return
+        if ed.buffer is not sf or ed.text != text:
+            self.notify(tr("File đã đổi trong lúc chờ AI — bỏ kết quả, thử lại"), severity="warning")
+            return
+        if code == text[start:end]:
+            self.notify(tr("{agent} không đổi gì đoạn này", agent=agent))
+            return
+
+        def done(yes) -> None:
+            if not yes:
+                self.notify(tr("Đã bỏ phần AI sửa"))
+            elif ed.buffer is not sf or ed.text != text:
+                self.notify(tr("File đã đổi trong lúc chờ AI — bỏ kết quả, thử lại"), severity="warning")
+            else:
+                a = ed.document.get_location_from_index(start)
+                ed.replace(code, a, ed.document.get_location_from_index(end))
+                if ed.vim.mode in ("visual", "vline"):
+                    ed.vim.mode = "normal"
+                ed.move_cursor(a)
+                self._refresh_code_head()
+            ed.focus()
+        self.push_screen(AiReviewScreen(tr("✨ {agent} đề xuất sửa {v}", agent=agent, v=label), rel, text,
+                                        text[:start] + code + text[end:]), done)
+
+    def code_ai_explain(self) -> None:
+        """F8 "✨ Giải thích đoạn đang chọn": agent giải thích đoạn chọn (chưa chọn: hàm / class đang đứng)."""
+        ed = self.code_editor()
+        sf = ed.buffer
+        if sf is None:
+            return
+        start, end, label = self._code_ai_range(explain=True)
+        self.run_worker(self._code_ai_explain_run(self.code_rel(str(sf.path)), ed.text, start, end, label,
+                                                  self._code_ai_agent()), group="code-ai")
+
+    async def _code_ai_explain_run(self, rel: str, text: str, start: int, end: int, label: str, agent: str) -> None:
+        with self.busy(tr("✨ {agent} đang đọc code…", agent=agent)):
+            ok, answer = await self.orch.code_ai("explain", rel, text, start, end, "", agent)
+        if not ok:
+            self.notify(answer, severity="warning")
+            return
+        self.push_screen(AiExplainScreen(tr("{agent} giải thích {v}", agent=agent, v=f"{Path(rel).name} {label}"),
+                                         answer))
+
     def code_cycle(self, delta: int) -> None:
         if len(self.code_order) < 2 or self.code_cur not in self.code_order:
             return
@@ -6178,6 +6424,10 @@ class TeamApp(App):
             self.push_screen(ConfirmScreen(tr("Xoá file"), tr("Đưa {v} vào Thùng rác?", v=rel), yes=tr("Xoá")), done)
         elif cid in ("ask_agent", "task_agent"):
             self._code_ask_agent(cid == "task_agent")
+        elif cid == "ai_edit":
+            self.action_code_ai_edit()
+        elif cid == "ai_explain":
+            self.code_ai_explain()
         elif cid == "open_folder":
             self.action_open_project()
 
@@ -6452,7 +6702,7 @@ class TeamApp(App):
                     status.append(tr("   i sửa · :w lưu · :q đóng · / tìm · u hoàn tác · /vim off tắt phím vim"),
                                   "dim")
             else:
-                status.append(ed.message or tr("Ctrl+S lưu · Ctrl+W đóng · /vim on bật phím vim"), "dim")
+                status.append(ed.message or tr("Ctrl+S lưu · Ctrl+W đóng · Ctrl+E ✨ AI · /vim on bật phím vim"), "dim")
         set_static(self.query_one("#code-head", Static), head)
         set_static(self.query_one("#code-status", Static), status)
 

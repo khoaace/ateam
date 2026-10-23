@@ -300,6 +300,79 @@ def test_code_tab_edit_and_save(env, project, monkeypatch):
     asyncio.run(main())
 
 
+def test_code_tab_ai_edit_and_explain(env, project, monkeypatch):
+    """✨ AI ở tab Code (TUI): Ctrl+E gõ yêu cầu → duyệt diff → chấp nhận (u hoàn tác) / bỏ; file đổi lúc chờ thì bỏ kết
+    quả; F8 Giải thích hiện câu trả lời; Ctrl+E trong ô nhập không mở popup."""
+    tui, app = _app(env, project, monkeypatch)
+    from ateam.config import load_state
+    src = project / "hello.py"
+    src.write_text("import os\n\ndef hi():\n    return 1\n")
+
+    async def main():
+        async def wait(cond, n=600):  # CI chạy song song có thể chậm: chờ tới ~30 giây, xong sớm thì thoát sớm
+            for _ in range(n):
+                await pilot.pause(0.05)
+                if cond():
+                    return True
+            return False
+
+        async def ask(instruction):
+            await pilot.press("ctrl+e")
+            assert await wait(lambda: isinstance(app.screen, tui.AiEditScreen))
+            app.screen.query_one("#ai-q").value = instruction
+            await pilot.press("enter")
+
+        async with app.run_test(size=(150, 45)) as pilot:
+            assert await wait(lambda: app._booted)
+            app.run_command("/edit @hello.py:3")
+            ed = app.query_one("#code-editor", tui.CodeEditor)
+            assert await wait(lambda: ed.buffer is not None and ed.has_focus and ed.cursor_location[0] == 2)
+            before = ed.text
+            await pilot.press("ctrl+e")
+            assert await wait(lambda: isinstance(app.screen, tui.AiEditScreen))
+            await pilot.press("enter")  # chưa gõ yêu cầu: không gửi
+            assert isinstance(app.screen, tui.AiEditScreen)
+            await pilot.press("escape")
+            assert await wait(lambda: not isinstance(app.screen, tui.AiEditScreen))
+            # chấp nhận: claude giả lập viết hoa dòng con trỏ đang đứng
+            await ask("viết hoa")
+            assert await wait(lambda: isinstance(app.screen, tui.AiReviewScreen))
+            assert app.screen.old == before and app.screen.new == "import os\n\nDEF HI():\n    return 1\n"
+            await pilot.press("enter")
+            assert await wait(lambda: not isinstance(app.screen, tui.AiReviewScreen))
+            assert ed.text == "import os\n\nDEF HI():\n    return 1\n" and ed.dirty
+            assert src.read_text() == before  # chưa lưu
+            assert load_state()["ai_agent"] == app.cfg.lead
+            await pilot.press("u")
+            assert await wait(lambda: ed.text == before)
+            # bỏ: Esc giữ nguyên
+            await ask("viết hoa")
+            assert await wait(lambda: isinstance(app.screen, tui.AiReviewScreen))
+            await pilot.press("escape")
+            assert await wait(lambda: not isinstance(app.screen, tui.AiReviewScreen))
+            assert ed.text == before
+            # file đổi trong lúc chờ (CHAM_SUA: claude giả lập chậm 2 giây) -> bỏ kết quả, không mở popup duyệt
+            await ask("CHAM_SUA")
+            assert await wait(lambda: app._ai_busy)
+            ed.insert("# x\n", (0, 0))
+            assert await wait(lambda: not app._ai_busy)
+            await pilot.pause(0.3)
+            assert not isinstance(app.screen, tui.AiReviewScreen) and ed.text == "# x\n" + before
+            # ✨ Giải thích (F8): câu trả lời markdown trong popup
+            app.code_command("ai_explain")
+            assert await wait(lambda: isinstance(app.screen, tui.AiExplainScreen))
+            assert app.screen.answer.startswith("**Đoạn này** trả về lời chào.")
+            await pilot.press("escape")
+            assert await wait(lambda: not isinstance(app.screen, tui.AiExplainScreen))
+            # ô lọc file: Ctrl+E là phím của ô nhập, không mở popup
+            app.query_one("#code-filter", tui.Input).focus()
+            await pilot.press("ctrl+e")
+            await pilot.pause(0.3)
+            assert not isinstance(app.screen, tui.AiEditScreen)
+
+    asyncio.run(main())
+
+
 def test_code_tab_big_file_fast(env, project, monkeypatch):
     tui, app = _app(env, project, monkeypatch)
     big = project / "big.py"
