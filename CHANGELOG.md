@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.53.0 — 25/10/2026
 
 - **Workflow: bước ⏸ chờ bạn duyệt** — loại bước mới `gate` (mẫu *tinh-nang-duyet*: thiết kế → ⏸ bạn duyệt → code
   → review). Khi các bước trước xong, ateam hỏi bạn ở khung hỏi đáp (kèm thông báo): *Tiếp tục* chạy bước sau, *Dừng*
