@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.51.0 — 24/10/2026
+
+- **Web: xem ảnh ngay khi xem task / kế hoạch** — ảnh dán (`@.ateam/images/…`) hay đường dẫn ảnh trong prompt, kết quả
+  của agent và đề bài hiện thành ảnh thu nhỏ ở tab Nội dung / Kết quả của task, khung 📋 xem kế hoạch và task nháp chờ
+  duyệt; bấm để xem to, bấm tiếp để mở ảnh gốc. Chỉ ảnh trong dự án; ảnh không tồn tại tự ẩn.
+
 ## 0.50.3 — 24/10/2026
 
 - **Web: "Cần bạn" không còn hiện task lỗi của kế hoạch đã hoàn thành** — trưởng nhóm đã chốt kế hoạch xong thì task
