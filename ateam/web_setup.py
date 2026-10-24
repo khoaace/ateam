@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING
 from aiohttp import web
 
 from . import mentions, theme, wizard
-from .config import (INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TIERS, WORKFLOW_TEMPLATES, agent_from_dict,
-                     agent_templates, clear_agent_state, load_custom, load_state, mark_setup_done, plan_team,
-                     provider_of, provider_template, save_custom_item, save_onboard, save_state, tier_preset,
+from .config import (INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TASK_KINDS, TIERS, WORKFLOW_TEMPLATES,
+                     agent_from_dict, agent_templates, clear_agent_state, load_custom, load_state, mark_setup_done,
+                     plan_team, provider_of, provider_template, save_custom_item, save_onboard, save_state, tier_preset,
                      workflow_to_dict)
 from .i18n import tr
 
@@ -159,7 +159,7 @@ class SetupWeb:
         return web.json_response({
             "agents": agents, "workflows": flows, "lead": cfg.lead, "agent_names": list(cfg.agents),
             "default_workflow": cfg.default_workflow,
-            "auto_review": cfg.auto_review, "verify": bool(cfg.verify.command),
+            "auto_review": cfg.auto_review, "verify": bool(cfg.verify.command), "kinds": list(TASK_KINDS),
             "step_agents": [{"label": lb, "value": v} for lb, v in wizard.flow_agents(cfg)],
             "step_choices": {v: dict(zip(("models", "efforts"), wizard.flow_step_choices(cfg, v)))
                              for v in [LEAD_ALIAS] + list(cfg.agents)},

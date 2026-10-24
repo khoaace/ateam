@@ -552,6 +552,13 @@ def ui_strings() -> dict[str, str]:
         "cu_lead": tr("trưởng nhóm ({lead})"), "cu_not_in_team": tr("{v} (không có trong đội)"),
         "cu_step_title": tr("Tiêu đề"), "cu_step_prompt": tr("việc cần làm, có thể dùng {goal}"),
         "cu_step_after": tr("Sau bước"), "cu_add_step": tr("Thêm bước"),
+        "cu_step_up": tr("Chuyển lên"), "cu_step_down": tr("Chuyển xuống"), "cu_step_ins": tr("Chèn bước ngay dưới"),
+        "cu_skill_hint": tr("Gõ $tên-skill trong prompt của bước để bước đó làm theo skill (xem trang 🧩 Skills)."),
+        "cu_warn_verify": tr("Bước {i} (verify): chưa đặt lệnh kiểm tra (/verify) — bước sẽ xong ngay, không kiểm tra"),
+        "cu_warn_agent": tr("Bước {i}: agent '{agent}' không có trong đội hoặc đang tắt — lúc chạy sẽ giao cho "
+                            "trưởng nhóm"),
+        "cu_warn_gate": tr("Bước {i} (duyệt) không chờ bước nào — không có gì để duyệt"),
+        "kind_code": "code", "kind_review": "review", "kind_verify": "verify", "kind_gate": tr("⏸ duyệt"),
         "cu_ai": tr("✨ Gợi ý"), "cu_ai_btn": tr("Gợi ý"),
         "cu_ai_ph": tr("mô tả quy trình, vd: thiết kế → code → test → review"),
         "cu_ai_hint": tr("trưởng nhóm điền các bước"),

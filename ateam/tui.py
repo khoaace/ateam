@@ -1938,6 +1938,8 @@ class WorkflowEditScreen(BaseModal):
             yield Static(Text(tr("Loại bước: code = làm việc · review = agent khác xem thay đổi của các bước nó chờ, "
                                  "sửa lỗi nhỏ · verify = ateam chạy lệnh kiểm tra (/verify) trên kết quả gộp, fail mới "
                                  "gọi agent của bước sửa."), "dim"))
+            yield Static(Text(tr("Gõ $tên-skill trong prompt của bước để bước đó làm theo skill (xem trang 🧩 Skills)."),
+                              "dim"))
             with VerticalScroll(classes="f-scroll"):
                 yield form_row(tr("✨ Gợi ý"), Horizontal(
                     TextInput(placeholder=tr("mô tả quy trình, vd: thiết kế → code → test → review"), id="wf-ai-desc"),

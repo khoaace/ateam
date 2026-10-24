@@ -458,7 +458,8 @@ window.Setup = (() => {
   }
 
   /* ---------------------------------------------------------------- workflow */
-  function flowForm(d, w, done) {
+  /* form thêm/sửa workflow. prefill: dữ liệu điền sẵn (✨ gợi ý, 🔀 lưu từ mục tiêu) — như khi chọn mẫu */
+  function flowForm(d, w, done, prefill) {
     const raw = (w && w.raw) || {};
     // mỗi bước: agent → model → effort (gợi ý theo CLI của agent, như popup Luồng mặc định), rồi tiêu đề + prompt
     const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(label)}</option>`;
@@ -473,21 +474,24 @@ window.Setup = (() => {
       return opt("", t("default_value"), effort) + (effort && !effs.includes(effort) ? [effort] : []).concat(effs).map((x) => opt(x, x, effort)).join("");
     };
     const hasEfforts = (agent, effort) => !!(effort || (d.step_choices[agent] || { efforts: [] }).efforts.length);
+    const kinds = d.kinds || ["code", "review", "verify"];
+    let seq = 0;  // khoá hàng: "Sau bước" bám theo bước, không theo số thứ tự (đổi chỗ / xoá bước vẫn đúng)
     const stepRow = (st) => {
-      const agent = st.agent || "lead";
-      return `<div class="wf-step"><span class="wf-no"></span>
+      const agent = st.agent || "lead", kind = st.type || "code";
+      return `<div class="wf-step${kind === "gate" ? " is-gate" : ""}" data-k="r${++seq}"><span class="wf-no"></span>
       <select class="agent-select" data-sf="agent">${agentOpts(agent)}</select>
-      <select class="agent-select" data-sf="type">${["code", "review", "verify"].map((k) => opt(k, k, st.type || "code")).join("")}</select>
+      <select class="agent-select" data-sf="type">${kinds.map((k) => opt(k, t("kind_" + k), kind)).join("")}</select>
       <select class="agent-select" data-sf="model">${modelOpts(agent, st.model || "")}</select>
       <select class="agent-select" data-sf="effort"${hasEfforts(agent, st.effort) ? "" : " disabled"}>${effortOpts(agent, st.effort || "")}</select>
       <input class="field one" data-sf="after" value="${esc(st.after || "")}" placeholder="${esc(t("cu_step_after"))}">
-      <button class="mini danger" data-wf="del">✕</button>
+      <span class="wf-btns"><button class="mini" data-wf="up" title="${esc(t("cu_step_up"))}">↑</button><button class="mini" data-wf="down" title="${esc(t("cu_step_down"))}">↓</button><button class="mini" data-wf="ins" title="${esc(t("cu_step_ins"))}">＋</button><button class="mini danger" data-wf="del" title="${esc(t("remove"))}">✕</button></span>
       <input class="field one wf-title" data-sf="title" value="${esc(st.title || "")}" placeholder="${esc(t("cu_step_title"))}">
-      <input class="field one wf-prompt" data-sf="prompt" value="${esc(st.prompt || "")}" placeholder="${esc(t("cu_step_prompt"))}"></div>`;
+      <textarea class="field wf-prompt" data-sf="prompt" rows="1" placeholder="${esc(t("cu_step_prompt"))}">${esc(st.prompt || "")}</textarea></div>`;
     };
     const steps = (w && w.step_rows) || [{ agent: "lead" }];
     const m = openModal(`${modalHead(esc(w && w.in_file ? t("cu_edit_flow", { name: w.name }) : t("cu_add_flow")))}<div class="modal-pad form">
       <div class="muted small">${esc(t("cu_flow_hint"))}</div><div class="muted small">${esc(t("cu_type_hint"))}</div>
+      <div class="muted small">${esc(t("cu_skill_hint"))}</div>
       ${w && !w.in_file ? `<div class="warn-text small">${esc(t("cu_flow_copy", { name: w.name }))}</div>` : ""}
       <label>${esc(t("cu_ai"))}<span class="wf-ai"><input class="field one" id="wf-ai-desc" placeholder="${esc(t("cu_ai_ph"))}"><button class="btn sm" data-wf="ai">${esc(t("cu_ai_btn"))}</button></span><span class="muted small">${esc(t("cu_ai_hint"))}</span></label>
       <label>${esc(t("cu_template"))}<select class="field one" id="wf-template"><option value="">${esc(t("cu_pick_template"))}</option>${d.workflow_templates.map((x) => `<option value="${esc(x.key)}">${esc(x.key)} — ${esc(x.description)}</option>`).join("")}</select></label>
@@ -496,52 +500,103 @@ window.Setup = (() => {
       <label class="chk"><input type="checkbox" id="wf-review" ${(raw.review ?? d.auto_review) ? "checked" : ""}> ${esc(t("cu_review"))}</label>
       <div class="wf-head"><span></span><span>Agent</span><span>${esc(t("cu_step_type"))}</span><span>Model</span><span>Effort</span><span>${esc(t("cu_step_after"))}</span><span></span></div>
       <div id="wf-steps">${steps.map(stepRow).join("")}</div>
+      <div id="wf-warn" class="warn-text small"></div>
       <button class="btn sm" data-wf="add">+ ${esc(t("cu_add_step"))}</button>
       <div class="row-actions end"><button class="btn ghost" data-wf="cancel">${esc(t("cancel_edit"))}</button><button class="btn primary" data-wf="save">${esc(t("save"))}</button></div></div>`, { box: "lg" });
-    const renumber = () => $$(".wf-no", m).forEach((x, i) => { x.textContent = i + 1 + "."; });
-    renumber();
+    const rows = () => $$(".wf-step", m);
+    // "Sau bước" → khoá hàng: null = sau bước liền trước (ô trống), [] = chạy ngay (0), chữ lạ giữ nguyên (server báo lỗi)
+    const readDeps = () => {
+      const rs = rows();
+      return new Map(rs.map((r) => {
+        const v = $("[data-sf=after]", r).value.trim();
+        if (!v) return [r.dataset.k, null];
+        if (v === "0" || v === "-") return [r.dataset.k, []];
+        return [r.dataset.k, v.split(/[\s,]+/).filter(Boolean).map((x) => (/^\d+$/.test(x) && rs[+x - 1] ? rs[+x - 1].dataset.k : x))];
+      }));
+    };
+    const grow = (ta) => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight + 2, 190) + "px"; };
+    const warn = () => {  // như wizard.flow_warnings: agent không có/đang tắt, bước verify khi chưa đặt lệnh kiểm tra
+      const ok = new Set(d.step_agents.map((a) => a.value)), out = [];
+      rows().forEach((r, i) => {
+        const a = $("[data-sf=agent]", r).value, k = $("[data-sf=type]", r).value;
+        if (k === "verify" && !d.verify) out.push(t("cu_warn_verify", { i: i + 1 }));
+        else if (k !== "gate" && !ok.has(a)) out.push(t("cu_warn_agent", { i: i + 1, agent: a }));
+        if (k === "gate" && i === 0) out.push(t("cu_warn_gate", { i: i + 1 }));
+      });
+      $("#wf-warn", m).innerHTML = out.map((x) => `<div>⚠ ${esc(x)}</div>`).join("");
+    };
+    const writeDeps = (deps) => {
+      const rs = rows(), pos = new Map(rs.map((r, i) => [r.dataset.k, i + 1]));
+      rs.forEach((r, i) => {
+        const ks = deps.get(r.dataset.k), inp = $("[data-sf=after]", r);
+        inp.value = ks == null ? "" : ks.length ? ks.map((k) => pos.get(k) || k).join(",") : "0";
+        inp.classList.toggle("bad", !!ks && ks.some((k) => !(pos.get(k) < i + 1)));  // trỏ tới bước đứng sau / không có
+      });
+    };
+    const refresh = () => { $$(".wf-no", m).forEach((x, i) => { x.textContent = i + 1 + "."; }); $$("textarea.wf-prompt", m).forEach(grow); warn(); };
+    const remove = (r) => {  // bước khác chờ bước bị xoá thì chờ chính các bước mà nó chờ — giữ thứ tự chạy
+      const deps = readDeps(), rs = rows(), k = r.dataset.k, i = rs.indexOf(r);
+      const mine = deps.get(k) == null ? (i > 0 ? [rs[i - 1].dataset.k] : []) : deps.get(k);
+      for (const [kk, ks] of deps) if (ks && ks.includes(k)) deps.set(kk, [...new Set(ks.flatMap((x) => (x === k ? mine : [x])))]);
+      const next = rs[i + 1];
+      if (next && deps.get(next.dataset.k) == null && deps.get(k) != null) deps.set(next.dataset.k, mine);
+      r.remove();
+      writeDeps(deps);
+      refresh();
+    };
+    const fill = (f) => {
+      if (f.description != null) $("#wf-desc", m).value = f.description;
+      if (f.review != null) $("#wf-review", m).checked = !!f.review;
+      $("#wf-steps", m).innerHTML = f.steps.map(stepRow).join("");
+      if (!$("#wf-name", m).value.trim() && f.name) $("#wf-name", m).value = f.name;
+      refresh();
+    };
+    if (prefill) fill(prefill); else refresh();
+    m.addEventListener("input", (e) => { if (e.target.matches("textarea.wf-prompt")) grow(e.target); });
     m.addEventListener("change", async (e) => {
+      const r = e.target.closest(".wf-step");
       if (e.target.dataset.sf === "agent") {  // đổi agent: nạp lại model/effort gợi ý của bước
-        const r = e.target.closest(".wf-step"), eff = $("[data-sf=effort]", r);
+        const eff = $("[data-sf=effort]", r);
         $("[data-sf=model]", r).innerHTML = modelOpts(e.target.value, "");
         eff.innerHTML = effortOpts(e.target.value, "");
         eff.disabled = !hasEfforts(e.target.value, "");
+        warn();
         return;
       }
+      if (e.target.dataset.sf === "type") { r.classList.toggle("is-gate", e.target.value === "gate"); warn(); return; }
       if (e.target.id !== "wf-template" || !e.target.value) return;
       const tp = await (await fetch("/api/custom/template?kind=workflow&key=" + encodeURIComponent(e.target.value))).json();
-      $("#wf-desc", m).value = tp.description || "";
-      if (tp.review != null) $("#wf-review", m).checked = !!tp.review;
-      $("#wf-steps", m).innerHTML = tp.step_rows.map(stepRow).join("");
-      if (!$("#wf-name", m).value.trim()) $("#wf-name", m).value = e.target.value;
-      renumber();
+      fill({ description: tp.description || "", review: tp.review, steps: tp.step_rows, name: e.target.value });
     });
     const suggest = async () => {
       const b = $('[data-wf="ai"]', m);
       if (b.disabled) return;
       const r = await busyBtn(b, request("workflow_suggest", { description: $("#wf-ai-desc", m).value }, t("cu_ai_wait", { lead: d.lead })));
-      const f = r.wf_suggest;
-      if (!f) return;
-      $("#wf-desc", m).value = f.description;
-      $("#wf-review", m).checked = f.review;
-      $("#wf-steps", m).innerHTML = f.steps.map(stepRow).join("");
-      if (!$("#wf-name", m).value.trim()) $("#wf-name", m).value = f.name;
-      renumber();
+      if (r.wf_suggest) fill(r.wf_suggest);
     };
     $("#wf-ai-desc", m).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); suggest(); } });
     m.addEventListener("click", async (e) => {
       const b = e.target.closest("[data-wf]");
       if (!b) return;
-      const a = b.dataset.wf;
+      const a = b.dataset.wf, r = b.closest(".wf-step");
       if (a === "ai") { e.preventDefault(); suggest(); }
-      if (a === "add") { $("#wf-steps", m).insertAdjacentHTML("beforeend", stepRow({ agent: "lead" })); renumber(); }
-      if (a === "del") { if ($$(".wf-step", m).length > 1) { b.closest(".wf-step").remove(); renumber(); } else toast(t("cu_one_step"), "warn"); }
+      if (a === "add") { $("#wf-steps", m).insertAdjacentHTML("beforeend", stepRow({ agent: "lead" })); refresh(); }
+      if (a === "ins") { const deps = readDeps(); r.insertAdjacentHTML("afterend", stepRow({ agent: "lead" })); writeDeps(deps); refresh(); }
+      if (a === "up" || a === "down") {
+        const other = a === "up" ? r.previousElementSibling : r.nextElementSibling;
+        if (!other) return;
+        const deps = readDeps();
+        if (a === "up") other.before(r); else other.after(r);
+        writeDeps(deps);
+        refresh();
+      }
+      if (a === "del") { if (rows().length > 1) remove(r); else toast(t("cu_one_step"), "warn"); }
       if (a === "cancel") closeModal(m);
       if (a === "save" && !b.disabled) {
-        const stepsOut = $$(".wf-step", m).map((row) => Object.fromEntries($$("[data-sf]", row).map((x) => [x.dataset.sf, x.value])));
-        const r = await busyBtn(b, request("custom_save", { kind: "workflows", name: $("#wf-name", m).value, old: w && w.in_file ? w.name : null,
+        const stepsOut = rows().map((row) => Object.fromEntries($$("[data-sf]", row).map((x) => [x.dataset.sf, x.value])));
+        const r2 = await busyBtn(b, request("custom_save", { kind: "workflows", name: $("#wf-name", m).value, old: w && w.in_file ? w.name : null,
           description: $("#wf-desc", m).value, review: $("#wf-review", m).checked, steps: stepsOut }, t("busy_saving")));
-        if (r.custom_saved) { closeModal(m); done(); }
+        if (r2.custom_saved) { closeModal(m); if (done) done(); }
       }
     });
   }

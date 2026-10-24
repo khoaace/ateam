@@ -4739,4 +4739,18 @@ EN: dict[str, str] = {
         "Fills /flow {name} into the input — type the goal and press Enter (runs once, the default flow stays as is)",
     "▶ Chạy":
         "▶ Run",
+    "Chuyển lên":
+        "Move up",
+    "Chuyển xuống":
+        "Move down",
+    "Chèn bước ngay dưới":
+        "Insert a step below",
+    "Gõ $tên-skill trong prompt của bước để bước đó làm theo skill (xem trang 🧩 Skills).":
+        "Type $skill-name in a step's prompt to make that step follow the skill (see the 🧩 Skills page).",
+    "Bước {i}: agent '{agent}' không có trong đội hoặc đang tắt — lúc chạy sẽ giao cho trưởng nhóm":
+        "Step {i}: agent '{agent}' is not in the team or is disabled — it will be given to the team lead when run",
+    "Bước {i} (duyệt) không chờ bước nào — không có gì để duyệt":
+        "Step {i} (approval) waits for no step — there is nothing to approve",
+    "⏸ duyệt":
+        "⏸ approve",
 }
