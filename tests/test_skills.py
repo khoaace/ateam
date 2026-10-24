@@ -353,3 +353,27 @@ def test_tui_skills_screen(env, project, monkeypatch):
             await pilot.press("enter")
             assert await wait_for(pilot, lambda: isinstance(app.screen, tui.SkillViewScreen))
     asyncio.run(main())
+
+
+@pytest.mark.parametrize("on", [False, True])
+def test_lead_cannot_attach_skills_the_user_did_not_enable(env, project, monkeypatch, on):
+    """Trưởng nhóm chỉ gắn được skill người dùng đã bật — không phải skill nó tự biết (claude đọc sẵn ~/.claude/skills)."""
+    env["ATEAM_FAKE_PLAN_SKILLS"] = "off-skill"
+    o = _orch(env, project, monkeypatch)
+    mk(skills.library(), "tdd", desc="Viết test trước.")  # có ít nhất một skill bật → prompt có AVAILABLE SKILLS
+    mk(Path(env["ATEAM_SKILLS_HOME"]) / ".claude/skills", "off-skill", desc="Skill của claude, đang tắt")
+    if on:
+        skills.set_on(project, "off-skill", True)
+
+    async def main():
+        await o.setup()
+        o.auto_answer = True
+        gid = o.new_goal("tạo a.txt")
+        await o.run_until_idle(interval=0.01)
+        return o.db.tasks(goal_id=gid)
+    code = next(t for t in asyncio.run(main()) if t.agent == "codex")
+    syslog = (project / ".ateam/logs/system.log").read_text(encoding="utf-8")
+    if on:
+        assert code.skills == ["off-skill"] and "bỏ skill" not in syslog
+    else:
+        assert not code.skills and f"#{code.id}: bỏ skill off-skill" in syslog

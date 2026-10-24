@@ -229,7 +229,8 @@ grok `~/.grok/skills` + `~/.claude/skills`, opencode `~/.config/opencode/skills`
 `.claude/skills` / `.agents/skills`…) — cùng một đội mà mỗi thành viên thấy một bộ, trưởng nhóm không biết, agent tuỳ
 chỉnh không có. ateam gom mọi nguồn thành một danh mục và **gửi kèm nội dung skill ở đầu prompt** như `/rules` (DECISIONS
 #15): agent nào cũng nhận cùng một bản, không ghi vào thư mục cấu hình của CLI. Trưởng nhóm chỉ nhận tên + mô tả các
-skill đang bật lúc lập kế hoạch (khoảng 50–80 token mỗi skill) và gắn bằng `"skills"`; thành viên chỉ nhận nội dung
+skill đang bật lúc lập kế hoạch (khoảng 50–80 token mỗi skill) và gắn bằng `"skills"` — chỉ nhận skill đang bật
+hoặc gọi bằng `$tên` (claude tự biết skill trong `~/.claude/skills`, ghi tên skill đang tắt thì ateam bỏ và ghi log); thành viên chỉ nhận nội dung
 skill được gắn — không gửi danh sách cho thành viên / review / `/grill` / chat. Skill trong thư mục CLI mặc định *tắt*
 (máy người dùng có ~43 skill, bật hết thì mỗi kế hoạch tốn vài nghìn token); `$tên` dùng được mọi skill. `$tên` trong mục
 tiêu gắn cố định vào mọi task code (luật, không để LLM chọn). Thư viện riêng `~/.config/ateam/skills` (không CLI nào tự

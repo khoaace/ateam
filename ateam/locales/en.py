@@ -4695,4 +4695,6 @@ EN: dict[str, str] = {
         "On = the team lead sees the skill when planning and attaches it to tasks; type $skill-name in a goal, /task or chat to use any skill. Create / ✨ AI write / install from GitHub: the 🧩 Skills page of ateam web.",
     "Space bật/tắt · Enter xem · c chép $tên · Esc đóng":
         "Space on/off · Enter view · c copy $name · Esc close",
+    "⚠ #{tid}: bỏ skill {v} — chưa bật cho dự án (bật ở trang 🧩 Skills / /skills, hoặc gọi bằng $tên trong mục tiêu)":
+        "⚠ #{tid}: dropped skill {v} — not turned on for this project (turn it on in 🧩 Skills / /skills, or call it with $name in the goal)",
 }

@@ -910,6 +910,9 @@ class Orchestrator:
         if not from_user:
             plan = self._apply_checks(plan, source)
         cat = skills.scan(self.root) if asked or any(isinstance(x, dict) and x.get("skills") for x in plan) else []
+        # trưởng nhóm chỉ được gắn skill người dùng đã bật cho dự án (hoặc gọi bằng $tên) — không phải skill nó tự biết
+        # từ thư mục của CLI mình (claude đọc sẵn ~/.claude/skills)
+        allowed = {x.name for x in skills.enabled(self.root, cat)} | set(asked or []) if cat else set()
         agents = self.cfg.active_agents()
         status = DRAFT if self.cfg.approve_plan else QUEUED
         id_map: dict = {}
@@ -929,7 +932,9 @@ class Orchestrator:
             want = item.get("skills") or []
             if isinstance(want, str):  # "skills": "tdd, release"
                 want = re.split(r"[,\s]+", want)
-            names = [x.name for x in skills.resolve(want if isinstance(want, list) else [], cat)]
+            picked = [x.name for x in skills.resolve(want if isinstance(want, list) else [], cat)]
+            names = [n for n in picked if n in allowed]
+            dropped = [n for n in picked if n not in allowed]
             if kind == KIND_CODE:
                 names += [n for n in asked or [] if n not in names]
             tid = self.db.add_task(agent, title, prompt, goal_id=gid, status=status, source=source,
@@ -940,6 +945,9 @@ class Orchestrator:
             created.append((tid, item.get("depends_on") or []))
             self.log(f"   #{tid} → {agent}{(' [' + kind + ']') if kind != KIND_CODE else ''}"
                      f"{(' @' + effort) if effort else ''}: {title}{(' 🧩 ' + ', '.join(names)) if names else ''}")
+            if dropped:
+                self.log(tr("⚠ #{tid}: bỏ skill {v} — chưa bật cho dự án (bật ở trang 🧩 Skills / /skills, hoặc gọi "
+                            "bằng $tên trong mục tiêu)", tid=tid, v=", ".join(dropped)))
         graph: dict[int, list[int]] = {}
         for tid, deps in created:
             if not isinstance(deps, list):  # "depends_on": 1 hoặc "1"
