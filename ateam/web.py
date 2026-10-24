@@ -40,6 +40,7 @@ from .logtail import read_tail
 from .web_code import CodeWeb
 from .web_git import GitWeb
 from .web_setup import SetupWeb
+from .web_skills import READONLY as SKILL_READONLY, OPS as SKILL_OPS, SLOW as SKILL_SLOW, SkillsOps
 
 STATIC = Path(__file__).with_name("webui")
 LOG_TAIL = 600       # số dòng cuối của log gửi khi mở 1 task
@@ -291,6 +292,38 @@ def ui_strings() -> dict[str, str]:
         "proj_switch_fail": tr("Không kết nối lại được — xem terminal đang chạy `ateam web` (có thể đã đổi cổng)"),
         "proj_unsaved_q": tr("Tab 📝 Code còn file chưa lưu: {v}\nBỏ các thay đổi và mở dự án khác?"),
         "proj_unsaved_yes": tr("Bỏ thay đổi & mở"),
+        "skills": tr("Skills"), "sk_search": tr("Tìm skill…"), "sk_count": tr("{on}/{n} skill bật cho dự án"),
+        "sk_hint": tr("Bật = trưởng nhóm thấy skill khi lập kế hoạch và tự gắn vào task. Gõ $tên-skill trong mục tiêu, "
+                      "/task hay chat để dùng bất kỳ skill nào. Skill tạo mới lưu ở {v}."),
+        "sk_empty": tr("Chưa có skill nào"),
+        "sk_empty_hint": tr("Tạo skill, nhờ ✨ AI viết, hoặc cài từ GitHub (vd anthropics/skills)."),
+        "sk_github": tr("Cài từ GitHub"), "sk_ai": tr("AI viết skill"), "sk_new": tr("Tạo skill"),
+        "sk_toggle": tr("Bật cho dự án (trưởng nhóm thấy khi lập kế hoạch)"), "sk_no_desc": tr("(chưa có mô tả)"),
+        "sk_others": tr("+{n} bản khác"), "sk_scripts": tr("có script"),
+        "sk_scripts_hint": tr("Skill kèm script — agent có thể chạy chúng. Chỉ dùng skill từ nguồn bạn tin."),
+        "sk_copy": tr("Chép $tên"), "sk_copied": tr("Đã chép {v} — dán vào mục tiêu, /task hay chat"),
+        "sk_edit": tr("Sửa"), "sk_del": tr("Xoá skill"), "sk_del_q": tr("Chuyển skill \"{v}\" vào Thùng rác?"),
+        "sk_import": tr("Chép vào thư viện ateam"),
+        "sk_overwrite_q": tr("Thư viện đã có skill \"{v}\" — ghi đè?"), "sk_files": tr("File trong skill"),
+        "sk_view": tr("Xem skill"), "sk_review": tr("Xem lại skill rồi lưu"),
+        "sk_f_name": tr("Tên (a-z, 0-9, dấu gạch nối) — gõ $tên để dùng"),
+        "sk_f_desc": tr("Mô tả: skill làm gì và khi nào dùng (trưởng nhóm dựa vào đây để chọn)"),
+        "sk_f_desc_ph": tr("vd: Quy trình phát hành bản mới: tăng version, CHANGELOG, test, push. Dùng khi phát hành."),
+        "sk_f_body": tr("Hướng dẫn cho agent (markdown)"),
+        "sk_bad_name": tr("Tên chỉ gồm a-z, 0-9 và dấu gạch nối (không ở đầu/cuối, không hai gạch liền)"),
+        "sk_exists": tr("Thư viện đã có skill \"{v}\" — lưu sẽ ghi đè"),
+        "sk_ai_hint": tr("Mô tả skill bạn muốn — agent viết SKILL.md (tiếng Anh, cho agent đọc), bạn xem lại rồi lưu."),
+        "sk_ai_ph": tr("Mô tả skill bạn muốn (vd: quy trình deploy lên Cloudflare Pages)"),
+        "sk_from_goal": tr("Lưu thành skill"),
+        "sk_from_goal_hint": tr("Agent rút cách đội đã làm mục tiêu #{id} thành skill dùng lại được — bạn xem lại rồi lưu."),
+        "sk_focus_ph": tr("Trọng tâm (không bắt buộc), vd: chỉ phần build và deploy"),
+        "sk_ai_agent": tr("Agent viết"), "sk_ai_go": tr("Viết"), "sk_ai_busy": tr("Agent đang viết skill…"),
+        "sk_gh_hint": tr("Dán owner/repo hoặc link GitHub (cả …/tree/<nhánh>/<thư mục>); ateam tải repo rồi cho bạn chọn skill."),
+        "sk_gh_fetch": tr("Tìm skill"), "sk_gh_install": tr("Cài skill đã chọn"),
+        "sk_gh_busy": tr("Đang tải repo…"), "sk_n_files": tr("{n} file"), "sk_in_lib": tr("đã có trong thư viện"),
+        "sk_gh_overwrite": tr("Ghi đè skill đã có trong thư viện"),
+        "sk_gh_trust": tr("Skill được gửi kèm prompt cho agent và có thể kèm script — chỉ cài từ nguồn bạn tin."),
+        "sk_gh_pick": tr("Chọn ít nhất một skill"),
         "rules_title": tr("📏 Rule của dự án"),
         "rules_hint": tr("Mọi agent phải tuân theo: ateam gửi kèm rule ở đầu mỗi prompt (task, chat, lập kế hoạch, "
                          "review, commit message). Lưu riêng máy này: {v}"),
@@ -538,7 +571,7 @@ def task_json(t: Task, full: bool = True) -> dict:
          "prompt": t.prompt, "status": t.status, "deps": t.depends_on, "source": t.source,
          "result": t.result, "error": t.error, "branch": t.branch, "created": t.created,
          "started": t.started, "finished": t.finished, "model": t.model, "effort": t.effort,
-         "attempts": t.attempts, "question": t.question()}
+         "attempts": t.attempts, "question": t.question(), "skills": t.skills or []}
     if not full:
         del d["result"]
         if t.status != "draft":
@@ -565,7 +598,7 @@ def guard_middleware(port: int):
 
 
 # --readonly: thao tác không đổi gì vẫn cho phép
-READONLY_OPS = ("custom_preview", "goal_plan", "code_search", "rules_list", "grid_attach")
+READONLY_OPS = ("custom_preview", "goal_plan", "code_search", "rules_list", "grid_attach") + SKILL_READONLY
 
 
 def text_box(title: str, body: str) -> dict:
@@ -583,6 +616,7 @@ class WebApp:
         self.git = GitWeb(self)
         self.code = CodeWeb(self)
         self.setup = SetupWeb(self)
+        self.skills = SkillsOps(self)
         self.clients: set[web.WebSocketResponse] = set()
         self.discovering = False  # đang hỏi danh sách model từ các CLI (wizard hiện "⏳")
         self._last_state = ""
@@ -1150,7 +1184,7 @@ class WebApp:
             return d.get("action") in self.SLOW_GIT
         if op == "submit":
             return str(d.get("text") or "").strip().startswith(self.SLOW_CMDS)
-        return op in ("workflow_suggest", "code_format", "code_ai", "open_window")
+        return op in ("workflow_suggest", "code_format", "code_ai", "open_window") + SKILL_SLOW
 
     async def _answer(self, ws: web.WebSocketResponse, data) -> None:
         """Chạy một thao tác rồi trả lời bằng toast (kèm ref nếu trình duyệt đang chờ)."""
@@ -1299,6 +1333,8 @@ class WebApp:
             return tr("Chế độ chỉ xem (--readonly) — không làm được thao tác này"), "warn"
         if op == "submit":
             return await self.submit(str(d.get("text") or ""))
+        if op in SKILL_OPS:  # trang 🧩 Skills (web_skills.py)
+            return await self.skills.handle(d)
         if op in ("rules", "rules_list"):  # popup 📏 Rule của dự án
             err = rules.apply(self.root, str(d.get("action") or ""), d) if op == "rules" else ""
             return err, "warn" if err else "", self.rules_state()
@@ -1469,7 +1505,8 @@ class WebApp:
         if not g:
             return tr("Không thấy mục tiêu #{id}", id=gid), "warn"
         tasks = [{k: v for k, v in task_json(t).items() if k in ("id", "agent", "title", "prompt", "status", "deps",
-                                                                 "source", "model", "effort", "result", "error", "started", "finished")}
+                                                                 "source", "model", "effort", "result", "error", "started", "finished",
+                                                                 "skills")}
                  for t in self.db.tasks(goal_id=g.id)]
         return "", "", {"goal_plan": {"goal": goal_json(g, False), "tasks": tasks}}
 
@@ -1563,6 +1600,8 @@ class WebApp:
                 return tr("Dùng: /chat <agent> <tin nhắn>  — agent: {v}", v=", ".join(agents)), "warn"
             reply = self.chat(agent, msg) if msg.strip() else None
             return reply or ("", "", {"open": {"view": "team", "chat": agent}})
+        if cmd == "skills":
+            return "", "", {"open": {"view": "skills"}}
         if cmd == "rules":
             err = rules.apply(self.root, "add", {"text": rest}) if rest else ""
             if err:

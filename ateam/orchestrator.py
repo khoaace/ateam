@@ -1629,6 +1629,35 @@ class Orchestrator:
             return False, tr("{agent} không trả lời (xem .ateam/logs/lead.log)", agent=who)
         return True, answer
 
+    async def write_skill(self, description: str = "", gid: int | None = None, agent: str = "",
+                          focus: str = "") -> tuple[bool, "dict | str"]:
+        """✨ Trang 🧩 Skills: agent (mặc định trưởng nhóm) viết SKILL.md theo mô tả, hoặc rút quy trình của mục tiêu
+        gid đã làm xong (💾 Lưu thành skill). Không lưu: trả (thành công, {name, description, body} để điền form — hoặc
+        lời nhắn lỗi)."""
+        who = agent if agent in self.cfg.active_agents() else self.cfg.lead
+        names = [x.name for x in skills.scan(self.root)]
+        if gid is not None:
+            g = self.db.goal(gid)
+            if not g:
+                return False, tr("Không còn mục tiêu #{gid}", gid=gid)
+            rows = [(t.id, t.agent, t.title, t.prompt[:2000], (t.result or t.error or "")[:2000], self.log_path(t.id))
+                    for t in self.db.tasks(goal_id=gid) if t.status != CANCELLED and t.kind != KIND_VERIFY]
+            prompt = P.skill_from_goal_prompt(goal=g.full_text(), summary=g.summary or "", tasks=rows,
+                                              existing=names, cwd=str(self.root), focus=focus.strip())
+            label = tr("Lưu mục tiêu #{gid} thành skill", gid=gid)
+        else:
+            if not description.strip():
+                return False, tr("Mô tả skill bạn muốn trước (vd: quy trình phát hành bản mới)")
+            prompt = P.skill_write_prompt(description=description.strip(), existing=names, cwd=str(self.root))
+            label = tr("Viết skill")
+        out = await self._call_lead(prompt, label, first=who)
+        text = P.extract_skill(P.strip_echo(out or "", prompt))
+        if not text:
+            return False, tr("{agent} không trả về SKILL.md (xem .ateam/logs/lead.log)", agent=who)
+        meta, body = skills.parse(text)
+        return True, {"name": str(meta.get("name") or "").strip(),
+                      "description": " ".join(str(meta.get("description") or "").split()), "body": body.strip()}
+
     async def suggest_workflow(self, description: str) -> tuple[bool, "dict | str"]:
         """Trưởng nhóm thiết kế workflow tuỳ chỉnh theo mô tả của người dùng (form /custom → ✨ Gợi ý).
         Trả về (thành công, dữ liệu điền form — xem wizard.suggestion_form — hoặc lời nhắn lỗi)."""

@@ -78,6 +78,11 @@ elif [[ "$P" == *"EXPLAIN CODE"* ]]; then
   echo "**Đoạn này** trả về lời chào."
   echo ""
   echo "- dùng \`hello(name)\`"
+elif [[ "$P" == *"WRITE AN AGENT SKILL"* ]]; then
+  # ✨ viết skill (theo mô tả / rút từ mục tiêu đã xong): SKILL.md giữa <<<SKILL>>> … <<<END>>>, bọc rào markdown
+  name="phat-hanh"; [[ "$P" == *"captures how the team completed"* ]] && name="tu-muc-tieu"
+  echo "Đang viết skill..."
+  printf '<<<SKILL>>>\n```markdown\n---\nname: %s\ndescription: "Release a new version. Use when the user asks to publish."\n---\n\n# Release\n1. Bump the version\n2. Push\n```\n<<<END>>>\n' "$name"
 elif [[ "$P" == *"reusable ateam WORKFLOW"* ]]; then
   # Gợi ý workflow tuỳ chỉnh: agent lạ (ghost) và effort lạ để test chuẩn hoá
   sleep 0.5  # chậm như model thật: test không được đọc form trước khi gợi ý về

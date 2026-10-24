@@ -270,3 +270,86 @@ def test_old_db_gets_skills_column(tmp_path):
     assert db.task(tid).skills == ["tdd"] and db.task(1).skills == ["a", "b"]
     db.update_task(1, skills=None)
     assert db.task(1).skills is None
+
+
+# ------------------------------------------------------------------ trang 🧩 Skills (web)
+def test_web_skill_ops(env, project, monkeypatch, tmp_path):
+    pytest.importorskip("aiohttp")
+    from test_web import _web_app
+    env["ATEAM_TRASH_DIR"] = str(tmp_path / "trash")
+    env["ATEAM_FAKE_FULL_LOG"] = str(tmp_path / "full.log")
+    wa = _web_app(env, project, monkeypatch)
+    home = Path(env["ATEAM_SKILLS_HOME"])
+    mk(home / ".claude/skills", "cli-one", desc="Của claude")
+
+    async def main():
+        st = (await wa.handle({"op": "skills_list"}))[2]
+        one = next(s for s in st["skills"] if s["name"] == "cli-one")
+        assert not one["on"] and one["kind"] == "cli" and "claude" in one["readers"]
+        st = (await wa.handle({"op": "skills", "action": "toggle", "name": "cli-one", "on": True}))[2]
+        assert next(s for s in st["skills"] if s["name"] == "cli-one")["on"]
+        r = await wa.handle({"op": "skills", "action": "create", "name": "Sai Ten", "description": "d", "body": "b"})
+        assert r[1] == "warn"
+        r = await wa.handle({"op": "skills", "action": "create", "name": "ship", "description": "Phát hành",
+                             "body": "1. push"})
+        assert r[1] == "ok" and any(s["name"] == "ship" and s["kind"] == "library" and s["on"] for s in r[2]["skills"])
+        v = (await wa.handle({"op": "skill_view", "name": "ship"}))[2]["skill_view"]
+        assert "1. push" in v["text"] and v["files"] == ["SKILL.md"]
+        assert (await wa.handle({"op": "skills", "action": "update", "name": "ship",
+                                 "text": v["text"].replace("1. push", "1. git push")}))[1] == "ok"
+        assert (await wa.handle({"op": "skills", "action": "import", "name": "cli-one"}))[1] == "ok"
+        assert (skills.library() / "cli-one/SKILL.md").is_file()
+        assert (await wa.handle({"op": "skills", "action": "delete", "name": "ship"}))[1] == "ok"
+        assert not (skills.library() / "ship").exists()
+        r = await wa.handle({"op": "skill_ai", "description": "quy trình phát hành"})
+        assert r[2]["skill_draft"] == {"name": "phat-hanh", "description":
+                                       "Release a new version. Use when the user asks to publish.",
+                                       "body": "# Release\n1. Bump the version\n2. Push"}
+        assert (await wa.handle({"op": "skill_ai", "description": "  "}))[1] == "warn"
+        gid = wa.orch.db.add_goal("deploy prod")
+        wa.orch.db.add_task("codex", "Deploy", "npm run deploy", goal_id=gid, status="done")
+        r = await wa.handle({"op": "skill_ai", "goal": gid, "focus": "chỉ deploy"})
+        assert r[2]["skill_draft"]["name"] == "tu-muc-tieu"
+        assert (await wa.handle({"op": "submit", "text": "/skills"}))[2] == {"open": {"view": "skills"}}
+        wa.remote.readonly = True
+        assert (await wa.handle({"op": "skills_list"}))[2]["skills"]
+        assert "readonly" in (await wa.handle({"op": "skills", "action": "toggle", "name": "x", "on": True}))[0]
+    asyncio.run(main())
+    lead = (tmp_path / "full.log").read_text()
+    assert "TASKS (read a full log" in lead and "npm run deploy" in lead and "Focus from the user: chỉ deploy" in lead
+
+
+def test_extract_skill():
+    from ateam import prompts as P
+    out = ("mẫu <<<SKILL>>>\n---\nname: ...\n<<<END>>>\nĐang viết\n<<<SKILL>>>\n```md\n---\nname: a\ndescription: d\n"
+           "---\nNói <<<END>>> trong thân\n```\n<<<END>>>\n")
+    assert P.extract_skill(out) == "---\nname: a\ndescription: d\n---\nNói <<<END>>> trong thân"
+    assert P.extract_skill("không có") is None
+    assert P.extract_skill("<<<SKILL>>>\n---\nname: ...\n---\n<<<END>>>") is None
+
+
+def test_tui_skills_screen(env, project, monkeypatch):
+    import importlib
+
+    from conftest import wait_for
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    importlib.reload(config)
+    from ateam import tui
+    from ateam.db import DB
+    config.ensure_global_config()
+    mk(Path(env["ATEAM_SKILLS_HOME"]) / ".claude/skills", "cli-one", desc="Của claude", body="# Hướng dẫn")
+    app = tui.TeamApp(project, config.load_config(project), DB(project / ".ateam/team.db"))
+
+    async def main():
+        async with app.run_test(size=(140, 44)) as pilot:
+            await pilot.pause(0.2)
+            app.run_command("/skills")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, tui.SkillsScreen))
+            opts = [str(o.prompt) for o in app.screen.query_one("#skills-list").options]
+            assert any("~/.claude/skills" in x for x in opts) and any("cli-one" in x for x in opts)
+            await pilot.press("space")
+            assert [s.name for s in skills.enabled(project)] == ["cli-one"]
+            await pilot.press("enter")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, tui.SkillViewScreen))
+    asyncio.run(main())

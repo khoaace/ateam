@@ -417,7 +417,7 @@ function render() {
 }
 function renderTop() {
   const st = S.state, c = counts();
-  const titles = { board: t("board"), team: t("team"), grid: t("grid"), term: t("terminal"), git: t("git"), code: t("code"), todo: t("todo"), notes: t("notes"), custom: t("custom"), dash: t("dash") };
+  const titles = { board: t("board"), team: t("team"), grid: t("grid"), term: t("terminal"), git: t("git"), code: t("code"), todo: t("todo"), notes: t("notes"), custom: t("custom"), dash: t("dash"), skills: t("skills") };
   $("#view-title").textContent = titles[S.view];
   const chips = [];
   if (c.running) chips.push(`<span class="chip s-running" style="color:var(--running)"><span class="dot"></span>${c.running} ${esc(t("running"))}</span>`);
@@ -546,7 +546,7 @@ function renderPlan() {
       <div class="plan-line" data-action="plan-toggle" data-task="${x.id}">
         <span class="tid">#${x.id}</span>
         <span class="plan-sel"><select class="agent-select" data-action="plan-assign" data-task="${x.id}">${opts(x.agent)}</select></span>
-        <span class="plan-title">${esc(x.title)}</span>
+        <span class="plan-title">${esc(x.title)}${SkillsView.chips(x.skills)}</span>
         <span class="deps">${x.deps.length ? esc(t("after", { v: x.deps.map((d) => "#" + d).join(", ") })) : ""}</span>
         <span class="muted" style="font-size:12px">${esc([x.model, x.effort].filter(Boolean).join(" · "))}</span>
       </div>
@@ -652,14 +652,15 @@ async function planModal(gid) {
     const meta = [x.model, x.effort].filter(Boolean).join(" · ");
     return `<div class="pv-card s-${esc(x.status)}" id="pv-task-${x.id}">
       <div class="pv-card-head">${agentHtml(x.agent)}<span class="tid">#${x.id}</span>
-        <b class="pv-card-title">${esc(x.title)}</b>${meta ? `<span class="muted small">${esc(meta)}</span>` : ""}
+        <b class="pv-card-title">${esc(x.title)}</b>${meta ? `<span class="muted small">${esc(meta)}</span>` : ""}${SkillsView.chips(x.skills)}
         ${elapsedHtml(x.started, x.finished)}${badge(x.status, STATUS_LABEL(x.status), x.status === "running")}</div>
       <div class="pv-card-body md${x.error && !x.result ? " pv-err" : ""}">${out ? mdHtml(out) : `<span class="muted">${esc(t("no_result"))}</span>`}</div>
       ${imagesHtml(x.result)}
       <details class="pv-prompt"><summary>${esc(t("plan_show_prompt"))}</summary>${imagesHtml(x.prompt)}<div class="prompt-box md">${mdHtml(x.prompt)}</div></details>
     </div>`;
   }).join("");
-  const m = openModal(`${modalHead("📋 " + esc(t("goal_plan_title", { id: g.id })))}<div class="modal-pad">
+  const toSkill = g.status === "done" ? `<button class="btn sm" data-to-skill="${g.id}" title="${esc(t("sk_from_goal_hint", { id: g.id }))}">💾 ${esc(t("sk_from_goal"))}</button>` : "";
+  const m = openModal(`${modalHead("📋 " + esc(t("goal_plan_title", { id: g.id })), toSkill)}<div class="modal-pad">
     <div class="pv-goal md">${mdHtml(g.text)}</div>${imagesHtml(g.text)}
     ${ts.length ? `<div class="pv-sec">📋 ${esc(t("plan_lead"))} <span class="muted">· ${esc(t("plan_count", { n: ts.length }))}</span></div>
       <div class="pv-steps">${steps}</div>
@@ -668,6 +669,8 @@ async function planModal(gid) {
     ${g.summary ? `<div class="pv-sec">✔ ${esc(t("plan_summary"))}</div><div class="pv-summary md">${mdHtml(g.summary)}</div>` : ""}
   </div>`, { box: "lg", cls: "pv" });
   m.addEventListener("click", (e) => {
+    const k = e.target.closest("[data-to-skill]");
+    if (k) { SkillsView.fromGoal(+k.dataset.toSkill); return; }
     const s = e.target.closest("[data-jump]");
     if (!s) return;
     const card = $("#pv-task-" + s.dataset.jump, m);
@@ -1214,6 +1217,7 @@ function renderDrawer(full) {
     <div class="dr-meta">${badge(x.status, STATUS_LABEL(x.status), x.status === "running")}${agentHtml(x.agent)}
       ${x.model || x.effort ? `<span class="kv">${esc([x.model, x.effort].filter(Boolean).join(" · "))}</span>` : ""}
       ${x.goal ? `<span class="kv">🎯 <b>#${x.goal}</b></span>` : ""}
+      ${(x.skills || []).length ? SkillsView.chips(x.skills) : ""}
       ${x.deps.length ? `<span class="kv">${esc(t("deps"))}: <b>${x.deps.map((d) => "#" + d).join(", ")}</b></span>` : ""}
       <span class="kv">${esc(t("started"))}: <b>${clock(x.started)}</b></span>
       ${x.started ? `<span class="kv">${esc(t("duration"))}: <b>${elapsedHtml(x.started, x.finished).replace('class="time"', 'class="time" style="margin:0"')}</b></span>` : ""}
@@ -2093,7 +2097,7 @@ input.addEventListener("keydown", (e) => {
 input.addEventListener("blur", () => setTimeout(hideSuggest, 150));
 
 /* ------------------------------------------------------------------ hành động (bấm) */
-const VIEWS = ["board", "team", "grid", "term", "git", "code", "todo", "notes", "dash", "custom"];
+const VIEWS = ["board", "team", "grid", "term", "git", "code", "todo", "notes", "dash", "custom", "skills"];
 function setView(v) {
   if (!VIEWS.includes(v)) return;
   const prev = S.view;
@@ -2107,6 +2111,7 @@ function setView(v) {
   if (prev === "git" && v !== "git" && window.GitView) GitView.hide();
   if (v === "code" && window.CodeView) CodeView.show();
   if (v === "custom" && window.Setup) Setup.showCustom();
+  if (v === "skills" && window.SkillsView) SkillsView.show();
   if (v === "team") loadCustom();
   if (v === "dash" && window.DashView) DashView.show();
   if (v === "todo" && window.TodoView) TodoView.show();
@@ -2135,6 +2140,7 @@ const ACTIONS = {
   "close-drawer": () => closeDrawer(),
   "close-modal": (el) => closeModal(el.closest(".modal")),
   "open-task": (el) => openTask(+el.dataset.task),
+  "skill-view": (el, e) => { e.stopPropagation(); SkillsView.view(el.dataset.name); },
   "img-view": (el, e) => { e.stopPropagation(); imageModal(el.dataset.path); },
   "dr-tab": (el) => { S.drawerTab = el.dataset.tab; renderDrawer(true); if (S.drawerTab === "log") loadLog(S.openTask); },
   "goal-filter": (el) => { S.goalFilter = el.dataset.goal ? +el.dataset.goal : null; renderGoals(); renderKanban(); },

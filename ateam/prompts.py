@@ -648,6 +648,77 @@ def extract_overview(text: str) -> str | None:
     return body if body and body != "..." else None
 
 
+SKILL_SPEC = """A skill is a folder with a SKILL.md file: YAML frontmatter, then Markdown instructions.
+---
+name: <1-64 chars: lowercase a-z, 0-9 and single hyphens; it is also the folder name>
+description: <one line, max 1024 chars: what the skill does AND when to use it, with the keywords a planner
+  would match against a task>
+---
+Body: concrete step-by-step instructions an AI coding agent follows — commands, checks, conventions, pitfalls,
+short examples only if they help. Under 300 lines. Write it for an agent (no tutorial tone, no filler)."""
+
+
+def _skill_rules(existing: list[str]) -> str:
+    return f"""{SKILL_SPEC}
+Existing skill names (choose a different name): {', '.join(existing) or '(none)'}
+You may read the project to make the steps concrete, but do not change any file.
+Write the skill in English (only agents read it).
+End your answer with the complete SKILL.md (frontmatter and body) between these markers, nothing after them:
+<<<SKILL>>>
+---
+name: ...
+description: ...
+---
+...
+<<<END>>>"""
+
+
+def skill_write_prompt(*, description: str, existing: list[str], cwd: str) -> str:
+    """✨ AI viết skill theo mô tả của người dùng (trang 🧩 Skills)."""
+    return f"""WRITE AN AGENT SKILL for an AI coding team working in: {cwd}
+
+The user describes the skill they want:
+{description}
+
+{_skill_rules(existing)}"""
+
+
+def skill_from_goal_prompt(*, goal: str, summary: str, tasks: list[tuple], existing: list[str], cwd: str,
+                           focus: str = "") -> str:
+    """💾 Lưu thành skill: rút quy trình đội đã làm cho một mục tiêu thành skill dùng lại.
+    tasks: (id, agent, tiêu đề, prompt, kết quả, đường dẫn log)."""
+    rows = "\n".join(f"--- #{tid} {agent}: {title} (full log: {log})\nPrompt: {prompt}\nResult: {result or '(none)'}"
+                     for tid, agent, title, prompt, result, log in tasks)
+    return f"""WRITE AN AGENT SKILL that captures how the team completed the goal below, so that next time any agent
+can repeat the procedure (same steps, commands and checks) without rediscovering it. Working directory: {cwd}
+
+GOAL:
+{goal}
+{('LEAD ASSESSMENT: ' + summary + chr(10)) if summary else ''}
+TASKS (read a full log only if you need an exact command):
+{rows or '(no tasks)'}
+{(chr(10) + 'Focus from the user: ' + focus + chr(10)) if focus else ''}
+Keep only the reusable procedure: generalize what changes each time (versions, names, messages), drop one-off
+details and dead ends.
+
+{_skill_rules(existing)}"""
+
+
+def extract_skill(text: str) -> str | None:
+    """SKILL.md giữa <<<SKILL>>> cuối cùng và <<<END>>> cuối cùng sau nó (thân skill có thể nhắc tới chữ END);
+    bỏ rào markdown bọc ngoài. None nếu không có / chỉ là mẫu."""
+    i = text.rfind("<<<SKILL>>>")
+    if i < 0:
+        return None
+    body = text[i + len("<<<SKILL>>>"):]
+    j = body.rfind("<<<END>>>")
+    body = body[:j].strip() if j >= 0 else ""
+    m = re.match(r"^```[\w-]*\n(.*)\n```$", body, re.S)
+    if m:
+        body = m.group(1).strip()
+    return body if body.startswith("---") and "name: ..." not in body else None
+
+
 def extract_answer(text: str) -> str:
     """Câu trả lời sau dòng SUMMARY: cuối cùng; không có thì cả output."""
     if "SUMMARY:" in text:

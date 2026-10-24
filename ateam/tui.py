@@ -32,7 +32,7 @@ from textual.widgets import (Button, Checkbox, DataTable, Input, OptionList,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, projects, quota, reports, rules,
+from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, projects, quota, reports, rules, skills,
                search, shell, theme, todos, update, wizard)
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
 from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TASK_KINDS, TIERS,
@@ -175,6 +175,8 @@ Model & effort của từng agent (được lưu lại cho lần sau):
   /open [thư mục]                   mở folder / dự án khác: dự án gần đây, hoặc gõ đường dẫn (Tab gợi ý)
   /rules [rule mới]                 rule của dự án mọi agent phải tuân theo (ateam gửi kèm mọi prompt): thêm,
                                     sửa, bật/tắt, chỉ cho vài agent / vai trò; xem AGENTS.md, CLAUDE.md có sẵn
+  /skills                           skill (SKILL.md) của mọi CLI + thư viện ateam: bật cho dự án = trưởng nhóm tự
+                                    gắn vào task; gõ $tên-skill trong mục tiêu / /task / chat để dùng
 
 Agent & workflow tuỳ chỉnh:
   /custom                           thêm/sửa/xoá agent riêng (CLI bất kỳ) và workflow (chuỗi bước dựng sẵn)
@@ -277,6 +279,7 @@ COMMANDS = [
     ("theme", tr("[tên] [màu nhấn]"), tr("chọn theme màu (xem trước trực tiếp)")),
     ("lang", "<en|vi>", tr("đổi ngôn ngữ giao diện (app tự mở lại)")),
     ("rules", tr("[rule mới]"), tr("rule của dự án mà mọi agent phải tuân theo; kèm nội dung thì thêm luôn")),
+    ("skills", "", tr("🧩 skill của mọi CLI + thư viện ateam: bật cho dự án, xem; gõ $tên-skill để dùng")),
     ("open", tr("[thư mục]"), tr("mở folder / dự án khác (dự án gần đây, gõ đường dẫn — Tab gợi ý)")),
     ("code", tr("[@file[:dòng]]"), tr("mở tab 📝 Code: xem & sửa file với phím vim")),
     ("vim", tr("<on|off|file>"), tr("bật/tắt phím vim trong tab 📝 Code")),
@@ -3662,6 +3665,8 @@ class PlanBar(Vertical):
             text.append(f"  {a.label(t.model, t.effort)}", "dim")
         if t.depends_on:
             text.append(tr("  ⟵ chạy sau #{v}", v=', #'.join(map(str, t.depends_on))), "dim")
+        if t.skills:
+            text.append("  🧩 " + ", ".join(t.skills), "magenta")
         text.append("\n")
         text.append(t.title, "bold")
         for line in t.prompt.splitlines() or [""]:
@@ -4284,6 +4289,106 @@ class RulesScreen(BaseModal):
         if r:
             self.app.push_screen(ConfirmScreen(tr("Xoá rule"), tr("Xoá rule \"{v}\"?", v=rules.name_of(r)), yes=tr("Xoá")),
                                  lambda ok: ok and self.run_op("delete", {"id": r["id"]}))
+
+
+class SkillViewScreen(AiExplainScreen):
+    """Xem SKILL.md của một skill (/skills → Enter): markdown, phím c chép $tên."""
+
+    def compose(self) -> ComposeResult:
+        from rich.markdown import Markdown
+        with Vertical(id="aix-box"):
+            yield self.title_bar("🧩 " + self.title_text)
+            with VerticalScroll(id="aix-body"):
+                yield Static(Markdown(self.answer), id="aix-text")
+            yield Static(tr("↑↓ / PgUp PgDn cuộn · c chép $tên · Esc đóng"), id="aix-foot")
+
+    def action_copy(self) -> None:
+        self.app.copy_to_clipboard("$" + self.title_text)
+        self.notify(tr("Đã chép {v} — dán vào mục tiêu, /task hay chat", v="$" + self.title_text))
+
+
+class SkillsScreen(BaseModal):
+    """/skills: skill (SKILL.md) gom từ mọi CLI, dự án và thư viện ateam (skills.py). Space bật/tắt cho dự án (trưởng
+    nhóm thấy khi lập kế hoạch) · Enter xem · c chép $tên. Tạo / ✨ AI viết / cài từ GitHub: trang 🧩 Skills của web."""
+
+    BINDINGS = [Binding("space", "toggle", show=False), Binding("c", "copy", show=False)]
+    DEFAULT_CSS = """
+    SkillsScreen { align: center middle; }
+    #skills-box { width: 120; max-width: 100%; height: auto; max-height: 90%; border: round $primary 70%;
+                  background: $surface; padding: 0 1; }
+    #skills-list { height: auto; max-height: 28; margin-top: 1; }
+    """
+    ORDER = {"project": 0, "library": 1, "cli": 2}
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="skills-box"):
+            yield self.title_bar(tr("🧩 Skills"))
+            yield Static(Text(tr("Bật = trưởng nhóm thấy skill khi lập kế hoạch và tự gắn vào task; gõ $tên-skill trong "
+                                 "mục tiêu, /task hay chat để dùng bất kỳ skill nào. Tạo / ✨ AI viết / cài từ GitHub: "
+                                 "trang 🧩 Skills của ateam web."), "dim"))
+            yield OptionList(id="skills-list")
+            yield Static(Text(tr("Space bật/tắt · Enter xem · c chép $tên · Esc đóng"), "dim"))
+
+    def on_mount(self) -> None:
+        self.refill()
+        self.query_one("#skills-list", OptionList).focus()
+
+    def refill(self, keep: str | None = None) -> None:
+        lst = self.query_one("#skills-list", OptionList)
+        cur = keep or (lst.get_option_at_index(lst.highlighted).id if lst.highlighted is not None else None)
+        lst.clear_options()
+        self.items = sorted(skills.scan(self.app.root), key=lambda s: self.ORDER.get(s.kind, 9))
+        sets = skills.load_sets(self.app.root)
+        src = None
+        for s in self.items:
+            if s.source != src:
+                src = s.source
+                head = Text(src, "bold dim")
+                if s.readers:
+                    head.append("  " + tr("{v} tự đọc", v=s.readers), "dim")
+                lst.add_option(Option(head, disabled=True))
+            on = skills.is_on(s, sets)
+            t = Text()
+            t.append("✓ " if on else "○ ", "green" if on else "dim")
+            t.append(s.name, "bold" if on else "")
+            t.append("  " + (s.description[:90] + ("…" if len(s.description) > 90 else "")), "dim")
+            if s.problems:
+                t.append("  ⚠ " + s.problems[0], "yellow")
+            lst.add_option(Option(t, id="s:" + s.name))
+        if not self.items:
+            lst.add_option(Option(Text(tr("Chưa có skill nào"), "dim"), disabled=True))
+        ids = [lst.get_option_at_index(i).id for i in range(lst.option_count)]
+        if cur and cur in ids:
+            lst.highlighted = ids.index(cur)
+        else:
+            lst.highlighted = next((i for i, x in enumerate(ids) if x), None)
+
+    def skill(self):
+        lst = self.query_one("#skills-list", OptionList)
+        oid = (lst.get_option_at_index(lst.highlighted).id or "") if lst.highlighted is not None else ""
+        return skills.find(self.items, oid[2:]) if oid.startswith("s:") else None
+
+    def action_toggle(self) -> None:
+        s = self.skill()
+        if not s:
+            return
+        if not s.description or skills.name_problem(s.name):
+            self.notify(s.problems[0] if s.problems else tr("Skill này chưa dùng được"), severity="warning")
+            return
+        skills.set_on(self.app.root, s.name, not skills.is_on(s, skills.load_sets(self.app.root)))
+        self.refill("s:" + s.name)
+
+    def action_copy(self) -> None:
+        s = self.skill()
+        if s:
+            self.app.copy_to_clipboard("$" + s.name)
+            self.notify(tr("Đã chép {v} — dán vào mục tiêu, /task hay chat", v="$" + s.name))
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        s = self.skill()
+        if s:
+            self.app.push_screen(SkillViewScreen(s.name, s.text()))
 
 
 class PaletteScreen(BaseModal):
@@ -7965,6 +8070,8 @@ class TeamApp(App):
         t.append(task.title, "bold")
         if task.source and task.source.startswith("delegate:"):
             t.append(tr("  (được {v} giao)", v=task.source.split(':', 1)[1]), "dim")
+        if task.skills:
+            t.append("  🧩 " + ", ".join(task.skills), "magenta")
         t.append("\n" + task.prompt[:300].replace("\n", " "), "dim")
         if task.attempts:
             t.append(tr("  · đã sửa lỗi test {attempts} lần", attempts=task.attempts), "yellow")
@@ -8918,6 +9025,8 @@ class TeamApp(App):
                 self.set_focus_agent(agent)  # tab Agents là danh sách: chat = phóng to ô của agent
             if msg.strip():
                 self.send_chat(agent, msg.strip())
+        elif cmd == "skills":
+            self.push_screen(SkillsScreen())
         elif cmd == "rules":
             if rest:
                 err = rules.apply(self.root, "add", {"text": rest})

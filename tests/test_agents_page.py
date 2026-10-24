@@ -15,7 +15,7 @@ def test_web_sidebar_order_matches_tui_tabs():
     from ateam.tui import TeamApp
     html = (ROOT / "ateam/webui/index.html").read_text(encoding="utf-8")
     nav = html[html.index('id="nav"'):html.index("</nav>")]
-    views = re.findall(r'data-view="(\w+)"', nav)
+    views = [v for v in re.findall(r'data-view="(\w+)"', nav) if v != "skills"]  # 🧩 Skills: TUI dùng popup /skills
     web_to_tui = {"board": "board", "team": "team", "custom": "custom", "code": "code", "git": "git",
                   "term": "term", "grid": "grid", "todo": "todo", "notes": "notes", "dash": "dash"}
     assert ["tab-" + web_to_tui[v] for v in views] == TeamApp.TAB_ORDER
