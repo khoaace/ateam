@@ -1474,7 +1474,7 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
     importlib.reload(ateam.config)
     from textual.widgets import Button, Checkbox, Select
 
-    from ateam.config import ensure_global_config, load_config, load_custom, load_state
+    from ateam.config import ensure_global_config, load_config, load_custom, load_project_state, load_state
     from ateam.db import DB
     from ateam.tui import CustomPanel, DefaultFlowScreen, OnboardScreen, TeamApp, WorkflowEditScreen
 
@@ -1534,7 +1534,7 @@ def test_tui_custom_tab_and_default_flow(env, project, monkeypatch):
             assert saved["steps"][2]["type"] == "review"
             assert saved["steps"][1]["effort"] == "high" and saved["steps"][2].get("model")
             assert saved["review"] is False and "prompt" in saved["steps"][0]  # giữ prompt của mẫu
-            assert load_state()["default_workflow"] == "tinh-nang"
+            assert load_project_state(project)["default_workflow"] == "tinh-nang"
             assert await wait_for(pilot, lambda: any("★ mặc định" in str(s.render())
                                                      for s in panel.query(".c-info")))
             # lưu lại ở form Sửa workflow (không có ô model): model đặt ở popup không được mất

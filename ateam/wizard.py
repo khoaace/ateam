@@ -411,13 +411,13 @@ def mode_label(cfg: Config) -> str:
     return f"⚙ {cfg.default_workflow}" if cfg.default_workflow else tr("★ Trưởng nhóm")
 
 
-def set_input_mode(cfg: Config, name: str) -> str:
-    """Gõ mục tiêu (không kèm lệnh) sẽ chạy workflow `name`, "" = trưởng nhóm lập kế hoạch. Lưu state.json (dùng
-    chung TUI ↔ web). Trả lời nhắn; tên lạ → ValueError."""
+def set_input_mode(cfg: Config, root: Path, name: str) -> str:
+    """Gõ mục tiêu (không kèm lệnh) ở dự án `root` sẽ chạy workflow `name`, "" = trưởng nhóm lập kế hoạch. Lưu
+    .ateam/state.json (dùng chung TUI ↔ web). Trả lời nhắn; tên lạ → ValueError."""
     name = (name or "").strip()
     if name and name not in cfg.workflows:
         raise ValueError(tr("Không có workflow '{name}'", name=name))
-    save_default_workflow(name)
+    save_default_workflow(root, name)
     cfg.default_workflow = name
     return (tr("Gõ mục tiêu → chạy workflow '{name}' (/goal: trưởng nhóm lập kế hoạch)", name=name) if name
             else tr("Gõ mục tiêu → trưởng nhóm lập kế hoạch"))
@@ -494,11 +494,11 @@ def save_lead_flow(cfg: Config, root: Path, quality: str) -> str:
         raise ValueError(tr("Không có preset chất lượng '{name}'", name=quality))
     save_project_setting(root, "quality", None if quality == "auto" else quality)
     cfg.quality = quality
-    set_input_mode(cfg, "")
+    set_input_mode(cfg, root, "")
     return tr("Gõ mục tiêu → trưởng nhóm lập kế hoạch · chất lượng: {v}", v=quality_label(quality))
 
 
-def save_flow(cfg: Config, name: str, steps: list[dict], review: bool, make_default: bool | None) -> str:
+def save_flow(cfg: Config, root: Path, name: str, steps: list[dict], review: bool, make_default: bool | None) -> str:
     """Lưu agent/model/effort từng bước (giữ tiêu đề, prompt, thứ tự) vào custom.toml; make_default: True đặt
     làm workflow chạy khi gõ mục tiêu, False bỏ nếu đang là mặc định, None giữ nguyên (wizard /setup tự đặt
     khi lưu). Trả lời nhắn; lỗi → ValueError."""
@@ -530,6 +530,6 @@ def save_flow(cfg: Config, name: str, steps: list[dict], review: bool, make_defa
     raw["steps"], raw["review"] = old, bool(review)
     save_custom_item("workflows", name, raw)
     if make_default is not None:
-        save_default_workflow(name if make_default else ("" if cfg.default_workflow == name else None))
+        save_default_workflow(root, name if make_default else ("" if cfg.default_workflow == name else None))
     return tr("Đã lưu luồng '{name}': {v}", name=name,
               v=" → ".join(flow_agent(cfg, st["agent"]) for st in old))

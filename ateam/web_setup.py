@@ -278,7 +278,7 @@ class SetupWeb:
             if d.get("name") == wizard.LEAD_FLOW:
                 msg = wizard.save_lead_flow(self.cfg, self.app.root, str(d.get("quality") or "auto"))
             else:
-                msg = wizard.save_flow(self.cfg, str(d.get("name") or ""), list(d.get("steps") or []),
+                msg = wizard.save_flow(self.cfg, self.app.root, str(d.get("name") or ""), list(d.get("steps") or []),
                                        bool(d.get("review")), None if make_default is None else bool(make_default))
         except ValueError as e:
             return str(e), "error"

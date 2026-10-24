@@ -329,10 +329,9 @@ def test_save_setup_only_stores_differences(tmp_path, monkeypatch):
         assert c.agents["codex"].role == "Chỉ viết backend" and c.default_workflow == "nhanh"
         cfgmod.save_setup(tmp_path, "claude", {"codex": {"role": None}}, "khong-co")
         st = cfgmod.load_state()
-        assert "codex" not in st["agents"] and "default_workflow" not in st
+        assert "codex" not in st["agents"] and cfgmod.load_project_state(tmp_path)["default_workflow"] == ""
         assert cfgmod.load_config(tmp_path).agents["codex"].role == role_default
-        st["default_workflow"] = "da-xoa"  # workflow bị xoá sau khi đặt: coi như không đặt
-        cfgmod.save_state(st)
+        cfgmod.save_default_workflow(tmp_path, "da-xoa")  # workflow bị xoá sau khi đặt: coi như không đặt
         assert cfgmod.load_config(tmp_path).default_workflow == ""
     finally:
         monkeypatch.undo()
@@ -1338,3 +1337,26 @@ def test_workflow_summary_shows_parallel_steps_and_warnings():
     assert "verify" in warns[2]
     cfg.verify.command = "pytest"
     assert len(wizard.flow_warnings(cfg, w)) == 2
+
+
+def test_default_workflow_is_per_project(tmp_path, monkeypatch):
+    """Luồng mặc định lưu theo dự án; dự án chưa chọn dùng lựa chọn chung cũ (bản ≤ 0.52); chọn trưởng nhóm thì đè."""
+    import importlib
+
+    import ateam.config as cfgmod
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    importlib.reload(cfgmod)
+    try:
+        cfgmod.save_custom_item("workflows", "a", {"steps": [{"agent": "lead", "title": "A"}]})
+        cfgmod.save_custom_item("workflows", "b", {"steps": [{"agent": "lead", "title": "B"}]})
+        p1, p2 = tmp_path / "p1", tmp_path / "p2"
+        p1.mkdir(), p2.mkdir()
+        cfgmod.save_state({"default_workflow": "b"})  # lựa chọn chung cũ
+        assert cfgmod.load_config(p1).default_workflow == "b" == cfgmod.load_config(p2).default_workflow
+        cfgmod.save_default_workflow(p1, "a")
+        assert cfgmod.load_config(p1).default_workflow == "a" and cfgmod.load_config(p2).default_workflow == "b"
+        cfgmod.save_default_workflow(p2, "")  # trưởng nhóm lập kế hoạch: đè lựa chọn chung
+        assert cfgmod.load_config(p2).default_workflow == "" and cfgmod.load_config(p1).default_workflow == "a"
+    finally:
+        monkeypatch.undo()
+        importlib.reload(cfgmod)

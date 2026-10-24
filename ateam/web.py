@@ -1466,7 +1466,7 @@ class WebApp:
             return await self.setup.save_default_flow(d)
         if op == "input_mode":  # ô chọn cạnh ô nhập / nút ★ ở mục Tuỳ chỉnh: gõ mục tiêu chạy workflow nào
             try:
-                return wizard.set_input_mode(self.cfg, str(d.get("name") or "")), "ok", {"mode_saved": True}
+                return wizard.set_input_mode(self.cfg, self.root, str(d.get("name") or "")), "ok", {"mode_saved": True}
             except ValueError as e:
                 return str(e), "warn"
         if op == "custom_preview":

@@ -14,7 +14,7 @@ def test_web_input_mode_runs_custom_workflow(env, project, monkeypatch):
     pytest.importorskip("aiohttp")
     from test_web import _web_app
 
-    from ateam.config import load_state
+    from ateam.config import load_project_state
     wa = _web_app(env, project, monkeypatch)
 
     async def main():
@@ -25,7 +25,7 @@ def test_web_input_mode_runs_custom_workflow(env, project, monkeypatch):
         assert r[1] == "warn" and wa.cfg.default_workflow == ""
         r = await wa.handle({"op": "input_mode", "name": "nhanh"})
         assert r[1] == "ok" and r[2]["mode_saved"] and "nhanh" in r[0]
-        assert wa.cfg.default_workflow == "nhanh" and load_state()["default_workflow"] == "nhanh"
+        assert wa.cfg.default_workflow == "nhanh" and load_project_state(project)["default_workflow"] == "nhanh"
         assert wa.snapshot()["workflow"] == "nhanh"
         # gõ thẳng mục tiêu: chạy workflow, không cần /flow
         await wa.handle({"op": "submit", "text": "trang đăng nhập"})
@@ -34,7 +34,7 @@ def test_web_input_mode_runs_custom_workflow(env, project, monkeypatch):
         assert [t.title for t in wa.db.tasks() if t.goal_id == g.id] == ["Thiết kế trang đăng nhập", "Viết code"]
         # về trưởng nhóm lập kế hoạch
         r = await wa.handle({"op": "input_mode", "name": ""})
-        assert r[1] == "ok" and wa.cfg.default_workflow == "" and "default_workflow" not in load_state()
+        assert r[1] == "ok" and wa.cfg.default_workflow == "" and load_project_state(project)["default_workflow"] == ""
     asyncio.run(main())
 
 
@@ -48,7 +48,7 @@ def test_tui_input_mode_picker_and_star_button(env, project, monkeypatch):
     from textual.widgets import Input
 
     from ateam import wizard
-    from ateam.config import ensure_global_config, load_config, load_state, save_custom_item
+    from ateam.config import ensure_global_config, load_config, load_project_state, load_state, save_custom_item
     from ateam.db import DB
     from ateam.tui import CustomPanel, InputModeScreen, TeamApp
 
@@ -76,7 +76,7 @@ def test_tui_input_mode_picker_and_star_button(env, project, monkeypatch):
             assert await wait(lambda: isinstance(app.screen, InputModeScreen))
             await pilot.press("down", "enter")  # dòng 2: workflow "nhanh"
             assert await wait(lambda: app.cfg.default_workflow == "nhanh")
-            assert load_state()["default_workflow"] == "nhanh" and "⚙ nhanh" in label()
+            assert load_project_state(project)["default_workflow"] == "nhanh" and "⚙ nhanh" in label()
             assert "nhanh" in app.query_one("#cmd", Input).placeholder
             # bấm nút cạnh ô nhập: chọn lại trưởng nhóm
             app.query_one("#cmd-mode").press()

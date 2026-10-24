@@ -2231,7 +2231,7 @@ class DefaultFlowScreen(BaseModal):
                 msg = wizard.save_lead_flow(self.cfg, self.app.root, str(self.query_one("#df-quality", Select).value))
             else:
                 make_default = None if self.in_setup else self.query_one("#df-default", Checkbox).value
-                msg = wizard.save_flow(self.cfg, self.form["name"], self.values(),
+                msg = wizard.save_flow(self.cfg, self.app.root, self.form["name"], self.values(),
                                        self.query_one("#df-review", Checkbox).value, make_default)
         except ValueError as e:
             self.notify(str(e), severity="error")
@@ -2441,7 +2441,7 @@ class CustomPanel(Vertical):
             cmd.cursor_position = len(cmd.value)
             cmd.focus()
         elif action == "default-flow":  # gõ mục tiêu chạy workflow này (bấm lại: về trưởng nhóm)
-            self.notify(wizard.set_input_mode(self.cfg, "" if name == self.cfg.default_workflow else name))
+            self.notify(wizard.set_input_mode(self.cfg, self.root, "" if name == self.cfg.default_workflow else name))
             await self.changed()
         elif action in ("del-agent", "del-flow"):
             kind = "agents" if action == "del-agent" else "workflows"
@@ -8679,7 +8679,7 @@ class TeamApp(App):
             if name == InputModeScreen.CONFIG:
                 self.open_default_flow()
                 return
-            self.notify(wizard.set_input_mode(self.cfg, name))
+            self.notify(wizard.set_input_mode(self.cfg, self.root, name))
             self._show_input_mode()
             self.query_one("#cmd", Input).focus()
         self.push_screen(InputModeScreen(self.cfg), done)

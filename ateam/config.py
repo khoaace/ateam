@@ -901,16 +901,14 @@ def save_agent_setting(agent: str, key: str, value: str | None) -> None:
     save_state(state)
 
 
-def save_default_workflow(name: str | None) -> None:
-    """Workflow chạy khi gõ mục tiêu: tên, "" = bỏ (trưởng nhóm lập kế hoạch), None = giữ nguyên."""
+def save_default_workflow(root: Path, name: str | None) -> None:
+    """Workflow chạy khi gõ mục tiêu, theo dự án (.ateam/state.json, như preset chất lượng): tên; "" = trưởng nhóm lập
+    kế hoạch — ghi rõ để đè lựa chọn chung cũ (~/.config/ateam/state.json, bản ≤ 0.52 lưu ở đó); None = giữ nguyên."""
     if name is None:
         return
-    state = load_state()
-    if name:
-        state["default_workflow"] = name
-    else:
-        state.pop("default_workflow", None)
-    save_state(state)
+    st = load_project_state(root)
+    st["default_workflow"] = name
+    atomic_write(root / ".ateam" / "state.json", json.dumps(st, ensure_ascii=False, indent=2))
 
 
 def save_commit_agent(name: str) -> None:
@@ -1207,7 +1205,8 @@ def save_setup(root: Path, lead: str, agents: dict[str, dict],
 
     agents = {tên: {"enabled": bool, "model": str|None, "effort": str|None, "role": str|None}};
     model/effort/role None hoặc "" = theo file cấu hình. Giá trị trùng với file cấu hình thì không
-    ghi (để sửa file vẫn có tác dụng). default_workflow: workflow chạy khi gõ mục tiêu ("" = bỏ)."""
+    ghi (để sửa file vẫn có tác dụng). default_workflow: workflow chạy khi gõ mục tiêu ở dự án này ("" = trưởng nhóm).
+    """
     base = load_config(root, with_state=False)
     state = load_state()
     st_agents = state.setdefault("agents", {})
@@ -1231,10 +1230,7 @@ def save_setup(root: Path, lead: str, agents: dict[str, dict],
     else:
         state.pop("lead", None)
     if default_workflow is not None:
-        if default_workflow and default_workflow in base.workflows:
-            state["default_workflow"] = default_workflow
-        else:
-            state.pop("default_workflow", None)
+        save_default_workflow(root, default_workflow if default_workflow in base.workflows else "")
     state["onboarded"] = 1
     save_state(state)
 
@@ -1568,7 +1564,8 @@ def load_config(root: Path, with_state: bool = True) -> Config:
     )
     lim = data.get("limits") or {}
     lead = full_state.get("lead")
-    dwf = str(full_state.get("default_workflow") or "")
+    # luồng mặc định theo dự án; dự án chưa chọn thì theo lựa chọn chung cũ (bản ≤ 0.52)
+    dwf = str((pstate if "default_workflow" in pstate else full_state).get("default_workflow") or "")
     cag = str(full_state.get("commit_agent") or "")
     quality = str(pstate.get("quality") or data.get("quality") or "auto")  # theo dự án (popup Luồng mặc định)
     return Config(
