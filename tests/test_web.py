@@ -785,6 +785,32 @@ def test_web_need_you_hides_failed_tasks_of_done_goals(tmp_path):
     # diff chờ duyệt vẫn hiện; lỗi ở kế hoạch chưa xong và task ngoài kế hoạch vẫn hiện
     assert json.loads(out) == [23, 21, 20]
 
+def test_web_image_paths_in_task_text(tmp_path):
+    """Xem task / kế hoạch: bóc ảnh nội dung nhắc tới — @ảnh dán, @"có dấu cách", đường dẫn trần (app.js imagePaths)."""
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("không có node")
+    from ateam.web import STATIC
+    src = (STATIC / "app.js").read_text(encoding="utf-8")
+    code = src[src.index("const IMG_EXT"):src.index("function imagesHtml")]
+    texts = ["@.ateam/images/paste-1.png làm nền giống @.ateam/images/paste-2.PNG cho tôi",
+             "ảnh mẫu .ateam/images/a.png (ảnh hiện tại: .ateam/images/b.jpg), lại .ateam/images/a.png.",
+             '@"my shots/x 1.png" và `public/logo.svg` và ./img/c.webp',
+             "https://cdn.example/a.png, functions/api/speech.js, ảnh.png.bak, email@x.png"]
+    js = code + f"console.log(JSON.stringify({json.dumps(texts)}.map(imagePaths)));"
+    (tmp_path / "t.js").write_text(js, encoding="utf-8")
+    out = json.loads(subprocess.run([node, str(tmp_path / "t.js")], capture_output=True, text=True, check=True).stdout)
+    assert out[0] == [".ateam/images/paste-1.png", ".ateam/images/paste-2.PNG"]
+    assert out[1] == [".ateam/images/a.png", ".ateam/images/b.jpg"]  # trùng chỉ hiện một lần
+    assert out[2] == ["my shots/x 1.png", "public/logo.svg", "img/c.webp"]
+    assert out[3] == []  # link ngoài, file không phải ảnh, chữ dính @ giữa từ
+
 def test_web_lofi_links(tmp_path):
     """Nhạc lofi (lofi.js): nhận link YouTube các dạng → id, link http(s) khác → stream, còn lại từ chối."""
     import json

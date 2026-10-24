@@ -326,6 +326,17 @@ select:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
   margin: 0; padding: 8px 10px; border-radius: var(--radius); background: var(--term-bg); border: 1px solid var(--border);
   white-space: pre-wrap; word-break: break-word; font: 12px/1.55 var(--mono); color: var(--term-fg); max-height: 280px; overflow: auto;
 }
+/* ảnh nội dung nhắc tới (imagesHtml): ô thu nhỏ, bấm xem to */
+.img-strip { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.img-strip:empty { display: none; }
+.img-thumb {
+  padding: 0; width: 120px; height: 84px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface-2);
+  overflow: hidden; cursor: zoom-in;
+}
+.img-thumb:hover { border-color: var(--accent); }
+.img-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.img-full { padding: 12px; text-align: center; overflow: auto; }
+.img-full img { max-width: 100%; max-height: 78vh; object-fit: contain; border-radius: var(--radius); }
 .plan-detail textarea, .field {
   width: 100%; min-height: 120px; padding: 8px 10px; border-radius: var(--radius); background: var(--term-bg); border: 1px solid var(--border-strong);
   font: 12px/1.55 var(--mono); color: var(--term-fg); resize: vertical; outline: none;

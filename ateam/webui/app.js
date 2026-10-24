@@ -506,6 +506,30 @@ function renderGrill() {
     </div>`;
 }
 
+/* ảnh trong dự án mà nội dung nhắc tới: @ảnh dán (`@.ateam/images/…`, `@"có dấu cách.png"`) hay đường dẫn trần trưởng nhóm
+   viết trong prompt task. Hiện ảnh thu nhỏ (qua /api/raw), bấm để xem to; ảnh không có trong dự án thì tự ẩn */
+const IMG_EXT = "png|jpe?g|gif|webp|bmp|avif|svg";
+const IMG_RE = new RegExp(`(?:^|[\\s(\\[{"'\`])@?(?:"([^"\\n]+\\.(?:${IMG_EXT}))"|((?:[\\w.~-]+/)*[\\w.~-]+\\.(?:${IMG_EXT})))`
+  + `(?=$|[\\s)\\]}"'\`,;:!?]|\\.(?:\\s|$))`, "gi");
+function imagePaths(text) {
+  const seen = new Set();
+  for (const m of String(text || "").matchAll(IMG_RE)) seen.add((m[1] || m[2]).replace(/^\.\//, ""));
+  return [...seen].slice(0, 12);
+}
+function imagesHtml(text) {
+  const ps = imagePaths(text);
+  return ps.length ? `<div class="img-strip">${ps.map((p) => `<button class="img-thumb" data-action="img-view" data-path="${esc(p)}" title="${esc(p)}">
+    <img src="/api/raw?path=${encodeURIComponent(p)}" alt="${esc(p)}" loading="lazy"></button>`).join("")}</div>` : "";
+}
+document.addEventListener("error", (e) => {  // ảnh không tồn tại / ngoài dự án: bỏ ô đó (sự kiện error không nổi bọt)
+  const b = e.target.closest && e.target.closest(".img-thumb");
+  if (b) b.remove();
+}, true);
+function imageModal(p) {
+  openModal(`${modalHead(`<span class="mono">${esc(p)}</span>`)}<div class="img-full"><a href="/api/raw?path=${encodeURIComponent(p)}" target="_blank" rel="noopener">
+    <img src="/api/raw?path=${encodeURIComponent(p)}" alt="${esc(p)}"></a></div>`, { box: "lg" });
+}
+
 /* kế hoạch chờ duyệt */
 function renderPlan() {
   const box = $("#plan");
@@ -527,7 +551,7 @@ function renderPlan() {
         <span class="muted" style="font-size:12px">${esc([x.model, x.effort].filter(Boolean).join(" · "))}</span>
       </div>
       ${S.expanded.has(x.id) ? `<div class="plan-detail">
-        <div class="prompt-box md">${mdHtml(x.prompt)}</div>
+        ${imagesHtml(x.prompt)}<div class="prompt-box md">${mdHtml(x.prompt)}</div>
         <div class="row-actions"><button class="btn sm" data-action="plan-edit" data-task="${x.id}">✎ ${esc(t("edit"))}</button></div>
       </div>` : ""}
     </div>`;
@@ -631,11 +655,12 @@ async function planModal(gid) {
         <b class="pv-card-title">${esc(x.title)}</b>${meta ? `<span class="muted small">${esc(meta)}</span>` : ""}
         ${elapsedHtml(x.started, x.finished)}${badge(x.status, STATUS_LABEL(x.status), x.status === "running")}</div>
       <div class="pv-card-body md${x.error && !x.result ? " pv-err" : ""}">${out ? mdHtml(out) : `<span class="muted">${esc(t("no_result"))}</span>`}</div>
-      <details class="pv-prompt"><summary>${esc(t("plan_show_prompt"))}</summary><div class="prompt-box md">${mdHtml(x.prompt)}</div></details>
+      ${imagesHtml(x.result)}
+      <details class="pv-prompt"><summary>${esc(t("plan_show_prompt"))}</summary>${imagesHtml(x.prompt)}<div class="prompt-box md">${mdHtml(x.prompt)}</div></details>
     </div>`;
   }).join("");
   const m = openModal(`${modalHead("📋 " + esc(t("goal_plan_title", { id: g.id })))}<div class="modal-pad">
-    <div class="pv-goal md">${mdHtml(g.text)}</div>
+    <div class="pv-goal md">${mdHtml(g.text)}</div>${imagesHtml(g.text)}
     ${ts.length ? `<div class="pv-sec">📋 ${esc(t("plan_lead"))} <span class="muted">· ${esc(t("plan_count", { n: ts.length }))}</span></div>
       <div class="pv-steps">${steps}</div>
       <div class="pv-sec">🤖 ${esc(t("plan_agents"))}</div>${cards}`
@@ -1205,9 +1230,9 @@ function renderDrawer(full) {
   let body;
   if (!x || S.drawerTab === "log") body = `<div class="dr-body dark"><div class="log" id="dr-log"></div></div>`;
   else if (!fx) body = `<div class="dr-body"><div class="muted">…</div></div>`;
-  else if (S.drawerTab === "prompt") body = `<div class="dr-body"><div class="prompt-box md" style="max-height:none">${mdHtml(fx.prompt)}</div></div>`;
+  else if (S.drawerTab === "prompt") body = `<div class="dr-body">${imagesHtml(fx.prompt)}<div class="prompt-box md" style="max-height:none">${mdHtml(fx.prompt)}</div></div>`;
   else body = `<div class="dr-body">${x.error ? `<div class="sec-title">${esc(t("error"))}</div><div class="error-box">${esc(x.error)}</div>` : ""}
-      <div class="result-box md">${fx.result ? mdHtml(fx.result) : `<span class="muted">${esc(t("no_result"))}</span>`}</div></div>`;
+      ${imagesHtml(fx.result)}<div class="result-box md">${fx.result ? mdHtml(fx.result) : `<span class="muted">${esc(t("no_result"))}</span>`}</div></div>`;
   dr.innerHTML = `<div class="dr-head">${head}</div>${tabs}${body}`;
   if (logNode) $("#dr-log").replaceWith(logNode);  // giữ log đang hiện (và vị trí cuộn), chỉ vẽ lại phần đầu
   if (S.rejecting) $("#reject-fb").focus();
@@ -2110,6 +2135,7 @@ const ACTIONS = {
   "close-drawer": () => closeDrawer(),
   "close-modal": (el) => closeModal(el.closest(".modal")),
   "open-task": (el) => openTask(+el.dataset.task),
+  "img-view": (el, e) => { e.stopPropagation(); imageModal(el.dataset.path); },
   "dr-tab": (el) => { S.drawerTab = el.dataset.tab; renderDrawer(true); if (S.drawerTab === "log") loadLog(S.openTask); },
   "goal-filter": (el) => { S.goalFilter = el.dataset.goal ? +el.dataset.goal : null; renderGoals(); renderKanban(); },
   "board-mode": (el) => setBoardMode(el.dataset.mode),
