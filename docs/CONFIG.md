@@ -12,12 +12,13 @@ Nguồn cấu hình, ưu tiên tăng dần:
 4. `<dự án>/.ateam/config.toml` — merge sâu lên trên (chỉ cần ghi khoá muốn đổi). Tạo bằng
    `ateam init --project`.
 5. `~/.config/ateam/state.json` → `agents.<tên>.model|effort|enabled|role|full_access` (đặt bằng `/model`, `/effort`,
-   `ateam set`, wizard `/setup`), `lead` (vai trò Trưởng nhóm ở `/setup`), `default_workflow` (workflow chạy khi gõ
-   mục tiêu trong TUI — wizard đặt `tinh-nang` khi chọn kiểu "theo quy trình cố định"; workflow đã bị xoá thì bỏ
-   qua), `lang` (`vi`/`en`, `/lang`, `ateam lang`), `theme` / `accent` (theme Textual và màu nhấn, `/theme`), `vim` (`false` = tắt phím vim ở tab 📝 Code, `/vim off`), `fmt_save` / `autosave` (tab Code của web: format khi lưu, tự lưu — `>Bật/tắt…` trong palette; vắng = tắt), `commit_agent` (agent viết commit message ở tab 🌿 Git, chọn cạnh nút ✨; vắng = trưởng nhóm), `git_tree` (`true` = tab 🌿 Git của TUI hiện file thay đổi theo cây thư mục, phím `t`; web nhớ riêng trong trình duyệt), `notify` (`app` = chỉ toast/chuông trong app, `off` = tắt; vắng = cả thông báo hệ thống/trình duyệt — `/notify`), `approve_plan` / `auto_review` (kiểu làm việc ở `/setup`; chỉ ghi khi khác `true`), `onboarded` (đã qua
+   `ateam set`, wizard `/setup`), `lead` (vai trò Trưởng nhóm ở `/setup`), `default_workflow` (chỉ còn đọc: lựa chọn
+   chung của bản ≤ 0.52, dùng cho dự án chưa tự chọn — xem `.ateam/state.json` dưới), `lang` (`vi`/`en`, `/lang`, `ateam lang`), `theme` / `accent` (theme Textual và màu nhấn, `/theme`), `vim` (`false` = tắt phím vim ở tab 📝 Code, `/vim off`), `fmt_save` / `autosave` (tab Code của web: format khi lưu, tự lưu — `>Bật/tắt…` trong palette; vắng = tắt), `commit_agent` (agent viết commit message ở tab 🌿 Git, chọn cạnh nút ✨; vắng = trưởng nhóm), `git_tree` (`true` = tab 🌿 Git của TUI hiện file thay đổi theo cây thư mục, phím `t`; web nhớ riêng trong trình duyệt), `notify` (`app` = chỉ toast/chuông trong app, `off` = tắt; vắng = cả thông báo hệ thống/trình duyệt — `/notify`), `approve_plan` / `auto_review` (kiểu làm việc ở `/setup`; chỉ ghi khi khác `true`), `onboarded` (đã qua
    wizard lần đầu; xoá khoá này để hiện lại), `models_found.<tên>` (model hỏi được từ CLI qua `models_command`),
    `recent_projects` (dự án mở gần đây, tối đa 20, cho `/open`; ghi mỗi lần mở TUI / `ateam web`), và
-   `<dự án>/.ateam/state.json` → `verify_command` (đặt bằng `/verify` hoặc bước *Lệnh kiểm tra*), `isolation` /
+   `<dự án>/.ateam/state.json` → `default_workflow` (workflow chạy khi gõ mục tiêu ở dự án này — F4 / nút cạnh ô nhập, ★
+   ở trang Workflows, popup Luồng mặc định, wizard đặt `tinh-nang` khi chọn kiểu "theo quy trình cố định"; `""` = trưởng
+   nhóm lập kế hoạch; vắng = theo `default_workflow` chung cũ; workflow đã bị xoá thì bỏ qua), `verify_command` (đặt bằng `/verify` hoặc bước *Lệnh kiểm tra*), `isolation` /
    `merge` (bước *An toàn & duyệt code*, riêng từng dự án), `quality` (preset chất lượng chọn ở popup *Luồng mặc
    định* → ★ Trưởng nhóm lập kế hoạch; vắng = `auto`).
    Agent wizard tự tạo thêm (cùng CLI, model khác, vd `claude-review`) nằm trong `custom.toml` với `wizard = true`;
@@ -44,6 +45,10 @@ git có thêm `.ateam-source.json` ghi url / ref / commit). ateam còn đọc (k
 `~/.config/opencode/skill(s)`) và trong repo (`.agents/skills`, `.claude/skills`, `.opencode/skill(s)`, `.grok/skills`).
 Bật/tắt theo dự án ở `~/.config/ateam/skill-sets/<cùng tên file>.json`: `{"on": [...], "off": [...]}` — mặc định bật
 skill của dự án và thư viện, tắt skill trong thư mục CLI. `ATEAM_SKILLS_HOME` đổi thư mục nhà để tìm skill của CLI (test).
+
+Workflow riêng của dự án (ô *Chỉ dùng cho dự án này* ở form workflow) ở `~/.config/ateam/workflows/<cùng tên file>.json`:
+`{"<tên>": {thân như [workflows.<tên>] của custom.toml}}` — gộp sau `custom.toml`, trước `.ateam/config.toml`; trùng
+tên thì thay hẳn bản chung (không gộp từng khoá).
 
 Bản tổng quan dự án (`/init`, `ateam/overview.py`) ở `<dự án>/.ateam/project.md` (trong `.ateam/` nên git bỏ qua):
 dòng đầu `<!-- ateam:init commit=<sha> date=<YYYY-MM-DD> -->`, còn lại là markdown — sửa tay được, `/init` lần sau
@@ -151,10 +156,10 @@ Mỗi bước:
 | --- | --- | --- |
 | `agent` | `"lead"` | Tên agent; `"lead"` = trưởng nhóm lúc chạy. Agent không có/đang tắt → giao cho trưởng nhóm (như kế hoạch) |
 | `title` | `"Bước N"` | Tiêu đề task; `{goal}` được thay |
-| `prompt` | tiêu đề | Nội dung task; `{goal}` được thay (mục tiêu luôn có trong prompt dù không dùng `{goal}`) |
+| `prompt` | tiêu đề | Nội dung task; `{goal}` được thay (mục tiêu luôn có trong prompt dù không dùng `{goal}`); `$tên-skill` gắn skill cho bước |
 | `after` | bước liền trước | Số thứ tự bước (từ 1) phải xong trước; `[]` = chạy ngay |
 | `effort`, `model` | `""` | Riêng cho task của bước này (không bị lọc như effort trưởng nhóm đặt) |
-| `type` | `"code"` | `"code"` làm việc; `"review"` agent xem diff của các bước nó chờ, tự sửa lỗi nhỏ, giao lỗi lớn cho tác giả; `"verify"` ateam chạy lệnh `[verify]` một lần trên kết quả gộp của các bước nó chờ, fail mới gọi `agent` của bước sửa (chưa đặt lệnh → bước xong ngay). Workflow không bị thêm/bớt bước theo `quality` |
+| `type` | `"code"` | `"code"` làm việc; `"review"` agent xem diff của các bước nó chờ, tự sửa lỗi nhỏ, giao lỗi lớn cho tác giả; `"verify"` ateam chạy lệnh `[verify]` một lần trên kết quả gộp của các bước nó chờ, fail mới gọi `agent` của bước sửa (chưa đặt lệnh → bước xong ngay); `"gate"` ⏸ bước chờ người dùng duyệt (không gọi agent, `agent` bỏ qua): Tiếp tục / Dừng / góp ý để các bước nó chờ làm lại, `ateam flow -y` tự duyệt. Workflow không bị thêm/bớt bước theo `quality` |
 
 ## Mặc định của 5 agent (config_version 9)
 

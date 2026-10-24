@@ -83,7 +83,8 @@ Chạy thử với agent giả lập thay vì CLI thật:
    prompt luôn dặn agent viết theo ngôn ngữ của mục tiêu.
 6. **Giữ nguyên giao thức output** mà `prompts.py` bóc: `SUMMARY:`, `<<<DELEGATE to="…" title="…">>> … <<<END>>>`,
    `<<<NOTE>>> … <<<END>>>`, `<<<ASK>>>{json câu hỏi}<<<END>>>`, `<<<SKILL>>> SKILL.md <<<END>>>` (✨ AI viết skill), kế hoạch là mảng JSON (task có thể kèm `"skills"`), review là object JSON, câu hỏi `/grill` là object JSON
-   (`question`/`options`/`recommended` hoặc `done`/`spec`), gợi ý workflow là object JSON (`name`/`description`/`review`/`steps`). Đổi giao thức = đổi
+   (`question`/`options`/`recommended` hoặc `done`/`spec`), gợi ý workflow là object JSON (`name`/`description`/`review`/`steps`; bước có `type` `code`/`review`/`verify`/`gate`
+— `gate` = ⏸ bước chờ người dùng duyệt, không gọi agent). Đổi giao thức = đổi
    cả prompt, parser, agent giả lập và test.
 7. **Đổi mặc định trong `DEFAULT_CONFIG`** → tăng `CONFIG_VERSION` (file của người dùng sẽ được sao lưu
    và thay mới) và cập nhật `docs/CONFIG.md`. Thêm khoá mới mà không đổi mặc định cũ thì chỉ cần có

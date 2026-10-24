@@ -78,8 +78,10 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
    `opencode run --format json` có phiên bản thoát trước khi in hết sự kiện.
 4. **Nhận việc từ GitHub Issue / Linear** — `ateam issue 123` (dùng `gh issue view --json`) tạo mục
    tiêu; xong thì mở PR (`gh pr create`) với mô tả từ SUMMARY các task.
-5. ~~**Playbook dựng sẵn**~~ — đã làm dưới tên *workflow* (`/custom`, `/flow`, `[workflows.*]`).
-   Còn có thể: workflow riêng theo dự án sửa được trong app (hiện `/custom` chỉ ghi file chung).
+5. ~~**Playbook dựng sẵn**~~ — đã làm dưới tên *workflow* (`/custom`, `/flow`, `[workflows.*]`), kể cả workflow riêng
+   theo dự án, bước ⏸ duyệt, lưu mục tiêu thành workflow. Còn có thể: thống kê theo workflow (tỉ lệ xong, thời gian,
+   chi phí), nhân bản workflow; góp ý ở bước duyệt hiện chỉ cho các bước bước duyệt chờ làm lại (nhánh song song khác
+   đã dùng kết quả cũ thì không).
 6. **Thông báo** — macOS (`osascript -e 'display notification …'`), Telegram/Slack webhook khi mục
    tiêu xong hoặc task lỗi. Gợi ý: khối `[notify]`, gọi trong `_review` và nhánh `failed` của `_run_task`.
 7. ~~**Agent hỏi lại người dùng**~~ — đã làm (`<<<ASK>>>`, trạng thái `asking`, khung /grill).

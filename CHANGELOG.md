@@ -1,5 +1,25 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Workflow: bước ⏸ chờ bạn duyệt** — loại bước mới `gate` (mẫu *tinh-nang-duyet*: thiết kế → ⏸ bạn duyệt → code
+  → review). Khi các bước trước xong, ateam hỏi bạn ở khung hỏi đáp (kèm thông báo): *Tiếp tục* chạy bước sau, *Dừng*
+  kết thúc mục tiêu, gõ góp ý thì bước trước làm lại theo góp ý rồi hỏi lại. Bước sau vẫn nhận kết quả của bước trước
+  bước duyệt (vd bản thiết kế).
+- **🔀 Lưu mục tiêu thành workflow** — ở khung 📋 kế hoạch của mục tiêu đã xong (cạnh 💾 Lưu thành skill): trưởng nhóm
+  khái quát các bước đã chạy thành workflow có `{goal}`, mở form điền sẵn để bạn sửa rồi lưu.
+- **Workflow riêng theo dự án** — ô *Chỉ dùng cho dự án này* ở form workflow; trang Workflows đánh dấu 📁.
+- **Luồng mặc định theo từng dự án** — chọn "gõ mục tiêu chạy workflow nào" ở dự án này không còn đổi theo ở dự án
+  khác; dự án chưa chọn vẫn dùng lựa chọn cũ.
+- **Form workflow (web) dễ sửa hơn** — ↑ ↓ đổi thứ tự, ＋ chèn bước giữa, *Sau bước* tự cập nhật khi chuyển / xoá
+  bước, ô prompt nhiều dòng, cảnh báo ngay khi bước dùng agent đang tắt hoặc bước verify chưa có lệnh kiểm tra.
+- **Trang Workflows** — nút ▶ Chạy (điền `/flow <tên>` vào ô nhập), tóm tắt thấy bước song song (`‖`), cảnh báo ⚠.
+- **Skill trong bước workflow** — `$tên-skill` trong prompt bước gắn skill đó (chip 🧩 hiện ngay trên task nháp);
+  ✨ Gợi ý workflow biết skill đang bật và tự chèn `$tên`.
+- **Sửa: `/retry` bước đầu của một chuỗi không chạy lại các bước sau xa hơn** — vd workflow 3 bước lỗi ở bước 1,
+  retry xong bước Review vẫn kẹt "bị chặn". Giờ mọi bước phía sau được xếp lại.
+- Mẫu workflow hiện theo ngôn ngữ giao diện (tiếng Anh khi dùng `--lang en`).
+
 ## 0.52.0 — 24/10/2026
 
 - **🧩 Skills — thư viện skill chung cho cả đội** — gom skill (chuẩn Agent Skills, thư mục có `SKILL.md`) từ thư mục của

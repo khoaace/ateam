@@ -620,7 +620,10 @@ mục *Workflows* ở sidebar). Ở màn hình thiết lập vẫn có nút *Age
 **Gõ mục tiêu chạy workflow nào**: nút ngay bên trái ô nhập (TUI: bấm hoặc **F4**) cho chọn *★ Trưởng nhóm lập kế
 hoạch* hay một workflow (kể cả workflow bạn tự tạo) — từ đó gõ prompt thẳng là chạy workflow đó, không cần
 `/flow <tên>`; `/goal` vẫn luôn để trưởng nhóm lập kế hoạch. Mỗi workflow ở tab Workflows cũng có nút **★ Đặt mặc
-định** / **☆ Bỏ mặc định**. Lựa chọn dùng chung cho terminal và web.
+định** / **☆ Bỏ mặc định** và **▶ Chạy** (điền `/flow <tên>` vào ô nhập: gõ mục tiêu rồi Enter — chạy một lần, không
+đổi mặc định). Lựa chọn lưu **theo từng dự án** (dự án chưa chọn dùng lựa chọn chung cũ), dùng chung cho terminal và web.
+Trang Workflows tóm tắt các bước (`lead → codex ‖ grok → claude (review)`: `‖` = chạy song song) và cảnh báo ⚠ khi
+bước dùng agent đang tắt (lúc chạy sẽ giao cho trưởng nhóm) hoặc bước verify mà chưa đặt lệnh kiểm tra.
 
 **Luồng mặc định** (`/flow-setup`, nút *⚙ Luồng mặc định* ở tab Workflows, hoặc *⚙ Cấu hình luồng cố định…* ở bước
 *Kiểu làm việc* của `/setup`): một nơi chọn gõ mục tiêu sẽ chạy theo đâu — *★ Trưởng nhóm lập kế hoạch* với preset
@@ -639,16 +642,29 @@ model/effort ở `/setup`, trưởng nhóm thấy nó khi lập kế hoạch).
 
 **Thêm workflow**: chuỗi bước dựng sẵn, chạy không cần trưởng nhóm lập kế hoạch. Mỗi bước gồm agent (hoặc
 *trưởng nhóm*), loại (`code` làm việc · `review` agent khác xem thay đổi của các bước nó chờ, sửa lỗi nhỏ ·
-`verify` ateam chạy lệnh `/verify` trên kết quả gộp, fail mới gọi agent của bước sửa), tiêu đề, prompt (`{goal}` =
+`verify` ateam chạy lệnh `/verify` trên kết quả gộp, fail mới gọi agent của bước sửa · `gate` ⏸ chờ bạn duyệt, xem
+dưới), tiêu đề, prompt (`{goal}` =
 mục tiêu bạn gõ), *Sau bước* (trống = sau bước liền trước, `0` = chạy ngay song song, `1,2` = sau bước 1 và 2) và
 effort riêng. Có mẫu *tính năng mới* (thiết kế → code + test → review), *sửa lỗi* (tái hiện + sửa + test chống tái
-diễn → review), *review code* — bước `*` của mẫu lấy agent giữ vai trò hợp (Code chính / Review code ở `/setup`).
-Tick *Trưởng nhóm review khi xong* để trưởng nhóm review và giao thêm việc như mục tiêu thường.
+diễn → review), *tính năng mới, duyệt thiết kế trước* (thiết kế → ⏸ duyệt → code → review), *review code* — bước `*` của mẫu lấy agent giữ vai trò hợp (Code chính / Review code ở `/setup`).
+Tick *Trưởng nhóm review khi xong* để trưởng nhóm review và giao thêm việc như mục tiêu thường. Tick *Chỉ dùng cho dự
+án này* để workflow chỉ hiện ở dự án đang mở (📁 trên trang Workflows; lưu ngoài repo ở
+`~/.config/ateam/workflows/`). Trên web, mỗi bước có ↑ ↓ (đổi thứ tự), ＋ (chèn bước ngay dưới), ✕; *Sau bước* tự cập
+nhật theo khi chuyển / xoá bước. Gõ `$tên-skill` trong prompt của bước để bước đó làm theo skill (trang 🧩 Skills).
+
+**⏸ Bước chờ bạn duyệt** (loại `gate`, mẫu *tinh-nang-duyet*: thiết kế → ⏸ duyệt → code → review): khi các bước nó chờ
+xong, ateam dừng và hỏi bạn ở khung hỏi đáp (có thông báo) — **Tiếp tục** chạy bước sau, **Dừng** kết thúc mục tiêu
+(không review), hoặc gõ góp ý vào ô nhập để bước trước làm lại theo góp ý rồi hỏi lại. Bước duyệt không gọi agent nào;
+bước sau vẫn nhận kết quả của bước trước bước duyệt. `ateam flow -y` tự duyệt.
+
+**🔀 Lưu mục tiêu thành workflow**: một kế hoạch chạy tốt muốn dùng lại thì mở khung 📋 kế hoạch của mục tiêu đã xong (web)
+→ *🔀 Lưu thành workflow*: trưởng nhóm khái quát các bước (thay chi tiết bằng `{goal}`) và mở form điền sẵn — sửa rồi lưu.
 
 Không muốn tự điền từng bước? Gõ quy trình bạn muốn vào ô **✨ Gợi ý** (vd: *"thiết kế API, hai agent code
 song song backend và frontend, rồi viết test e2e"*) rồi Enter / bấm *Gợi ý*: trưởng nhóm thiết kế các bước
-theo đúng thành viên trong đội — agent, tiêu đề, prompt có `{goal}`, *Sau bước*, effort — và điền sẵn vào form
-(chưa lưu). Sửa lại nếu cần rồi lưu. Agent không có trong đội thành trưởng nhóm, effort không hợp lệ bị bỏ.
+theo đúng thành viên trong đội — agent, tiêu đề, prompt có `{goal}`, *Sau bước*, effort, `$skill` đang bật hợp với bước —
+và điền sẵn vào form (chưa lưu). Sửa lại nếu cần rồi lưu. Agent không có trong đội thành trưởng nhóm, effort không hợp
+lệ bị bỏ.
 
 ```
 /flow                                  xem các workflow

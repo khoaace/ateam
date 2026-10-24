@@ -239,3 +239,17 @@ Người dùng chọn cách này (24/10/2026).
 **Xem lại nếu**: người dùng muốn skill có tác dụng cả khi mở CLI ngoài ateam (thêm nút "Cài cho CLI": symlink vào thư
 mục của từng CLI), agent không đọc được file phụ của skill nằm ngoài worktree (thêm `--add-dir` cho claude), hoặc danh
 sách gửi trưởng nhóm quá dài (lọc theo mục tiêu).
+
+## 22. Workflow: bước ⏸ duyệt dùng lại khung hỏi đáp; workflow và luồng mặc định theo dự án
+
+**Lý do**: workflow chạy một mạch nên không có chỗ xem lại thiết kế trước khi code. Bước duyệt là một *loại task*
+(`gate`) chứ không phải cơ chế mới: dùng lại bộ lập lịch (chờ phụ thuộc, bị chặn, `/retry`), trạng thái `asking`, khung
+hỏi đáp TUI/web, thông báo và "Cần bạn" của `<<<ASK>>>` — không thêm cột DB, không gọi agent (không tốn token). Góp ý
+cho các bước nó chờ làm lại trong cùng phiên (agent nhớ việc đã làm) rồi hỏi lại; Dừng kết thúc mục tiêu không review
+(người dùng đã quyết). Kế hoạch của trưởng nhóm không có bước duyệt: đã có `approve_plan`. Workflow riêng dự án lưu
+ngoài repo (`~/.config/ateam/workflows/<dự án>.json`) như rule / skill-sets (#15, #21); ai cần chia sẻ qua git vẫn viết
+`[workflows.*]` trong `.ateam/config.toml`. Luồng mặc định (`default_workflow`) chuyển từ `state.json` chung sang
+`.ateam/state.json` cho khớp preset chất lượng cùng popup; dự án chưa chọn đọc giá trị chung cũ. Skill của bước dùng
+`$tên` trong prompt (đã chạy được) thay vì thêm khoá TOML. Người dùng chọn các mục này (24/10/2026).
+**Xem lại nếu**: người dùng muốn góp ý ở bước duyệt chạy lại cả nhánh song song đã dùng kết quả cũ, hoặc muốn chia sẻ
+workflow riêng dự án cho người khác (khi đó lưu trong repo).

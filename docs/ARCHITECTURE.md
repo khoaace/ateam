@@ -82,7 +82,13 @@ không lập được kế hoạch. `cancelled` khi người dùng bỏ kế ho�
 tiêu `awaiting`, TUI hiện `PlanBar` (`#plan`, nằm ngoài các tab) cho mục tiêu chờ lâu nhất và chuyển
 focus vào nút duyệt nếu ô nhập đang trống. Mục tiêu tạo từ workflow (`run_workflow`, cột `workflow`) bỏ qua `planning`:
 các bước chèn thẳng qua `_insert_plan(from_user=True)` (giữ effort/model/loại của bước, không qua `_apply_checks`);
-`workflow.review` (nếu đặt) thay `auto_review` khi `_check_goals` quyết định có review không. Mục tiêu trưởng nhóm lập kế
+`workflow.review` (nếu đặt) thay `auto_review` khi `_check_goals` quyết định có review không. Bước ⏸ duyệt (`kind =
+"gate"`, chỉ trong workflow — `_insert_plan` đổi thành `code` với kế hoạch của trưởng nhóm) không gọi agent: `tick` thấy
+mọi bước nó chờ `done` thì `_gate_ask` chuyển nó sang `asking` (câu hỏi có `gate: true`, hiện ở khung hỏi đáp như
+`<<<ASK>>>`; `auto_answer` thì `done` luôn). `_gate_answer`: Tiếp tục → `done`; Dừng → `cancelled`, huỷ lan truyền các
+bước phía sau, mục tiêu `incomplete` (không review); chữ khác là góp ý → các bước nó chờ về `queued` (tiếp phiên với
+`user_feedback_prompt`, không có phiên thì nối góp ý vào prompt), bước duyệt về `queued` và hỏi lại.
+`_through_gates` thay bước duyệt bằng các bước nó chờ khi bàn giao kết quả (`deps`, `_diff_hint`) cho bước sau. Mục tiêu trưởng nhóm lập kế
 hoạch với preset `quality = "fast"`: mọi task xong và qua kiểm tra (`_clean`: có lệnh verify, task đã qua kiểm tra
 riêng hoặc được kiểm tra cuối bao, không có task review) thì `done` luôn, không gọi review. Task giao tay (`/task`, `ateam add` ngoài agent) không thuộc mục tiêu nào
 nên không được review.
