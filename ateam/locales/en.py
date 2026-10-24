@@ -4763,4 +4763,18 @@ EN: dict[str, str] = {
         "Scope",
     "bỏ tick: mọi dự án":
         "unticked: every project",
+    "Lưu thành workflow":
+        "Save as workflow",
+    "Trưởng nhóm khái quát cách đội đã làm mục tiêu #{id} thành workflow dùng lại được (thay chi tiết bằng {goal}) — bạn xem lại rồi lưu.":
+        "The team lead turns how the team did goal #{id} into a reusable workflow (details replaced by {goal}) — you review it, then save.",
+    "🔀 {lead} đang khái quát mục tiêu thành workflow…":
+        "🔀 {lead} is turning the goal into a workflow…",
+    "🔀 Đã khái quát {n} bước — xem lại rồi bấm Lưu":
+        "🔀 Generalized {n} steps — review them, then press Save",
+    "Chỉ lưu được mục tiêu đã xong thành workflow":
+        "Only a finished goal can be saved as a workflow",
+    "Mục tiêu #{gid} không có task nào":
+        "Goal #{gid} has no tasks",
+    "Lưu mục tiêu #{gid} thành workflow":
+        "Save goal #{gid} as a workflow",
 }

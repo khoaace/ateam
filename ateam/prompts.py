@@ -606,6 +606,23 @@ WHAT THE USER WANTS THE WORKFLOW TO DO:
 {WORKFLOW_SPEC}"""
 
 
+def workflow_from_goal_prompt(cfg: Config, goal: str, steps: str, cwd: str, skills: str = "") -> str:
+    """🔀 Lưu mục tiêu thành workflow: khái quát các task của mục tiêu đã xong thành workflow dùng lại được."""
+    return f"""{_workflow_head(cfg, cwd)}
+
+TURN THIS FINISHED GOAL INTO A REUSABLE WORKFLOW. The team completed this goal:
+{goal}
+
+THE TASKS THAT RAN (step numbers are what "after" refers to):
+{steps}
+
+Keep the structure that worked (members, step types, which steps wait for which). Replace details that are
+specific to this goal with {{goal}} so the workflow fits similar goals; keep project facts that stay true
+(commands, paths, conventions). Drop steps that only fixed one-off problems of this run.
+{(chr(10) + skills + chr(10)) if skills else ''}
+{WORKFLOW_SPEC}"""
+
+
 def extract_commit_message(text: str) -> str:
     """Commit message sau dòng SUMMARY: cuối cùng (bỏ rào ``` và ngoặc kép bao ngoài)."""
     if "SUMMARY:" not in text:

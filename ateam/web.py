@@ -315,6 +315,10 @@ def ui_strings() -> dict[str, str]:
         "sk_ai_hint": tr("Mô tả skill bạn muốn — agent viết SKILL.md (tiếng Anh, cho agent đọc), bạn xem lại rồi lưu."),
         "sk_ai_ph": tr("Mô tả skill bạn muốn (vd: quy trình deploy lên Cloudflare Pages)"),
         "sk_from_goal": tr("Lưu thành skill"),
+        "wf_from_goal": tr("Lưu thành workflow"),
+        "wf_from_goal_hint": tr("Trưởng nhóm khái quát cách đội đã làm mục tiêu #{id} thành workflow dùng lại được "
+                                "(thay chi tiết bằng {goal}) — bạn xem lại rồi lưu."),
+        "wf_from_goal_wait": tr("🔀 {lead} đang khái quát mục tiêu thành workflow…"),
         "sk_from_goal_hint": tr("Agent rút cách đội đã làm mục tiêu #{id} thành skill dùng lại được — bạn xem lại rồi lưu."),
         "sk_focus_ph": tr("Trọng tâm (không bắt buộc), vd: chỉ phần build và deploy"),
         "sk_ai_agent": tr("Agent viết"), "sk_ai_go": tr("Viết"), "sk_ai_busy": tr("Agent đang viết skill…"),
@@ -1193,7 +1197,7 @@ class WebApp:
             return d.get("action") in self.SLOW_GIT
         if op == "submit":
             return str(d.get("text") or "").strip().startswith(self.SLOW_CMDS)
-        return op in ("workflow_suggest", "code_format", "code_ai", "open_window") + SKILL_SLOW
+        return op in ("workflow_suggest", "workflow_from_goal", "code_format", "code_ai", "open_window") + SKILL_SLOW
 
     async def _answer(self, ws: web.WebSocketResponse, data) -> None:
         """Chạy một thao tác rồi trả lời bằng toast (kèm ref nếu trình duyệt đang chờ)."""
@@ -1463,6 +1467,11 @@ class WebApp:
             return await self.setup.delete_custom(d)
         if op == "workflow_suggest":
             return await self.setup.suggest_workflow(d)
+        if op == "workflow_from_goal":  # 🔀 Lưu mục tiêu thành workflow (khung 📋 kế hoạch của mục tiêu đã xong)
+            ok, res = await self.orch.workflow_from_goal(int(d.get("goal") or 0))
+            if not ok:
+                return str(res), "warn"
+            return tr("🔀 Đã khái quát {n} bước — xem lại rồi bấm Lưu", n=len(res["steps"])), "ok", {"wf_from_goal": res}
         if op == "default_flow_save":
             return await self.setup.save_default_flow(d)
         if op == "input_mode":  # ô chọn cạnh ô nhập / nút ★ ở mục Tuỳ chỉnh: gõ mục tiêu chạy workflow nào

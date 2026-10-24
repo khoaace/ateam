@@ -1122,3 +1122,29 @@ def test_web_todo_fab_wired():
     for f in ("lofi.js", "index.html"):
         html = (STATIC / f).read_text(encoding="utf-8")
         assert "M4 15v-3a8 8" not in html and "M9 17.5V5.5l11-2v12" in html
+
+
+def test_web_workflow_from_goal(env, project, monkeypatch, tmp_path):
+    """🔀 Lưu mục tiêu thành workflow: chỉ mục tiêu đã xong; trưởng nhóm nhận các task (agent, loại, chờ bước nào) →
+    form điền sẵn, tick 'Chỉ dự án này'."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    env["ATEAM_FAKE_FULL_LOG"] = str(tmp_path / "full.log")
+    wa = _web_app(env, project, monkeypatch)
+
+    async def main():
+        gid = wa.db.add_goal("Thêm trang đăng nhập")
+        a = wa.db.add_task("codex", "Viết API", "viết API /login", goal_id=gid, status="done")
+        b = wa.db.add_task("claude", "Review", "review API", goal_id=gid, status="done", kind="review")
+        wa.db.update_task(b, depends_on=[a])
+        wa.db.add_task("grok", "Bỏ", "x", goal_id=gid, status="cancelled")
+        assert (await wa.handle({"op": "workflow_from_goal", "goal": gid}))[1] == "warn"  # chưa xong
+        wa.db.update_goal(gid, status="done")
+        assert wa.slow_op({"op": "workflow_from_goal", "goal": gid})
+        r = await wa.handle({"op": "workflow_from_goal", "goal": gid})
+        f = r[2]["wf_from_goal"]
+        assert r[1] == "ok" and f["name"] == "tu-muc-tieu" and f["project"] is True and len(f["steps"]) == 3
+        log = (tmp_path / "full.log").read_text()
+        assert "FINISHED GOAL" in log and "1. [codex, code] Viết API — waits for: none" in log
+        assert "2. [lead, review] Review — waits for: 1" in log and "Bỏ" not in log  # task huỷ không gửi
+    asyncio.run(main())

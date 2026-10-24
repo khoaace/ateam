@@ -659,7 +659,8 @@ async function planModal(gid) {
       <details class="pv-prompt"><summary>${esc(t("plan_show_prompt"))}</summary>${imagesHtml(x.prompt)}<div class="prompt-box md">${mdHtml(x.prompt)}</div></details>
     </div>`;
   }).join("");
-  const toSkill = g.status === "done" ? `<button class="btn sm" data-to-skill="${g.id}" title="${esc(t("sk_from_goal_hint", { id: g.id }))}">💾 ${esc(t("sk_from_goal"))}</button>` : "";
+  const toSkill = g.status === "done" ? `<button class="btn sm" data-to-flow="${g.id}" title="${esc(t("wf_from_goal_hint", { id: g.id }))}">🔀 ${esc(t("wf_from_goal"))}</button>
+    <button class="btn sm" data-to-skill="${g.id}" title="${esc(t("sk_from_goal_hint", { id: g.id }))}">💾 ${esc(t("sk_from_goal"))}</button>` : "";
   const m = openModal(`${modalHead("📋 " + esc(t("goal_plan_title", { id: g.id })), toSkill)}<div class="modal-pad">
     <div class="pv-goal md">${mdHtml(g.text)}</div>${imagesHtml(g.text)}
     ${ts.length ? `<div class="pv-sec">📋 ${esc(t("plan_lead"))} <span class="muted">· ${esc(t("plan_count", { n: ts.length }))}</span></div>
@@ -671,6 +672,8 @@ async function planModal(gid) {
   m.addEventListener("click", (e) => {
     const k = e.target.closest("[data-to-skill]");
     if (k) { SkillsView.fromGoal(+k.dataset.toSkill); return; }
+    const f = e.target.closest("[data-to-flow]");
+    if (f) { Setup.flowFromGoal(+f.dataset.toFlow, f); return; }
     const s = e.target.closest("[data-jump]");
     if (!s) return;
     const card = $("#pv-task-" + s.dataset.jump, m);

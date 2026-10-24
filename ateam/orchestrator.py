@@ -19,7 +19,8 @@ from . import overview
 from . import prompts as P
 from . import rules
 from . import skills
-from .config import EFFORT_REJECTED_RE, KIND_CODE, KIND_REVIEW, KIND_VERIFY, AgentConfig, Config, task_kind
+from .config import (EFFORT_REJECTED_RE, KIND_CODE, KIND_REVIEW, KIND_VERIFY, LEAD_ALIAS, AgentConfig, Config,
+                     task_kind)
 from .db import (ACTIVE, ASKING, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
                  FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Goal, Task)
 from .logtail import read_tail
@@ -1689,6 +1690,32 @@ class Orchestrator:
         out = await self._call_lead(P.workflow_suggest_prompt(self.cfg, description.strip(), str(self.root),
                                                               skills.index_block(on)), tr("Gợi ý workflow"))
         return self._workflow_form(out, on)
+
+    async def workflow_from_goal(self, gid: int) -> tuple[bool, "dict | str"]:
+        """🔀 Lưu mục tiêu đã xong thành workflow: trưởng nhóm khái quát các task (giữ cấu trúc, thay chi tiết bằng
+        {goal}) → dữ liệu điền form workflow, chưa lưu; "project" tick sẵn (thường mang lệnh / đường dẫn của dự án)."""
+        g = self.db.goal(gid)
+        if not g or g.status != "done":
+            return False, tr("Chỉ lưu được mục tiêu đã xong thành workflow")
+        tasks = [t for t in self.db.tasks(goal_id=gid) if t.status != CANCELLED]
+        if not tasks:
+            return False, tr("Mục tiêu #{gid} không có task nào", gid=gid)
+        num = {t.id: i for i, t in enumerate(tasks, 1)}
+        lines = []
+        for i, t in enumerate(tasks, 1):
+            deps = ", ".join(str(num[d]) for d in t.depends_on if d in num) or "none"
+            agent = LEAD_ALIAS if t.agent == self.cfg.lead else t.agent
+            prompt = t.prompt if len(t.prompt) <= 600 else t.prompt[:600] + "…"
+            lines.append(f"{i}. [{agent}, {t.kind or KIND_CODE}] {t.title} — waits for: {deps} — {t.status}\n"
+                         f"   Prompt: {prompt}")
+        on = skills.enabled(self.root, skills.scan(self.root))
+        out = await self._call_lead(P.workflow_from_goal_prompt(self.cfg, g.full_text(), "\n".join(lines),
+                                                                str(self.root), skills.index_block(on)),
+                                    tr("Lưu mục tiêu #{gid} thành workflow", gid=gid))
+        ok, form = self._workflow_form(out, on)
+        if ok:
+            form["project"] = True
+        return ok, form
 
     def _workflow_form(self, out: str | None, on: list) -> tuple[bool, "dict | str"]:
         """JSON workflow trưởng nhóm trả về → dữ liệu điền form (skill của bước thành $tên trong prompt)."""

@@ -602,5 +602,12 @@ window.Setup = (() => {
     });
   }
 
-  return { open, discovered, custom, showCustom, flowModal, rolesModal, rolesPanel, addAgent, editAgent, deleteAgent };
+  /* 🔀 Lưu mục tiêu thành workflow (khung 📋 kế hoạch): trưởng nhóm khái quát → form workflow điền sẵn, chưa lưu */
+  async function flowFromGoal(gid, btn) {
+    const r = await busyBtn(btn, request("workflow_from_goal", { goal: gid }, t("wf_from_goal_wait", { lead: S.state.lead })));
+    if (!r.wf_from_goal) return;
+    flowForm(await customData(), null, () => { if (S.view === "custom") showCustom(); }, r.wf_from_goal);
+  }
+
+  return { open, discovered, custom, showCustom, flowFromGoal, flowModal, rolesModal, rolesPanel, addAgent, editAgent, deleteAgent };
 })();
