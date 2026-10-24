@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.50.2 — 24/10/2026
+
+- **Task không còn bị báo lỗi oan khi agent đã làm xong** — `opencode run` 2.0 thoát mã 1 dù đã trả lời đầy đủ nếu
+  một lần Web Search bị huỷ giữa phiên; task hiện "Thoát với mã 1" và bỏ qua kiểm tra sau task. Giờ output có dòng
+  `SUMMARY:` (agent đã làm tới cùng) thì task được tính là xong với mọi CLI.
+
 ## 0.50.1 — 24/10/2026
 
 - **Web: terminal dễ đọc ở light mode** — tab 🔲 Lưới và "Mở trong terminal" dùng bảng màu ANSI riêng cho nền sáng và
