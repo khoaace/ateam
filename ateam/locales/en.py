@@ -4521,4 +4521,48 @@ EN: dict[str, str] = {
         "Enter / y accept (file not saved yet, u to undo) · Esc / n discard",
     "Đã chuyển sang {short} (theo dõi {name})":
         "Switched to {short} (tracking {name})",
+    "Thiếu tên skill":
+        "Missing skill name",
+    "Tên skill dài quá {n} ký tự":
+        "Skill name is longer than {n} characters",
+    "Tên skill chỉ gồm a-z, 0-9 và dấu gạch nối (không ở đầu/cuối, không hai gạch liền)":
+        "A skill name may only contain a-z, 0-9 and hyphens (not at the start/end, no double hyphens)",
+    "thư viện ateam":
+        "ateam library",
+    "Thiếu mô tả (description): skill làm gì và khi nào dùng":
+        "Missing description: what the skill does and when to use it",
+    "description dài quá {n} ký tự":
+        "description is longer than {n} characters",
+    "Skill chưa có nội dung":
+        "The skill has no content",
+    "Đã có skill '{n}' trong thư viện":
+        "The library already has a skill '{n}'",
+    "Không còn skill '{n}' trong thư viện":
+        "Skill '{n}' is no longer in the library",
+    "name trong frontmatter phải là '{n}' (trùng tên thư mục)":
+        "name in the frontmatter must be '{n}' (same as the folder name)",
+    "Skill này đã ở trong thư viện":
+        "This skill is already in the library",
+    "Thiếu description — trưởng nhóm không biết khi nào dùng":
+        "Missing description — the team lead cannot tell when to use it",
+    "File .md nằm phẳng — CLI không nạp (cần <tên>/SKILL.md); nhập vào thư viện để sửa":
+        "Loose .md file — CLIs do not load it (needs <name>/SKILL.md); import it into the library to fix",
+    "Phần thân dài quá {n} ký tự — chỉ gửi kèm phần đầu":
+        "Body is longer than {n} characters — only the first part is sent",
+    "Dán link repo GitHub (vd anthropics/skills)":
+        "Paste a GitHub repo link (e.g. anthropics/skills)",
+    "Cần cài git để tải skill":
+        "git is required to download skills",
+    "Không tải được {u}: {e}":
+        "Could not download {u}: {e}",
+    "Không có thư mục {p} trong repo":
+        "The repo has no folder {p}",
+    "Không tìm thấy SKILL.md nào trong {u}":
+        "No SKILL.md found in {u}",
+    "name '{n}' khác tên thư mục '{d}' — CLI có thể không nạp":
+        "name '{n}' differs from the folder name '{d}' — CLIs may not load it",
+    "hết {n} giây":
+        "timed out after {n} seconds",
+    "Phiên tải đã hết hạn — tải lại":
+        "The download session has expired — fetch again",
 }

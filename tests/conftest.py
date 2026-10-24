@@ -26,6 +26,7 @@ def env(tmp_path) -> dict:
     e = dict(os.environ)
     e["PATH"] = f"{FAKEBIN}{os.pathsep}{e.get('PATH', '')}"
     e["XDG_CONFIG_HOME"] = str(tmp_path / "xdg")
+    e["ATEAM_SKILLS_HOME"] = str(tmp_path / "home")  # không đọc skill thật của máy (~/.claude/skills…)
     e["ATEAM_FAKE_LIMIT_DIR"] = str(tmp_path / "limits")
     e["ATEAM_FAKE_ARGS_LOG"] = str(tmp_path / "args.log")
     e["ATEAM_FAKE_SLOW"] = "0"

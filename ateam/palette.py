@@ -302,13 +302,13 @@ def file_rename(root: Path, old: str, new: str) -> str:
     return ""
 
 
-async def file_trash(root: Path, rel: str) -> str:
+async def file_trash(root: Path, rel: str, dirs: bool = False) -> str:
     """Xoá file vào Thùng rác (macOS: Finder, để còn khôi phục được; Linux: ~/.local/share/Trash).
-    ATEAM_TRASH_DIR: chuyển vào thư mục này (test)."""
+    dirs: cho xoá cả thư mục (skill trong thư viện). ATEAM_TRASH_DIR: chuyển vào thư mục này (test)."""
     p = safe_path(root, rel)
     if p is None or p == root.resolve() or not p.exists():
         return tr("Không còn file {v}", v=rel)
-    if p.is_dir():
+    if p.is_dir() and not dirs:
         return tr("{v} là thư mục — chỉ xoá file", v=rel)
     target = os.environ.get("ATEAM_TRASH_DIR")
     if not target and sys.platform == "darwin" and shutil.which("osascript"):
