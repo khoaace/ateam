@@ -1939,7 +1939,8 @@ class WorkflowEditScreen(BaseModal):
                               "dim"))
             yield Static(Text(tr("Loại bước: code = làm việc · review = agent khác xem thay đổi của các bước nó chờ, "
                                  "sửa lỗi nhỏ · verify = ateam chạy lệnh kiểm tra (/verify) trên kết quả gộp, fail mới "
-                                 "gọi agent của bước sửa."), "dim"))
+                                 "gọi agent của bước sửa · gate = ⏸ dừng chờ bạn duyệt kết quả (Tiếp tục, Dừng, hoặc "
+                                 "góp ý để bước trước làm lại)."), "dim"))
             yield Static(Text(tr("Gõ $tên-skill trong prompt của bước để bước đó làm theo skill (xem trang 🧩 Skills)."),
                               "dim"))
             with VerticalScroll(classes="f-scroll"):
@@ -3550,7 +3551,8 @@ class GrillBar(Vertical):
             return False
         self._sig = sig
         head = Text()
-        head.append(tr("❓ {agent} hỏi · task #{tid} ", agent=v["agent"], tid=v["task"]), "bold")
+        head.append(tr("⏸ Chờ bạn duyệt · bước #{tid} ", tid=v["task"]) if v.get("gate")
+                    else tr("❓ {agent} hỏi · task #{tid} ", agent=v["agent"], tid=v["task"]), "bold")
         head.append(v["title"][:160])
         if v["others"] > 0:
             head.append(tr(" · còn {others} task khác đang hỏi", others=v["others"]), "dim")
@@ -3558,6 +3560,8 @@ class GrillBar(Vertical):
         width = max(40, (self.size.width or 120) - 4)
         self.query_one("#grill-q", Static).update(self._question(q, tr("❓ Câu {v}: ", v=v["n"]), width))
         self._buttons(True)
+        if v.get("gate"):  # ⏸ bước duyệt: chọn Dừng thay cho huỷ (huỷ lẻ để bước sau bị chặn rồi trưởng nhóm review)
+            self.query_one("#grill-askcancel", Button).display = False
         return is_new
 
     def update_grill(self, app: "TeamApp") -> bool:

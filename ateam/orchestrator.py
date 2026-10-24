@@ -19,8 +19,8 @@ from . import overview
 from . import prompts as P
 from . import rules
 from . import skills
-from .config import (EFFORT_REJECTED_RE, KIND_CODE, KIND_REVIEW, KIND_VERIFY, LEAD_ALIAS, AgentConfig, Config,
-                     task_kind)
+from .config import (EFFORT_REJECTED_RE, KIND_CODE, KIND_GATE, KIND_REVIEW, KIND_VERIFY, LEAD_ALIAS, AgentConfig,
+                     Config, task_kind)
 from .db import (ACTIVE, ASKING, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
                  FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Goal, Task)
 from .logtail import read_tail
@@ -633,6 +633,7 @@ class Orchestrator:
         t = self.ask_active(tasks)
         if t:
             return {"kind": "ask", "task": t.id, "agent": t.agent, "title": t.title, "question": t.question(),
+                    "gate": t.kind == KIND_GATE, "deps": t.depends_on,
                     "n": len((t.ask or {}).get("qa") or []),
                     "others": sum(1 for x in tasks if x.status == ASKING) - 1}
         return gv
@@ -927,6 +928,8 @@ class Orchestrator:
         created: list[tuple[int, list]] = []
         for i, item in enumerate(plan, 1):
             kind = task_kind(item.get("type"))
+            if kind == KIND_GATE and not from_user:  # bước ⏸ duyệt chỉ có trong workflow (kế hoạch thường: /go)
+                kind = KIND_CODE
             agent = str(item.get("agent", "")).strip()
             if agent not in agents:
                 self.log(tr("⚠ Agent '{agent}' không có trong đội — giao cho {lead}.", agent=agent, lead=self.cfg.lead))
@@ -1470,12 +1473,92 @@ class Orchestrator:
         asking = [t for t in src if t.question()]
         return min(asking, key=lambda t: t.id) if asking else None
 
+    # ------------------------------------------------------------------ ⏸ bước duyệt của workflow
+    def _gate_ask(self, t: Task) -> None:
+        """Mọi bước bước duyệt chờ đã xong: hỏi người dùng (khung hỏi đáp như <<<ASK>>>) — Tiếp tục / Dừng / góp ý.
+        Không ai trả lời được (ateam flow -y) thì tự Tiếp tục."""
+        deps = self._through_gates(t.depends_on)
+        see = "\n".join(f"#{d.id} {d.title} ({d.agent})" for d in deps)
+        text = t.prompt if t.prompt and t.prompt != t.title else tr("Duyệt kết quả của các bước trước")
+        q = {"q": f"⏸ {t.title}: {text}" + ("\n" + tr("Kết quả cần xem:") + "\n" + see if see else ""),
+             "why": tr("Tiếp tục: chạy bước sau · Dừng: kết thúc mục tiêu · gõ góp ý: các bước trên làm lại theo góp ý"),
+             "options": [tr("Tiếp tục"), tr("Dừng")], "rec": tr("Tiếp tục"), "gate": True, "a": None}
+        qa = list((t.ask or {}).get("qa") or [])
+        if self.auto_answer:
+            qa.append(dict(q, a=q["rec"]))
+            self.db.update_task(t.id, status=DONE, ask={"qa": qa}, result=tr("Đã duyệt (tự động)"),
+                                started=time.time(), finished=time.time())
+            self.log(tr("⏸ #{tid} {title}: tự duyệt (không có ai trả lời)", tid=t.id, title=t.title))
+            return
+        self.db.update_task(t.id, status=ASKING, ask={"qa": qa + [q]}, error=None, result=None)
+        self.log(tr("⏸ #{tid} chờ bạn duyệt: {title}", tid=t.id, title=t.title))
+
+    def _gate_answer(self, t: Task, q: dict, answer: str | None) -> str:
+        go, stop = q["options"][:2]
+        a = pick_option(q, answer or "") or go  # ⏭ (không quyết) = Tiếp tục
+        q["a"] = a
+        if a == go:
+            self.db.update_task(t.id, status=DONE, ask=t.ask, result=tr("Đã duyệt"), finished=time.time())
+            self.log(tr("✓ #{tid} đã duyệt: {title}", tid=t.id, title=t.title))
+            msg = tr("Đã duyệt — chạy bước tiếp theo")
+        elif a == stop:
+            self.db.update_task(t.id, status=CANCELLED, ask=t.ask, error=tr("Bạn dừng ở bước duyệt"),
+                                finished=time.time())
+            dead, more = {t.id}, True  # huỷ lan truyền các bước phía sau
+            while more:
+                more = False
+                for o in self.db.tasks(goal_id=t.goal_id, status=(DRAFT, QUEUED)):
+                    if o.id not in dead and dead & set(o.depends_on):
+                        self.db.update_task(o.id, status=CANCELLED, finished=time.time())
+                        dead.add(o.id)
+                        more = True
+            if t.goal_id is not None:  # người dùng tự dừng: kết thúc luôn, không gọi trưởng nhóm review
+                self.db.update_goal(t.goal_id, status="incomplete",
+                                    summary=tr("Bạn dừng ở bước duyệt #{tid}", tid=t.id))
+            self.log(tr("■ #{tid} dừng ở bước duyệt: {title}", tid=t.id, title=t.title))
+            msg = tr("Đã dừng mục tiêu ở bước duyệt #{tid}", tid=t.id)
+        else:  # góp ý: các bước bước duyệt chờ làm lại theo góp ý, xong thì hỏi lại
+            redo = []
+            for d in self._through_gates(t.depends_on):
+                if d.session and d.session_agent == d.agent:  # tiếp phiên: agent nhớ đề bài và lần làm trước
+                    self.db.update_task(d.id, status=QUEUED, result=None, error=None, started=None, finished=None,
+                                        resume=P.user_feedback_prompt(a))
+                else:
+                    self.db.update_task(d.id, status=QUEUED, result=None, error=None, started=None, finished=None,
+                                        prompt=d.prompt + "\n\nUSER FEEDBACK (after reviewing your previous result — "
+                                                          "address this):\n" + a)
+                redo.append(d.id)
+            self.db.update_task(t.id, status=QUEUED, ask=t.ask, error=None)
+            self.log(tr("↩ #{tid} góp ý: {a} — làm lại {v}", tid=t.id, a=a[:200],
+                        v=", ".join(f"#{x}" for x in redo)))
+            msg = tr("Đã gửi góp ý — {v} làm lại, xong sẽ hỏi bạn duyệt lại", v=", ".join(f"#{x}" for x in redo))
+        self.emit("changed")
+        return msg
+
+    def _through_gates(self, ids: list[int]) -> list[Task]:
+        """Task theo id, thay bước ⏸ duyệt bằng các bước nó chờ (đệ quy, không trùng)."""
+        out: list[Task] = []
+        seen: set[int] = set()
+        todo = list(ids)
+        while todo:
+            d = self.db.task(todo.pop(0))
+            if not d or d.id in seen:
+                continue
+            seen.add(d.id)
+            if d.kind == KIND_GATE:
+                todo[:0] = d.depends_on
+            else:
+                out.append(d)
+        return out
+
     def answer_task(self, tid: int, answer: str | None) -> str:
         """Trả lời câu hỏi của agent (None = để agent tự quyết) rồi xếp task chạy tiếp."""
         t = self.db.task(tid)
         q = t.question() if t else None
         if not t or t.status != ASKING or not q:
             return tr("Task #{tid} không có câu hỏi nào đang chờ", tid=tid)
+        if t.kind == KIND_GATE:
+            return self._gate_answer(t, q, answer)
         q["a"] = pick_option(q, answer or "") or P.SKIP_ANSWER
         qa = t.ask["qa"]
         self.db.update_task(tid, status=QUEUED, ask=t.ask, started=None, error=None,
@@ -1793,6 +1876,10 @@ class Orchestrator:
                 changed = True
                 continue
             if any(s != DONE for _, s in dep_status):
+                continue
+            if t.kind == KIND_GATE:  # ⏸ bước duyệt: không gọi agent, hỏi người dùng
+                self._gate_ask(t)
+                changed = True
                 continue
             chat = t.source == CHAT  # người dùng đang chờ trả lời: không xếp sau hàng đợi chung, không đổi agent
             # kiểm tra cuối: bước đầu chỉ chạy lệnh kiểm tra như ngay trong suất của task ở bản cũ — không chờ suất song
@@ -2119,7 +2206,8 @@ class Orchestrator:
                 can_ask = False  # như gõ trong CLI: agent hỏi lại thì người dùng nhắn tiếp
             elif self.use_worktree:
                 workdir = await self._wt_prepare(t)
-            dep_tasks = [dt for dt in (self.db.task(d) for d in t.depends_on) if dt]
+            # bước ⏸ duyệt không có kết quả để bàn giao: bước sau nhận kết quả của các bước mà bước duyệt chờ
+            dep_tasks = self._through_gates(t.depends_on)
             deps = [(dt.id, dt.agent, dt.title, dt.result or "") for dt in dep_tasks]
             goal_tasks = self.db.tasks(goal_id=t.goal_id) if t.goal_id else []
             handoff = any(t.id in o.depends_on for o in goal_tasks)  # có task chờ kết quả của task này

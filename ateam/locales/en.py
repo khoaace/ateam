@@ -4777,4 +4777,54 @@ EN: dict[str, str] = {
         "Goal #{gid} has no tasks",
     "Lưu mục tiêu #{gid} thành workflow":
         "Save goal #{gid} as a workflow",
+    "Tính năng mới, duyệt thiết kế trước: thiết kế → ⏸ bạn duyệt → code + test → review":
+        "New feature, design approved first: design → ⏸ you approve → code + tests → review",
+    "Duyệt thiết kế":
+        "Approve the design",
+    "Xem thiết kế ở bước trước: đúng ý thì Tiếp tục, chưa thì gõ góp ý để làm lại.":
+        "Read the design from the previous step: Continue if it is right, otherwise type feedback to have it redone.",
+    "Làm {goal} theo thiết kế đã duyệt; thêm hoặc cập nhật test cho hành vi mới.":
+        "Implement {goal} following the approved design; add or update tests for the new behavior.",
+    "Duyệt kết quả của các bước trước":
+        "Review the result of the previous steps",
+    "Kết quả cần xem:":
+        "Results to review:",
+    "Tiếp tục: chạy bước sau · Dừng: kết thúc mục tiêu · gõ góp ý: các bước trên làm lại theo góp ý":
+        "Continue: run the next steps · Stop: end the goal · type feedback: the steps above redo their work with it",
+    "Đã duyệt (tự động)":
+        "Approved (automatically)",
+    "⏸ #{tid} {title}: tự duyệt (không có ai trả lời)":
+        "⏸ #{tid} {title}: approved automatically (nobody to answer)",
+    "⏸ #{tid} chờ bạn duyệt: {title}":
+        "⏸ #{tid} waits for your approval: {title}",
+    "Đã duyệt":
+        "Approved",
+    "✓ #{tid} đã duyệt: {title}":
+        "✓ #{tid} approved: {title}",
+    "Đã duyệt — chạy bước tiếp theo":
+        "Approved — running the next steps",
+    "Bạn dừng ở bước duyệt":
+        "You stopped at the approval step",
+    "Bạn dừng ở bước duyệt #{tid}":
+        "You stopped at approval step #{tid}",
+    "■ #{tid} dừng ở bước duyệt: {title}":
+        "■ #{tid} stopped at the approval step: {title}",
+    "Đã dừng mục tiêu ở bước duyệt #{tid}":
+        "Stopped the goal at approval step #{tid}",
+    "↩ #{tid} góp ý: {a} — làm lại {v}":
+        "↩ #{tid} feedback: {a} — redoing {v}",
+    "Đã gửi góp ý — {v} làm lại, xong sẽ hỏi bạn duyệt lại":
+        "Feedback sent — {v} redo the work, then you will be asked to approve again",
+    "⏸ Chờ bạn duyệt":
+        "⏸ Waiting for your approval",
+    "Chờ bạn duyệt":
+        "Waiting for your approval",
+    "Bước duyệt #{id} của workflow":
+        "Workflow approval step #{id}",
+    "⏸ Chờ bạn duyệt · bước #{tid} ":
+        "⏸ Waiting for your approval · step #{tid} ",
+    "Loại bước: code = làm việc · review = agent khác xem thay đổi của các bước nó chờ, sửa lỗi nhỏ · verify = ateam chạy lệnh kiểm tra (/verify) trên kết quả gộp, fail mới gọi agent của bước sửa · ⏸ duyệt = dừng chờ bạn xem kết quả: Tiếp tục, Dừng, hoặc góp ý để bước trước làm lại.":
+        "Step types: code = do the work · review = another member reviews the changes of the steps it waits for and fixes small issues · verify = ateam runs the check command (/verify) on the combined result and only calls the step's agent on failure · ⏸ approve = pause so you can review the result: Continue, Stop, or feedback to redo the previous step.",
+    "Loại bước: code = làm việc · review = agent khác xem thay đổi của các bước nó chờ, sửa lỗi nhỏ · verify = ateam chạy lệnh kiểm tra (/verify) trên kết quả gộp, fail mới gọi agent của bước sửa · gate = ⏸ dừng chờ bạn duyệt kết quả (Tiếp tục, Dừng, hoặc góp ý để bước trước làm lại).":
+        "Step types: code = do the work · review = another member reviews the changes of the steps it waits for and fixes small issues · verify = ateam runs the check command (/verify) on the combined result and only calls the step's agent on failure · gate = ⏸ pause for your approval of the result (Continue, Stop, or feedback to redo the previous step).",
 }

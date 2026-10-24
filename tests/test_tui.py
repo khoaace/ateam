@@ -2017,3 +2017,36 @@ def test_tui_tells_new_version(env, project, monkeypatch):
             assert "Có bản ateam 99.0.0" in syslog.read_text() and "/update" in syslog.read_text()
             assert any("99.0.0" in str(n.message) for n in app._notifications)
     asyncio.run(main())
+
+
+def test_tui_workflow_gate_bar(env, project, monkeypatch):
+    """⏸ bước duyệt trong TUI: khung hỏi đáp ghi 'Chờ bạn duyệt', không có nút huỷ lẻ; gõ 1 = Tiếp tục."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from textual.widgets import Button, Static
+
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import ASKING, DB, DONE
+    from ateam.tui import TeamApp
+
+    ensure_global_config()
+    db = DB(project / ".ateam/team.db")
+    gid = db.add_goal("G", workflow="duyet")
+    db.update_goal(gid, status="running")
+    a = db.add_task("codex", "Thiết kế", "x", goal_id=gid, status=DONE)
+    g = db.add_task("claude", "Duyệt thiết kế", "xem thiết kế", goal_id=gid, status=ASKING, kind="gate")
+    db.update_task(g, depends_on=[a], ask={"qa": [{"q": "⏸ Duyệt thiết kế: xem", "why": "", "a": None, "gate": True,
+                                                   "options": ["Tiếp tục", "Dừng"], "rec": "Tiếp tục"}]})
+
+    async def main():
+        app = TeamApp(project, load_config(project), db)
+        async with app.run_test(size=(160, 48)) as pilot:
+            assert await wait_for(pilot, lambda: "Chờ bạn duyệt" in str(app.query_one("#grill-head", Static).render()))
+            assert not app.query_one("#grill-askcancel", Button).display
+            assert "Đã duyệt" in app.orch.answer_task(g, "1")
+            assert db.task(g).status == DONE
+    asyncio.run(main())

@@ -312,7 +312,7 @@ window.Setup = (() => {
     const row = (st, i) => {
       const agent = d.agents.some((a) => a.value === st.agent) ? st.agent : "lead";
       const [mo, eo] = choiceOpts(agent, st.model, st.effort);
-      return `<div class="df-row" data-i="${i}"><b class="df-step">${i + 1}. ${esc(st.title)}${st.type && st.type !== "code" ? ` (${esc(st.type)})` : ""}</b>
+      return `<div class="df-row${st.type === "gate" ? " is-gate" : ""}" data-i="${i}"><b class="df-step">${i + 1}. ${esc(st.title)}${st.type && st.type !== "code" ? ` (${esc(st.type)})` : ""}</b>
         <select class="agent-select" data-df="agent">${d.agents.map((a) => opt(a.value, a.label, agent)).join("")}</select>
         <select class="agent-select" data-df="model">${mo}</select>
         <select class="agent-select" data-df="effort">${eo}</select></div>`;

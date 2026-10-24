@@ -271,6 +271,12 @@ def feedback_prompt(feedback: str, reset: bool) -> str:
             "Change only what the feedback asks for. " + SUMMARY_RULE)
 
 
+def user_feedback_prompt(feedback: str) -> str:
+    """Bước ⏸ duyệt của workflow: người dùng xem kết quả rồi góp ý — làm lại trong cùng phiên."""
+    return (f"The user reviewed your result and asks for changes:\n{feedback}\nYour previous changes are still in "
+            "the working tree. Change only what the feedback asks for. " + SUMMARY_RULE)
+
+
 def answer_prompt(question: str, answer: str, can_ask: bool) -> str:
     """Tiếp tục phiên sau khi người dùng trả lời câu hỏi <<<ASK>>>."""
     more = "" if can_ask else " Do not ask further questions; decide yourself and state assumptions."
@@ -578,7 +584,9 @@ instructions. "after" lists the step numbers (1-based) this step waits for; omit
 previous step, use [] to start immediately (parallel steps). "effort" is optional (one of that member's
 effort levels). "type" is "code" (default), "review" (another member reviews the diff of the steps it waits
 for and fixes small issues) or "verify" (ateam runs the project's check command once on the combined result
-of the steps it waits for and its agent fixes failures — useful after parallel steps). "review": true if the
+of the steps it waits for and its agent fixes failures — useful after parallel steps) or "gate" (no agent: ateam
+pauses and asks the user to approve the result of the steps it waits for before later steps run — add one only
+when the user wants a checkpoint, e.g. approving a design before coding). "review": true if the
 lead should review the result at the end.
 Write name as a short kebab-case slug; write description, titles and prompts in the language of the
 user's request. Do NOT modify any files.

@@ -13,10 +13,10 @@ import unicodedata
 from pathlib import Path
 
 from . import shell
-from .config import (CATALOG, KIND_VERIFY, LEAD_ALIAS, NAME_RE, PROVIDERS, QUALITY, ROLES, WIZARD_FLOW,
-                     WORKFLOW_TEMPLATES, Config, Workflow, WorkflowStep, builtin_agent, default_cli, fill_template,
-                     needs_setup, provider_of, provider_template, save_custom_item, save_default_workflow,
-                     save_project_setting, task_kind, tier_preset, workflow_to_dict)
+from .config import (CATALOG, KIND_GATE, KIND_VERIFY, LEAD_ALIAS, NAME_RE, PROVIDERS, QUALITY, ROLES,
+                     WIZARD_FLOW, WORKFLOW_TEMPLATES, Config, Workflow, WorkflowStep, builtin_agent, default_cli,
+                     fill_template, needs_setup, provider_of, provider_template, save_custom_item,
+                     save_default_workflow, save_project_setting, task_kind, tier_preset, workflow_to_dict)
 from .i18n import tr
 
 # ---------------------------------------------------------------------------- wizard /setup
@@ -361,7 +361,10 @@ def flow_warnings(cfg: Config, w: Workflow) -> list[str]:
     out = []
     active = cfg.active_agents()
     for i, st in enumerate(w.steps, 1):
-        if st.kind == KIND_VERIFY and not cfg.verify.command:
+        if st.kind == KIND_GATE:
+            if i == 1 or st.after == []:
+                out.append(tr("Bước {i} (duyệt) không chờ bước nào — không có gì để duyệt", i=i))
+        elif st.kind == KIND_VERIFY and not cfg.verify.command:
             out.append(tr("Bước {i} (verify): chưa đặt lệnh kiểm tra (/verify) — bước sẽ xong ngay, không kiểm tra",
                           i=i))
         elif st.agent not in ("", LEAD_ALIAS) and st.agent not in active:

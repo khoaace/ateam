@@ -85,7 +85,8 @@ class Watcher:
                 out.append(Notice("review", tr("👀 Task chờ duyệt diff"), head, task_id=t.id, goal_id=t.goal_id))
             elif t.status == ASKING:
                 q = t.question() if hasattr(t, "question") else None
-                out.append(Notice("ask", tr("❓ Agent hỏi bạn"), head + (" — " + _short(q["q"], 140) if q else ""),
+                gate = getattr(t, "kind", None) == "gate"  # ⏸ bước duyệt của workflow
+                out.append(Notice("ask", tr("⏸ Chờ bạn duyệt") if gate else tr("❓ Agent hỏi bạn"), head + (" — " + _short(q["q"], 140) if q else ""),
                                   task_id=t.id, goal_id=t.goal_id))
             elif t.status == DONE and t.goal_id is None and old_t.get(t.id) not in (REVIEW, CONFLICT):
                 # task ngoài kế hoạch (/add, giao tay): không có thông báo mục tiêu xong. Task ngắn có thể queued ->

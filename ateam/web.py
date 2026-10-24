@@ -98,7 +98,8 @@ def ui_strings() -> dict[str, str]:
         "cu_step_type": tr("Loại"),
         "cu_type_hint": tr("Loại bước: code = làm việc · review = agent khác xem thay đổi của các bước nó chờ, sửa lỗi "
                            "nhỏ · verify = ateam chạy lệnh kiểm tra (/verify) trên kết quả gộp, fail mới gọi agent của "
-                           "bước sửa."),
+                           "bước sửa · ⏸ duyệt = dừng chờ bạn xem kết quả: Tiếp tục, Dừng, hoặc góp ý để bước trước "
+                           "làm lại."),
         "connected": tr("Đã kết nối"), "disconnected": tr("Mất kết nối — đang thử lại…"),
         "pause": tr("Tạm dừng"), "resume": tr("Tiếp tục nhận task"), "paused": tr("Đang tạm dừng"),
         "clear": tr("Dọn việc đã xong"), "theme": tr("Giao diện & màu nhấn"),
@@ -314,6 +315,7 @@ def ui_strings() -> dict[str, str]:
         "sk_exists": tr("Thư viện đã có skill \"{v}\" — lưu sẽ ghi đè"),
         "sk_ai_hint": tr("Mô tả skill bạn muốn — agent viết SKILL.md (tiếng Anh, cho agent đọc), bạn xem lại rồi lưu."),
         "sk_ai_ph": tr("Mô tả skill bạn muốn (vd: quy trình deploy lên Cloudflare Pages)"),
+        "gate_title": tr("Chờ bạn duyệt"), "gate_head": tr("Bước duyệt #{id} của workflow"),
         "sk_from_goal": tr("Lưu thành skill"),
         "wf_from_goal": tr("Lưu thành workflow"),
         "wf_from_goal_hint": tr("Trưởng nhóm khái quát cách đội đã làm mục tiêu #{id} thành workflow dùng lại được "

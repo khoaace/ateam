@@ -268,3 +268,98 @@ def test_retry_unblocks_whole_chain(env, project, monkeypatch):
     o.retry(a)
     assert [o.db.task(x).status for x in (a, b, c)] == [QUEUED] * 3
     assert o.db.goal(gid).status == "running"
+
+
+def _gate_flow(o):
+    from ateam.config import Workflow, WorkflowStep
+    o.cfg.workflows["duyet"] = Workflow("duyet", review=False, steps=[
+        WorkflowStep("codex", "Thiết kế", "viết thiết kế cho {goal}"),
+        WorkflowStep("lead", "Duyệt thiết kế", kind="gate"),
+        WorkflowStep("grok", "Làm", "làm {goal} theo thiết kế")])
+    o.cfg.approve_plan = False
+    return o.run_workflow("duyet", "trang đăng nhập")
+
+
+def _steps(o, gid: int) -> list:
+    """Các bước của workflow (bỏ task codex giả lập tự giao thêm qua <<<DELEGATE>>>)."""
+    return [t for t in o.db.tasks(goal_id=gid) if not t.source.startswith("delegate")]
+
+
+def _calls(log: Path) -> list[tuple[str, str]]:
+    return [(c.partition(">> ")[0], c.partition(">> ")[2]) for c in log.read_text(encoding="utf-8").split("<<")[1:]]
+
+
+def test_workflow_gate_continue_hands_off_previous_result(env, project, monkeypatch, tmp_path):
+    """⏸ bước duyệt: không gọi agent, hỏi người dùng; Tiếp tục → bước sau chạy và nhận kết quả bước trước bước duyệt."""
+    from ateam.db import ASKING, DONE
+    env["ATEAM_FAKE_FULL_LOG"] = str(tmp_path / "full.log")
+    o = _orch(env, project, monkeypatch)
+
+    async def main():
+        await o.setup()
+        gid = _gate_flow(o)
+        await o.run_until_idle(interval=0.01)
+        design, gate, work = _steps(o, gid)
+        assert design.status == DONE and gate.status == ASKING and work.status == "queued"
+        v = o.waiting_view()
+        assert v["gate"] and v["task"] == gate.id and v["question"]["options"] == ["Tiếp tục", "Dừng"]
+        assert f"#{design.id} Thiết kế (codex)" in v["question"]["q"]
+        assert "Đã duyệt" in o.answer_task(gate.id, "1")
+        await o.run_until_idle(interval=0.01)
+        return _steps(o, gid), o.db.goal(gid)
+    ts, g = asyncio.run(main())
+    assert [t.status for t in ts] == [DONE] * 3 and g.status == "done"
+    calls = _calls(tmp_path / "full.log")
+    assert all(n != o.cfg.lead for n, _ in calls)  # bước duyệt (agent = trưởng nhóm) không gọi agent nào
+    work = next(c for n, c in calls if n == "grok" and f"YOUR TASK (#{ts[2].id})" in c)
+    assert f"--- #{ts[0].id} by codex: Thiết kế ---" in work  # bàn giao xuyên qua bước duyệt
+
+
+def test_workflow_gate_feedback_redoes_step_then_asks_again(env, project, monkeypatch, tmp_path):
+    from ateam.db import ASKING
+    env["ATEAM_FAKE_FULL_LOG"] = str(tmp_path / "full.log")
+    o = _orch(env, project, monkeypatch)
+
+    async def main():
+        await o.setup()
+        gid = _gate_flow(o)
+        await o.run_until_idle(interval=0.01)
+        gate = _steps(o, gid)[1]
+        assert "làm lại" in o.answer_task(gate.id, "dùng OAuth thay vì mật khẩu")
+        await o.run_until_idle(interval=0.01)
+        return _steps(o, gid)
+    design, gate, work = asyncio.run(main())
+    assert gate.status == ASKING and len(gate.ask["qa"]) == 2 and work.status == "queued"
+    codex = [c for n, c in _calls(tmp_path / "full.log") if n == "codex"]
+    assert len(codex) == 2 and "dùng OAuth thay vì mật khẩu" in codex[1]
+
+
+def test_workflow_gate_stop_ends_goal_without_review(env, project, monkeypatch):
+    from ateam.db import CANCELLED, DONE
+    o = _orch(env, project, monkeypatch)
+
+    async def main():
+        await o.setup()
+        o.cfg.workflows.clear()
+        gid = _gate_flow(o)
+        o.cfg.workflows["duyet"].review = True  # dừng ở bước duyệt: không gọi trưởng nhóm review
+        await o.run_until_idle(interval=0.01)
+        gate = _steps(o, gid)[1]
+        o.answer_task(gate.id, "2")
+        await o.run_until_idle(interval=0.01)
+        return _steps(o, gid), o.db.goal(gid)
+    ts, g = asyncio.run(main())
+    assert [t.status for t in ts] == [DONE, CANCELLED, CANCELLED]
+    assert g.status == "incomplete" and "dừng ở bước duyệt" in g.summary
+
+
+def test_workflow_gate_auto_approves_without_user(env, project, monkeypatch):
+    o = _orch(env, project, monkeypatch)
+
+    async def main():
+        await o.setup()
+        o.auto_answer = True
+        gid = _gate_flow(o)
+        await o.run_until_idle(interval=0.01)
+        return _steps(o, gid)
+    assert [t.status for t in asyncio.run(main())] == ["done"] * 3

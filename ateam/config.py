@@ -27,8 +27,9 @@ LEAD_ALIAS = "lead"  # agent của bước workflow = trưởng nhóm hiện t�
 # Loại task / bước workflow (khoá "type" trong kế hoạch JSON và trong TOML): code = làm việc (mặc định); review = agent
 # khác xem diff của các task nó phụ thuộc, tự sửa lỗi nhỏ, giao lỗi lớn cho tác giả; verify = kiểm tra cuối — ateam
 # chạy lệnh kiểm tra một lần trên kết quả gộp, fail mới gọi agent của task sửa
-KIND_CODE, KIND_REVIEW, KIND_VERIFY = "code", "review", "verify"
-TASK_KINDS = (KIND_CODE, KIND_REVIEW, KIND_VERIFY)
+# gate = bước ⏸ chờ người dùng duyệt (chỉ trong workflow): không gọi agent, hỏi Tiếp tục / Dừng / góp ý
+KIND_CODE, KIND_REVIEW, KIND_VERIFY, KIND_GATE = "code", "review", "verify", "gate"
+TASK_KINDS = (KIND_CODE, KIND_REVIEW, KIND_VERIFY, KIND_GATE)
 QUALITY = ("fast", "auto", "strict")  # preset chất lượng của dự án: Nhanh · Trưởng nhóm tự quyết · Chặt chẽ
 CONFIG_VERSION = 10
 PROMPT_FLAGS = ("-p", "--print", "--prompt")
@@ -707,7 +708,7 @@ class Workflow:
             after = [i - 1] if st.after is None and i > 1 else list(st.after or [])
             out.append({
                 "id": i,
-                "agent": lead if st.agent in ("", LEAD_ALIAS) else st.agent,
+                "agent": lead if st.agent in ("", LEAD_ALIAS) or st.kind == KIND_GATE else st.agent,
                 "title": (st.title or tr("Bước {i}", i=i)).replace("{goal}", goal),
                 "prompt": (st.prompt or st.title or goal).replace("{goal}", goal),
                 "depends_on": [a for a in after if 0 < a < i],
@@ -726,7 +727,8 @@ class Workflow:
             level.append(1 + max((level[a - 1] for a in after), default=-1))
         groups: dict[int, list[str]] = {}
         for lv, st in zip(level, self.steps):
-            groups.setdefault(lv, []).append((st.agent or LEAD_ALIAS) + (f" ({st.kind})" if st.kind != KIND_CODE else ""))
+            groups.setdefault(lv, []).append("⏸" if st.kind == KIND_GATE else (st.agent or LEAD_ALIAS)
+                                             + (f" ({st.kind})" if st.kind != KIND_CODE else ""))
         return " → ".join(" ‖ ".join(groups[k]) for k in sorted(groups)) or tr("(chưa có bước)")
 
 
@@ -1051,6 +1053,21 @@ WORKFLOW_TEMPLATES: dict[str, dict] = {
              "prompt": tr("Kiểm tra bản sửa lỗi '{goal}': đúng nguyên nhân gốc, không làm hỏng chỗ khác.")},
         ],
     },
+    "tinh-nang-duyet": {
+        "description": tr("Tính năng mới, duyệt thiết kế trước: thiết kế → ⏸ bạn duyệt → code + test → review"),
+        "review": True,
+        "steps": [
+            {"agent": LEAD_ALIAS, "title": tr("Thiết kế"),
+             "prompt": tr("Đọc code liên quan và viết thiết kế ngắn cho: {goal} — file cần đổi, cách làm, cách kiểm "
+                          "tra. Chưa sửa code.")},
+            {"agent": LEAD_ALIAS, "type": KIND_GATE, "title": tr("Duyệt thiết kế"),
+             "prompt": tr("Xem thiết kế ở bước trước: đúng ý thì Tiếp tục, chưa thì gõ góp ý để làm lại.")},
+            {"agent": "*", "title": tr("Viết code"),
+             "prompt": tr("Làm {goal} theo thiết kế đã duyệt; thêm hoặc cập nhật test cho hành vi mới.")},
+            {"agent": "*", "type": KIND_REVIEW, "title": tr("Review code"),
+             "prompt": tr("Review thay đổi của bước trước so với mục tiêu: {goal}.")},
+        ],
+    },
     "review-code": {
         "description": tr("Review code rồi sửa theo góp ý"),
         "review": False,
@@ -1062,7 +1079,7 @@ WORKFLOW_TEMPLATES: dict[str, dict] = {
         ],
     },
 }
-STEP_ROLES = {KIND_CODE: "code", KIND_REVIEW: "review", KIND_VERIFY: "code"}  # vai trò (ROLES) hợp với loại bước
+STEP_ROLES = {KIND_CODE: "code", KIND_REVIEW: "review", KIND_VERIFY: "code", KIND_GATE: "review"}  # vai trò (ROLES) hợp với loại bước
 
 
 def fill_template(tpl: dict, by_role: dict[str, str], member: str) -> dict:

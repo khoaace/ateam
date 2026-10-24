@@ -467,14 +467,15 @@ function renderAsk(box) {  // agent hỏi giữa task (<<<ASK>>>): cùng khung v
   box.innerHTML = `
     <div class="panel amber">
       <div class="panel-head">
-        <div class="panel-title">❓ ${esc(t("ask_title"))}</div>
+        <div class="panel-title">${a.gate ? "⏸ " + esc(t("gate_title")) : "❓ " + esc(t("ask_title"))}</div>
         <div class="panel-actions">
-          <button class="btn sm ghost" data-action="ask-skip">⏭ ${esc(t("ask_skip"))}</button>
-          <button class="btn sm" data-action="open-task" data-task="${a.task}">📜 ${esc(t("ask_view"))}</button>
-          <button class="btn sm danger" data-action="ask-cancel">${esc(t("ask_cancel"))}</button>
+          ${a.gate ? "" : `<button class="btn sm ghost" data-action="ask-skip">⏭ ${esc(t("ask_skip"))}</button>`}
+          ${a.gate ? (a.deps || []).map((d) => `<button class="btn sm" data-action="open-task" data-task="${d}">📜 #${d}</button>`).join("")
+            : `<button class="btn sm" data-action="open-task" data-task="${a.task}">📜 ${esc(t("ask_view"))}</button>
+          <button class="btn sm danger" data-action="ask-cancel">${esc(t("ask_cancel"))}</button>`}
         </div>
       </div>
-      <div class="panel-sub">${esc(t("ask_head", { agent: a.agent, id: a.task }))} · ${esc(a.title)}${a.more > 0 ? ` · ${esc(t("ask_more", { n: a.more }))}` : ""}</div>
+      <div class="panel-sub">${a.gate ? esc(t("gate_head", { id: a.task })) : esc(t("ask_head", { agent: a.agent, id: a.task }))} · ${esc(a.title)}${a.more > 0 ? ` · ${esc(t("ask_more", { n: a.more }))}` : ""}</div>
       <div class="panel-body">${questionHtml(a.question, a.n, "ask-pick")}</div>
     </div>`;
 }
