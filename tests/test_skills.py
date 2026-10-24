@@ -168,3 +168,105 @@ def test_fetch_and_install_from_local_repo(lib):
     assert (skills.library() / "alpha/SKILL.md").read_text().endswith("A\n")
     assert (skills.library() / "beta/scripts/x.py").is_file()
     assert '"commit"' in (skills.library() / "beta/.ateam-source.json").read_text()
+
+
+# ------------------------------------------------------------------ gắn skill vào task (orchestrator)
+def _orch(env, project, monkeypatch):
+    import importlib
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    importlib.reload(config)
+    from ateam.db import DB
+    from ateam.orchestrator import Orchestrator
+    return Orchestrator(project, config.load_config(project), DB(project / ".ateam/team.db"))
+
+
+def _calls(log: Path) -> list[tuple[str, str]]:
+    """(agent, cả dòng lệnh kèm prompt) của mỗi lần gọi CLI giả lập (ATEAM_FAKE_FULL_LOG)."""
+    out = []
+    for chunk in log.read_text(encoding="utf-8").split("<<")[1:]:
+        name, _, rest = chunk.partition(">> ")
+        out.append((name, rest))
+    return out
+
+
+def test_lead_attaches_skills_and_members_receive_them(env, project, monkeypatch, tmp_path):
+    env["ATEAM_FAKE_PLAN_SKILLS"] = "tdd"
+    env["ATEAM_FAKE_FULL_LOG"] = str(tmp_path / "full.log")
+    o = _orch(env, project, monkeypatch)
+    mk(skills.library(), "tdd", desc="Viết test trước khi sửa code.", body="Red, green, refactor.")
+    mk(Path(env["ATEAM_SKILLS_HOME"]) / ".claude/skills", "off-skill", desc="Không gửi trưởng nhóm")
+
+    async def main():
+        await o.setup()
+        o.auto_answer = True
+        o.cfg.approve_plan = False
+        gid = o.new_goal("tạo a.txt")
+        await o.run_until_idle(interval=0.01)
+        return o.db.tasks(goal_id=gid)
+    ts = asyncio.run(main())
+    code = next(t for t in ts if t.agent == "codex")
+    assert code.skills == ["tdd"]  # "khong-co" không có trong danh mục → bỏ
+    assert all(not t.skills for t in ts if t is not code)
+    calls = _calls(tmp_path / "full.log")
+    plan = next(c for n, c in calls if n == "claude" and "AVAILABLE SKILLS" in c)
+    assert "- tdd: Viết test trước" in plan and "off-skill" not in plan  # skill của CLI mặc định tắt
+    member = next(c for n, c in calls if n == "codex")
+    assert member.index("=== SKILL: tdd") < member.index("YOUR TASK") and "Red, green, refactor." in member
+    assert "🧩 skills: tdd" in (project / f".ateam/logs/t{code.id}.log").read_text()
+
+
+def test_dollar_skill_in_goal_task_and_chat(env, project, monkeypatch, tmp_path):
+    env["ATEAM_FAKE_FULL_LOG"] = str(tmp_path / "full.log")
+    o = _orch(env, project, monkeypatch)
+    mk(Path(env["ATEAM_SKILLS_HOME"]) / ".codex/skills", "release", desc="Phát hành", body="Bump version rồi push.")
+
+    async def main():
+        await o.setup()
+        o.auto_answer = True
+        o.cfg.approve_plan = False
+        gid = o.new_goal("$release bản mới, không đụng $PATH")
+        await o.run_until_idle(interval=0.01)
+        ts = o.db.tasks(goal_id=gid)
+        tid = o.add_task("grok", "$release ngay")
+        c1 = o.chat("claude", "xin chào")
+        await o.run_until_idle(interval=0.01)
+        c2 = o.chat("claude", "giờ dùng $release nhé")
+        await o.run_until_idle(interval=0.01)
+        return ts, o.db.task(tid), o.db.task(c2)
+    ts, task, chat2 = asyncio.run(main())
+    # $tên trong mục tiêu: gắn cố định mọi task code từ kế hoạch (cả task review thêm vào); việc agent tự giao chéo
+    # (<<<DELEGATE>>>) là phần riêng — không tự nhận
+    assert ts and all(t.skills == ["release"] for t in ts if not t.source.startswith("delegate"))
+    assert any(t.source == "review" and t.skills == ["release"] for t in ts)
+    assert task.status == "done" and chat2.status == "done"
+    calls = _calls(tmp_path / "full.log")
+    plan = next(c for n, c in calls if n == "claude" and "Reply with ONLY a JSON array" in c)
+    assert "SKILLS THE USER ASKED FOR" in plan and "Bump version rồi push." in plan
+    assert "AVAILABLE SKILLS" not in plan  # skill của CLI đang tắt: chỉ $tên mới dùng
+    grok = [c for n, c in calls if n == "grok"]
+    assert any("=== SKILL: release" in c and "$release ngay" in c for c in grok)
+    chats = [c for n, c in calls if n == "claude" and ("xin chào" in c or "giờ dùng" in c)]
+    assert "=== SKILL" not in chats[0] and "--resume" in chats[1] and "=== SKILL: release" in chats[1]
+
+
+def test_old_db_gets_skills_column(tmp_path):
+    import sqlite3
+
+    from ateam.db import DB
+    p = tmp_path / "team.db"
+    con = sqlite3.connect(p)
+    con.execute("CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, goal_id INTEGER, parent_id INTEGER,"
+                " agent TEXT NOT NULL, title TEXT NOT NULL, prompt TEXT NOT NULL, status TEXT NOT NULL DEFAULT"
+                " 'queued', depends_on TEXT NOT NULL DEFAULT '[]', depth INTEGER NOT NULL DEFAULT 0, source TEXT,"
+                " result TEXT, error TEXT, branch TEXT, created REAL, started REAL, finished REAL)")
+    con.execute("INSERT INTO tasks(agent, title, prompt) VALUES ('codex', 'cũ', 'p')")
+    con.commit()
+    con.close()
+    db = DB(p)
+    assert db.task(1).skills is None
+    tid = db.add_task("codex", "mới", "p", skills=["tdd"])
+    db.update_task(1, skills=["a", "b"])
+    assert db.task(tid).skills == ["tdd"] and db.task(1).skills == ["a", "b"]
+    db.update_task(1, skills=None)
+    assert db.task(1).skills is None

@@ -18,6 +18,7 @@ from . import usage_logs
 from . import overview
 from . import prompts as P
 from . import rules
+from . import skills
 from .config import EFFORT_REJECTED_RE, KIND_CODE, KIND_REVIEW, KIND_VERIFY, AgentConfig, Config, task_kind
 from .db import (ACTIVE, ASKING, BLOCKED, CANCELLED, COMPACT_AUTHOR, CONFLICT, DB, DONE, DRAFT, FAILED,
                  FINISHED_BAD, GOAL_ENDED, QUEUED, REVIEW, RUNNING, Goal, Task)
@@ -518,13 +519,14 @@ class Orchestrator:
             can_ask = not followup and not goal.spec and not (goal.grill or {}).get("closed") \
                 and not self.auto_answer
             ov = await self.overview_block(hint=not followup, session=self._lead_session(goal))
+            sk, asked = self._plan_skills(followup[0] if followup else goal.base_text())
             if followup:
                 prompt = P.followup_plan_prompt(self.cfg, goal.base_text(), followup[1], followup[2],
                                                 followup[0], str(self.root), self.notes_text(),
-                                                earlier=(goal.followups or [])[:-1], overview=ov)
+                                                earlier=(goal.followups or [])[:-1], overview=ov, skills=sk)
             else:
                 prompt = P.plan_prompt(self.cfg, goal.base_text(), str(self.root), self.notes_text(),
-                                       can_ask=can_ask, overview=ov)
+                                       can_ask=can_ask, overview=ov, skills=sk)
             out = await self._call_lead(prompt, tr("Lập kế hoạch mục tiêu #{gid}", gid=gid), goal_id=gid,
                                         keep_session=True)
             if out is not None:
@@ -550,7 +552,7 @@ class Orchestrator:
                 self.log(tr("✗ Không đọc được kế hoạch cho mục tiêu #{gid} (xem "
                             ".ateam/logs/lead.log). Bạn vẫn có thể giao tay bằng /task.", gid=gid))
                 return
-            ids = self._insert_plan(gid, plan, source="followup" if followup else "plan")
+            ids = self._insert_plan(gid, plan, source="followup" if followup else "plan", asked=asked)
             if self.cfg.approve_plan:
                 self.db.update_goal(gid, status="awaiting")
                 self.log(tr("📋 Kế hoạch #{gid}: {v} task ở trạng thái NHÁP. Duyệt bằng /go {gid} "
@@ -796,7 +798,9 @@ class Orchestrator:
             return tr("Workflow '{name}' chưa có bước nào", name=name)
         gid = self.db.add_goal(text, workflow=name)
         self.log(tr("🎯 Mục tiêu #{gid} theo workflow '{name}': {text}", gid=gid, name=name, text=text))
-        ids = self._insert_plan(gid, wf.plan(text, self.cfg.lead), source="workflow", from_user=True)
+        ids = self._insert_plan(gid, wf.plan(text, self.cfg.lead), source="workflow", from_user=True,
+                                asked=[x.name for x in skills.mentioned(text, skills.scan(self.root))]
+                                if "$" in text else None)
         if self.cfg.approve_plan:
             self.db.update_goal(gid, status="awaiting")
             self.log(tr("📋 {v} bước ở trạng thái NHÁP — gõ /go {gid} để chạy.", v=len(ids), gid=gid))
@@ -887,11 +891,25 @@ class Orchestrator:
             p = self.db.task(p.parent_id) if p.source in ("followup", CHAT) and p.parent_id else None
         return turns[::-1]
 
+    def _plan_skills(self, text: str) -> tuple[str, list[str]]:
+        """Khối skill cho prompt lập kế hoạch: danh sách skill đang bật (tên + mô tả) và nội dung đầy đủ của skill
+        người dùng gọi bằng $tên trong mục tiêu (trưởng nhóm lập kế hoạch theo nó). Trả (khối, tên skill $tên)."""
+        cat = skills.scan(self.root)
+        asked = skills.mentioned(text, cat)
+        parts = [skills.index_block(skills.enabled(self.root, cat))]
+        if asked:
+            parts.append(skills.body_block(asked, head="SKILLS THE USER ASKED FOR (ateam attaches them to every code"
+                                                       " task of this plan; plan the work with them in mind)",
+                                           sep=False))
+        return "\n\n".join(p for p in parts if p), [x.name for x in asked]
+
     def _insert_plan(self, gid: int, plan: list[dict], source: str,
-                     from_user: bool = False) -> list[int]:
-        """from_user: kế hoạch do người dùng viết (workflow) — giữ effort/model của từng bước, không thêm/bớt bước."""
+                     from_user: bool = False, asked: list[str] | None = None) -> list[int]:
+        """from_user: kế hoạch do người dùng viết (workflow) — giữ effort/model của từng bước, không thêm/bớt bước.
+        asked: skill người dùng gọi bằng $tên trong mục tiêu — gắn vào mọi task code (luật cố định, không để LLM chọn)."""
         if not from_user:
             plan = self._apply_checks(plan, source)
+        cat = skills.scan(self.root) if asked or any(isinstance(x, dict) and x.get("skills") for x in plan) else []
         agents = self.cfg.active_agents()
         status = DRAFT if self.cfg.approve_plan else QUEUED
         id_map: dict = {}
@@ -908,14 +926,20 @@ class Orchestrator:
             if not from_user and (not self.cfg.lead_sets_effort or effort not in agents[agent].efforts_for()):
                 effort = ""
             model = str(item.get("model") or "").strip() if from_user else ""
+            want = item.get("skills") or []
+            if isinstance(want, str):  # "skills": "tdd, release"
+                want = re.split(r"[,\s]+", want)
+            names = [x.name for x in skills.resolve(want if isinstance(want, list) else [], cat)]
+            if kind == KIND_CODE:
+                names += [n for n in asked or [] if n not in names]
             tid = self.db.add_task(agent, title, prompt, goal_id=gid, status=status, source=source,
                                    effort=effort or None, model=model or None,
-                                   kind=None if kind == KIND_CODE else kind)
+                                   kind=None if kind == KIND_CODE else kind, skills=names or None)
             id_map[item.get("id", i)] = tid
             id_map[str(item.get("id", i))] = tid
             created.append((tid, item.get("depends_on") or []))
             self.log(f"   #{tid} → {agent}{(' [' + kind + ']') if kind != KIND_CODE else ''}"
-                     f"{(' @' + effort) if effort else ''}: {title}")
+                     f"{(' @' + effort) if effort else ''}: {title}{(' 🧩 ' + ', '.join(names)) if names else ''}")
         graph: dict[int, list[int]] = {}
         for tid, deps in created:
             if not isinstance(deps, list):  # "depends_on": 1 hoặc "1"
@@ -2036,6 +2060,18 @@ class Orchestrator:
                     overview=await self.overview_block() if t.agent == self.cfg.lead else "", kind=t.kind or KIND_CODE,
                     diff=self._diff_hint(dep_tasks) if t.kind == KIND_REVIEW else "", handoff=handoff)
             prompt = t.resume if sess else full
+            if full or sess:  # skill gắn với task (trưởng nhóm / $tên trong mục tiêu) + $tên trong prompt / tin nhắn
+                cat = skills.scan(self.root) if t.skills or "$" in t.prompt + (t.resume or "") else []
+                use = skills.resolve(t.skills, cat)
+                use += [s for s in skills.mentioned(t.prompt, cat) if s not in use]
+                if full and use:
+                    full = skills.body_block(use) + full
+                    log_file.write("🧩 skills: " + ", ".join(s.name for s in use) + "\n")
+                # tiếp phiên (/retry, sửa lỗi, chat): phiên đã có skill của prompt đầy đủ — chỉ thêm $tên của lượt này
+                again = skills.mentioned(t.resume or "", cat) if sess else []
+                if again:
+                    log_file.write("🧩 skills: " + ", ".join(s.name for s in again) + "\n")
+                prompt = (skills.body_block(again) + t.resume) if sess else full
             gate = bool(v.command) and (agent.verify or check) and not chat
             # có kiểm tra cuối phía sau: nó chạy một lần trên kết quả gộp thay cho kiểm tra riêng — shared thì task song
             # song đang sửa dở cùng thư mục làm lệnh fail giả; cả hai chế độ đỡ N lần chạy test (tốc độ như bản cũ)
@@ -2279,7 +2315,9 @@ class Orchestrator:
                 self.db.update_goal(gid, round=g.round + 1, summary=summary,
                                     status="awaiting" if self.cfg.approve_plan else "running")
                 self.log(f"🔁 Review #{gid}: {summary}")
-                ids = self._insert_plan(gid, new, source="review")
+                text = g.full_text()  # $tên trong mục tiêu: task review thêm vào cũng nhận skill đó
+                ids = self._insert_plan(gid, new, source="review", asked=[
+                    x.name for x in skills.mentioned(text, skills.scan(self.root))] if "$" in text else None)
                 if self.cfg.approve_plan:
                     self.log(tr("📋 {v} task bổ sung đang ở trạng thái NHÁP — /go {gid} để chạy.", v=len(ids), gid=gid))
         except Exception as e:  # không để mục tiêu kẹt ở "reviewing"

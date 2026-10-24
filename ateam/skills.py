@@ -365,8 +365,9 @@ def index_block(items: list[Skill]) -> str:
     return "\n".join(lines)
 
 
-def body_block(items: list[Skill], head: str = "SKILLS FOR THIS TASK") -> str:
-    """Nội dung các skill gắn với lượt này, đặt trước prompt (như khối rule)."""
+def body_block(items: list[Skill], head: str = "SKILLS FOR THIS TASK", sep: bool = True) -> str:
+    """Nội dung các skill gắn với lượt này, đặt trước prompt (như khối rule); sep=False: không kèm dòng ngăn cuối
+    (khối nằm giữa prompt lập kế hoạch)."""
     if not items:
         return ""
     parts = [f"{head} — follow these instructions while you work. Files a skill mentions are relative to its"
@@ -376,11 +377,7 @@ def body_block(items: list[Skill], head: str = "SKILLS FOR THIS TASK") -> str:
         if len(body) > BODY_MAX:
             body = body[:BODY_MAX].rstrip() + f"\n… (truncated — read the rest in {s.file})"
         parts.append(f"\n=== SKILL: {s.name} (folder: {s.dir}) ===\n{body}")
-    return "\n".join(parts) + "\n\n---\n\n"
-
-
-def digest(s: Skill) -> str:
-    return f"{s.name}:{s.file}:{len(s.text())}"
+    return "\n".join(parts) + ("\n\n---\n\n" if sep else "")
 
 
 # ------------------------------------------------------------------ thư viện ateam

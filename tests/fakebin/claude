@@ -96,6 +96,10 @@ elif [[ "$P" == *"Reply with ONLY a JSON array"* && "$P" == *"CO_KIEMTRA"* ]]; t
   echo '[{"id":1,"type":"code","agent":"codex","title":"Tạo a.txt","prompt":"tạo file a.txt","depends_on":[]},
  {"id":2,"type":"code","agent":"grok","title":"Tạo b.txt","prompt":"tạo file b.txt","depends_on":[]},
  {"id":3,"type":"review","agent":"claude","title":"Review","prompt":"xem lại a và b","depends_on":[1,2]}]'
+elif [[ "$P" == *"Reply with ONLY a JSON array"* && -n "${ATEAM_FAKE_PLAN_SKILLS:-}" && "$P" == *"AVAILABLE SKILLS"* ]]; then
+  # Skill: trưởng nhóm gắn skill (một tên không có trong danh mục — ateam phải bỏ) vào task code, review không gắn
+  echo "[{\"id\":1,\"agent\":\"codex\",\"title\":\"Tạo a.txt\",\"prompt\":\"tạo file a.txt\",\"depends_on\":[],\"skills\":[\"$ATEAM_FAKE_PLAN_SKILLS\",\"khong-co\"]},
+ {\"id\":2,\"type\":\"review\",\"agent\":\"claude\",\"title\":\"Review\",\"prompt\":\"xem lại a\",\"depends_on\":[1]}]"
 elif [[ "$P" == *"Reply with ONLY a JSON array"* && "$P" == *"TREO_LAP"* ]]; then
   # CLI treo khi lập kế hoạch (như agy không in gì): test huỷ / lead_timeout
   sleep 30

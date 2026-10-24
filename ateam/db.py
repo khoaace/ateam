@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     session_agent TEXT,
     resume TEXT,
     ask TEXT,
-    kind TEXT
+    kind TEXT,
+    skills TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,12 +131,14 @@ class Task:
     # <<<ASK>>>: {"qa": [{"q", "why", "options", "rec", "a"}]} — câu hỏi của agent và câu trả lời
     ask: dict | None = None
     kind: str | None = None           # loại task (config.TASK_KINDS): None = code, "review", "verify" (kiểm tra cuối)
+    skills: list[str] | None = None   # skill gắn với task (trưởng nhóm / $tên trong mục tiêu) — skills.py
 
     @classmethod
     def from_row(cls, r: sqlite3.Row) -> "Task":
         d = dict(r)
         d["depends_on"] = json.loads(d.get("depends_on") or "[]")
         d["ask"] = json.loads(d["ask"]) if d.get("ask") else None
+        d["skills"] = json.loads(d["skills"]) if d.get("skills") else None
         return cls(**d)
 
     def question(self) -> dict | None:
@@ -209,7 +212,8 @@ class DB:
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(tasks)")}
         for col, typ in (("model", "TEXT"), ("effort", "TEXT"), ("base", "TEXT"),
                          ("head", "TEXT"), ("attempts", "INTEGER"), ("session", "TEXT"),
-                         ("session_agent", "TEXT"), ("resume", "TEXT"), ("ask", "TEXT"), ("kind", "TEXT")):
+                         ("session_agent", "TEXT"), ("resume", "TEXT"), ("ask", "TEXT"), ("kind", "TEXT"),
+                         ("skills", "TEXT")):
             if col not in cols:  # nâng cấp DB cũ
                 self.conn.execute(f"ALTER TABLE tasks ADD COLUMN {col} {typ}")
         rcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(runs)")}
@@ -261,13 +265,14 @@ class DB:
     def add_task(self, agent: str, title: str, prompt: str, *, goal_id: int | None = None,
                  parent_id: int | None = None, depends_on: list[int] | None = None,
                  status: str = QUEUED, depth: int = 0, source: str = "user",
-                 model: str | None = None, effort: str | None = None, kind: str | None = None) -> int:
+                 model: str | None = None, effort: str | None = None, kind: str | None = None,
+                 skills: list[str] | None = None) -> int:
         cur = self.conn.execute(
             "INSERT INTO tasks(goal_id, parent_id, agent, title, prompt, status, depends_on,"
-            " depth, source, created, model, effort, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " depth, source, created, model, effort, kind, skills) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (goal_id, parent_id, agent, title, prompt, status,
              json.dumps(depends_on or []), depth, source, time.time(), model or None,
-             effort or None, kind or None))
+             effort or None, kind or None, json.dumps(skills) if skills else None))
         return int(cur.lastrowid)
 
     def task(self, tid: int) -> Task | None:
@@ -296,6 +301,8 @@ class DB:
             fields["depends_on"] = json.dumps(fields["depends_on"])
         if fields.get("ask") is not None:
             fields["ask"] = json.dumps(fields["ask"], ensure_ascii=False)
+        if "skills" in fields:
+            fields["skills"] = json.dumps(fields["skills"]) if fields["skills"] else None
         keys = ", ".join(f"{k}=?" for k in fields)
         self.conn.execute(f"UPDATE tasks SET {keys} WHERE id=?", (*fields.values(), tid))
 

@@ -84,9 +84,11 @@ QUESTION_SCHEMA = ('{"question": "...", "why": "why this matters, one line", "op
                    '"recommended": "..."}')
 
 
-def plan_prompt(cfg: Config, goal: str, cwd: str, notes: str, can_ask: bool = False, overview: str = "") -> str:
+def plan_prompt(cfg: Config, goal: str, cwd: str, notes: str, can_ask: bool = False, overview: str = "",
+                skills: str = "") -> str:
     """can_ask: được hỏi lại người dùng (một câu, như /grill) thay vì lập kế hoạch khi có điểm quan trọng chưa rõ;
-    overview: khối PROJECT OVERVIEW của /init (overview.block)."""
+    overview: khối PROJECT OVERVIEW của /init (overview.block); skills: danh sách skill đang bật + skill người dùng
+    gọi bằng $tên (Orchestrator._plan_skills)."""
     ask = f"""
 
 If — and only if — something ESSENTIAL is unclear (it changes what to build or how, exploring the codebase
@@ -104,7 +106,7 @@ GOAL from the user:
 {goal}
 
 {(overview + chr(10) + chr(10)) if overview else ''}{('Shared team notes:' + chr(10) + notes) if notes else ''}
-
+{(chr(10) + skills + chr(10)) if skills else ''}
 Break the goal into concrete tasks.
 {_plan_rules(cfg, "goal", bool(overview))}
 
@@ -113,7 +115,8 @@ Reply with ONLY a JSON array, no other text:
 
 
 def followup_plan_prompt(cfg: Config, goal: str, history: str, prev_summary: str, followup: str,
-                         cwd: str, notes: str, earlier: list[str] | None = None, overview: str = "") -> str:
+                         cwd: str, notes: str, earlier: list[str] | None = None, overview: str = "",
+                         skills: str = "") -> str:
     """Kế hoạch cho yêu cầu "tiếp tục" một mục tiêu đã làm xong."""
     prior = "".join(f"\nEarlier follow-up {i}: {f}" for i, f in enumerate(earlier or [], 1))
     return f"""You are the TEAM LEAD of a team of AI coding agents working in: {cwd}
@@ -128,7 +131,7 @@ ORIGINAL GOAL:
 WORK DONE SO FAR (task results):
 {history or '(no task results kept)'}
 {('Your previous assessment: ' + prev_summary + chr(10)) if prev_summary else ''}
-{(overview + chr(10) + chr(10)) if overview else ''}{('Shared team notes:' + chr(10) + notes + chr(10)) if notes else ''}
+{(overview + chr(10) + chr(10)) if overview else ''}{('Shared team notes:' + chr(10) + notes + chr(10)) if notes else ''}{(skills + chr(10) + chr(10)) if skills else ''}
 NEW FOLLOW-UP REQUEST from the user:
 {followup}
 
