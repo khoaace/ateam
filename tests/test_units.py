@@ -1319,3 +1319,22 @@ def test_workflow_step_type_roundtrip(tmp_path, monkeypatch):
     body = wizard.workflow_body(Config(), "w2", None, "", True, [{"agent": "lead", "title": "R", "type": "review"},
                                                               {"agent": "lead", "title": "X", "type": "lạ"}])
     assert body["steps"][0]["type"] == "review" and "type" not in body["steps"][1]
+
+
+def test_workflow_summary_shows_parallel_steps_and_warnings():
+    """Tóm tắt nhóm bước theo tầng (song song nối ‖); cảnh báo agent tắt / bước verify khi chưa có lệnh kiểm tra."""
+    from ateam import wizard
+    from ateam.config import Config, Workflow, WorkflowStep
+    chain = Workflow("c", steps=[WorkflowStep("lead"), WorkflowStep("codex"), WorkflowStep("claude", kind="review")])
+    assert chain.summary() == "lead → codex → claude (review)"
+    diamond = Workflow("d", steps=[WorkflowStep("lead"), WorkflowStep("codex", after=[1]), WorkflowStep("grok", after=[1]),
+                                   WorkflowStep("claude", kind="review", after=[2, 3]), WorkflowStep("agy", after=[])])
+    assert diamond.summary() == "lead ‖ agy → codex ‖ grok → claude (review)"
+    cfg = Config(agents={"codex": AgentConfig("codex", ["codex"]), "grok": AgentConfig("grok", ["grok"], enabled=False)})
+    w = Workflow("w", steps=[WorkflowStep("codex"), WorkflowStep("grok"), WorkflowStep("ghost"),
+                             WorkflowStep("lead", kind="verify")])
+    warns = wizard.flow_warnings(cfg, w)
+    assert len(warns) == 3 and "Bước 2" in warns[0] and "đang tắt" in warns[0] and "không có trong đội" in warns[1]
+    assert "verify" in warns[2]
+    cfg.verify.command = "pytest"
+    assert len(wizard.flow_warnings(cfg, w)) == 2

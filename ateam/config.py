@@ -718,8 +718,16 @@ class Workflow:
         return out
 
     def summary(self) -> str:
-        return " → ".join((st.agent or LEAD_ALIAS) + (f" ({st.kind})" if st.kind != KIND_CODE else "")
-                          for st in self.steps) or tr("(chưa có bước)")
+        """Các bước theo tầng: cùng tầng (chạy song song) nối ‖, tầng sau chờ tầng trước nối →.
+        Tầng của bước = 1 + tầng lớn nhất trong các bước nó chờ."""
+        level: list[int] = []
+        for i, st in enumerate(self.steps, 1):
+            after = [i - 1] if st.after is None and i > 1 else [a for a in st.after or [] if 0 < a < i]
+            level.append(1 + max((level[a - 1] for a in after), default=-1))
+        groups: dict[int, list[str]] = {}
+        for lv, st in zip(level, self.steps):
+            groups.setdefault(lv, []).append((st.agent or LEAD_ALIAS) + (f" ({st.kind})" if st.kind != KIND_CODE else ""))
+        return " → ".join(" ‖ ".join(groups[k]) for k in sorted(groups)) or tr("(chưa có bước)")
 
 
 @dataclass
@@ -1021,37 +1029,37 @@ def agent_templates() -> dict[str, dict]:
 # viên đầu tiên khác trưởng nhóm (bước review: trưởng nhóm) — điền lúc chọn mẫu (fill_template).
 WORKFLOW_TEMPLATES: dict[str, dict] = {
     "tinh-nang": {
-        "description": "Tính năng mới: thiết kế → code + test → review",
+        "description": tr("Tính năng mới: thiết kế → code + test → review"),
         "review": True,
         "steps": [
-            {"agent": LEAD_ALIAS, "title": "Thiết kế",
-             "prompt": "Đọc code liên quan và viết thiết kế ngắn cho: {goal} — file cần đổi, cách làm, cách kiểm "
-                       "tra. Chưa sửa code."},
-            {"agent": "*", "title": "Viết code",
-             "prompt": "Làm {goal} theo thiết kế ở bước trước; thêm hoặc cập nhật test cho hành vi mới."},
-            {"agent": "*", "type": KIND_REVIEW, "title": "Review code",
-             "prompt": "Review thay đổi của bước trước so với mục tiêu: {goal}."},
+            {"agent": LEAD_ALIAS, "title": tr("Thiết kế"),
+             "prompt": tr("Đọc code liên quan và viết thiết kế ngắn cho: {goal} — file cần đổi, cách làm, cách kiểm "
+                          "tra. Chưa sửa code.")},
+            {"agent": "*", "title": tr("Viết code"),
+             "prompt": tr("Làm {goal} theo thiết kế ở bước trước; thêm hoặc cập nhật test cho hành vi mới.")},
+            {"agent": "*", "type": KIND_REVIEW, "title": tr("Review code"),
+             "prompt": tr("Review thay đổi của bước trước so với mục tiêu: {goal}.")},
         ],
     },
     "sua-loi": {
-        "description": "Sửa lỗi: tái hiện + sửa + test chống tái diễn → review",
+        "description": tr("Sửa lỗi: tái hiện + sửa + test chống tái diễn → review"),
         "review": True,
         "steps": [
-            {"agent": "*", "title": "Sửa lỗi",
-             "prompt": "Lỗi: {goal}. Tái hiện lỗi, tìm nguyên nhân gốc, sửa tối thiểu và thêm test tái hiện lỗi "
-                       "(fail trước khi sửa, qua sau khi sửa)."},
-            {"agent": "*", "type": KIND_REVIEW, "title": "Review bản sửa",
-             "prompt": "Kiểm tra bản sửa lỗi '{goal}': đúng nguyên nhân gốc, không làm hỏng chỗ khác."},
+            {"agent": "*", "title": tr("Sửa lỗi"),
+             "prompt": tr("Lỗi: {goal}. Tái hiện lỗi, tìm nguyên nhân gốc, sửa tối thiểu và thêm test tái hiện lỗi "
+                          "(fail trước khi sửa, qua sau khi sửa).")},
+            {"agent": "*", "type": KIND_REVIEW, "title": tr("Review bản sửa"),
+             "prompt": tr("Kiểm tra bản sửa lỗi '{goal}': đúng nguyên nhân gốc, không làm hỏng chỗ khác.")},
         ],
     },
     "review-code": {
-        "description": "Review code rồi sửa theo góp ý",
+        "description": tr("Review code rồi sửa theo góp ý"),
         "review": False,
         "steps": [
             {"agent": "*", "type": KIND_REVIEW, "title": "Review",
-             "prompt": "Review code liên quan tới: {goal}. Liệt kê vấn đề cụ thể (file:dòng), sửa luôn lỗi nhỏ rõ "
-                       "ràng."},
-            {"agent": "*", "title": "Sửa theo review", "prompt": "Sửa các vấn đề review ở bước trước."},
+             "prompt": tr("Review code liên quan tới: {goal}. Liệt kê vấn đề cụ thể (file:dòng), sửa luôn lỗi nhỏ rõ "
+                          "ràng.")},
+            {"agent": "*", "title": tr("Sửa theo review"), "prompt": tr("Sửa các vấn đề review ở bước trước.")},
         ],
     },
 }

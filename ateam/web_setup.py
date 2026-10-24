@@ -154,12 +154,12 @@ class SetupWeb:
             raw = (custom.get("workflows") or {}).get(name)
             body = raw if raw is not None else workflow_to_dict(w)
             flows.append({"name": name, "steps": len(w.steps), "summary": w.summary(), "description": w.description,
-                          "in_file": raw is not None, "raw": body,
+                          "in_file": raw is not None, "raw": body, "warnings": wizard.flow_warnings(cfg, w),
                           "step_rows": [dict(st, after=wizard.after_text(st.get("after"))) for st in body.get("steps", [])]})
         return web.json_response({
             "agents": agents, "workflows": flows, "lead": cfg.lead, "agent_names": list(cfg.agents),
             "default_workflow": cfg.default_workflow,
-            "auto_review": cfg.auto_review,
+            "auto_review": cfg.auto_review, "verify": bool(cfg.verify.command),
             "step_agents": [{"label": lb, "value": v} for lb, v in wizard.flow_agents(cfg)],
             "step_choices": {v: dict(zip(("models", "efforts"), wizard.flow_step_choices(cfg, v)))
                              for v in [LEAD_ALIAS] + list(cfg.agents)},

@@ -230,7 +230,8 @@ window.Setup = (() => {
         <button class="btn sm danger" data-cu="del-agent" data-name="${esc(a.name)}">${esc(t("remove"))}</button></div>`).join("")
       || `<div class="muted small pad">${esc(t("cu_no_agents"))}</div>`;
     const flowRows = d.workflows.map((w) => `<div class="c-row"><b>${esc(w.name)}</b>
-        <span class="muted small c-info">${w.name === d.default_workflow ? `<span class="chip">★ ${esc(t("cu_default"))}</span> ` : ""}${esc(t("cu_steps", { n: w.steps, v: w.summary }))}${w.description ? " · " + esc(w.description) : ""}</span>
+        <span class="muted small c-info">${w.name === d.default_workflow ? `<span class="chip">★ ${esc(t("cu_default"))}</span> ` : ""}${esc(t("cu_steps", { n: w.steps, v: w.summary }))}${w.description ? " · " + esc(w.description) : ""}${(w.warnings || []).map((x) => `<span class="c-warn warn-text">⚠ ${esc(x)}</span>`).join("")}</span>
+        <button class="btn sm" data-cu="run-flow" data-name="${esc(w.name)}" title="${esc(t("cu_run_hint", { name: w.name }))}">▶ ${esc(t("cu_run"))}</button>
         <button class="btn sm" data-cu="${w.name === d.default_workflow ? "unset-default" : "set-default"}" data-name="${esc(w.name)}" title="${esc(t("mode_pick_title"))}">${esc(t(w.name === d.default_workflow ? "cu_unset_default" : "cu_make_default"))}</button>
         <button class="btn sm" data-cu="edit-flow" data-name="${esc(w.name)}">${esc(t("edit"))}</button>
         <button class="btn sm danger" data-cu="del-flow" data-name="${esc(w.name)}">${esc(t("remove"))}</button></div>`).join("")
@@ -256,6 +257,7 @@ window.Setup = (() => {
         if (r.mode_saved) reopen();
       }
       if (b.dataset.cu === "roles") rolesModal();
+      if (b.dataset.cu === "run-flow") { const mm = b.closest(".modal"); if (mm) closeModal(mm); prefill(`/flow ${name} `); }  // nhập mục tiêu ở ô nhập chính
       if (b.dataset.cu === "edit-agent") agentForm(d, d.agents.find((a) => a.name === name), reopen);
       if (b.dataset.cu === "edit-flow") flowForm(d, d.workflows.find((w) => w.name === name), reopen);
       if (b.dataset.cu === "del-agent" || b.dataset.cu === "del-flow") {

@@ -4697,4 +4697,46 @@ EN: dict[str, str] = {
         "Space on/off · Enter view · c copy $name · Esc close",
     "⚠ #{tid}: bỏ skill {v} — chưa bật cho dự án (bật ở trang 🧩 Skills / /skills, hoặc gọi bằng $tên trong mục tiêu)":
         "⚠ #{tid}: dropped skill {v} — not turned on for this project (turn it on in 🧩 Skills / /skills, or call it with $name in the goal)",
+    "Tính năng mới: thiết kế → code + test → review":
+        "New feature: design → code + tests → review",
+    "Thiết kế":
+        "Design",
+    "Đọc code liên quan và viết thiết kế ngắn cho: {goal} — file cần đổi, cách làm, cách kiểm tra. Chưa sửa code.":
+        "Read the relevant code and write a short design for: {goal} — files to change, approach, how to test. Do not change code yet.",
+    "Viết code":
+        "Write code",
+    "Làm {goal} theo thiết kế ở bước trước; thêm hoặc cập nhật test cho hành vi mới.":
+        "Implement {goal} following the design from the previous step; add or update tests for the new behavior.",
+    "Review thay đổi của bước trước so với mục tiêu: {goal}.":
+        "Review the previous step's changes against the goal: {goal}.",
+    "Sửa lỗi: tái hiện + sửa + test chống tái diễn → review":
+        "Bug fix: reproduce + fix + regression test → review",
+    "Sửa lỗi":
+        "Fix the bug",
+    "Lỗi: {goal}. Tái hiện lỗi, tìm nguyên nhân gốc, sửa tối thiểu và thêm test tái hiện lỗi (fail trước khi sửa, qua sau khi sửa).":
+        "Bug: {goal}. Reproduce it, find the root cause, make a minimal fix and add a test that reproduces the bug (fails before the fix, passes after).",
+    "Review bản sửa":
+        "Review the fix",
+    "Kiểm tra bản sửa lỗi '{goal}': đúng nguyên nhân gốc, không làm hỏng chỗ khác.":
+        "Check the fix for '{goal}': it addresses the root cause and breaks nothing else.",
+    "Review code rồi sửa theo góp ý":
+        "Review code, then fix the findings",
+    "Review code liên quan tới: {goal}. Liệt kê vấn đề cụ thể (file:dòng), sửa luôn lỗi nhỏ rõ ràng.":
+        "Review the code related to: {goal}. List concrete issues (file:line) and fix small, obvious ones right away.",
+    "Sửa theo review":
+        "Fix review findings",
+    "Sửa các vấn đề review ở bước trước.":
+        "Fix the issues found in the previous review step.",
+    "Bước {i} (verify): chưa đặt lệnh kiểm tra (/verify) — bước sẽ xong ngay, không kiểm tra":
+        "Step {i} (verify): no check command set (/verify) — the step will finish at once without checking anything",
+    "Bước {i}: agent '{agent}' {v} — lúc chạy sẽ giao cho trưởng nhóm":
+        "Step {i}: agent '{agent}' {v} — it will be given to the team lead when run",
+    "không có trong đội":
+        "is not in the team",
+    "Chạy":
+        "Run",
+    "Điền /flow {name} vào ô nhập — gõ mục tiêu rồi Enter (chạy một lần, không đổi luồng mặc định)":
+        "Fills /flow {name} into the input — type the goal and press Enter (runs once, the default flow stays as is)",
+    "▶ Chạy":
+        "▶ Run",
 }

@@ -252,3 +252,19 @@ def test_delete_task_outside_plan(env, project, monkeypatch):
     assert not o.log_path(failed).exists()
     out = subprocess.run(["git", "branch", "--list", "ateam/*"], cwd=project, capture_output=True, text=True).stdout
     assert not out.strip()
+
+
+def test_retry_unblocks_whole_chain(env, project, monkeypatch):
+    """/retry bước đầu của chuỗi 1 → 2 → 3: mọi bước phía sau (không chỉ bước liền sau) được xếp lại."""
+    from ateam.db import BLOCKED, FAILED, QUEUED
+    o = _orch(env, project, monkeypatch)
+    gid = o.db.add_goal("G")
+    o.db.update_goal(gid, status="incomplete")
+    a = o.db.add_task("codex", "a", "tạo a", goal_id=gid, status=FAILED)
+    b = o.db.add_task("codex", "b", "tạo b", goal_id=gid, status=BLOCKED)
+    c = o.db.add_task("codex", "c", "tạo c", goal_id=gid, status=BLOCKED)
+    o.db.update_task(b, depends_on=[a])
+    o.db.update_task(c, depends_on=[b])
+    o.retry(a)
+    assert [o.db.task(x).status for x in (a, b, c)] == [QUEUED] * 3
+    assert o.db.goal(gid).status == "running"

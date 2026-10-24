@@ -13,10 +13,10 @@ import unicodedata
 from pathlib import Path
 
 from . import shell
-from .config import (CATALOG, LEAD_ALIAS, NAME_RE, PROVIDERS, QUALITY, ROLES, WIZARD_FLOW, WORKFLOW_TEMPLATES, Config,
-                     Workflow, WorkflowStep, builtin_agent, default_cli, fill_template, needs_setup, provider_of,
-                     provider_template, save_custom_item, save_default_workflow, save_project_setting, task_kind,
-                     tier_preset, workflow_to_dict)
+from .config import (CATALOG, KIND_VERIFY, LEAD_ALIAS, NAME_RE, PROVIDERS, QUALITY, ROLES, WIZARD_FLOW,
+                     WORKFLOW_TEMPLATES, Config, Workflow, WorkflowStep, builtin_agent, default_cli, fill_template,
+                     needs_setup, provider_of, provider_template, save_custom_item, save_default_workflow,
+                     save_project_setting, task_kind, tier_preset, workflow_to_dict)
 from .i18n import tr
 
 # ---------------------------------------------------------------------------- wizard /setup
@@ -354,6 +354,20 @@ def workflow_body(cfg: Config, name: str, old: str | None, description: str, rev
     if not out:
         raise ValueError(tr("Workflow cần ít nhất 1 bước"))
     return workflow_to_dict(Workflow(name=name, description=description.strip(), steps=out, review=review))
+
+
+def flow_warnings(cfg: Config, w: Workflow) -> list[str]:
+    """Điều sẽ làm workflow chạy khác ý người dùng — hiện ở trang Workflows và ghi log khi chạy."""
+    out = []
+    active = cfg.active_agents()
+    for i, st in enumerate(w.steps, 1):
+        if st.kind == KIND_VERIFY and not cfg.verify.command:
+            out.append(tr("Bước {i} (verify): chưa đặt lệnh kiểm tra (/verify) — bước sẽ xong ngay, không kiểm tra",
+                          i=i))
+        elif st.agent not in ("", LEAD_ALIAS) and st.agent not in active:
+            out.append(tr("Bước {i}: agent '{agent}' {v} — lúc chạy sẽ giao cho trưởng nhóm", i=i, agent=st.agent,
+                          v=tr("đang tắt") if st.agent in cfg.agents else tr("không có trong đội")))
+    return out
 
 
 def suggestion_form(cfg: Config, raw: dict) -> dict:

@@ -525,6 +525,7 @@ def ui_strings() -> dict[str, str]:
                       "/setup). Workflow chạy bằng /flow <tên> <mục tiêu>, hoặc ★ Đặt mặc định để gõ mục tiêu là "
                       "chạy luôn."),
         "cu_agents": tr("Agent tuỳ chỉnh"), "cu_add_agent": tr("Thêm agent"), "cu_add_flow": tr("Thêm workflow"),
+        "cu_run": tr("Chạy"), "cu_run_hint": tr("Điền /flow {name} vào ô nhập — gõ mục tiêu rồi Enter (chạy một lần, không đổi luồng mặc định)"),
         "cu_add_custom_agent": tr("Thêm agent tuỳ chỉnh"), "cu_edit_agent": tr("Sửa agent {name}"),
         "cu_edit_flow": tr("Sửa workflow {name}"),
         "cu_no_agents": tr("Chưa có. Bấm '+ Thêm agent' để thêm CLI bất kỳ (Gemini, Aider, script riêng…)."),

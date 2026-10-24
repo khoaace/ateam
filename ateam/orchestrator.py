@@ -798,6 +798,9 @@ class Orchestrator:
             return tr("Workflow '{name}' chưa có bước nào", name=name)
         gid = self.db.add_goal(text, workflow=name)
         self.log(tr("🎯 Mục tiêu #{gid} theo workflow '{name}': {text}", gid=gid, name=name, text=text))
+        from . import wizard
+        for w in wizard.flow_warnings(self.cfg, wf):
+            self.log("⚠ " + w)
         ids = self._insert_plan(gid, wf.plan(text, self.cfg.lead), source="workflow", from_user=True,
                                 asked=[x.name for x in skills.mentioned(text, skills.scan(self.root))]
                                 if "$" in text else None)
@@ -1436,9 +1439,15 @@ class Orchestrator:
         self._requeues.pop(tid, None)
         self.db.update_task(tid, status=QUEUED, error=None, result=None, started=None, finished=None,
                             resume=resume, ask=ask)
-        for o in self.db.tasks(status=BLOCKED):
-            if tid in o.depends_on:
-                self.db.update_task(o.id, status=QUEUED, error=None)
+        # mở chặn lan truyền: chuỗi 1 → 2 → 3 mà 1 lỗi thì cả 2 lẫn 3 đều bị chặn, không chỉ task phụ thuộc trực tiếp
+        requeued, more = {tid}, True
+        while more:
+            more = False
+            for o in self.db.tasks(status=BLOCKED):
+                if o.id not in requeued and requeued & set(o.depends_on):
+                    self.db.update_task(o.id, status=QUEUED, error=None)
+                    requeued.add(o.id)
+                    more = True
         if t.goal_id:
             g = self.db.goal(t.goal_id)
             if g and g.status in ("done", "incomplete", "failed"):

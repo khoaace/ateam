@@ -2347,9 +2347,12 @@ class CustomPanel(Vertical):
             info = tr("{v} bước: {v2}", v=len(w.steps), v2=w.summary()) + (f" · {w.description}" if w.description else "")
             if name == self.cfg.default_workflow:
                 info = tr("★ mặc định · ") + info
+            warns = wizard.flow_warnings(self.cfg, w)
+            if warns:
+                info = "⚠ " + " · ".join(warns) + " · " + info
             star = tr("☆ Bỏ mặc định") if name == self.cfg.default_workflow else tr("★ Mặc định")
             rows.append(Horizontal(Static(name, classes="c-name"), Static(info, classes="c-info"),
-                                   btn(star, "default-flow", name),
+                                   btn(tr("▶ Chạy"), "run-flow", name), btn(star, "default-flow", name),
                                    btn(tr("Sửa"), "edit-flow", name), btn(tr("Xoá"), "del-flow", name, "error"),
                                    classes="c-row"))
         if not rows:
@@ -2428,6 +2431,13 @@ class CustomPanel(Vertical):
                 self.notify(tr("'{name}' nằm trong file cấu hình — lưu sẽ tạo bản sao với tên mới.", name=name))
             self.app.push_screen(WorkflowEditScreen(self.cfg, old, raw),
                                  lambda r: self._saved("workflows", r))
+        elif action == "run-flow":  # điền /flow <tên> vào ô nhập chính: gõ mục tiêu rồi Enter (chạy một lần)
+            if isinstance(self.screen, ModalScreen):  # popup /custom: đóng, giữ kết quả "có thay đổi"
+                self.screen.dismiss(getattr(self.screen, "changed", None))
+            cmd = self.app.query_one("#cmd", Input)
+            cmd.value = f"/flow {name} "
+            cmd.cursor_position = len(cmd.value)
+            cmd.focus()
         elif action == "default-flow":  # gõ mục tiêu chạy workflow này (bấm lại: về trưởng nhóm)
             self.notify(wizard.set_input_mode(self.cfg, "" if name == self.cfg.default_workflow else name))
             await self.changed()
