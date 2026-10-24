@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.50.1 — 24/10/2026
+
+- **Web: terminal dễ đọc ở light mode** — tab 🔲 Lưới và "Mở trong terminal" dùng bảng màu ANSI riêng cho nền sáng và
+  tự làm đậm chữ quá nhạt (màu code truecolor của Claude Code theo theme tối trước đây gần như vô hình). Đổi sáng/tối
+  áp ngay cho terminal đang mở.
+
 ## 0.50.0 — 23/10/2026
 
 - **TUI: ✨ AI trong editor như web** — tab 📝 Code: **Ctrl+E** (terminal coi Ctrl+I là Tab) gõ yêu cầu, chọn agent
