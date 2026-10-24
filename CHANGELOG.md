@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.50.3 — 24/10/2026
+
+- **Web: "Cần bạn" không còn hiện task lỗi của kế hoạch đã hoàn thành** — trưởng nhóm đã chốt kế hoạch xong thì task
+  lỗi / bị chặn trong đó không còn chờ bạn xử lý; diff chờ duyệt, xung đột và câu hỏi của agent vẫn hiện như cũ.
+
 ## 0.50.2 — 24/10/2026
 
 - **Task không còn bị báo lỗi oan khi agent đã làm xong** — `opencode run` 2.0 thoát mã 1 dù đã trả lời đầy đủ nếu
