@@ -220,3 +220,21 @@ tức agent đã làm tới cùng: `_classify` chỉ coi mã khác 0 là lỗi k
 6000 ký tự cuối (prompt codex in lại chỉ nhắc `SUMMARY:` giữa dòng). Áp cho mọi CLI thay vì riêng opencode; lỗi thật
 xảy ra sau SUMMARY vẫn bị lệnh kiểm tra bắt. Mẫu hết hạn mức / quá tải / thiếu quyền vẫn xét trước như cũ.
 **Xem lại nếu**: opencode thoát đúng mã 0 khi chỉ một tool lỗi, hoặc gặp CLI in SUMMARY rồi mới hỏng thật.
+
+## 21. Skill: thư viện chung của đội, gửi kèm prompt, trưởng nhóm gắn + `$tên`
+
+**Lý do**: mọi CLI đều theo chuẩn Agent Skills nhưng mỗi CLI đọc một thư mục riêng (kiểm trên binary/log thật
+24/10/2026: claude `~/.claude/skills`, codex `~/.codex/skills` + `~/.agents/skills`, agy `~/.gemini/antigravity/skills`,
+grok `~/.grok/skills` + `~/.claude/skills`, opencode `~/.config/opencode/skills` + `~/.claude/skills`; trong repo
+`.claude/skills` / `.agents/skills`…) — cùng một đội mà mỗi thành viên thấy một bộ, trưởng nhóm không biết, agent tuỳ
+chỉnh không có. ateam gom mọi nguồn thành một danh mục và **gửi kèm nội dung skill ở đầu prompt** như `/rules` (DECISIONS
+#15): agent nào cũng nhận cùng một bản, không ghi vào thư mục cấu hình của CLI. Trưởng nhóm chỉ nhận tên + mô tả các
+skill đang bật lúc lập kế hoạch (khoảng 50–80 token mỗi skill) và gắn bằng `"skills"`; thành viên chỉ nhận nội dung
+skill được gắn — không gửi danh sách cho thành viên / review / `/grill` / chat. Skill trong thư mục CLI mặc định *tắt*
+(máy người dùng có ~43 skill, bật hết thì mỗi kế hoạch tốn vài nghìn token); `$tên` dùng được mọi skill. `$tên` trong mục
+tiêu gắn cố định vào mọi task code (luật, không để LLM chọn). Thư viện riêng `~/.config/ateam/skills` (không CLI nào tự
+đọc → không nạp trùng). ✨ AI viết skill chỉ điền form để người dùng duyệt; skill do AI viết bằng tiếng Anh như `/init`.
+Người dùng chọn cách này (24/10/2026).
+**Xem lại nếu**: người dùng muốn skill có tác dụng cả khi mở CLI ngoài ateam (thêm nút "Cài cho CLI": symlink vào thư
+mục của từng CLI), agent không đọc được file phụ của skill nằm ngoài worktree (thêm `--add-dir` cho claude), hoặc danh
+sách gửi trưởng nhóm quá dài (lọc theo mục tiêu).

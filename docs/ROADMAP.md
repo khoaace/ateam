@@ -11,6 +11,9 @@ trang docs + cài một lệnh, CI.
 
 ## Chưa kiểm chứng với CLI thật (ưu tiên cao)
 
+- [ ] Skill (`skills.py`): agent thật có làm theo khối "SKILLS FOR THIS TASK" không, và có đọc được file phụ của skill
+      (`scripts/`, `references/`) nằm ngoài thư mục làm việc / worktree không (claude có thể cần `--add-dir`).
+
 Toàn bộ test dùng agent giả lập. Người dùng đã xác nhận `ateam doctor` thấy đủ 4 CLI
 (claude 2.1.299, codex-cli 0.162.1, agy 1.3.4, opencode 2.0.27) và tên model `xai/grok-build-0.1`,
 nhưng chưa có báo cáo chạy thật. Cần xác nhận:

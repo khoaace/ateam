@@ -499,6 +499,26 @@ chat 💬, lập kế hoạch, review, `/grill`, viết commit message), nên ag
   opencode; `CLAUDE.md`; `GEMINI.md`; `.agents/rules/*.md`; `.claude/rules/*.md`; `.grok/rules/*`) — bấm để mở ở tab
   Code. ateam không gửi kèm các file này (CLI đã tự đọc).
 
+## Skill (🧩 Skills)
+
+Skill là hướng dẫn dùng lại được theo chuẩn mở **Agent Skills**: một thư mục có `SKILL.md` (tên, mô tả "làm gì / khi
+nào dùng", rồi các bước cho agent), có thể kèm script và tài liệu. Mỗi CLI tự đọc skill ở một thư mục riêng
+(`~/.claude/skills`, `~/.codex/skills`, `~/.gemini/antigravity/skills`, `~/.config/opencode/skills`…), nên mỗi
+thành viên trong đội thấy một bộ khác nhau. ateam gom tất cả thành một danh sách và **gửi kèm nội dung skill trong
+prompt**, nên agent nào cũng nhận cùng một bản, kể cả agent tuỳ chỉnh.
+
+- **Trang 🧩 Skills** (web, thanh bên) / `/skills` (TUI): skill nhóm theo nguồn (dự án, thư viện ateam, từng CLI)
+  kèm CLI nào tự đọc, cảnh báo skill sai chuẩn (vd file `.md` nằm phẳng mà CLI không nạp).
+- **Bật cho dự án** = trưởng nhóm thấy tên + mô tả skill khi lập kế hoạch và tự gắn vào task phù hợp (chip 🧩 trên
+  task). Skill của dự án và thư viện ateam mặc định bật; skill trong thư mục CLI mặc định tắt để prompt gọn.
+- **Gọi trực tiếp bằng `$tên-skill`** trong mục tiêu, `/task` hay chat — dùng được mọi skill, kể cả đang tắt. `$tên`
+  trong mục tiêu: trưởng nhóm nhận cả nội dung skill để lập kế hoạch theo nó, và mọi task code của mục tiêu đều nhận skill.
+- **Tạo / sửa** skill trong thư viện ateam (`~/.config/ateam/skills`), **chép** skill của CLI vào thư viện để sửa.
+- **✨ AI viết skill** theo mô tả của bạn, hoặc **💾 Lưu thành skill** ở khung 📋 kế hoạch của mục tiêu đã xong (vd quy
+  trình phát hành / deploy bạn hay nhờ) — agent viết SKILL.md, bạn xem lại rồi mới lưu.
+- **⬇ Cài từ GitHub**: dán `owner/repo` hoặc link (vd `anthropics/skills`), chọn skill muốn cài. Skill có thể kèm
+  script mà agent sẽ chạy — chỉ cài từ nguồn bạn tin.
+
 ## Mở folder / dự án khác
 
 `/open` (hoặc bấm tên dự án góc trên bên trái ở web, hay `>Mở folder` trong palette tab Code) mở popup như

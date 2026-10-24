@@ -419,6 +419,25 @@ nội dung người dùng viết. Điểm gắn duy nhất: `Orchestrator.argv_f
 (`TextAreaVN`: ô nhiều dòng gõ tiếng Việt như `TextInput`). Web: `rules.js`, op `rules` / `rules_list` (đọc được ở
 `--readonly`).
 
+## Skill (`/skills`, `skills.py`)
+
+`scan(root)` gom skill (thư mục có `SKILL.md`; file `.md` nằm phẳng có frontmatter cũng đọc, kèm cảnh báo) theo thứ
+tự ưu tiên dự án (`PROJECT_DIRS`) > thư viện `config.GLOBAL_DIR/skills` > thư mục CLI (`HOME_DIRS`, kiểm trên binary
+thật); trùng tên thì bản ưu tiên cao thắng, các bản khác ghi ở `others`; cùng file qua symlink chỉ tính một lần.
+`parse()` đọc frontmatter bằng YAML tối giản (không PyYAML). Bật/tắt theo dự án (`skill-sets/`) chỉ quyết danh sách
+gửi trưởng nhóm; `$tên` (`mentioned`, chỉ tên có trong danh mục) dùng được mọi skill.
+
+Luồng: `_plan` → `_plan_skills(text)` = `index_block` (tên + mô tả skill đang bật) + `body_block` của skill `$tên` trong
+mục tiêu → `plan_prompt` / `followup_plan_prompt(skills=…)`. `_insert_plan` đọc `"skills"` của từng task (bỏ tên không
+có) và gắn cố định skill `$tên` của mục tiêu vào mọi task code (cả task review thêm vào; việc giao chéo thì không) →
+cột `tasks.skills`. `_run_task`: skill của task ∪ `$tên` trong prompt → `body_block` đặt trước prompt đầy đủ; lượt tiếp
+phiên chỉ thêm `$tên` của chính lượt đó (phiên đã có skill từ prompt đầy đủ). ✨ `write_skill` (theo mô tả, hoặc
+`gid` — rút từ mục tiêu đã xong) gọi `_call_lead`, bóc `<<<SKILL>>> … <<<END>>>` (`P.extract_skill`), trả bản nháp để
+form duyệt — không tự lưu. Cài từ git: `fetch(url)` clone `--depth 1` vào thư mục tạm (`PENDING[token]`, hết hạn 30
+phút) → `install(token, names)` chép vào thư viện. Web: `web_skills.py` (op `skills_list`, `skill_view` đọc được ở
+`--readonly`; `skills` toggle/create/update/delete/import; `skill_ai`, `skill_fetch`, `skill_install` chạy song song),
+`skills.js`. TUI: `SkillsScreen`, `SkillViewScreen`.
+
 ## To-do, tag và Ghi chú (`todos.py`, `notes.py`)
 
 Ba file JSON theo dự án ở `config.GLOBAL_DIR/{todos,tags,notes}/` (cùng tên file, `todos.path_for(root, kind)`),

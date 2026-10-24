@@ -37,6 +37,14 @@ Rule của dự án (`/rules`, `ateam/rules.py`) lưu cùng kiểu, ở `~/.conf
 `{id, title, text, enabled, targets, created}`; `targets` rỗng = mọi agent, `"agent:<tên>"` / `"role:<vai trò>"`
 (`role:lead` = trưởng nhóm, gồm mọi lượt lập kế hoạch / review / viết commit message của ai làm thay).
 
+Skill (`/skills`, trang 🧩 Skills, `ateam/skills.py`): thư viện riêng của ateam ở `~/.config/ateam/skills/<tên>/SKILL.md`
+(chuẩn Agent Skills: frontmatter `name` / `description` + markdown, có thể kèm `scripts/`, `references/`; skill cài từ
+git có thêm `.ateam-source.json` ghi url / ref / commit). ateam còn đọc (không sửa) skill trong thư mục của từng CLI
+(`~/.claude/skills`, `~/.codex/skills`, `~/.agents/skills`, `~/.gemini/antigravity/skills`, `~/.grok/skills`,
+`~/.config/opencode/skill(s)`) và trong repo (`.agents/skills`, `.claude/skills`, `.opencode/skill(s)`, `.grok/skills`).
+Bật/tắt theo dự án ở `~/.config/ateam/skill-sets/<cùng tên file>.json`: `{"on": [...], "off": [...]}` — mặc định bật
+skill của dự án và thư viện, tắt skill trong thư mục CLI. `ATEAM_SKILLS_HOME` đổi thư mục nhà để tìm skill của CLI (test).
+
 Bản tổng quan dự án (`/init`, `ateam/overview.py`) ở `<dự án>/.ateam/project.md` (trong `.ateam/` nên git bỏ qua):
 dòng đầu `<!-- ateam:init commit=<sha> date=<YYYY-MM-DD> -->`, còn lại là markdown — sửa tay được, `/init` lần sau
 giữ phần người dùng sửa. Xoá file = thôi gửi kèm prompt.
