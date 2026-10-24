@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.52.0 — 24/10/2026
+
+- **🧩 Skills — thư viện skill chung cho cả đội** — gom skill (chuẩn Agent Skills, thư mục có `SKILL.md`) từ thư mục của
+  mọi CLI (claude, codex, antigravity, grok, opencode), trong repo và thư viện `~/.config/ateam/skills`, rồi gửi kèm
+  prompt nên agent nào cũng nhận cùng một bản. Bật skill cho dự án = trưởng nhóm thấy khi lập kế hoạch và tự gắn vào
+  task (chip 🧩); gõ `$tên-skill` trong mục tiêu, `/task` hay chat để dùng ngay. Trang 🧩 Skills trên web: xem, tạo /
+  sửa / xoá, chép skill của CLI vào thư viện, ✨ AI viết skill theo mô tả hoặc 💾 lưu cách đội đã làm một mục tiêu thành
+  skill, cài skill từ GitHub. TUI: `/skills` xem và bật/tắt. Không bật skill nào thì prompt và luồng cũ giữ nguyên.
+
 ## 0.51.0 — 24/10/2026
 
 - **Web: xem ảnh ngay khi xem task / kế hoạch** — ảnh dán (`@.ateam/images/…`) hay đường dẫn ảnh trong prompt, kết quả
