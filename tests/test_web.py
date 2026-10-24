@@ -761,6 +761,30 @@ def test_web_markdown_renderer(tmp_path):
     assert "<th>a</th>" in table and '<td><code class="md-c">x</code></td>' in table
 
 
+def test_web_need_you_hides_failed_tasks_of_done_goals(tmp_path):
+    """Cột "Cần bạn": task lỗi trong kế hoạch trưởng nhóm đã chốt hoàn thành không còn chờ bạn (app.js needYou)."""
+    import json
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("không có node")
+    from ateam.web import STATIC
+    src = (STATIC / "app.js").read_text(encoding="utf-8")
+    code = src[src.index("const NEED_YOU"):src.index("function loadBoardPrefs")]
+    tasks = [{"id": 15, "goal": 5, "status": "failed"}, {"id": 16, "goal": 5, "status": "done"},
+             {"id": 20, "goal": 5, "status": "review"}, {"id": 21, "goal": 6, "status": "failed"},
+             {"id": 22, "goal": 7, "status": "blocked"}, {"id": 23, "goal": None, "status": "failed"}]
+    goals = [{"id": 5, "status": "done"}, {"id": 6, "status": "incomplete"}, {"id": 7, "status": "done"}]
+    js = code + f"console.log(JSON.stringify(needYou({json.dumps(tasks)}, {json.dumps(goals)}).map((x) => x.id)));"
+    (tmp_path / "t.js").write_text(js, encoding="utf-8")
+    out = subprocess.run([node, str(tmp_path / "t.js")], capture_output=True, text=True, check=True).stdout
+    # diff chờ duyệt vẫn hiện; lỗi ở kế hoạch chưa xong và task ngoài kế hoạch vẫn hiện
+    assert json.loads(out) == [23, 21, 20]
+
 def test_web_lofi_links(tmp_path):
     """Nhạc lofi (lofi.js): nhận link YouTube các dạng → id, link http(s) khác → stream, còn lại từ chối."""
     import json

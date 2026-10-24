@@ -732,6 +732,12 @@ function cardHtml(x, last) {
    Kế hoạch đã kết thúc mặc định thu gọn; bấm tiêu đề nhóm để mở/đóng (nhớ trong localStorage). ▦ Kanban giữ làm chế độ phụ. */
 const ADHOC = "adhoc";
 const NEED_YOU = ["review", "conflict", "asking", "failed", "blocked"];
+/* việc chờ bạn (cột phải), mới trước; task lỗi / bị chặn trong kế hoạch trưởng nhóm đã chốt hoàn thành thì thôi */
+function needYou(tasks, goals) {
+  const done = new Set(goals.filter((g) => g.status === "done").map((g) => g.id));
+  return tasks.filter((x) => NEED_YOU.includes(x.status) && !(["failed", "blocked"].includes(x.status) && done.has(x.goal)))
+    .sort((a, b) => b.id - a.id);
+}
 function loadBoardPrefs() {
   try {
     S.board = localStorage.getItem("ateam-board") === "kanban" ? "kanban" : "list";
@@ -904,7 +910,7 @@ function renderBoardList() {
     }
     for (const el of old.values()) el.remove();
   }
-  renderBoardSide(adhoc, by);
+  renderBoardSide(adhoc, by, goals);
 }
 function renderAdhocAgents() {
   const sel = $("#bl-add-agent"), names = S.agentNames;
@@ -926,12 +932,12 @@ async function addAdhoc() {
   if (r && r.level === "error") inp.value = text;  // giữ chữ để sửa lại
   inp.focus();
 }
-function renderBoardSide(adhoc, by) {
+function renderBoardSide(adhoc, by, goals) {
   const all = adhoc.concat(...by.values());
   const stats = COLUMNS.filter((c) => !c.optional).map((c) =>
     `<div class="bstat" style="--c:${c.c}"><div class="v">${all.filter((x) => c.st.includes(x.status)).length}</div><div class="k">${esc(t("col_" + c.key))}</div></div>`).join("")
     + `<div class="bstat"><div class="v">${by.size}</div><div class="k">${esc(t("bl_plans"))}</div></div>`;
-  const need = all.filter((x) => NEED_YOU.includes(x.status)).sort((a, b) => b.id - a.id);
+  const need = needYou(all, goals);
   const btns = (x) => ["review", "conflict"].includes(x.status)
     ? `<button class="btn sm primary" data-action="diff" data-task="${x.id}">Δ ${esc(t("diff"))}</button>${x.status === "review" ? `<button class="btn sm" data-action="merge" data-task="${x.id}">✓ ${esc(t("merge"))}</button>` : ""}`
     : x.status === "asking" ? `<button class="btn sm primary" data-action="open-task" data-task="${x.id}">${esc(t("ask_view"))}</button>`
