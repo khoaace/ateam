@@ -180,7 +180,7 @@ def reload_custom(cfg: Config, fresh: Config) -> tuple[set[str], set[str]]:
         if n not in cfg.agents or n in cfg.custom_agents or n in fresh.custom_agents:
             cfg.agents[n] = a  # agent có sẵn giữ nguyên đối tượng (model/effort đang dùng)
     cfg.custom_agents = fresh.custom_agents
-    cfg.workflows = fresh.workflows
+    cfg.workflows, cfg.project_workflows = fresh.workflows, fresh.project_workflows
     cfg.default_workflow = fresh.default_workflow  # workflow mặc định vừa bị xoá -> bỏ
     cfg.quality = fresh.quality
     if cfg.lead not in cfg.agents:

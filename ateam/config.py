@@ -761,6 +761,7 @@ class Config:
     agents: dict[str, AgentConfig] = field(default_factory=dict)
     workflows: dict[str, Workflow] = field(default_factory=dict)
     custom_agents: set[str] = field(default_factory=set)  # tên agent lấy từ custom.toml
+    project_workflows: set[str] = field(default_factory=set)  # workflow riêng của dự án (save_workflow project=True)
     sources: list[Path] = field(default_factory=list)
     notices: list[str] = field(default_factory=list)
 
@@ -1141,6 +1142,53 @@ def save_custom_item(kind: str, name: str, body: dict | None, old_name: str | No
     else:
         sect[name] = {k: v for k, v in body.items() if v is not None}
     save_custom(data)
+
+
+def project_workflows_file(root: Path) -> Path:
+    """Workflow riêng của dự án: ~/.config/ateam/workflows/<thư mục>-<sha1>.json — ngoài repo như rule, skill-sets."""
+    from . import todos  # todos import config: nạp muộn để khỏi vòng import
+    return todos.path_for(root, "workflows")
+
+
+def load_project_workflows(root: Path) -> dict:
+    """{tên: thân như [workflows.<tên>] của custom.toml}; chưa có / lỗi = rỗng."""
+    try:
+        data = json.loads(project_workflows_file(root).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return {str(k): v for k, v in data.items() if isinstance(v, dict)} if isinstance(data, dict) else {}
+
+
+def save_workflow(root: Path, name: str, body: dict | None, old: str | None = None, project: bool = False) -> None:
+    """Thêm/sửa (body là dict) hoặc xoá (body None) workflow. project: chỉ dự án `root` thay vì custom.toml (mọi dự
+    án). Bản đang sửa (`old`, không có thì `name`) ở phạm vi kia thì chuyển sang: bỏ ở chỗ cũ."""
+    pw, path = load_project_workflows(root), project_workflows_file(root)
+    key = old or name
+    src_project = key in pw
+
+    def write() -> None:
+        atomic_write(path, json.dumps(pw, ensure_ascii=False, indent=2))
+    if body is not None:
+        body = {k: v for k, v in body.items() if v is not None}
+    if body is None:
+        if src_project:
+            pw.pop(key)
+            write()
+        else:
+            save_custom_item("workflows", key, None)
+    elif project:
+        if src_project:
+            pw.pop(key)
+        elif old:
+            save_custom_item("workflows", old, None)  # chung → riêng dự án
+        pw[name] = body
+        write()
+    elif src_project:  # riêng dự án → chung
+        pw.pop(key)
+        write()
+        save_custom_item("workflows", name, body)
+    else:
+        save_custom_item("workflows", name, body, old)
 
 
 def agent_to_dict(a: AgentConfig) -> dict:
@@ -1537,6 +1585,9 @@ def load_config(root: Path, with_state: bool = True) -> Config:
     if custom:
         data = _merge(data, {k: custom[k] for k in ("agents", "workflows") if k in custom})
         sources.append(CUSTOM_FILE)
+    project_flows = load_project_workflows(root)
+    if project_flows:  # workflow riêng của dự án: thay cả bản chung cùng tên (không gộp từng khoá)
+        data = dict(data, workflows={**(data.get("workflows") or {}), **project_flows})
     project = root / ".ateam" / "config.toml"
     if project.exists():
         data = _merge(data, tomllib.loads(project.read_text(encoding="utf-8")))
@@ -1590,5 +1641,6 @@ def load_config(root: Path, with_state: bool = True) -> Config:
         agents=agents,
         workflows=workflows,
         custom_agents={n for n in (custom.get("agents") or {}) if n in agents},
+        project_workflows={n for n in project_flows if n in workflows},
         sources=sources,
     )

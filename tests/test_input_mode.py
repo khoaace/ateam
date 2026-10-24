@@ -98,3 +98,26 @@ def test_tui_input_mode_picker_and_star_button(env, project, monkeypatch):
             assert await wait(lambda: not roles._lock.locked() and roles.base is not None)
             await pilot.press("ctrl+q")
     asyncio.run(main())
+
+
+def test_web_project_workflow_save_and_delete(env, project, monkeypatch):
+    """Form workflow web: ô "Chỉ dự án này" lưu ngoài custom.toml; /api/custom đánh dấu project; xoá đúng nơi."""
+    pytest.importorskip("aiohttp")
+    import json
+
+    from test_web import _web_app
+
+    from ateam.config import load_custom, load_project_workflows
+    wa = _web_app(env, project, monkeypatch)
+
+    async def main():
+        r = await wa.handle({"op": "custom_save", "kind": "workflows", "name": "rieng", "review": False,
+                             "project": True, "steps": STEPS})
+        assert r[1] == "ok" and "rieng" in wa.cfg.project_workflows
+        assert "rieng" in load_project_workflows(project) and "rieng" not in (load_custom().get("workflows") or {})
+        cu = json.loads((await wa.setup.api_custom(None)).text)
+        row = next(w for w in cu["workflows"] if w["name"] == "rieng")
+        assert row["project"] and row["in_file"] and cu["project_name"] == project.name
+        r = await wa.handle({"op": "custom_delete", "kind": "workflows", "name": "rieng"})
+        assert r[1] == "ok" and "rieng" not in wa.cfg.workflows and load_project_workflows(project) == {}
+    asyncio.run(main())

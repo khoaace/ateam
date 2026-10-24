@@ -11,8 +11,8 @@ from aiohttp import web
 from . import mentions, theme, wizard
 from .config import (INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TASK_KINDS, TIERS, WORKFLOW_TEMPLATES,
                      agent_from_dict, agent_templates, clear_agent_state, load_custom, load_state, mark_setup_done,
-                     plan_team, provider_of, provider_template, save_custom_item, save_onboard, save_state, tier_preset,
-                     workflow_to_dict)
+                     load_project_workflows, plan_team, provider_of, provider_template, save_custom_item, save_onboard,
+                     save_state, save_workflow, tier_preset, workflow_to_dict)
 from .i18n import tr
 
 if TYPE_CHECKING:
@@ -149,16 +149,18 @@ class SetupWeb:
                            "quick": bool(provider_of(raw.get("command"))), "raw": raw,
                            "fields": wizard.agent_fields_text(raw), "in_file": name in (custom.get("agents") or {}),
                            "provider": provider_of(raw.get("command")) or ""})
-        flows = []
+        flows, pw = [], load_project_workflows(self.app.root)
         for name, w in cfg.workflows.items():
-            raw = (custom.get("workflows") or {}).get(name)
+            project = name in cfg.project_workflows
+            raw = pw.get(name) if project else (custom.get("workflows") or {}).get(name)
             body = raw if raw is not None else workflow_to_dict(w)
             flows.append({"name": name, "steps": len(w.steps), "summary": w.summary(), "description": w.description,
                           "in_file": raw is not None, "raw": body, "warnings": wizard.flow_warnings(cfg, w),
+                          "project": project,
                           "step_rows": [dict(st, after=wizard.after_text(st.get("after"))) for st in body.get("steps", [])]})
         return web.json_response({
             "agents": agents, "workflows": flows, "lead": cfg.lead, "agent_names": list(cfg.agents),
-            "default_workflow": cfg.default_workflow,
+            "default_workflow": cfg.default_workflow, "project_name": self.app.root.name,
             "auto_review": cfg.auto_review, "verify": bool(cfg.verify.command), "kinds": list(TASK_KINDS),
             "step_agents": [{"label": lb, "value": v} for lb, v in wizard.flow_agents(cfg)],
             "step_choices": {v: dict(zip(("models", "efforts"), wizard.flow_step_choices(cfg, v)))
@@ -240,7 +242,10 @@ class SetupWeb:
                                             bool(d.get("review")), d.get("steps") or [])
         except ValueError as e:
             return str(e), "error"
-        save_custom_item(kind, name, body, old)
+        if kind == "workflows":
+            save_workflow(self.app.root, name, body, old, bool(d.get("project")))
+        else:
+            save_custom_item(kind, name, body, old)
         if kind == "agents":  # giá trị vừa đặt trong form phải có hiệu lực, không để state.json cũ đè
             clear_agent_state(name)
             if old and old != name:
@@ -289,10 +294,14 @@ class SetupWeb:
         kind, name = d.get("kind"), str(d.get("name") or "")
         if kind == "agents" and name == self.cfg.lead:
             return tr("'{name}' đang là trưởng nhóm — đổi trưởng nhóm ở /setup trước.", name=name), "error"
-        if name not in (load_custom().get(kind) or {}):
+        project = kind == "workflows" and name in self.cfg.project_workflows
+        if not project and name not in (load_custom().get(kind) or {}):
             return tr("'{name}' nằm trong file cấu hình khác ({v}) — sửa file đó để xoá.", name=name,
                       v=", ".join(map(str, self.cfg.sources))), "warn"
-        save_custom_item(kind, name, None)
+        if kind == "workflows":
+            save_workflow(self.app.root, name, None)
+        else:
+            save_custom_item(kind, name, None)
         await self.app.reload_config()
         return tr("Đã xoá '{name}'", name=name), "ok", {"custom_saved": True}
 

@@ -230,7 +230,7 @@ window.Setup = (() => {
         <button class="btn sm danger" data-cu="del-agent" data-name="${esc(a.name)}">${esc(t("remove"))}</button></div>`).join("")
       || `<div class="muted small pad">${esc(t("cu_no_agents"))}</div>`;
     const flowRows = d.workflows.map((w) => `<div class="c-row"><b>${esc(w.name)}</b>
-        <span class="muted small c-info">${w.name === d.default_workflow ? `<span class="chip">★ ${esc(t("cu_default"))}</span> ` : ""}${esc(t("cu_steps", { n: w.steps, v: w.summary }))}${w.description ? " · " + esc(w.description) : ""}${(w.warnings || []).map((x) => `<span class="c-warn warn-text">⚠ ${esc(x)}</span>`).join("")}</span>
+        <span class="muted small c-info">${w.project ? `<span class="chip" title="${esc(t("cu_project", { name: d.project_name }))}">📁 ${esc(t("cu_project_chip"))}</span> ` : ""}${w.name === d.default_workflow ? `<span class="chip">★ ${esc(t("cu_default"))}</span> ` : ""}${esc(t("cu_steps", { n: w.steps, v: w.summary }))}${w.description ? " · " + esc(w.description) : ""}${(w.warnings || []).map((x) => `<span class="c-warn warn-text">⚠ ${esc(x)}</span>`).join("")}</span>
         <button class="btn sm" data-cu="run-flow" data-name="${esc(w.name)}" title="${esc(t("cu_run_hint", { name: w.name }))}">▶ ${esc(t("cu_run"))}</button>
         <button class="btn sm" data-cu="${w.name === d.default_workflow ? "unset-default" : "set-default"}" data-name="${esc(w.name)}" title="${esc(t("mode_pick_title"))}">${esc(t(w.name === d.default_workflow ? "cu_unset_default" : "cu_make_default"))}</button>
         <button class="btn sm" data-cu="edit-flow" data-name="${esc(w.name)}">${esc(t("edit"))}</button>
@@ -498,6 +498,7 @@ window.Setup = (() => {
       <label>${esc(t("cu_name"))}<input class="field one" id="wf-name" value="${esc(w && w.in_file ? w.name : "")}"></label>
       <label>${esc(t("cu_desc"))}<input class="field one" id="wf-desc" value="${esc(raw.description || "")}"></label>
       <label class="chk"><input type="checkbox" id="wf-review" ${(raw.review ?? d.auto_review) ? "checked" : ""}> ${esc(t("cu_review"))}</label>
+      <label class="chk"><input type="checkbox" id="wf-project" ${(w && w.project) || (prefill && prefill.project) ? "checked" : ""}> ${esc(t("cu_project", { name: d.project_name }))}</label>
       <div class="wf-head"><span></span><span>Agent</span><span>${esc(t("cu_step_type"))}</span><span>Model</span><span>Effort</span><span>${esc(t("cu_step_after"))}</span><span></span></div>
       <div id="wf-steps">${steps.map(stepRow).join("")}</div>
       <div id="wf-warn" class="warn-text small"></div>
@@ -595,7 +596,7 @@ window.Setup = (() => {
       if (a === "save" && !b.disabled) {
         const stepsOut = rows().map((row) => Object.fromEntries($$("[data-sf]", row).map((x) => [x.dataset.sf, x.value])));
         const r2 = await busyBtn(b, request("custom_save", { kind: "workflows", name: $("#wf-name", m).value, old: w && w.in_file ? w.name : null,
-          description: $("#wf-desc", m).value, review: $("#wf-review", m).checked, steps: stepsOut }, t("busy_saving")));
+          description: $("#wf-desc", m).value, review: $("#wf-review", m).checked, project: $("#wf-project", m).checked, steps: stepsOut }, t("busy_saving")));
         if (r2.custom_saved) { closeModal(m); if (done) done(); }
       }
     });

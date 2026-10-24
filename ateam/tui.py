@@ -39,8 +39,8 @@ from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, T
                      WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan, task_kind,
                      full_access_supported, plan_team, provider_of, provider_template, save_onboard,
                      tier_preset, agent_from_dict, agent_templates,
-                     clear_agent_state, found_models, load_config, load_custom, load_state, mark_setup_done,
-                     save_commit_agent, save_custom_item, save_state,
+                     clear_agent_state, found_models, load_config, load_custom, load_project_workflows, load_state,
+                     mark_setup_done, save_commit_agent, save_custom_item, save_state, save_workflow,
                      save_project_setting, workflow_to_dict)
 from .db import ACTIVE, ASKING, DB, GOAL_ENDED
 from .orchestrator import CHAT, SYSTEM, Orchestrator
@@ -1913,9 +1913,11 @@ class WorkflowEditScreen(BaseModal):
     #wf-ai { margin-top: 1; }
     """
 
-    def __init__(self, cfg: Config, name: str | None = None, raw: dict | None = None):
+    def __init__(self, cfg: Config, name: str | None = None, raw: dict | None = None, project: bool = False,
+                 project_name: str = ""):
         super().__init__()
         self.cfg, self.old_name, self.raw = cfg, name, dict(raw or {})
+        self.project, self.project_name = project, project_name  # ô "Chỉ dự án này"
         self.n = 0  # bộ đếm id hàng (không phải số thứ tự bước)
         # id hàng -> (agent, model) của bước: form này không có ô model (chọn ở popup Luồng mặc định) nhưng lưu phải
         # giữ lại; đổi agent của bước thì bỏ (model của CLI khác)
@@ -1953,6 +1955,9 @@ class WorkflowEditScreen(BaseModal):
                 yield form_row(tr("Mô tả"), TextInput(id="wf-desc", classes="f-input"), tr("hiện trong /flow"))
                 yield form_row("Review", Checkbox(tr("Trưởng nhóm review khi xong"), id="wf-review"),
                                tr("review có thể giao thêm việc"))
+                yield form_row(tr("Phạm vi"), Checkbox(tr("Chỉ dùng cho dự án này ({name})", name=self.project_name),
+                                                     self.project, id="wf-project"),
+                               tr("bỏ tick: mọi dự án"))
                 yield Horizontal(*[Static(label, classes=cls) for label, cls in (
                     ("", "step-no"), ("Agent", "step-agent"), (tr("Loại"), "step-kind"), (tr("Tiêu đề"), "step-title"),
                     ("Prompt", "step-prompt"), (tr("Sau bước"), "step-after"), ("Effort", "step-effort"),
@@ -2082,7 +2087,7 @@ class WorkflowEditScreen(BaseModal):
         except ValueError as e:
             self.notify(str(e), severity="error")
             return
-        self.dismiss((name, body, self.old_name))
+        self.dismiss((name, body, self.old_name, self.query_one("#wf-project", Checkbox).value))
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -2349,6 +2354,8 @@ class CustomPanel(Vertical):
             info = tr("{v} bước: {v2}", v=len(w.steps), v2=w.summary()) + (f" · {w.description}" if w.description else "")
             if name == self.cfg.default_workflow:
                 info = tr("★ mặc định · ") + info
+            if name in self.cfg.project_workflows:
+                info = tr("📁 dự án · ") + info
             warns = wizard.flow_warnings(self.cfg, w)
             if warns:
                 info = "⚠ " + " · ".join(warns) + " · " + info
@@ -2391,8 +2398,11 @@ class CustomPanel(Vertical):
     async def _saved(self, kind: str, result) -> None:
         if not result:
             return
-        name, body, old = result
-        save_custom_item(kind, name, body, old)
+        name, body, old = result[:3]
+        if kind == "workflows":  # result[3]: ô "Chỉ dự án này"
+            save_workflow(self.root, name, body, old, bool(result[3]) if len(result) > 3 else False)
+        else:
+            save_custom_item(kind, name, body, old)
         if kind == "agents":  # giá trị vừa đặt trong form phải có hiệu lực, không để state.json cũ đè
             clear_agent_state(name)
             if old and old != name:
@@ -2412,7 +2422,8 @@ class CustomPanel(Vertical):
             return
         if bid == "custom-add-flow":
             event.stop()
-            self.app.push_screen(WorkflowEditScreen(self.cfg), lambda r: self._saved("workflows", r))
+            self.app.push_screen(WorkflowEditScreen(self.cfg, project_name=self.root.name),
+                                 lambda r: self._saved("workflows", r))
             return
         if bid == "custom-default-flow":
             event.stop()
@@ -2426,12 +2437,13 @@ class CustomPanel(Vertical):
         if action == "edit-agent":
             await self.edit_agent(name)
         elif action == "edit-flow":
-            raw = (custom.get("workflows") or {}).get(name)
+            project = name in self.cfg.project_workflows
+            raw = (load_project_workflows(self.root) if project else custom.get("workflows") or {}).get(name)
             old: str | None = name
             if raw is None:  # workflow ghi trong config.toml / file dự án: lưu thành bản sao
                 raw, old = workflow_to_dict(self.cfg.workflows[name]), None
                 self.notify(tr("'{name}' nằm trong file cấu hình — lưu sẽ tạo bản sao với tên mới.", name=name))
-            self.app.push_screen(WorkflowEditScreen(self.cfg, old, raw),
+            self.app.push_screen(WorkflowEditScreen(self.cfg, old, raw, project, self.root.name),
                                  lambda r: self._saved("workflows", r))
         elif action == "run-flow":  # điền /flow <tên> vào ô nhập chính: gõ mục tiêu rồi Enter (chạy một lần)
             if isinstance(self.screen, ModalScreen):  # popup /custom: đóng, giữ kết quả "có thay đổi"
@@ -2449,14 +2461,18 @@ class CustomPanel(Vertical):
                 self.notify(tr("'{name}' đang là trưởng nhóm — đổi trưởng nhóm ở /setup trước.", name=name),
                             severity="error")
                 return
-            if name not in (custom.get(kind) or {}):
+            project = kind == "workflows" and name in self.cfg.project_workflows
+            if not project and name not in (custom.get(kind) or {}):
                 self.notify(tr("'{name}' nằm trong file cấu hình khác ({v}) — sửa file đó để xoá.", name=name, v=', '.join(map(str, self.cfg.sources))), severity="warning")
                 return
             if self.armed != bid:  # bấm lần 2 mới xoá
                 self.armed = bid
                 event.button.label = tr("Chắc chưa?")
                 return
-            save_custom_item(kind, name, None)
+            if kind == "workflows":
+                save_workflow(self.root, name, None)
+            else:
+                save_custom_item(kind, name, None)
             self.notify(tr("Đã xoá '{name}'", name=name))
             await self.changed()
 

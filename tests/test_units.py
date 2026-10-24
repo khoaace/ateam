@@ -1360,3 +1360,33 @@ def test_default_workflow_is_per_project(tmp_path, monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(cfgmod)
+
+
+def test_project_workflows_scope(tmp_path, monkeypatch):
+    """Workflow riêng dự án (ngoài repo): chỉ dự án đó thấy, che bản chung cùng tên, chuyển phạm vi qua lại, xoá."""
+    import importlib
+
+    import ateam.config as cfgmod
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    importlib.reload(cfgmod)
+    try:
+        p1, p2 = tmp_path / "p1", tmp_path / "p2"
+        p1.mkdir(), p2.mkdir()
+        body = {"description": "riêng", "steps": [{"agent": "lead", "title": "A"}]}
+        cfgmod.save_workflow(p1, "rel", body, project=True)
+        c1, c2 = cfgmod.load_config(p1), cfgmod.load_config(p2)
+        assert "rel" in c1.workflows and c1.project_workflows == {"rel"} and "rel" not in c2.workflows
+        assert "rel" not in (cfgmod.load_custom().get("workflows") or {})
+        cfgmod.save_custom_item("workflows", "rel", {"description": "chung", "steps": [{"title": "B"}]})
+        assert cfgmod.load_config(p1).workflows["rel"].description == "riêng"  # bản dự án che bản chung
+        assert cfgmod.load_config(p2).workflows["rel"].description == "chung"
+        cfgmod.save_workflow(p1, "rel", None)  # xoá bản dự án: bản chung còn nguyên
+        assert cfgmod.load_config(p1).workflows["rel"].description == "chung"
+        cfgmod.save_workflow(p1, "rel2", body, old="rel", project=True)  # chung → riêng dự án (kèm đổi tên)
+        assert "rel" not in (cfgmod.load_custom().get("workflows") or {})
+        assert set(cfgmod.load_config(p1).project_workflows) == {"rel2"} and "rel2" not in cfgmod.load_config(p2).workflows
+        cfgmod.save_workflow(p1, "rel2", body, old="rel2", project=False)  # riêng → chung
+        assert cfgmod.load_project_workflows(p1) == {} and "rel2" in cfgmod.load_config(p2).workflows
+    finally:
+        monkeypatch.undo()
+        importlib.reload(cfgmod)

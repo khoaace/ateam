@@ -4753,4 +4753,14 @@ EN: dict[str, str] = {
         "Step {i} (approval) waits for no step — there is nothing to approve",
     "⏸ duyệt":
         "⏸ approve",
+    "Chỉ dùng cho dự án này ({name})":
+        "Only for this project ({name})",
+    "dự án":
+        "project",
+    "📁 dự án · ":
+        "📁 project · ",
+    "Phạm vi":
+        "Scope",
+    "bỏ tick: mọi dự án":
+        "unticked: every project",
 }
