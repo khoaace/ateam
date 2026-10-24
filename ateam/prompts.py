@@ -571,18 +571,8 @@ End your answer with a line starting with 'SUMMARY:' followed by one short line 
 and anything the user should double-check."""
 
 
-def workflow_suggest_prompt(cfg: Config, description: str, cwd: str) -> str:
-    return f"""You are designing a reusable ateam WORKFLOW (a fixed chain of steps the team runs for a goal)
-for the repository at: {cwd}
-
-TEAM MEMBERS (name: role){' and their effort levels' if any(a.efforts_for() for a in cfg.active_agents().values()) else ''}:
-{roster(cfg, with_effort=True)}
-Use "lead" as the agent of a step that the team lead ("{cfg.lead}") should do (design, review, planning).
-
-WHAT THE USER WANTS THE WORKFLOW TO DO:
-{description}
-
-Design 2-6 steps. Each step is one task for one member. In titles and prompts write {{goal}} where the
+# đặc tả workflow chung cho ✨ Gợi ý workflow và 🔀 Lưu mục tiêu thành workflow (định dạng JSON wizard.suggestion_form đọc)
+WORKFLOW_SPEC = """Design 2-6 steps. Each step is one task for one member. In titles and prompts write {goal} where the
 user's goal text should go (the workflow is reused for many goals). Prompts must be self-contained
 instructions. "after" lists the step numbers (1-based) this step waits for; omit it to wait for the
 previous step, use [] to start immediately (parallel steps). "effort" is optional (one of that member's
@@ -591,10 +581,29 @@ for and fixes small issues) or "verify" (ateam runs the project's check command 
 of the steps it waits for and its agent fixes failures — useful after parallel steps). "review": true if the
 lead should review the result at the end.
 Write name as a short kebab-case slug; write description, titles and prompts in the language of the
-user's request above. Do NOT modify any files.
+user's request. Do NOT modify any files.
 
 Reply with ONLY a JSON object, no other text:
-{{"name": "...", "description": "...", "review": true, "steps": [{{"agent": "<member or lead>", "type": "code", "title": "...", "prompt": "...", "after": [1], "effort": ""}}]}}"""
+{"name": "...", "description": "...", "review": true, "steps": [{"agent": "<member or lead>", "type": "code", "title": "...", "prompt": "...", "after": [1], "effort": ""}]}"""
+
+
+def _workflow_head(cfg: Config, cwd: str) -> str:
+    return f"""You are designing a reusable ateam WORKFLOW (a fixed chain of steps the team runs for a goal)
+for the repository at: {cwd}
+
+TEAM MEMBERS (name: role){' and their effort levels' if any(a.efforts_for() for a in cfg.active_agents().values()) else ''}:
+{roster(cfg, with_effort=True)}
+Use "lead" as the agent of a step that the team lead ("{cfg.lead}") should do (design, review, planning)."""
+
+
+def workflow_suggest_prompt(cfg: Config, description: str, cwd: str, skills: str = "") -> str:
+    """skills: skills.index_block của skill đang bật (bước có thể kèm "skills") — rỗng thì prompt như cũ."""
+    return f"""{_workflow_head(cfg, cwd)}
+
+WHAT THE USER WANTS THE WORKFLOW TO DO:
+{description}
+{(chr(10) + skills + chr(10)) if skills else ''}
+{WORKFLOW_SPEC}"""
 
 
 def extract_commit_message(text: str) -> str:

@@ -85,10 +85,13 @@ elif [[ "$P" == *"WRITE AN AGENT SKILL"* ]]; then
   printf '<<<SKILL>>>\n```markdown\n---\nname: %s\ndescription: "Release a new version. Use when the user asks to publish."\n---\n\n# Release\n1. Bump the version\n2. Push\n```\n<<<END>>>\n' "$name"
 elif [[ "$P" == *"reusable ateam WORKFLOW"* ]]; then
   # Gợi ý workflow tuỳ chỉnh: agent lạ (ghost) và effort lạ để test chuẩn hoá
+  # có danh sách skill (AVAILABLE SKILLS) + ATEAM_FAKE_PLAN_SKILLS: bước 2 kèm "skills"; rút từ mục tiêu: tên khác
   sleep 0.5  # chậm như model thật: test không được đọc form trước khi gợi ý về
-  echo '{"name": "Tính năng UI", "description": "Thiết kế → code → kiểm tra giao diện", "review": false, "steps": [
+  sk=""; [[ -n "$ATEAM_FAKE_PLAN_SKILLS" && "$P" == *"AVAILABLE SKILLS"* ]] && sk=", \"skills\": [\"$ATEAM_FAKE_PLAN_SKILLS\", \"khong-co\"]"
+  name="Tính năng UI"; [[ "$P" == *"FINISHED GOAL"* ]] && name="Từ mục tiêu"
+  echo '{"name": "'"$name"'", "description": "Thiết kế → code → kiểm tra giao diện", "review": false, "steps": [
     {"agent": "lead", "title": "Thiết kế {goal}", "prompt": "Viết thiết kế ngắn cho {goal}", "after": []},
-    {"agent": "codex", "title": "Viết code", "prompt": "Làm {goal} theo thiết kế", "effort": "rất cao"},
+    {"agent": "codex", "title": "Viết code", "prompt": "Làm {goal} theo thiết kế", "effort": "rất cao"'"$sk"'},
     {"agent": "ghost", "title": "Kiểm tra", "prompt": "Chạy test cho {goal}", "after": [1, 9]}]}'
 elif [[ "$P" == *"NEW FOLLOW-UP REQUEST"* ]]; then
   # Tiếp tục mục tiêu đã xong: 1 task bổ sung

@@ -370,9 +370,10 @@ def flow_warnings(cfg: Config, w: Workflow) -> list[str]:
     return out
 
 
-def suggestion_form(cfg: Config, raw: dict) -> dict:
+def suggestion_form(cfg: Config, raw: dict, skill_names: set[str] | None = None) -> dict:
     """Workflow trưởng nhóm gợi ý (JSON) → dữ liệu điền form: tên chưa trùng, agent lạ → trưởng nhóm, effort
-    lạ bỏ, 'Sau bước' sai bỏ (= sau bước liền trước). Không có bước nào → ValueError."""
+    lạ bỏ, 'Sau bước' sai bỏ (= sau bước liền trước); "skills" của bước (tên có trong skill_names) thành $tên cuối
+    prompt — schema bước không có khoá skill. Không có bước nào → ValueError."""
     steps = []
     for st in raw.get("steps") or []:
         if not isinstance(st, dict) or not (st.get("title") or st.get("prompt")):
@@ -385,8 +386,14 @@ def suggestion_form(cfg: Config, raw: dict) -> dict:
         after = after if isinstance(after, list) else None if after is None else [after]
         if after and not all(isinstance(x, int) and 0 < x <= len(steps) for x in after):
             after = None
+        prompt = str(st.get("prompt") or "").strip()
+        want = st.get("skills") or []
+        for n in (want if isinstance(want, list) else re.split(r"[,\s]+", str(want))):
+            n = str(n).strip().lstrip("$")
+            if n in (skill_names or ()) and f"${n}" not in prompt:
+                prompt += f" ${n}"
         steps.append({"agent": agent, "title": str(st.get("title") or "").strip(),
-                      "prompt": str(st.get("prompt") or "").strip(), "after": after_text(after),
+                      "prompt": prompt, "after": after_text(after),
                       "effort": effort if a and effort in a.efforts_for() else "", "type": task_kind(st.get("type"))})
     if not steps:
         raise ValueError(tr("Trưởng nhóm không gợi ý được bước nào — thử mô tả rõ hơn"))

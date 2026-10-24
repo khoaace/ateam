@@ -801,8 +801,12 @@ class Orchestrator:
         from . import wizard
         for w in wizard.flow_warnings(self.cfg, wf):
             self.log("⚠ " + w)
-        ids = self._insert_plan(gid, wf.plan(text, self.cfg.lead), source="workflow", from_user=True,
-                                asked=[x.name for x in skills.mentioned(text, skills.scan(self.root))]
+        plan = wf.plan(text, self.cfg.lead)
+        cat = skills.scan(self.root) if any("$" in x["prompt"] for x in plan) else []
+        for item in plan:  # $tên trong prompt bước: gắn skill ngay để chip 🧩 hiện trên task nháp
+            item["skills"] = [x.name for x in skills.mentioned(item["prompt"], cat)] if cat else []
+        ids = self._insert_plan(gid, plan, source="workflow", from_user=True,
+                                asked=[x.name for x in skills.mentioned(text, cat or skills.scan(self.root))]
                                 if "$" in text else None)
         if self.cfg.approve_plan:
             self.db.update_goal(gid, status="awaiting")
@@ -936,8 +940,9 @@ class Orchestrator:
             if isinstance(want, str):  # "skills": "tdd, release"
                 want = re.split(r"[,\s]+", want)
             picked = [x.name for x in skills.resolve(want if isinstance(want, list) else [], cat)]
-            names = [n for n in picked if n in allowed]
-            dropped = [n for n in picked if n not in allowed]
+            # kế hoạch người dùng viết (workflow: $tên trong prompt bước) thì giữ mọi skill, như $tên trong mục tiêu
+            names = [n for n in picked if n in allowed or from_user]
+            dropped = [n for n in picked if n not in names]
             if kind == KIND_CODE:
                 names += [n for n in asked or [] if n not in names]
             tid = self.db.add_task(agent, title, prompt, goal_id=gid, status=status, source=source,
@@ -1678,16 +1683,21 @@ class Orchestrator:
     async def suggest_workflow(self, description: str) -> tuple[bool, "dict | str"]:
         """Trưởng nhóm thiết kế workflow tuỳ chỉnh theo mô tả của người dùng (form /custom → ✨ Gợi ý).
         Trả về (thành công, dữ liệu điền form — xem wizard.suggestion_form — hoặc lời nhắn lỗi)."""
-        from . import wizard
         if not description.strip():
             return False, tr("Mô tả quy trình bạn muốn trước (vd: thiết kế → code → test → review)")
-        out = await self._call_lead(P.workflow_suggest_prompt(self.cfg, description.strip(), str(self.root)),
-                                    tr("Gợi ý workflow"))
+        on = skills.enabled(self.root, skills.scan(self.root))
+        out = await self._call_lead(P.workflow_suggest_prompt(self.cfg, description.strip(), str(self.root),
+                                                              skills.index_block(on)), tr("Gợi ý workflow"))
+        return self._workflow_form(out, on)
+
+    def _workflow_form(self, out: str | None, on: list) -> tuple[bool, "dict | str"]:
+        """JSON workflow trưởng nhóm trả về → dữ liệu điền form (skill của bước thành $tên trong prompt)."""
+        from . import wizard
         raw = P.extract_json(out or "", dict, keys=("steps", "name"))
         if not raw:
             return False, tr("{agent} không trả về workflow (xem .ateam/logs/lead.log)", agent=self.cfg.lead)
         try:
-            return True, wizard.suggestion_form(self.cfg, raw)
+            return True, wizard.suggestion_form(self.cfg, raw, {x.name for x in on})
         except ValueError as e:
             return False, str(e)
 

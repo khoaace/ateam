@@ -377,3 +377,23 @@ def test_lead_cannot_attach_skills_the_user_did_not_enable(env, project, monkeyp
         assert code.skills == ["off-skill"] and "bỏ skill" not in syslog
     else:
         assert not code.skills and f"#{code.id}: bỏ skill off-skill" in syslog
+
+
+def test_workflow_steps_use_skills(env, project, monkeypatch, tmp_path):
+    """Workflow: ✨ Gợi ý biết skill đang bật và chèn $tên vào prompt bước; $tên trong prompt bước gắn skill ngay khi
+    tạo task (chip trên task nháp) — cả skill đang tắt, vì người dùng tự viết."""
+    env["ATEAM_FAKE_PLAN_SKILLS"] = "tdd"
+    o = _orch(env, project, monkeypatch)
+    mk(skills.library(), "tdd", desc="Viết test trước khi sửa code.", body="Red, green, refactor.")
+    mk(Path(env["ATEAM_SKILLS_HOME"]) / ".claude/skills", "off-skill", desc="Đang tắt")
+
+    async def main():
+        await o.setup()
+        return await o.suggest_workflow("thiết kế rồi code")
+    ok, form = asyncio.run(main())
+    assert ok and form["steps"][1]["prompt"] == "Làm {goal} theo thiết kế $tdd"  # "khong-co": không có → bỏ
+    from ateam.config import Workflow, WorkflowStep
+    o.cfg.workflows["w"] = Workflow("w", steps=[WorkflowStep("codex", "A", "làm {goal} theo $off-skill"),
+                                                WorkflowStep("codex", "B", "kiểm tra")])
+    gid = o.run_workflow("w", "trang đăng nhập")
+    assert [t.skills for t in o.db.tasks(goal_id=gid)] == [["off-skill"], None]
