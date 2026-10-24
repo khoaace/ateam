@@ -65,6 +65,9 @@ DENIED_RE = re.compile(r"permission that headless mode cannot prompt for|auto-de
                        r"|deny rule[^.\n]{0,20}\bbash\b|\bbash\b[^.\n]{0,20}deny rule"
                        r"|(?:blocked|denied|chặn|từ chối)[^.\n]{0,80}permission policy"
                        r"|permission policy[^.\n]{0,40}(?:blocked|denies|chặn|từ chối)", re.I)
+# agent đã viết tới dòng SUMMARY: (agy viết "**SUMMARY:**") -> làm xong dù CLI thoát mã khác 0
+# (opencode 2.0 thoát 1 sau câu trả lời đầy đủ khi một lần Web Search bị huỷ giữa phiên)
+SUMMARY_LINE_RE = re.compile(r"^[*#\s]*SUMMARY:", re.M)
 
 
 class Orchestrator:
@@ -1843,7 +1846,7 @@ class Orchestrator:
             return "badflag"
         if DENIED_RE.search(run.output):
             return "denied"
-        if rc != 0:
+        if rc != 0 and not SUMMARY_LINE_RE.search(run.output[-6000:]):
             return "failed"
         if not run.output.strip():
             return "empty"

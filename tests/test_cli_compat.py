@@ -202,3 +202,23 @@ def test_web_rejects_images_over_opencode_limit_before_saving(env, project, monk
 def test_doctor_never_passes_prompt_to_help(tmp_path):
     a = AgentConfig("custom", ["mycli", "{prompt}"])
     assert all(help_command(cmd) == ["mycli", "--help"] for cmd in command_examples(a, tmp_path))
+
+
+@pytest.mark.parametrize("summary", [True, False])
+def test_opencode_nonzero_exit_after_summary_is_done(env, project, monkeypatch, summary):
+    """opencode 2.0 thoát 1 khi Web Search bị huỷ giữa phiên dù đã làm xong: có SUMMARY thì task xong."""
+    env["ATEAM_FAKE_OPENCODE_RC"] = "1"
+    if not summary:
+        env["ATEAM_FAKE_OPENCODE_NO_SUMMARY"] = "1"
+    o = _orch(env, project, monkeypatch)
+
+    async def main():
+        await o.setup()
+        tid = o.add_task("opencode", "tạo file b")
+        await o.run_until_idle(interval=0.01)
+        return o.db.task(tid)
+    task = asyncio.run(main())
+    if summary:
+        assert task.status == "done" and task.error is None and "tạo b.txt" in task.result
+    else:
+        assert task.status == "failed" and task.error == "Thoát với mã 1"

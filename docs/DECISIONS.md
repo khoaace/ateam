@@ -210,3 +210,13 @@ SUMMARY tới ~40 dòng (`HANDOFF_MAX`) thay vì ≤5 dòng. Người dùng ch�
 cuối, reviewer tự sửa lỗi nhỏ, `/flow-setup` là một nơi chọn luồng (★ trưởng nhóm + preset, hoặc một workflow).
 **Xem lại nếu**: trưởng nhóm lạm dụng task review / test (xem `runs` theo mục tiêu), hoặc kiểm tra cuối fail mà
 người sửa (trưởng nhóm, phiên mới) khó tìm thay đổi gây lỗi — khi đó giao cho tác giả task song song cuối cùng.
+
+## 20. Mã thoát khác 0 nhưng output có dòng `SUMMARY:` → task xong
+
+**Lý do**: `opencode run` 2.0 thoát mã 1 sau câu trả lời đầy đủ khi một lần Web Search bị huỷ giữa phiên (thử
+24/10/2026, opencode 2.0.32: trả lời "DONE" vẫn mã 1, kể cả khi cho phép `websearch`) — task bị ghi "Thoát với mã 1"
+dù code xong, test qua, và bỏ qua giao việc chéo / kiểm tra sau task. `SUMMARY:` là phần cuối theo giao thức nên có nó
+tức agent đã làm tới cùng: `_classify` chỉ coi mã khác 0 là lỗi khi không có dòng *bắt đầu* bằng `SUMMARY:` trong
+6000 ký tự cuối (prompt codex in lại chỉ nhắc `SUMMARY:` giữa dòng). Áp cho mọi CLI thay vì riêng opencode; lỗi thật
+xảy ra sau SUMMARY vẫn bị lệnh kiểm tra bắt. Mẫu hết hạn mức / quá tải / thiếu quyền vẫn xét trước như cũ.
+**Xem lại nếu**: opencode thoát đúng mã 0 khi chỉ một tool lỗi, hoặc gặp CLI in SUMMARY rồi mới hỏng thật.

@@ -487,6 +487,23 @@ def test_bad_flag_failure_points_to_doctor():
     assert Orchestrator._classify(R(), 1) == "failed"
 
 
+def test_summary_counts_as_done_despite_nonzero_exit():
+    """opencode 2.0 thoát 1 sau câu trả lời đầy đủ (Web Search bị huỷ giữa phiên): có dòng SUMMARY: là xong."""
+    from ateam.orchestrator import Orchestrator
+
+    class R:
+        cancelled = timed_out = False
+        output = "✗ Web Search failed\nError: Web search cancelled\nSUMMARY:\n- sửa speech.js"
+    assert Orchestrator._classify(R(), 1) == "ok"
+    R.output = "xong\n**SUMMARY:** sửa speech.js"  # agy viết markdown
+    assert Orchestrator._classify(R(), 1) == "ok"
+    # prompt in lại (codex) chỉ nhắc 'SUMMARY:' giữa dòng -> vẫn là lỗi
+    R.output = "user\nEnd your answer with a line starting with 'SUMMARY:' followed by…\nboom"
+    assert Orchestrator._classify(R(), 1) == "failed"
+    R.output = "SUMMARY: cũ\n" + "x" * 7000  # SUMMARY quá xa phần cuối output: không tính
+    assert Orchestrator._classify(R(), 1) == "failed"
+
+
 def test_log_styler_formats_agent_output():
     """Log hiển thị: ẩn prompt codex in lại, gộp lỗi JSON lặp, nhãn NOTE/DELEGATE/SUMMARY, markdown."""
     from ateam.tui import LogStyler, styled_lines

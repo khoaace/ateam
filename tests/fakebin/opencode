@@ -85,6 +85,11 @@ for a in "$@"; do
 done
 if fake_limited grok; then echo "Error: 429 Too Many Requests — rate limit exceeded"; exit 1; fi
 for i in 1 2; do echo "opencode bước $i"; fake_sleep; done
+# ATEAM_FAKE_OPENCODE_RC: như opencode 2.0 khi Web Search bị huỷ giữa phiên — in đủ câu trả lời rồi thoát mã khác 0
+oc_rc="${ATEAM_FAKE_OPENCODE_RC:-0}"
+if [ "$oc_rc" != 0 ]; then echo '✗ Web Search "x" failed'; echo 'Error: Web search cancelled'; fi
+if [ "${ATEAM_FAKE_OPENCODE_NO_SUMMARY:-0}" = 1 ]; then echo "dừng giữa chừng"; exit "$oc_rc"; fi
 if [[ "$P" == *"README"* ]]; then echo readme > README.md; echo "SUMMARY: viết README"; exit 0; fi
 echo b > b.txt
 echo "SUMMARY: tạo b.txt"
+exit "$oc_rc"
