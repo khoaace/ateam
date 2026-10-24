@@ -1041,9 +1041,8 @@ function ptyModal(id, title) {
     <div class="pty-keys">${PTY_KEYS.map(([k], i) => `<button class="btn sm ghost" data-k="${i}">${esc(k)}</button>`).join("")}</div>`,
     { box: "lg", cls: "pty", sticky: true, onClose: () => { send("pty_close", { id }); delete S.ptys[id]; } });
   const box = $(".pty-box", m), cs = getComputedStyle(document.documentElement);
-  const term = new Terminal({ cursorBlink: true, fontSize: 13, scrollback: 5000,
-    fontFamily: cs.getPropertyValue("--mono").trim() || "monospace",
-    theme: { background: cs.getPropertyValue("--term-bg").trim() || "#0b0d10", foreground: cs.getPropertyValue("--term-fg").trim() || "#e6e6e6" } });
+  const term = new Terminal(Object.assign({ cursorBlink: true, fontSize: 13, scrollback: 5000,
+    fontFamily: cs.getPropertyValue("--mono").trim() || "monospace" }, termOptions()));
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(box);
@@ -1511,11 +1510,35 @@ function setThemeMode(mode) {
   if (mode === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = mode;
   if (window.CodeView) CodeView.prefsChanged();
+  applyTermTheme();
 }
 function isDark() {
   const d = document.documentElement.dataset.theme;
   return d ? d === "dark" : !matchMedia("(prefers-color-scheme: light)").matches;
 }
+/* Bảng ANSI mặc định của xterm.js làm cho nền tối: trắng/vàng/xanh lá gần như chìm trên nền kem */
+const TERM_LIGHT_ANSI = { black: "#1c1914", red: "#c4233a", green: "#1a7f37", yellow: "#9a6700", blue: "#1d4ed8",
+  magenta: "#7e22ce", cyan: "#0e7490", white: "#6f675c", brightBlack: "#6f675c", brightRed: "#a01d30",
+  brightGreen: "#116329", brightYellow: "#7d5200", brightBlue: "#1e40af", brightMagenta: "#6b21a8",
+  brightCyan: "#155e75", brightWhite: "#3d3830", selectionBackground: "rgba(109, 40, 217, .22)" };
+function termOptions() {
+  const cs = getComputedStyle(document.documentElement), dark = isDark();
+  const fg = cs.getPropertyValue("--term-fg").trim() || "#e6e6e6";
+  return { theme: Object.assign({ background: cs.getPropertyValue("--term-bg").trim() || "#0b0d10", foreground: fg, cursor: fg },
+    dark ? {} : TERM_LIGHT_ANSI),
+    // CLI như Claude Code tô màu truecolor theo theme tối của nó — bảng ANSI không đổi được, nên ép tương phản
+    minimumContrastRatio: dark ? 1 : 4.5 };
+}
+function applyTermTheme() {
+  const o = termOptions();
+  for (const term of Object.values(S.ptys).concat(window.GridView ? GridView.terms() : [])) {
+    term.options.theme = o.theme;
+    term.options.minimumContrastRatio = o.minimumContrastRatio;
+  }
+}
+matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+  if (!document.documentElement.dataset.theme) applyTermTheme();
+});
 function themeModal() {
   const modes = ["system", "light", "dark"].map((k) => `<button class="seg${themeMode() === k ? " on" : ""}" data-mode="${k}">${esc(t("mode_" + k))}</button>`).join("");
   const accents = [{ key: "", label: t("accent_default"), color: "" }].concat(S.meta.accents || []).map((a) => `

@@ -63,10 +63,8 @@ window.GridView = (() => {
     const holder = document.createElement("div");
     holder.className = "gterm";
     const cs = getComputedStyle(document.documentElement);
-    const term = new Terminal({ cursorBlink: true, fontSize: 12.5, scrollback: 5000, allowProposedApi: true,
-      fontFamily: cs.getPropertyValue("--mono").trim() || "monospace",
-      theme: { background: cs.getPropertyValue("--term-bg").trim() || "#0b0d10", foreground: cs.getPropertyValue("--term-fg").trim() || "#e6e6e6",
-        cursor: cs.getPropertyValue("--term-fg").trim() || "#e6e6e6" } });
+    const term = new Terminal(Object.assign({ cursorBlink: true, fontSize: 12.5, scrollback: 5000, allowProposedApi: true,
+      fontFamily: cs.getPropertyValue("--mono").trim() || "monospace" }, termOptions()));
     const fit = new FitAddon.FitAddon();
     term.loadAddon(fit);
     G.terms[id] = term; G.holders[id] = holder; G.fits[id] = fit;
@@ -426,5 +424,6 @@ window.GridView = (() => {
   }
 
   /* /grid <agent> từ ô nhập: server đã thêm ô, chỉ cần mở mục Lưới */
-  return { show, reset, onState, onData, onExit, render, addModal, focusCell, focused: () => G.focus };
+  return { show, reset, onState, onData, onExit, render, addModal, focusCell, focused: () => G.focus,
+    terms: () => Object.values(G.terms) };
 })();
