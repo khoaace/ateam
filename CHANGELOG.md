@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.54.1 — 25/10/2026
+
+- **Ghi chú (web)** — nút nổi ✅ To-do không còn che nút *Xoá* ở chân trang ghi chú.
+
 ## 0.54.0 — 25/10/2026
 
 - **⌨ Shell tương tác ở tab Terminal** (web + TUI) — terminal thật (zsh của bạn) ngay trong tab: vim, htop, ssh,
