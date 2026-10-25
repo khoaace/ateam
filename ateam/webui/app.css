@@ -551,6 +551,19 @@ button.ag-model:hover { border-color: var(--border); background: var(--surface);
 .termwin-head .btn { height: 26px; background: transparent; border-color: var(--border); color: var(--term-fg); }
 .termwin-head .btn:hover { background: color-mix(in srgb, var(--term-fg) 8%, transparent); }
 .termwin-body { flex: 1; overflow: auto; padding: 8px 12px; }
+.tw-xterm { flex: 1; min-height: 0; padding: 4px 0 0 8px; }
+.tw-xterm .sh-term { height: 100%; }
+.sh-keys { display: none; padding: 6px 8px; border-top: 1px solid var(--border); }
+@media (pointer: coarse) { .sh-keys:not(.hidden) { display: flex; flex-wrap: wrap; gap: 4px; } }
+.jobs-head.sh-head { display: flex; align-items: center; justify-content: space-between; padding-top: 4px; padding-bottom: 4px; }
+.jobs-head .btn { height: 22px; padding: 0 8px; }
+.job .chip { font-size: 10.5px; }
+.sh-cwd { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.script-row { display: flex; align-items: center; gap: 2px; }
+.script-row .script { flex: 1; min-width: 0; }
+.script-row .sc-sh { opacity: 0; height: 24px; padding: 0 6px; }
+.script-row:hover .sc-sh, .script-row .sc-sh:focus-visible { opacity: 1; }
+@media (pointer: coarse) { .script-row .sc-sh { opacity: 1; } }
 
 /* ---------------------------------------------------------------- ô nhập */
 .composer { padding: 0; position: relative; border-top: 1px solid var(--border); background: var(--side); }

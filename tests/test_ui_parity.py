@@ -134,6 +134,9 @@ def test_tui_terminal_scripts_and_grid_shell(env, project, monkeypatch):
             ran = []
             monkeypatch.setattr(app, "run_shell", ran.append)
             app.query_one("#tabs").active = "tab-term"  # vào tab: script dự án hiện ngay, không cần gõ !
+            # … và tự mở sẵn một ⌨ shell (ngoài Lưới), con trỏ ở trong shell
+            assert await wait(lambda: len(app.grid.loose) == 1 and type(app.focused).__name__ == "TermView")
+            assert not app.grid.layout.cells()
             ol = app.query_one("#term-scripts")
             assert await wait(lambda: ol.option_count >= 2)
             cmds = [ol.get_option_at_index(i).id for i in range(ol.option_count)]

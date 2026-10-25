@@ -347,6 +347,18 @@ Sự kiện `on_event("line"|"exit"|"changed", job, line)` → `TeamApp.on_shell
 Gợi ý `!` (`CommandInput` chế độ `shell`) lấy từ `shell.project_scripts`; lệnh gần đây ở `recent_commands`
 trong `.ateam/state.json` của dự án. Enter chạy lệnh đã gõ, chỉ chạy gợi ý khi ô trống hoặc đã ↑↓ chọn.
 
+**⌨ Shell tương tác** không đi qua `ShellManager` mà là *shell rời* của `GridHub`: `add_shell(cwd, task, cmd)` tạo
+`ShellCell` (con của `Cell`, có `cwd`/`task`/`title`) giữ trong `hub.loose` — không thuộc `layout`, không ghi
+`grid.json`, `state()` của Lưới không thấy; còn lại dùng chung `start/write/resize/close`, buffer và sự kiện
+`data|exit|layout`. `shells()` cho danh sách (ảnh chụp web `shells`, TUI `#shells`). `cmd` gõ vào khi output của
+shell đứng yên (dấu nhắc đã in). Web: op `grid_shell` (trả `open.term`), trang Terminal gửi `grid_attach` để nhận
+`gpty` và phát lại buffer, `app.js` (`TS`, `tsShow`, `renderTerm`) chuyển `gpty` của id trong `shells` cho xterm ở
+`#tw-xterm`. TUI: `TermView(id)` gắn vào `#sh-view`, `TeamApp.new_shell` / `term_command` (`/term`).
+Shell ở worktree task: `Orchestrator.task_shell_dir(tid)` — task `running` → `.ateam/worktrees/t{id}`; có nhánh →
+`git worktree add .ateam/worktrees/sh-t{id} <nhánh>`. `_shell_wt_release(t, keep)` gọi `on_shell_release` (TUI/web gán
+`GridHub.close_task_shells`), `keep` thì `_wt_commit` phần sửa tay vào nhánh, rồi gỡ worktree; chạy ở đầu
+`_merge_branch` (keep), `_wt_prepare` (keep — nhánh làm tiếp có phần sửa tay), `reject` / xoá nhánh (`_drop_branch`).
+
 ## Quản lý git (tab 🌿 Git)
 
 `gitops.GitRepo` (một instance trong `TeamApp`, không phụ thuộc Textual): mọi lệnh chạy qua

@@ -46,7 +46,7 @@ function elapsedHtml(start, end) {
 function connect() {
   const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
   S.ws = ws;
-  ws.onopen = () => { S.retry = 0; setConn(true); if (window.GridView) GridView.reset(); };
+  ws.onopen = () => { S.retry = 0; setConn(true); if (window.GridView) GridView.reset(); tsReset(); };
   ws.onclose = () => {
     setConn(false);
     // thao tác đang chờ sẽ không bao giờ được trả lời: tắt toast "đang chạy…", mở khoá nút
@@ -63,6 +63,8 @@ function connect() {
     else if (m.t === "pty") ptyData(m);
     else if (m.t === "pty_exit") ptyExit(m);
     else if (m.t === "grid" && window.GridView) GridView.onState(m);
+    else if (m.t === "gpty" && tsIs(m.id)) tsData(m);
+    else if (m.t === "gpty_exit" && tsIs(m.id)) tsExit(m);
     else if (m.t === "gpty" && window.GridView) GridView.onData(m);
     else if (m.t === "gpty_exit" && window.GridView) GridView.onExit(m);
     else if (m.t === "live") { S.live = m.last || {}; if (S.state && S.view === "board") renderBoard(); }
@@ -176,7 +178,8 @@ function onToast(m) {
   else if (link) toast("#" + o.task_link, "info", link);
   if (m.reload) setTimeout(() => location.reload(), 600);
   if (m.notify) { S.prefs = Object.assign({}, S.prefs, { notify: m.notify }); askNotifyPermission(); }
-  if (o.job != null) { setView("term"); openJob(o.job); }
+  if (o.job != null) { TS.auto = true; setView("term"); openJob(o.job); }
+  if (o.term != null) tsShow(o.term);
   if (o.diff != null) DiffView.task(o.diff);
   if (o.plan != null) planModal(o.plan);
   if (o.search != null) { setView("code"); CodeView.search(o.search); }
@@ -1129,29 +1132,153 @@ function focusAgent(agent) { chatModal(agent || (S.state.agents.find((a) => a.le
 function focusChat(agent) { chatModal(agent); }
 
 /* terminal */
+/* ⌨ Shell tương tác ở trang Terminal: shell rời của GridHub (server giữ pty + output gần nhất, nhận qua
+   grid_attach như mục Lưới, tin gpty) — vẽ bằng xterm.js ở khung phải; chọn lệnh ! thì khung phải là output như cũ */
+const TS = { terms: {}, holders: {}, fits: {}, pending: {}, attached: false, auto: false, fresh: new Set() };
+const tsList = () => (S.state && S.state.shells) || [];
+const tsIs = (id) => TS.fresh.has(id) || tsList().some((x) => x.id === id);
+async function tsAttach() {
+  if (TS.attached) return true;
+  try { await loadTerm(); } catch (e) { toast(t("disconnected"), "error"); return false; }
+  if (send("grid_attach")) TS.attached = true;
+  return TS.attached;
+}
+function tsReset() {  // mất kết nối: gắn lại (server phát lại output gần nhất)
+  TS.attached = false;
+  if (S.view === "term") tsAttach();
+}
+function tsData(m) {
+  const term = TS.terms[m.id];
+  if (!term || !TS.holders[m.id]._opened) {
+    if (m.replay) TS.pending[m.id] = [];
+    (TS.pending[m.id] = TS.pending[m.id] || []).push(m);
+    return;
+  }
+  if (m.replay) term.reset();
+  const bin = atob(m.data), out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  term.write(out);
+}
+function tsExit(m) {
+  const term = TS.terms[m.id];
+  if (term && TS.holders[m.id]._opened) term.write(`\r\n\x1b[2m[${t("sh_exit_msg", { rc: m.rc })}]\x1b[0m\r\n`);
+}
+function tsFit(id) {
+  const f = TS.fits[id], h = TS.holders[id];
+  if (!f || !h || !h.isConnected || !h.offsetWidth) return;
+  try { f.fit(); } catch (e) { /* đang đóng */ }
+}
+function tsHolder(id) {
+  if (TS.terms[id]) return TS.holders[id];
+  const holder = document.createElement("div");
+  holder.className = "sh-term";
+  const cs = getComputedStyle(document.documentElement);
+  const term = new Terminal(Object.assign({ cursorBlink: true, fontSize: 13, scrollback: 5000,
+    fontFamily: cs.getPropertyValue("--mono").trim() || "monospace" }, termOptions()));
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.onData((data) => send("grid_in", { id, data }));
+  term.onResize(({ rows, cols }) => send("grid_size", { id, rows, cols }));
+  TS.terms[id] = term; TS.holders[id] = holder; TS.fits[id] = fit;
+  new ResizeObserver(() => tsFit(id)).observe(holder);
+  return holder;
+}
+function tsDrop(id) {
+  if (TS.terms[id]) TS.terms[id].dispose();
+  if (TS.holders[id]) TS.holders[id].remove();
+  delete TS.terms[id]; delete TS.holders[id]; delete TS.fits[id]; delete TS.pending[id];
+}
+async function tsNew(cmd = "", task = null) {
+  if (!(await tsAttach())) return;
+  const box = $("#tw-xterm"), rows = box && box.offsetHeight ? Math.max(5, Math.floor(box.offsetHeight / 17)) : 24;
+  const cols = box && box.offsetWidth ? Math.max(20, Math.floor(box.offsetWidth / 8)) : 100;
+  send("grid_shell", task != null ? { cmd, task, rows, cols } : { cmd, rows, cols });  // trả lời {open: {term: id}}
+}
+async function tsShow(id) {  // id = "focus": shell đang chọn / đầu tiên, chưa có thì mở mới
+  TS.auto = true;
+  if (id === "focus") {
+    const list = tsList();
+    id = list.some((x) => x.id === S.openShell) ? S.openShell : list.length ? list[list.length - 1].id : null;
+    if (!id) { setView("term"); tsNew(); return; }
+  }
+  TS.fresh.add(id);
+  S.openShell = id;
+  if (S.view !== "term") setView("term"); else if (S.state) renderTerm();
+  await tsAttach();
+  if (S.view === "term" && S.state) renderTerm();
+  setTimeout(() => TS.terms[id] && TS.terms[id].focus(), 30);
+}
+function tsClose(id) {
+  send("grid_close", { id });
+  TS.fresh.delete(id);
+  tsDrop(id);
+  if (S.openShell === id) {
+    const rest = tsList().filter((x) => x.id !== id);
+    S.openShell = rest.length ? rest[rest.length - 1].id : null;
+  }
+  renderTerm();
+}
 function renderTerm() {
-  const box = $("#term"), jobs = S.state.jobs.slice().reverse();
+  const box = $("#term"), jobs = S.state.jobs.slice().reverse(), shells = tsList();
+  for (const x of shells) TS.fresh.delete(x.id);  // đã có trong ảnh chụp
+  for (const id of Object.keys(TS.terms)) if (!tsIs(id)) { tsDrop(id); if (S.openShell === id) S.openShell = null; }
+  if (S.openShell && !tsIs(S.openShell)) S.openShell = null;
+  // vào trang lần đầu, chưa có shell (và không phải vừa gõ !lệnh): tự mở một shell ở thư mục dự án
+  if (!TS.auto && S.view === "term") {
+    TS.auto = true;
+    if (shells.length) S.openShell = S.openShell || shells[shells.length - 1].id;
+    else if (!document.body.classList.contains("readonly")) tsNew();
+  }
   if (S.openJob == null && jobs.length) S.openJob = jobs[0].id;
-  const job = jobs.find((j) => j.id === S.openJob);
+  const sh = S.openShell ? shells.find((x) => x.id === S.openShell) || { id: S.openShell, title: "…", cwd: "", status: "run" } : null;
+  const job = sh ? null : jobs.find((j) => j.id === S.openJob);
   if (!box.firstElementChild) {
-    box.innerHTML = `<div class="jobs" id="jobs"></div><div class="termwin"><div class="termwin-head" id="tw-head"></div><div class="termwin-body log" id="tw-body"></div></div>`;
+    box.innerHTML = `<div class="jobs" id="jobs"></div><div class="termwin"><div class="termwin-head" id="tw-head"></div><div class="termwin-body log" id="tw-body"></div><div class="tw-xterm hidden" id="tw-xterm"></div>
+      <div class="pty-keys sh-keys hidden" id="sh-keys">${PTY_KEYS.map(([k], i) => `<button class="btn sm ghost" data-action="sh-key" data-k="${i}">${esc(k)}</button>`).join("")}</div></div>`;
   }
   const label = (j) => ({ running: t("j_running"), done: t("j_done"), failed: t("j_failed"), stopped: t("j_stopped") }[j.status]);
-  const scripts = (S.scripts || []).slice(0, 14).map((s) => `<button class="script" data-action="run-script" data-cmd="${esc(s.cmd)}"><b>${esc(s.cmd)}</b><span>${esc(s.desc)}</span></button>`).join("");
-  $("#jobs").innerHTML = `<div class="jobs-head">${esc(t("jobs"))}</div>` + (jobs.length ? jobs.map((j) => `
-    <div class="job${j.id === S.openJob ? " sel" : ""}" data-action="open-job" data-job="${j.id}">
+  const shLabel = (x) => x.status === "run" ? badge("running", t("j_running")) : badge("cancelled", t("sh_exited"));
+  const scripts = (S.scripts || []).slice(0, 14).map((s) => `<div class="script-row"><button class="script" data-action="run-script" data-cmd="${esc(s.cmd)}"><b>${esc(s.cmd)}</b><span>${esc(s.desc)}</span></button><button class="btn sm ghost sc-sh" data-action="sh-new" data-cmd="${esc(s.cmd)}" title="${esc(t("sh_run_in"))}" aria-label="${esc(t("sh_run_in"))}">⌨</button></div>`).join("");
+  $("#jobs").innerHTML = `<div class="jobs-head sh-head">⌨ ${esc(t("sh_title"))}<button class="btn sm ghost" data-action="sh-new" title="${esc(t("sh_new"))}" aria-label="${esc(t("sh_new"))}">＋</button></div>`
+    + shells.map((x) => `<div class="job${sh && x.id === sh.id ? " sel" : ""}" data-action="open-sh" data-sh="${esc(x.id)}">
+      <div class="job-cmd">⌨ ${esc(x.title)}${x.task != null ? ` <span class="chip">#${x.task} ${esc(t("worktree"))}</span>` : ""}</div>
+      <div class="job-meta">${shLabel(x)}${x.cwd ? `<span class="mono sh-cwd" title="${esc(x.cwd)}">${esc(x.cwd)}</span>` : ""}</div></div>`).join("")
+    + `<div class="jobs-head">${esc(t("jobs"))}</div>` + (jobs.length ? jobs.map((j) => `
+    <div class="job${!sh && j.id === S.openJob ? " sel" : ""}" data-action="open-job" data-job="${j.id}">
       <div class="job-cmd">${j.status === "running" ? '<span class="spin" style="--c:var(--running);width:11px;height:11px"></span>' : ""}${esc(j.cmd)}</div>
       <div class="job-meta">${badge(j.status === "stopped" ? "cancelled" : j.status === "running" ? "running" : j.status, label(j))}${elapsedHtml(j.started, j.finished)}
         ${j.ports.map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">:${p}</a>`).join("")}</div>
     </div>`).join("") : `<div class="panel-sub" style="padding:4px 16px 8px">${esc(t("no_jobs_hint"))}</div>`)
     + (scripts ? `<div class="jobs-head">${esc(t("scripts"))}</div><div class="scripts">${scripts}</div>` : "");
+  $("#tw-body").classList.toggle("hidden", !!sh);
+  $("#tw-xterm").classList.toggle("hidden", !sh);
+  $("#sh-keys").classList.toggle("hidden", !sh);
+  if (sh && window.FitAddon) {  // xterm.js + addon fit đã nạp (tsAttach vẽ lại khi xong)
+    const holder = tsHolder(sh.id), xbox = $("#tw-xterm");
+    if (holder.parentElement !== xbox) xbox.appendChild(holder);
+    for (const h of xbox.children) h.classList.toggle("hidden", h !== holder);
+    if (!holder._opened) {
+      holder._opened = true;
+      TS.terms[sh.id].open(holder);
+      tsFit(sh.id);
+      send("grid_size", { id: sh.id, rows: TS.terms[sh.id].rows, cols: TS.terms[sh.id].cols });
+      const queued = TS.pending[sh.id] || [];
+      delete TS.pending[sh.id];
+      for (const m of queued) tsData(m);
+    } else tsFit(sh.id);
+  }
   const head = $("#tw-head");
-  const sig = job ? JSON.stringify([job.id, job.status, job.ports]) : "";
+  const sig = sh ? JSON.stringify(["sh", sh.id, sh.status, sh.title, sh.cwd]) : job ? JSON.stringify([job.id, job.status, job.ports]) : "";
   if (head.dataset.sig !== sig) {
     head.dataset.sig = sig;
-    head.innerHTML = job ? `<span class="lights"><i></i><i></i><i></i></span><span class="cmd">$ ${esc(job.cmd)}</span>
+    head.innerHTML = sh ? `<span class="cmd">⌨ ${esc(sh.title)}${sh.cwd ? ` · ${esc(sh.cwd)}` : ""}</span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        ${sh.status !== "run" ? `<button class="btn sm" data-action="sh-start" data-sh="${esc(sh.id)}">↻ ${esc(t("sh_reopen"))}</button>` : ""}
+        <button class="btn sm" data-action="sh-close" data-sh="${esc(sh.id)}" title="${esc(t("sh_close_hint"))}">✕ ${esc(t("sh_close"))}</button>
+      </span>` : job ? `<span class="lights"><i></i><i></i><i></i></span><span class="cmd">$ ${esc(job.cmd)}</span>
       ${job.ports.map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">localhost:${p}</a>`).join("")}
       <span style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn sm" data-action="sh-new" data-cmd="${esc(job.cmd)}" title="${esc(t("sh_run_in_hint"))}">⌨ ${esc(t("sh_run_in"))}</button>
         ${job.status === "running" ? `<button class="btn sm" data-action="job" data-act="stop" data-job="${job.id}">■ ${esc(t("stop"))}</button>` : ""}
         <button class="btn sm" data-action="job" data-act="restart" data-job="${job.id}">↻ ${esc(t("restart"))}</button>
         ${job.status !== "running" ? `<button class="btn sm" data-action="job" data-act="remove" data-job="${job.id}">✕ ${esc(t("remove"))}</button>` : ""}
@@ -1164,6 +1291,7 @@ function renderTerm() {
 }
 function openJob(id) {
   S.openJob = id;
+  S.openShell = null;
   $("#tw-body") && ($("#tw-body").innerHTML = "");
   $("#tw-head") && delete $("#tw-head").dataset.sig;
   loadJob(id);
@@ -1266,6 +1394,7 @@ function taskActions(x) {
     b.push(`<button class="btn sm danger" data-action="reject" data-task="${x.id}">✗ ${esc(t("reject"))}</button>`);
   }
   b.push(`<button class="btn sm" data-action="diff" data-task="${x.id}">Δ ${esc(t("diff"))}</button>`);
+  if (x.branch) b.push(`<button class="btn sm" data-action="task-shell" data-task="${x.id}" title="${esc(t("sh_task_hint"))}">⌨ ${esc(t("sh_task"))}</button>`);
   if (["failed", "cancelled", "blocked", "done", "conflict"].includes(st)) b.push(`<button class="btn sm" data-action="retry" data-task="${x.id}">↻ ${esc(t("retry"))}</button>`);
   if (["failed", "cancelled", "blocked"].includes(st)) b.push(`<button class="btn sm" data-action="reassign" data-task="${x.id}" title="${esc(t("reassign_hint"))}">⇄ ${esc(t("reassign"))}</button>`);
   if (["done", "failed"].includes(st)) b.push(`<button class="btn sm" data-action="task-continue" data-task="${x.id}">↪ ${esc(t("continue_task"))}</button>`);
@@ -1570,7 +1699,7 @@ function termOptions() {
 }
 function applyTermTheme() {
   const o = termOptions();
-  for (const term of Object.values(S.ptys).concat(window.GridView ? GridView.terms() : [])) {
+  for (const term of Object.values(S.ptys).concat(window.GridView ? GridView.terms() : [], Object.values(TS.terms))) {
     term.options.theme = o.theme;
     term.options.minimumContrastRatio = o.minimumContrastRatio;
   }
@@ -2111,6 +2240,11 @@ function setView(v) {
   $(".composer").classList.toggle("hidden", v === "code");  // tab Code dùng cả chiều cao cho editor
   render();
   if (v === "term" && S.openJob != null && prev !== "term") loadJob(S.openJob);
+  if (v === "term") tsAttach().then(() => {
+    if (S.view !== "term" || !S.state) return;
+    renderTerm();
+    if (S.openShell && TS.terms[S.openShell]) TS.terms[S.openShell].focus();
+  });
   if (v === "git" && window.GitView) GitView.show();
   if (prev === "git" && v !== "git" && window.GitView) GitView.hide();
   if (v === "code" && window.CodeView) CodeView.show();
@@ -2199,6 +2333,12 @@ const ACTIONS = {
   "open-job": (el) => openJob(+el.dataset.job),
   "job": (el) => send("job", { id: +el.dataset.job, action: el.dataset.act }),
   "run-script": (el) => send("submit", { text: "!" + el.dataset.cmd }),
+  "sh-new": (el) => tsNew(el.dataset.cmd || ""),
+  "open-sh": (el) => tsShow(el.dataset.sh),
+  "sh-close": (el) => tsClose(el.dataset.sh),
+  "sh-start": (el) => { const term = TS.terms[el.dataset.sh]; send("grid_start", { id: el.dataset.sh, rows: term ? term.rows : 24, cols: term ? term.cols : 80 }); if (term) term.focus(); },
+  "sh-key": (el) => { if (S.openShell) { send("grid_in", { id: S.openShell, data: PTY_KEYS[+el.dataset.k][1] }); TS.terms[S.openShell] && TS.terms[S.openShell].focus(); } },
+  "task-shell": (el) => { closeDrawer(); tsNew("", +el.dataset.task); },
   "sg-pick": (el) => pickSuggest(+el.dataset.i),
 };
 document.addEventListener("click", (e) => {

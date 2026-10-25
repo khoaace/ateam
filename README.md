@@ -396,6 +396,21 @@ lockfile), target trong `Makefile`. ↑↓ chọn rồi Enter chạy, Tab điề
 chạy đúng lệnh đã gõ. `/stop [số]` dừng lệnh. Thoát app (Ctrl+Q) sẽ dừng mọi lệnh đang chạy. Log đầy đủ ở
 `.ateam/logs/sh<số>.log`.
 
+**⌨ Shell tương tác** — mục *Shell* ở đầu cột trái của tab Terminal là terminal thật (zsh… của bạn, xterm.js trên web,
+giả lập VT100 trong TUI): vim, htop, ssh, `npm init` hỏi đáp đều chạy, gõ thẳng vào khung bên phải. Vào tab lần đầu
+thì tự mở sẵn một shell ở thư mục dự án; **＋** mở thêm. Shell sống tới khi tắt ateam — tải lại trang web vẫn thấy
+output cũ, `exit` rồi ↻ *Mở lại* (TUI: Enter) để chạy tiếp, ✕ *Đóng* để dừng. TUI: rời khung shell bằng F-phím,
+Alt+số hoặc chuột (mọi phím khác, kể cả Esc / Ctrl+C, vào shell).
+
+- `/term` tới shell đang mở (chưa có thì mở); `/term <lệnh>` mở shell mới và chạy lệnh trong đó — dùng cho lệnh cần
+  gõ trả lời (`/term npx prisma migrate dev`). `!lệnh` vẫn là chạy nền như trên.
+- *⌨ Chạy trong shell*: nút trên lệnh `!` đang xem và nút ⌨ cạnh mỗi script (web); TUI: phím `s` ở danh sách lệnh /
+  script.
+- **Shell ở worktree của task** (chế độ `isolation = "worktree"`): nút *⌨ Shell* ở chi tiết task có nhánh riêng (web),
+  `/term #12` (cả TUI). Task đang chạy → mở trong worktree nó đang làm; task chờ duyệt / xung đột / lỗi → ateam mở
+  worktree `.ateam/worktrees/sh-t12` trên nhánh của task để bạn sửa tay, chạy test. *✓ Merge* tự commit phần bạn sửa
+  vào nhánh rồi mới merge; *✗ Từ chối* / chạy lại task thì đóng shell và gỡ worktree đó.
+
 ## Quản lý git (tab 🌿 Git)
 
 `/git` (hoặc Ctrl+T xoay tới tab **🌿 Git**) — làm mọi việc git hằng ngày mà không rời app:

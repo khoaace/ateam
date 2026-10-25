@@ -36,6 +36,7 @@ def env(tmp_path) -> dict:
     e["GROK_HOME"] = str(tmp_path / "grok")  # /usage: không đọc phiên grok thật của máy
     e["CLAUDE_CONFIG_DIR"] = str(tmp_path / "claude")  # phiên Claude giả lập (dashboard), không đọc của máy
     e["PYTHONPATH"] = str(ROOT)
+    e["SHELL"] = "/bin/sh"  # ⌨ shell ở tab Terminal / Lưới: không chạy zsh + profile thật của máy
     for k in ("ATEAM_DB", "ATEAM_ROOT", "ATEAM_TASK_ID", "ATEAM_AGENT"):
         e.pop(k, None)
     (tmp_path / "limits").mkdir()

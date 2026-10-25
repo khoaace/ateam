@@ -1,5 +1,13 @@
 # Changelog
 
+## Chưa phát hành
+
+- **⌨ Shell tương tác ở tab Terminal** (web + TUI) — terminal thật (zsh của bạn) ngay trong tab: vim, htop, ssh,
+  lệnh hỏi đáp đều chạy. Vào tab lần đầu thì tự mở một shell, **＋** mở thêm; tải lại trang vẫn giữ output.
+  `/term <lệnh>` chạy lệnh trong shell mới; *⌨ Chạy trong shell* trên lệnh `!` / script (TUI: phím `s`).
+- **⌨ Shell ở worktree của task** — nút ở chi tiết task (web) hoặc `/term #12`: sửa tay, chạy test trên nhánh của
+  task trước khi duyệt; ✓ Merge gồm cả phần bạn sửa.
+
 ## 0.53.0 — 25/10/2026
 
 - **Workflow: bước ⏸ chờ bạn duyệt** — loại bước mới `gate` (mẫu *tinh-nang-duyet*: thiết kế → ⏸ bạn duyệt → code

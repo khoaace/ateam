@@ -253,3 +253,15 @@ ngoài repo (`~/.config/ateam/workflows/<dự án>.json`) như rule / skill-sets
 `$tên` trong prompt (đã chạy được) thay vì thêm khoá TOML. Người dùng chọn các mục này (24/10/2026).
 **Xem lại nếu**: người dùng muốn góp ý ở bước duyệt chạy lại cả nhánh song song đã dùng kết quả cũ, hoặc muốn chia sẻ
 workflow riêng dự án cho người khác (khi đó lưu trong repo).
+
+## 23. ⌨ Shell ở tab Terminal là shell rời của `GridHub`, không mở rộng `ShellManager`
+
+**Lý do**: lệnh `!` là job chạy nền — cần bỏ mã ANSI để đọc log, bắt port, ghi `sh<id>.log`, ↻ chạy lại; shell tương
+tác cần pty hai chiều, gửi phím, đổi kích thước, giả lập terminal và phát lại màn hình cho tab mới — đúng thứ `GridHub`
+đã có cho Lưới (TUI + mọi tab web dùng chung). Shell rời nằm ngoài `layout` để Lưới không đổi và `grid.json` không
+lưu shell (pty không sống qua lần tắt ateam). Shell ở worktree của task dùng worktree riêng `sh-t{id}` trên nhánh
+task (worktree lúc chạy đã gỡ khi task xong); git không cho xoá / checkout lại nhánh đang mở ở worktree khác nên
+merge / từ chối / chạy lại đóng shell và gỡ worktree trước — merge thì commit phần sửa tay vào nhánh để không mất.
+Người dùng chọn vị trí (cột trái, cạnh lệnh `!`), tự mở shell lần đầu vào tab, `/term`, ⌨ Chạy trong shell, shell ở
+worktree task (25/10/2026).
+**Xem lại nếu**: muốn shell còn lại sau khi mở lại ateam (cần tmux / tiến trình nền riêng), hoặc chuyển shell sang Lưới.

@@ -76,6 +76,14 @@ class Cell:
 
 
 @dataclass
+class ShellCell(Cell):
+    """Shell rời ở tab Terminal: không thuộc bố cục Lưới, không lưu vào grid.json."""
+    cwd: str = ""            # thư mục mở shell ("" = thư mục dự án), vd worktree của task
+    task: int | None = None  # task có worktree đó (đóng shell khi merge / từ chối / chạy lại task)
+    title: str = ""
+
+
+@dataclass
 class Column:
     cells: list = field(default_factory=list)
     w: float = 1.0           # độ rộng tương đối
@@ -444,6 +452,7 @@ class GridHub:
         self.session_for = session_for      # agent -> id phiên CLI gần nhất (Orchestrator.terminal_session)
         self.layout = load_layout(self.root)
         self.terms: dict[str, Term] = {}
+        self.loose: dict[str, ShellCell] = {}  # shell ở tab Terminal, theo thứ tự mở
         self.listeners: list[Callable] = []
         self.bcast = False                  # "gửi tới tất cả": phím gõ ở một ô đi tới mọi ô có cell.bcast
 
@@ -474,6 +483,55 @@ class GridHub:
         if t and t.alive:
             return "run"
         return "exit" if t else "off"
+
+    def _cell(self, cid: str) -> Cell | None:
+        return self.layout.cell(cid) or self.loose.get(cid)
+
+    def shells(self) -> list[dict]:
+        """Shell rời cho tab Terminal (web + TUI). cwd: "" = thư mục dự án, trong dự án thì đường dẫn tương đối."""
+        home, root = str(Path.home()), str(self.root)
+        out = []
+        for c in self.loose.values():
+            t = self.terms.get(c.id)
+            cwd = c.cwd if c.cwd and c.cwd != root else ""
+            if cwd.startswith(root + os.sep):
+                cwd = cwd[len(root) + 1:]
+            elif cwd == home or cwd.startswith(home + os.sep):
+                cwd = "~" + cwd[len(home):]
+            out.append({"id": c.id, "title": c.title, "task": c.task, "status": self.status(c.id),
+                        "rc": t.rc if t else None, "cwd": cwd})
+        return out
+
+    async def add_shell(self, cwd: str = "", task: int | None = None, cmd: str = "",
+                        rows: int = 24, cols: int = 80) -> tuple[str | None, str]:
+        """Mở một shell rời (tab Terminal); `cmd` gõ sẵn vào shell. Trả (id, lỗi)."""
+        name = Path(shell_argv()[0]).name
+        n = 1 + max([int(m.group(1)) for c in self.loose.values() if (m := re.search(r"#(\d+)$", c.title))] or [0])
+        cell = ShellCell(SHELL, "", "", False, cwd=cwd, task=task, title=f"{name} #{n}")
+        self.loose[cell.id] = cell
+        err = await self.start(cell.id, rows, cols)
+        if not err and cmd:
+            asyncio.ensure_future(self._type_when_ready(cell.id, cmd))
+        return cell.id, err
+
+    async def _type_when_ready(self, cid: str, cmd: str) -> None:
+        """Gõ lệnh khi shell đã in dấu nhắc (output đứng yên một lúc) — gõ sớm thì tty in lệnh hai lần."""
+        t, last, still = self.terms.get(cid), -1, 0
+        for _ in range(60):  # tối đa ~3 giây
+            if not t or not t.alive:
+                return
+            n = len(t.buf)
+            still = still + 1 if n == last and n else 0
+            if still >= 3:
+                break
+            last = n
+            await asyncio.sleep(0.05)
+        if t.alive:
+            t.session.write((cmd + "\r").encode())
+
+    def close_task_shells(self, tid: int) -> None:
+        for c in [c for c in self.loose.values() if c.task == tid]:
+            self.close(c.id)
 
     def argv_for(self, cell: Cell) -> list | None:
         if cell.agent == SHELL:
@@ -517,7 +575,7 @@ class GridHub:
 
     async def start(self, cid: str, rows: int = 24, cols: int = 80) -> str:
         """Mở (lại) CLI của ô. Trả lỗi hoặc ""."""
-        cell = self.layout.cell(cid)
+        cell = self._cell(cid)
         if not cell:
             return tr("Không có ô này")
         old = self.terms.get(cid)
@@ -560,7 +618,7 @@ class GridHub:
         if cell.agent != SHELL:  # Claude Code / Codex chỉ gửi thông báo (OSC 9) khi nhận ra terminal hỗ trợ
             env["TERM_PROGRAM"] = "iTerm.app"
             env.pop("TERM_PROGRAM_VERSION", None)
-        t.session = PtySession(argv, str(self.root), env, on_data=on_data, on_exit=on_exit,
+        t.session = PtySession(argv, getattr(cell, "cwd", "") or str(self.root), env, on_data=on_data, on_exit=on_exit,
                                rows=max(2, int(rows)), cols=max(10, int(cols)))
         self.terms[cid] = t
         try:
@@ -600,7 +658,9 @@ class GridHub:
         """Đóng ô: dừng CLI (SIGHUP như đóng cửa sổ terminal) và bỏ khỏi lưới."""
         self.stop(cid)
         self.terms.pop(cid, None)
-        if self.layout.remove(cid):
+        if self.loose.pop(cid, None):
+            self._emit(cid, "layout")
+        elif self.layout.remove(cid):
             self.changed()
 
     def update_cell(self, cid: str, **kw) -> None:

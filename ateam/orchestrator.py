@@ -96,6 +96,7 @@ class Orchestrator:
         self.paused = False
         self.auto_answer = False  # chạy không tương tác (ateam goal -y / run): tự trả lời <<<ASK>>>
         self.use_worktree = False
+        self.on_shell_release: Callable[[int], None] | None = None  # đóng ⌨ shell của task (GridHub.close_task_shells)
         self._git_ident: list[str] | None = None  # None = chưa kiểm tra
         self._merge_lock_obj: asyncio.Lock | None = None  # tạo khi dùng (xem _merge_lock)
         self._bg: set[asyncio.Task] = set()
@@ -1089,7 +1090,7 @@ class Orchestrator:
         # task lỗi / huỷ ở chế độ worktree giữ nhánh để xem lại — dọn khỏi bảng thì xoá luôn, không để mồ côi trong repo
         for t in (self.db.task(i) for i in tids):
             if t and t.branch:
-                self._spawn(self._git("branch", "-D", t.branch))
+                self._spawn(self._drop_branch(t))
         self.db.delete(tids, gids)
         for tid in tids:
             try:
@@ -1118,7 +1119,7 @@ class Orchestrator:
             return tr("Task {v} còn chờ task #{tid} — xoá thì chúng bị chặn", tid=tid,
                       v=", ".join(f"#{i}" for i in waiting))
         if t.branch:
-            self._spawn(self._git("branch", "-D", t.branch))
+            self._spawn(self._drop_branch(t))
         self.db.delete([tid], [])
         try:
             self.log_path(tid).unlink()
@@ -1586,7 +1587,7 @@ class Orchestrator:
             return tr("Đang dừng task #{tid}…", tid=tid)
         if t.status in (DRAFT, QUEUED, ASKING):
             if t.status == ASKING and t.branch and (t.ask or {}).get("parked"):
-                self._spawn(self._git("branch", "-D", t.branch))  # phần làm dở trước khi hỏi
+                self._spawn(self._drop_branch(t))  # phần làm dở trước khi hỏi
             self.db.update_task(tid, status=CANCELLED, finished=time.time())
             self.emit("changed")
             return tr("Đã huỷ task #{tid}", tid=tid)
@@ -2553,7 +2554,51 @@ class Orchestrator:
         out, _ = await proc.communicate()
         return proc.returncode, out.decode("utf-8", "replace")
 
+    # ---- ⌨ shell ở worktree của task (tab Terminal)
+    async def task_shell_dir(self, tid: int) -> tuple[Path | None, str]:
+        """Thư mục cho shell của task: worktree đang chạy, hoặc worktree riêng `sh-t{id}` mở trên nhánh của task
+        (chờ duyệt / xung đột / lỗi) — phần sửa tay được commit vào nhánh trước khi merge."""
+        t = self.db.task(tid)
+        if not t:
+            return None, tr("Không có task #{tid}", tid=tid)
+        run_wt = self.state / "worktrees" / f"t{t.id}"
+        if t.status == RUNNING and run_wt.is_dir():
+            return run_wt, ""
+        if not t.branch:
+            return None, tr("Task #{tid} không có worktree hay nhánh riêng — mở shell thường ở thư mục dự án", tid=tid)
+        path = self.shell_wt(tid)
+        if path.is_dir():
+            return path, ""
+        await self._git("worktree", "prune")
+        rc, out = await self._git("worktree", "add", str(path), t.branch)
+        if rc != 0:
+            return None, tr("git worktree add thất bại: {v}", v=out.strip()[:300])
+        return path, ""
+
+    def shell_wt(self, tid: int) -> Path:
+        return self.state / "worktrees" / f"sh-t{tid}"
+
+    async def _shell_wt_release(self, t: Task, keep: bool) -> str | None:
+        """Đóng shell của task và gỡ worktree `sh-t{id}` (git không cho xoá / checkout lại nhánh đang mở ở worktree
+        khác). keep: commit phần người dùng sửa tay vào nhánh trước; commit lỗi thì giữ worktree, trả lỗi."""
+        if self.on_shell_release:
+            self.on_shell_release(t.id)
+        path = self.shell_wt(t.id)
+        if not path.is_dir():
+            return None
+        if keep:
+            err = await self._wt_commit(path, f"ateam #{t.id}: manual edits (shell)")
+            if err:
+                return err
+        await self._git("worktree", "remove", "--force", str(path))
+        return None
+
+    async def _drop_branch(self, t: Task) -> None:
+        await self._shell_wt_release(t, keep=False)
+        await self._git("branch", "-D", t.branch)
+
     async def _wt_prepare(self, t: Task) -> Path:
+        await self._shell_wt_release(t, keep=True)  # nhánh làm tiếp (trả lời câu hỏi) có cả phần sửa tay
         path = self.state / "worktrees" / f"t{t.id}"
         branch = f"ateam/t{t.id}"
         if path.exists():
@@ -2631,6 +2676,9 @@ class Orchestrator:
 
     async def _merge_branch(self, t: Task) -> tuple[bool, str | None]:
         branch = f"ateam/t{t.id}"
+        err = await self._shell_wt_release(t, keep=True)  # phần bạn sửa tay trong ⌨ shell của task vào cùng merge
+        if err:
+            return False, err
         async with self._merge_lock():
             if (await self._git("rev-parse", "-q", "--verify", "MERGE_HEAD"))[0] == 0:
                 # người dùng đang merge dở (tab Git): không merge chồng, càng không được --abort phần của họ
@@ -2675,7 +2723,7 @@ class Orchestrator:
         if t.status not in (REVIEW, CONFLICT):
             return tr("Task #{tid} không ở trạng thái chờ duyệt ({status})", tid=tid, status=t.status)
         if t.branch:
-            await self._git("branch", "-D", t.branch)
+            await self._drop_branch(t)
         if feedback:
             prompt = (t.prompt + f"\n\nREVIEWER FEEDBACK (previous attempt was rejected — address this):"
                       f"\n{feedback}")

@@ -93,7 +93,8 @@ class TermView(Widget, can_focus=True):
             self.refresh()
 
     def on_focus(self) -> None:
-        self.app.grid_focused = self.cell_id
+        if self.hub.layout.find(self.cell_id):  # ⌨ shell của tab Terminal không thuộc Lưới
+            self.app.grid_focused = self.cell_id
         self.refresh()
         panel = self._panel()
         if panel:

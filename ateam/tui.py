@@ -206,6 +206,8 @@ Lệnh terminal (tab 💻 Terminal):
   !<lệnh>                           chạy lệnh trong thư mục dự án, vd !yarn dev, !make test
   !                                 gợi ý script package.json, target Makefile, lệnh gần đây (Enter chạy)
   /sh <lệnh>                        như !<lệnh>
+  /term [lệnh]                      ⌨ shell tương tác thật (zsh…) ở tab Terminal; kèm lệnh = chạy lệnh đó trong
+                                    shell (lệnh cần gõ trả lời: npm init, ssh…) · /term #12: shell ở worktree task #12
   /stop [số]                        dừng lệnh đang chọn (nút ■ Dừng / ↻ Chạy lại / ✗ Xoá trong tab)
 
 Git (tab 🌿 Git — Ctrl+T xoay tới, hoặc /git):
@@ -275,7 +277,7 @@ COMMANDS = [
                                             "lập kế hoạch")),
     ("sh", tr("<lệnh>"), tr("chạy lệnh terminal (như !lệnh), vd /sh yarn dev")),
     ("stop", tr("[số]"), tr("dừng lệnh terminal đang chọn (hoặc lệnh số đó)")),
-    ("term", "", tr("mở tab Terminal (lệnh đang chạy)")),
+    ("term", tr("[lệnh | #task]"), tr("⌨ shell tương tác ở tab Terminal; kèm lệnh: chạy lệnh đó trong shell")),
     ("theme", tr("[tên] [màu nhấn]"), tr("chọn theme màu (xem trước trực tiếp)")),
     ("lang", "<en|vi>", tr("đổi ngôn ngữ giao diện (app tự mở lại)")),
     ("rules", tr("[rule mới]"), tr("rule của dự án mà mọi agent phải tuân theo; kèm nội dung thì thêm luôn")),
@@ -4532,6 +4534,12 @@ class GitFileList(OptionList):
     ]
 
 
+class ScriptList(OptionList):
+    """📜 Script dự án / lệnh ! ở tab Terminal: s chạy lệnh đó trong ⌨ shell tương tác (Enter: chạy nền / xem)."""
+
+    BINDINGS = [Binding("s", "app.script_in_shell", tr("Chạy trong shell"), show=False)]
+
+
 class GitLogList(OptionList):
     """Lịch sử commit ở tab Git. Enter xem diff của commit, r revert."""
 
@@ -5253,10 +5261,18 @@ class TeamApp(App):
     #jobs-side { width: 34%; min-width: 30; max-width: 70; }
     #jobs { height: 1fr; border: none; }
     #jobs-empty { height: auto; padding: 1 2; color: $text-muted; }
-    #scripts-title { height: 1; padding: 0 1; margin-top: 1; background: $panel; }
+    #scripts-title, #jobs-title { height: 1; padding: 0 1; margin-top: 1; background: $panel; }
     #term-scripts { height: 1fr; border: none; }
     #jobs-buttons { height: auto; }
     #jobs-buttons Button { margin-right: 1; }
+    #sh-bar { height: 1; background: $panel; }
+    #sh-title { width: 1fr; padding: 0 1; }
+    #sh-bar Button { height: 1; min-width: 0; border: none; margin: 0; }
+    #shells { height: auto; max-height: 8; border: none; }
+    #sh-view { height: 1fr; display: none; }
+    #sh-headrow { height: 1; }
+    #sh-head { width: 1fr; padding: 0 1; }
+    #sh-headrow Button { height: 1; min-width: 0; border: none; margin: 0 0 0 1; }
     #job-view { width: 1fr; margin-left: 1; }
     #job-head { height: auto; padding: 0 1; }
     #job-log { height: 1fr; }
@@ -5461,6 +5477,9 @@ class TeamApp(App):
         # tab 🔲 Lưới: CLI thật của agent trong từng ô (grid.GridHub dùng chung với web), màn hình vterm theo ô
         self.grid = GridHub(root, lambda: self.cfg, lambda a: self.orch.terminal_session(a))
         self.grid.listen(self._on_grid)
+        self.orch.on_shell_release = self.grid.close_task_shells
+        self.view_shell: str | None = None  # ⌨ shell rời đang xem ở tab Terminal (None = output lệnh !)
+        self._term_auto = False  # đã tự mở shell lần đầu vào tab Terminal
         self.grid_screens: dict[str, vterm.Screen] = {}
         self.grid_focused: str | None = None
         self.grid_zoom: str | None = None
@@ -5575,18 +5594,27 @@ class TeamApp(App):
             with TabPane(labels["tab-term"], id="tab-term"):
                 with Horizontal(id="term"):
                     with Vertical(id="jobs-side", classes="box"):
-                        yield OptionList(id="jobs")
+                        with Horizontal(id="sh-bar"):
+                            yield Static(Text(tr("⌨ Shell"), "bold"), id="sh-title")
+                            yield Btn(tr("＋ Shell"), id="sh-new")
+                        yield OptionList(id="shells")
+                        yield Static(Text(tr("$ Lệnh nền (!) · s: vào shell"), "bold"), id="jobs-title")
+                        yield ScriptList(id="jobs")
                         yield Static(id="jobs-empty")
                         with Horizontal(id="jobs-buttons"):
                             yield Btn(tr("■ Dừng"), id="job-stop", variant="error")
                             yield Btn(tr("↻ Chạy lại"), id="job-restart")
                             yield Btn(tr("✗ Xoá"), id="job-remove")
-                        yield Static(Text(tr("📜 Script dự án — Enter / bấm để chạy"), "bold"), id="scripts-title")
-                        yield OptionList(id="term-scripts")
+                        yield Static(Text(tr("📜 Script · Enter chạy · s: vào shell"), "bold"), id="scripts-title")
+                        yield ScriptList(id="term-scripts")
                     with Vertical(id="job-view", classes="box"):
                         yield Static(id="job-head")
                         yield ReflowLog(id="job-log", wrap=True, markup=False, highlight=False,
                                       max_lines=5000, min_width=1)
+                        with Vertical(id="sh-view"):
+                            with Horizontal(id="sh-headrow"):
+                                yield Static(id="sh-head")
+                                yield Btn(tr("✕ Đóng"), id="sh-close")
             with TabPane(labels["tab-todo"], id="tab-todo"):
                 from .tui_todo import NotesPanel, TodoPanel
                 yield TodoPanel(self.root, id="todo-tab")
@@ -5794,6 +5822,7 @@ class TeamApp(App):
             self.notify(tr("Gõ lệnh sau dấu !, vd !yarn dev (gõ ! để xem gợi ý)"), severity="warning")
             return
         job = self.shell.start(cmd)
+        self._term_auto = True  # vào tab vì lệnh !: không tự mở shell
         self.query_one("#tabs", TabbedContent).active = "tab-term"
         self.show_job(job.id)
         self.refresh_view()
@@ -5803,6 +5832,7 @@ class TeamApp(App):
 
     def show_job(self, jid: int) -> None:
         self.view_job = jid
+        self._show_shell_view(None)
         log = self.query_one("#job-log", RichLog)
         log.clear()
         self.job_styler = LogStyler(task_headers=False)
@@ -5860,7 +5890,121 @@ class TeamApp(App):
             ol.add_option(Option(t, id=cmd))
         self.query_one("#scripts-title").display = ol.display = bool(items)
 
+    # ------------------------------------------------------------------ ⌨ shell tương tác (tab Terminal)
+    async def new_shell(self, cmd: str = "", task: int | None = None) -> None:
+        """Mở shell rời (GridHub, ngoài bố cục Lưới) ở thư mục dự án hoặc worktree của task; cmd gõ sẵn."""
+        cwd = ""
+        if task is not None:
+            path, err = await self.orch.task_shell_dir(task)
+            if not path:
+                self.notify(err, severity="warning")
+                return
+            cwd = str(path)
+        cid, err = await self.grid.add_shell(cwd, task if cwd else None, cmd.strip())
+        if err:
+            self.notify(err, severity="error")
+        self._term_auto = True
+        self.query_one("#tabs", TabbedContent).active = "tab-term"
+        self.show_shell(cid, focus=True)
+
+    def term_command(self, rest: str) -> None:
+        """/term: tới shell đang xem (chưa có thì mở) · /term <lệnh>: shell mới chạy lệnh · /term #12: shell ở
+        worktree của task #12."""
+        rest = rest.strip()
+        m = re.fullmatch(r"#?t?(\d+)", rest) if rest.startswith(("#", "t")) else None
+        if m:
+            self.run_worker(self.new_shell(task=int(m.group(1))), exclusive=False)
+        elif rest:
+            self.run_worker(self.new_shell(rest), exclusive=False)
+        elif self.grid.loose:
+            self._term_auto = True
+            self.query_one("#tabs", TabbedContent).active = "tab-term"
+            self.show_shell(self.view_shell if self.view_shell in self.grid.loose else list(self.grid.loose)[-1],
+                            focus=True)
+        else:
+            self.run_worker(self.new_shell(), exclusive=False)
+
+    def show_shell(self, cid: str | None, focus: bool = False) -> None:
+        from .tui_grid import TermView
+        if cid not in self.grid.loose:
+            return
+        self._show_shell_view(cid)
+        view = self.query_one("#sh-view")
+        old = [w for w in view.query(TermView)]
+        if old and old[0].cell_id == cid:
+            tv = old[0]
+        else:
+            for w in old:
+                w.remove()
+            tv = TermView(cid)
+            view.mount(tv)
+        if focus:
+            self.call_after_refresh(tv.focus)
+        self._refresh_shells()
+
+    def _show_shell_view(self, cid: str | None) -> None:
+        self.view_shell = cid
+        on = cid is not None
+        self.query_one("#sh-view").display = on
+        self.query_one("#job-head").display = self.query_one("#job-log").display = not on
+
+    def _shell_label(self, x: dict) -> Text:
+        t = Text()
+        t.append("● " if x["status"] == "run" else "■ ", f"bold {RUNNING}" if x["status"] == "run" else "dim")
+        t.append(x["title"], "bold")
+        if x["task"] is not None:
+            t.append(tr("  #{id} worktree", id=x["task"]), "magenta")
+        if x["cwd"]:
+            t.append("  " + x["cwd"], "dim")
+        return t
+
+    def _refresh_shells(self) -> None:
+        items = self.grid.shells()
+        ol = self.query_one("#shells", OptionList)
+        ids = [x["id"] for x in items]
+        current = [o.id for o in (ol.get_option_at_index(i) for i in range(ol.option_count))]
+        if current != ids:
+            ol.clear_options()
+            ol.add_options([Option(self._shell_label(x), id=x["id"]) for x in items])
+        else:
+            for i, x in enumerate(items):
+                ol.replace_option_prompt_at_index(i, self._shell_label(x))
+        ol.display = bool(items)
+        if self.view_shell is None:
+            return
+        if self.view_shell not in ids:  # shell đang xem đã đóng: sang shell khác, hết shell thì về output lệnh !
+            if ids:
+                self.show_shell(ids[-1])
+            else:
+                self._show_shell_view(None)
+                self._refresh_jobs()
+            return
+        idx = ids.index(self.view_shell)
+        if ol.highlighted != idx:
+            ol.highlighted = idx
+        x = items[idx]
+        head = Text()
+        head.append(f"⌨ {x['title']}", "bold")
+        if x["cwd"]:
+            head.append(f" · {x['cwd']}", "dim")
+        if x["status"] != "run":
+            head.append(tr("   đã thoát — Enter trong khung để mở lại"), "yellow")
+        head.append(tr("   · F-phím / Alt+số / chuột: rời shell"), "dim")
+        self.query_one("#sh-head", Static).update(head)
+
+    def action_script_in_shell(self) -> None:
+        """s ở danh sách script / lệnh !: chạy lệnh đang chọn trong shell mới (lệnh cần gõ trả lời)."""
+        ol = self.focused
+        if not isinstance(ol, ScriptList) or ol.highlighted is None:
+            return
+        oid = ol.get_option_at_index(ol.highlighted).id or ""
+        job = self.shell.jobs.get(int(oid)) if ol.id == "jobs" and oid.isdigit() else None
+        cmd = job.cmd if job else oid if ol.id == "term-scripts" else ""
+        if cmd:
+            self.run_worker(self.new_shell(cmd), exclusive=False)
+
     def _refresh_jobs(self) -> None:
+        self._refresh_shells()
         jobs = list(self.shell.jobs.values())
         ol = self.query_one("#jobs", OptionList)
         empty = self.query_one("#jobs-empty", Static)
@@ -5882,8 +6026,9 @@ class TeamApp(App):
             return
         if self.view_job not in self.shell.jobs:
             self.view_job = jobs[-1].id
-            self.show_job(self.view_job)
-            return
+            if self.view_shell is None:
+                self.show_job(self.view_job)
+                return
         ids = [str(j.id) for j in jobs]
         current = [o.id for o in (ol.get_option_at_index(i) for i in range(ol.option_count))]
         if current != ids:
@@ -5893,7 +6038,7 @@ class TeamApp(App):
             for i, j in enumerate(jobs):
                 ol.replace_option_prompt_at_index(i, self._job_label(j))
         idx = ids.index(str(self.view_job))
-        if ol.highlighted != idx:
+        if ol.highlighted != idx and self.view_shell is None:
             ol.highlighted = idx
         job = self.shell.jobs[self.view_job]
         head = Text()
@@ -5938,8 +6083,10 @@ class TeamApp(App):
             else:
                 self.grid_screen(cid)  # màn hình mới nạp cả bộ đệm (đã gồm payload)
         elif kind == "layout":
-            for k in [k for k in self.grid_screens if not self.grid.layout.find(k)]:
+            for k in [k for k in self.grid_screens if not self.grid.layout.find(k) and k not in self.grid.loose]:
                 del self.grid_screens[k]  # ô đã đóng
+            if cid in self.grid.loose or cid == self.view_shell:  # ⌨ shell của tab Terminal mở / thoát / đóng
+                self.call_later(self._refresh_shells)
 
     def grid_tab_shown(self) -> None:
         from .tui_grid import GridCell, GridPanel
@@ -7759,6 +7906,12 @@ class TeamApp(App):
                 self.code_tab_shown()
             elif event.pane.id == "tab-term":
                 self.load_scripts()
+                if not self._term_auto:  # vào tab lần đầu: mở sẵn một shell ở thư mục dự án
+                    self._term_auto = True
+                    if self.grid.loose:
+                        self.show_shell(list(self.grid.loose)[-1])
+                    else:
+                        self.run_worker(self.new_shell(), exclusive=False)
             elif event.pane.id == "tab-grid":
                 self.grid_tab_shown()
             elif event.pane.id == "tab-todo":
@@ -8109,6 +8262,9 @@ class TeamApp(App):
             t.append(tr("  · đã sửa lỗi test {attempts} lần", attempts=task.attempts), "yellow")
         if task.status == "review":
             t.append(tr("\n👀 Chờ duyệt — Ctrl+D xem diff, Ctrl+Y merge, /reject <task> [góp ý]"), "yellow")
+        if task.branch:
+            t.append(tr("\n⌨ /term #{id}: shell trong worktree của task — sửa tay, chạy test (merge gồm cả phần sửa)",
+                        id=task.id), "dim")
         if task.error:
             t.append(f"\n⚠ {task.error}", "red")
         elif task.result and task.status != "running":
@@ -8309,6 +8465,13 @@ class TeamApp(App):
                 self.notify(tr("Đang chạy — Dừng trước rồi mới xoá"), severity="warning")
             self.refresh_view()
             return
+        if bid in ("sh-new", "sh-close"):
+            event.stop()
+            if bid == "sh-new":
+                self.run_worker(self.new_shell(), exclusive=False)
+            elif self.view_shell:
+                self.grid.close(self.view_shell)
+            return
         if not bid.startswith("plan-"):
             return
         event.stop()
@@ -8324,13 +8487,21 @@ class TeamApp(App):
         self.refresh_view()
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option_list.id == "shells" and event.option.id:
+            event.stop()
+            ol = event.option_list
+            if ol.highlighted is None or ol.get_option_at_index(ol.highlighted).id != event.option.id:
+                return
+            if event.option.id != self.view_shell and ol.has_focus:
+                self.show_shell(event.option.id)
+            return
         if event.option_list.id == "jobs" and event.option.id:
             event.stop()
             ol = event.option_list
             # dựng lại danh sách sinh sự kiện "chọn dòng 0" đến trễ: bỏ qua nếu không còn là dòng đang chọn
             if ol.highlighted is None or ol.get_option_at_index(ol.highlighted).id != event.option.id:
                 return
-            if int(event.option.id) != self.view_job:
+            if int(event.option.id) != self.view_job or (self.view_shell and event.option_list.has_focus):
                 self.show_job(int(event.option.id))
             return
         if event.option_list.id == "plan-tasks":
@@ -8338,6 +8509,16 @@ class TeamApp(App):
             self.query_one("#plan", PlanBar).show_detail(self)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id == "shells":
+            event.stop()
+            if event.option.id:
+                self.show_shell(event.option.id, focus=True)
+            return
+        if event.option_list.id == "jobs":
+            event.stop()
+            if event.option.id:
+                self.show_job(int(event.option.id))
+            return
         if event.option_list.id == "term-scripts":
             event.stop()
             if event.option.id:
@@ -9337,8 +9518,7 @@ class TeamApp(App):
             else:
                 self.notify(tr("■ Đã dừng: {cmd}", cmd=job.cmd))
         elif cmd == "term":
-            self.query_one("#tabs", TabbedContent).active = "tab-term"
-            self.refresh_view()
+            self.term_command(rest)
         elif cmd in ("code", "open", "vi"):
             target, line = parse_code_target(rest)
             self.open_code(target, line)

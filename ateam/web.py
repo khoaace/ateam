@@ -190,6 +190,12 @@ def ui_strings() -> dict[str, str]:
         "lead": tr("trưởng nhóm"), "idle": tr("rảnh"), "not_installed": tr("chưa cài"),
         "cooldown": tr("nghỉ tới {v}"), "agent_running": tr("đang chạy {n} việc"),
         "jobs": tr("Lệnh terminal"), "no_jobs": tr("Chưa chạy lệnh nào"),
+        "sh_title": tr("Shell"), "sh_new": tr("Mở shell mới ở thư mục dự án"), "sh_exited": tr("đã thoát"),
+        "sh_reopen": tr("Mở lại"), "sh_exit_msg": tr("Shell đã thoát (mã {rc}) — ↻ Mở lại để chạy tiếp"), "sh_close": tr("Đóng"),
+        "sh_close_hint": tr("Đóng shell (dừng mọi thứ đang chạy trong đó)"), "sh_run_in": tr("Chạy trong shell"),
+        "sh_run_in_hint": tr("Chạy lệnh này trong một shell tương tác — cho lệnh cần gõ trả lời (npm init, ssh…)"),
+        "sh_task": tr("Shell"),
+        "sh_task_hint": tr("Mở shell trong worktree của task — sửa tay, chạy test; ✓ Merge sẽ gồm cả phần bạn sửa"),
         "no_jobs_hint": tr("Gõ ! rồi lệnh ở ô dưới, vd !npm run dev — hoặc chọn một script gợi ý:"),
         "stop": tr("Dừng"), "restart": tr("Chạy lại"), "remove": tr("Xoá"),
         "j_running": tr("đang chạy"), "j_done": tr("xong"), "j_failed": tr("lỗi"), "j_stopped": tr("đã dừng"),
@@ -643,6 +649,7 @@ class WebApp:
         # nhận lại output gần nhất (grid_attach)
         self.grid = GridHub(root, lambda: self.cfg, lambda a: self.orch.terminal_session(a))
         self.grid.listen(self._on_grid)
+        self.orch.on_shell_release = self.grid.close_task_shells
         self.grid_ws: set[web.WebSocketResponse] = set()
         self._out: list[dict] = []    # dòng log / output lệnh chờ gửi (gom theo LOG_FLUSH)
         self._flushing = False
@@ -1024,7 +1031,7 @@ class WebApp:
         jobs = [{"id": j.id, "cmd": j.cmd, "status": j.status, "started": j.started, "finished": j.finished,
                  "rc": j.rc, "ports": j.ports} for j in self.shell.jobs.values()]
         return {"t": "state", "goals": goals, "tasks": [task_json(t, full=False) for t in tasks], "agents": agents,
-                "grill": grill, "ask": ask, "jobs": jobs, "paused": o.paused, "worktree": o.use_worktree,
+                "grill": grill, "ask": ask, "jobs": jobs, "shells": self.grid.shells(), "paused": o.paused, "worktree": o.use_worktree,
                 "lead": cfg.lead, "commit_agent": cfg.commit_agent, "workflow": cfg.default_workflow, "compacting": o.compacting,
                 "continue": reports.continue_candidates(self.db, tasks_all, goals_all), "busy": len(o.runs), "todos": todos.load(self.root),
                 "tags": todos.load_tags(self.root), "notes": notes.summaries(self.root), "git_changes": self.git.changes}
@@ -1290,7 +1297,8 @@ class WebApp:
         """grid_attach (mở mục Lưới: nhận bố cục + output gần nhất của từng ô, rồi output mới), grid_add {agent,
         model, effort, resume, near, where, rows, cols}, grid_start {id, rows, cols} (mở lại CLI), grid_in {id, data},
         grid_size {id, rows, cols}, grid_close {id}, grid_move {src, dst, where}, grid_preset {preset},
-        grid_sizes {widths, heights}, grid_bcast {on}, grid_cell {id, bcast}."""
+        grid_sizes {widths, heights}, grid_bcast {on}, grid_cell {id, bcast}; grid_shell {task, cmd, rows, cols}: ⌨ shell
+        rời ở tab Terminal (không vào bố cục), task = mở trong worktree của task đó."""
         op, g = d.get("op"), self.grid
         if op == "grid_attach":
             self.grid_ws.add(ws)
@@ -1317,6 +1325,8 @@ class WebApp:
                                    near=str(d.get("near") or "") or None, where=where if where in WHERE else "",
                                    rows=rows, cols=cols)
             return (err, "warn" if not new else "error") if err else ("", "", {"grid_cell": new})
+        if op == "grid_shell":
+            return await self.open_shell(str(d.get("cmd") or ""), d.get("task"), rows, cols)
         if op == "grid_start":
             err = await g.start(cid, rows, cols)
             return (err, "error") if err else None
@@ -1546,6 +1556,21 @@ class WebApp:
             return self.start_goal(text, self.cfg.default_workflow)
         return await self.command(text)
 
+    async def open_shell(self, cmd: str = "", task=None, rows: int = 24, cols: int = 80) -> tuple:
+        """⌨ Mở shell tương tác ở tab Terminal (thư mục dự án, hoặc worktree của task); cmd gõ sẵn vào shell."""
+        cwd = ""
+        if task not in (None, ""):
+            try:
+                tid = int(task)
+            except (TypeError, ValueError):
+                return tr("Không có task #{tid}", tid=task), "warn"
+            path, err = await self.orch.task_shell_dir(tid)
+            if not path:
+                return err, "warn"
+            cwd, task = str(path), tid
+        cid, err = await self.grid.add_shell(cwd, task if cwd else None, cmd.strip(), rows, cols)
+        return (err, "error", {"open": {"term": cid}}) if err else ("", "", {"open": {"term": cid}})
+
     def run_shell(self, cmd: str) -> tuple:
         cmd = cmd.strip()
         if not cmd:
@@ -1669,7 +1694,12 @@ class WebApp:
             if not job or not self.shell.stop(job):
                 return tr("Không có lệnh nào đang chạy để dừng"), "warn"
             return tr("■ Đã dừng: {cmd}", cmd=job.cmd), "info"
-        if cmd in ("term", "team", "board"):
+        if cmd == "term":  # /term · /term <lệnh> · /term #12 (shell ở worktree của task #12)
+            m = re.fullmatch(r"#?t?(\d+)", rest) if rest.startswith(("#", "t")) else None
+            if m:
+                return await self.open_shell(task=int(m.group(1)))
+            return await self.open_shell(rest) if rest else ("", "", {"open": {"term": "focus"}})
+        if cmd in ("team", "board"):
             return "", "", {"open": {"view": cmd}}
         if cmd == "flow":
             name, _, goal = rest.partition(" ")
