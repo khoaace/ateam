@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.54.0 — 25/10/2026
 
 - **⌨ Shell tương tác ở tab Terminal** (web + TUI) — terminal thật (zsh của bạn) ngay trong tab: vim, htop, ssh,
   lệnh hỏi đáp đều chạy. Vào tab lần đầu thì tự mở một shell, **＋** mở thêm; tải lại trang vẫn giữ output.
