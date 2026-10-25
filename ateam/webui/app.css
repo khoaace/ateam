@@ -1234,7 +1234,8 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 .nprev { flex: 1; min-width: 0; padding: 14px 16px; overflow: auto; font: 13px/1.6 var(--mono); color: var(--term-fg); border-left: 1px solid var(--border); background: var(--surface); }
 .nsplit.m-edit .nprev, .nsplit.m-view .nsrc { display: none; }
 .nsplit.m-view .nprev { border-left: 0; }
-.nfoot { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--border); font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; }
+/* chừa chỗ bên phải cho nút nổi ✅ To-do (.tdfab) — nếu không nó đè lên nút Xoá */
+.nfoot { display: flex; align-items: center; gap: 8px; padding: 6px 60px 6px 12px; border-top: 1px solid var(--border); font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; }
 .nfoot .path { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .nfoot .saved { color: var(--done); } .nfoot .unsaved { color: var(--review); }
 .nselbar { position: absolute; z-index: 12; display: flex; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: 0 10px 26px rgba(0,0,0,.35); }
