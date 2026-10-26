@@ -309,6 +309,9 @@ COMMANDS = [
     ("tags", "", tr("quản lý tag dùng chung cho To-do và Ghi chú")),
     ("grid", tr("[agent]"), tr("mở tab 🔲 Lưới: mỗi ô là CLI thật của một agent; kèm agent thì thêm ô")),
     ("continue", tr("<m12|t40> <yêu cầu>"), tr("tiếp tục mục tiêu / thread đã xong (F6)")),
+    ("undo", tr("[m<mục tiêu>|redo]"), tr("↩ đưa dự án về lúc trước mục tiêu (hỏi lại trước); redo: lấy lại")),
+    ("schedule", tr("[khi] [mục tiêu]"), tr("⏰ hẹn giờ chạy mục tiêu: 22:30 · +45m · daily 08:00 · quota claude; "
+                                             "trống: xem lịch · rm <số>: huỷ")),
     ("note", tr("<nội dung>"), tr("ghi chú chung cho cả đội")),
     ("diff", "<task>", tr("xem thay đổi của task")),
     ("merge", "<task>", tr("duyệt và merge task đang chờ")),
@@ -339,7 +342,7 @@ COMMANDS = [
     ("help", "", tr("toàn bộ lệnh & phím tắt")),
     ("quit", "", tr("thoát")),
 ]
-COMMAND_ALIASES = {"tim": "search", "find": "search", "grep": "search", "vaitro": "roles", "role": "roles", "grill-me": "grill", "hoi": "grill", "h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
+COMMAND_ALIASES = {"hen": "schedule", "lich": "schedule", "at": "schedule", "tim": "search", "find": "search", "grep": "search", "vaitro": "roles", "role": "roles", "grill-me": "grill", "hoi": "grill", "h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
                    "workflows": "custom", "agent-moi": "team", "exit": "quit", "q": "quit"}
 
 
@@ -7721,6 +7724,7 @@ class TeamApp(App):
         self.quota_busy = True
         try:
             self.quota_items = await quota.collect(self.orch)
+            self.orch.quota_items = self.quota_items  # lịch "khi hồi hạn mức" (/schedule quota …)
         except Exception as e:  # CLI in lạ, file phiên hỏng…: giữ số cũ, lần sau hỏi lại
             self.orch.log(f"⚠ quota: {e}")
         finally:
@@ -9394,6 +9398,24 @@ class TeamApp(App):
             self.notify(o.force_review(num(rest)))
         elif cmd == "note":
             o.note(rest)
+        elif cmd == "undo":
+            async def _u(ref=rest):
+                res = await o.undo_preview(ref)
+                if isinstance(res, str):
+                    self.notify(res, severity="warning")
+                    return
+
+                def done(yes) -> None:
+                    if not yes:
+                        return
+
+                    async def _go() -> None:
+                        ok, msg = await o.undo(ref)
+                        self.notify(msg, severity="information" if ok else "error")
+                        self.refresh_view()
+                    self.run_worker(_go(), exclusive=False)
+                self.push_screen(ConfirmScreen(res[0], res[1], yes=tr("Hoàn tác")), done)
+            self.run_worker(_u(), exclusive=False)
         elif cmd == "compact":
             async def _c(focus=rest):
                 ok, msg = await o.compact(focus)
@@ -9421,6 +9443,12 @@ class TeamApp(App):
             self.query_one("#tabs", TabbedContent).active = "tab-board"
         elif cmd == "agents":
             self.write_sys(reports.agents_text(self.cfg))
+        elif cmd in ("schedule", "hen", "lich", "at"):
+            msg = o.schedule_command(rest)
+            if rest and rest.split()[0].lower() not in ("list", "ls"):
+                self.notify(msg, severity="warning" if not msg.startswith("⏰") else "information")
+            else:
+                self.write_sys(msg)
         elif cmd == "setup":
             self.open_setup()
             return

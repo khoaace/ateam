@@ -213,6 +213,9 @@ function onToast(m) {
   if (o.picker) pickerModal(o.picker);
   if (o.project != null) o.project ? openProject(o.project) : projectModal();
   if (o.prefill) prefill(o.prefill);
+  if (o.confirm) confirmBox(o.confirm.title, o.confirm.text, o.confirm.yes).then((ok) => {  // /undo… hỏi lại rồi chạy
+    if (ok) request("submit", { text: o.confirm.cmd }, t("busy_cmd", { v: o.confirm.cmd.split(/\s/)[0] }));
+  });
   if (o.theme) setThemeMode(o.theme);
   if (o.code && window.CodeView) { setView("code"); CodeView.open(o.code.path, o.code.line); }
 }

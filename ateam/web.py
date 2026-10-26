@@ -1055,6 +1055,7 @@ class WebApp:
                 self.orch.log(f"⚠ quota: {e}")
                 return self.quota
             self.quota = {"t": "quota", "items": items, "at": time.time()}
+            self.orch.quota_items = items  # lịch "khi hồi hạn mức" (/schedule quota …)
         self.broadcast(self.quota)
         return self.quota
 
@@ -1811,6 +1812,20 @@ class WebApp:
             return "", "", text_box("Model & effort", reports.models_text(cfg, parts[0] if parts else None))
         if cmd == "agents":
             return "", "", text_box("Agent", reports.agents_text(cfg))
+        if cmd == "undo":
+            if rest.endswith(" --yes") or rest == "--yes":
+                ok, msg = await o.undo(rest[:-5].strip())
+                return msg, "ok" if ok else "error"
+            res = await o.undo_preview(rest)
+            if isinstance(res, str):
+                return res, "warn"
+            return "", "", {"open": {"confirm": {"title": res[0], "text": res[1], "yes": tr("Hoàn tác"),
+                                                 "cmd": f"/undo {rest} --yes".replace("  ", " ")}}}
+        if cmd == "schedule":
+            msg = o.schedule_command(rest)
+            if not rest or rest.split()[0].lower() in ("list", "ls"):
+                return "", "", text_box(tr("⏰ Lịch hẹn"), msg)
+            return msg, "ok" if msg.startswith("⏰") else "warn"
         if cmd == "usage":  # chờ hạn mức từ CLI (song song, toast "đang chạy…" ở trình duyệt) rồi mở một khung
             names = reports.usage_agents(cfg)
             o.log(tr("\nĐang hỏi hạn mức từ CLI của {v}…", v=", ".join(names)))

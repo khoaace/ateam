@@ -4937,4 +4937,98 @@ EN: dict[str, str] = {
         "{n} agent runs will be stopped by the restart (unfinished tasks fail — /retry later).\nRestart now?",
     "Dừng & khởi động lại":
         "Stop & restart",
+    "chưa có commit nào — không tạo được điểm khôi phục":
+        "no commits yet — cannot create a restore point",
+    "không chụp được thư mục làm việc":
+        "could not snapshot the working tree",
+    "Không có điểm khôi phục '{key}'":
+        "No restore point '{key}'",
+    "Đã đưa dự án về lúc {at} (xoá {n} file mới)":
+        "Restored the project to {at} ({n} new files removed)",
+    "Đang merge / rebase dở — xong hoặc huỷ ở tab Git trước":
+        "A merge / rebase is in progress — finish or abort it in the Git tab first",
+    "Điểm khôi phục ở nhánh {v}, bạn đang ở {v2} — chuyển về {v} trước":
+        "The restore point is on branch {v}, you are on {v2} — switch back to {v} first",
+    "Không chụp được bản để lấy lại: {e}":
+        "Could not save a copy to restore later: {e}",
+    "↩ đưa dự án về lúc trước một mục tiêu (m12; trống = mục tiêu mới nhất; redo = lấy lại lần /undo trước)":
+        "↩ restore the project to before a goal (m12; empty = latest goal; redo = bring back the last /undo)",
+    "không hỏi lại":
+        "don't ask for confirmation",
+    "⏰ hẹn giờ chạy mục tiêu (22:30 · +45m · daily 08:00 · quota claude); trống: xem lịch · rm <số>: huỷ — chạy khi ateam đang mở":
+        "⏰ schedule a goal (22:30 · +45m · daily 08:00 · quota claude); empty: list · rm <n>: cancel — runs while ateam is open",
+    "Hoàn tác? [y/N] ":
+        "Undo? [y/N] ",
+    "⏰ Đã hẹn #{sid} — {when}: {text} (ateam cần đang mở lúc đó; kế hoạch tự duyệt)":
+        "⏰ Scheduled #{sid} — {when}: {text} (ateam must be open then; the plan is auto-approved)",
+    "Dùng: /undo [m<số mục tiêu>|redo]":
+        "Usage: /undo [m<goal number>|redo]",
+    "Thư mục dự án đã giống lúc {key} — không có gì để hoàn tác":
+        "The project already matches {key} — nothing to undo",
+    "Đưa nhánh và mọi file của dự án về lúc trước mục tiêu #{gid}: {n} file đổi lại, {new} file tạo sau đó bị xoá.":
+        "Move the branch and every project file back to before goal #{gid}: {n} files change back, {new} files created since are deleted.",
+    "Lấy lại trạng thái ngay trước lần /undo gần nhất: {n} file đổi lại.":
+        "Bring back the state right before the last /undo: {n} files change back.",
+    "⏰ Hẹn #{sid} ({when}): {text}":
+        "⏰ Scheduled #{sid} ({when}): {text}",
+    "Lấy lại được bằng /undo redo. File bị .gitignore (node_modules, .env…) giữ nguyên.":
+        "/undo redo brings it back. Ignored files (node_modules, .env…) are left alone.",
+    "↩ Hoàn tác về trước mục tiêu #{gid}?":
+        "↩ Undo back to before goal #{gid}?",
+    "↩ Lấy lại thay đổi trước /undo?":
+        "↩ Bring back the changes from before /undo?",
+    "Đang có agent chạy — đợi xong hoặc huỷ (/cancel) rồi /undo":
+        "An agent is running — wait for it or /cancel it, then /undo",
+    "✗ /undo: {e}":
+        "✗ /undo: {e}",
+    "Dùng: /schedule rm <số>":
+        "Usage: /schedule rm <n>",
+    "⏰ Đã huỷ lịch {v}":
+        "⏰ Cancelled schedule {v}",
+    "Không có lịch đang chờ nào số {v}":
+        "No pending schedule number {v}",
+    "⏰ Tới lịch #{sid}: {text}":
+        "⏰ Schedule #{sid} is due: {text}",
+    "⚠ Thay đổi của mục tiêu sau đó cũng mất: {v}":
+        "⚠ Changes from later goals are lost too: {v}",
+    "✗ Lịch #{sid} không chạy được: {e}":
+        "✗ Schedule #{sid} could not run: {e}",
+    "⚠ Không tạo được điểm khôi phục cho mục tiêu #{gid}: {e}":
+        "⚠ Could not create a restore point for goal #{gid}: {e}",
+    "Hoàn tác bằng /undo":
+        "Undone with /undo",
+    "↩ Đã hoàn tác bằng /undo":
+        "↩ Undone with /undo",
+    "Dùng: /schedule <khi> <mục tiêu> — khi: 22:30 · +45m · +2h · daily 08:00 · quota claude (chạy khi claude còn / hồi hạn mức). Mục tiêu bắt đầu bằng /flow <tên> thì chạy workflow đó. /schedule: xem lịch · /schedule rm <số>: huỷ":
+        "Usage: /schedule <when> <goal> — when: 22:30 · +45m · +2h · daily 08:00 · quota claude (runs when claude has / regains quota). A goal starting with /flow <name> runs that workflow. /schedule: list · /schedule rm <n>: cancel",
+    "Thiếu mục tiêu sau giờ hẹn":
+        "Missing the goal after the time",
+    "khi {agent} còn hạn mức":
+        "when {agent} has quota",
+    "hằng ngày {hhmm} (lần tới {at})":
+        "daily {hhmm} (next {at})",
+    "Chưa có lịch nào — {usage}":
+        "No schedules yet — {usage}",
+    "⏰ Lịch chạy (chỉ chạy khi ateam đang mở):":
+        "⏰ Schedules (run only while ateam is open):",
+    "Huỷ: /schedule rm <số>":
+        "Cancel: /schedule rm <n>",
+    "Thiếu giờ — vd /schedule daily 08:00 <mục tiêu>":
+        "Missing the time — e.g. /schedule daily 08:00 <goal>",
+    " · lần trước → mục tiêu #{gid}":
+        " · last run → goal #{gid}",
+    "Thiếu agent — vd /schedule quota claude <mục tiêu> · agent: {v}":
+        "Missing the agent — e.g. /schedule quota claude <goal> · agents: {v}",
+    "[m<mục tiêu>|redo]":
+        "[m<goal>|redo]",
+    "↩ đưa dự án về lúc trước mục tiêu (hỏi lại trước); redo: lấy lại":
+        "↩ restore the project to before a goal (asks first); redo: bring it back",
+    "[khi] [mục tiêu]":
+        "[when] [goal]",
+    "⏰ hẹn giờ chạy mục tiêu: 22:30 · +45m · daily 08:00 · quota claude; trống: xem lịch · rm <số>: huỷ":
+        "⏰ schedule a goal: 22:30 · +45m · daily 08:00 · quota claude; empty: list · rm <n>: cancel",
+    "Hoàn tác":
+        "Undo",
+    "⏰ Lịch hẹn":
+        "⏰ Schedules",
 }
