@@ -138,7 +138,9 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
   .side-min .nav-count { position: absolute; top: 1px; right: 2px; min-width: 14px; padding: 0 3px; font-size: 9px; line-height: 12px; background: var(--side); }
   .side-min .conn { justify-content: center; padding: 4px 0 0; }
   .side-min .quota { align-items: center; padding: 0 0 8px; }
-  .side-min .q-head, .side-min .q-row, .side-min .q-n { display: none; }
+  .side-min .q-head, .side-min .q-row, .side-min .q-name { display: none; }
+  .side-min .q-cli { align-items: center; gap: 0; }
+  .side-min .q-ring, .side-min .q-abbr { display: flex; }
 }
 .side {
   background: var(--side); border-right: 1px solid var(--border);
@@ -191,6 +193,16 @@ button.ver-up { cursor: pointer; text-decoration: underline dotted; }
 .q-cli:hover .q-n { color: var(--text); }
 .q-name { display: flex; align-items: center; gap: 6px; color: var(--text-2); }
 .q-dot { width: 7px; height: 7px; border-radius: 1px; background: var(--q); flex: none; }
+.q-ring, .q-abbr { display: none; }
+.q-ring { position: relative; width: 34px; height: 34px; align-items: center; justify-content: center; }
+.q-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.q-ring circle { fill: none; stroke-width: 3.2; }
+.q-ring .q-track { stroke: var(--surface-3); }
+.q-ring .q-arc { stroke: var(--q); stroke-linecap: round; transition: stroke-dasharray .4s; }
+.q-ring span { font-size: 9px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--q); letter-spacing: -.02em; }
+.q-ring span.full { font-size: 7.5px; letter-spacing: -.06em; }
+.q-abbr { font-size: 9px; line-height: 11px; color: var(--muted); text-transform: lowercase; }
+.q-cli:hover .q-abbr { color: var(--text); }
 .q-row { display: grid; grid-template-columns: 30px 1fr 30px; align-items: center; gap: 6px; color: var(--muted); }
 .q-v { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
 .qbar { height: 4px; background: var(--surface-3); border-radius: var(--radius-sm); overflow: hidden; }
