@@ -6518,7 +6518,8 @@ class TeamApp(App):
 
     # ---------------------------------------------------------------- command palette (tab 📝 Code)
     def action_palette(self, query: str = "") -> None:
-        """Ctrl+P mở nhanh file · F8 (Ctrl+Shift+P) lệnh · F9 (Ctrl+Shift+O) symbol trong file đang mở."""
+        """Ctrl+P mở nhanh file · F8 (Ctrl+Shift+P) lệnh (cả lệnh /… của app, ở mọi tab) · F9 (Ctrl+Shift+O) symbol
+        trong file đang mở."""
         ed = self.code_editor()
         sf = ed.buffer
         self._pal_syms = palette.symbols(sf.path, ed.text) if sf is not None and query.startswith("@") else None
@@ -6534,15 +6535,25 @@ class TeamApp(App):
             return Text(msg, dim), None
 
         if text.startswith(">"):
-            out = []
+            in_code = self.query_one("#tabs", TabbedContent).active == "tab-code"
+            code = []
             for cid, label, key, _web in palette.fuzzy(palette.CODE_COMMANDS, text[1:],
                                                          key=lambda c: c[1] + " " + palette.KEYWORDS.get(c[0], "")):
-                if (cid in palette.NEEDS_FILE and sf is None) or cid in palette.TUI_SKIP:
+                if (cid in palette.NEEDS_FILE and (sf is None or not in_code)) or cid in palette.TUI_SKIP:
                     continue
                 t = Text(label)
                 if key:
                     t.append(f"   {key}", dim)
-                out.append((t, ("cmd", cid)))
+                code.append((t, ("cmd", cid)))
+            # lệnh /… của cả app (cùng danh sách gợi ý khi gõ "/"): chạy ngay, hoặc điền vào ô nhập nếu cần tham số
+            app = []
+            for name, args, desc in palette.fuzzy(COMMANDS, text[1:], key=lambda c: f"/{c[0]} {c[2]}"):
+                t = Text(f"/{name}", "bold")
+                if args:
+                    t.append(f" {args}", dim)
+                t.append(f"   {desc}", dim)
+                app.append((t, ("app", name, args.startswith("<"))))
+            out = code + app if in_code else app + code
             return out or [head(tr("Không có lệnh nào khớp"))]
         if sf is None and text[:1] in ("@", ":", "/"):
             return [head(tr("Chưa mở file nào — gõ tên file để mở"))]
@@ -6611,6 +6622,14 @@ class TeamApp(App):
             ed.focus()
         elif kind == "cmd":
             self.code_command(value[1])
+        elif kind == "app":  # lệnh /… từ palette: cần tham số thì điền vào ô nhập, không thì chạy luôn
+            if value[2] or value[1] in ("task", "chat", "handoff", "continue", "schedule"):
+                box = self.query_one("#cmd", Input)
+                box.value = f"/{value[1]} "
+                box.cursor_position = len(box.value)
+                box.focus()
+            else:
+                self.run_command(f"/{value[1]}")
 
     # ---------------------------------------------------------------- mở folder / dự án khác (/open)
     def action_open_project(self, query: str = "") -> None:

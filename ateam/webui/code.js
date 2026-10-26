@@ -1484,8 +1484,8 @@ window.CodeView = (() => {
     return items.map((it, i) => [fuzzyScore(key(it), q), i, it]).filter((x) => x[0] != null)
       .sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, limit).map((x) => x[2]);
   }
-  async function palette(prefix = "") {
-    await show();
+  async function palette(prefix = "", stay = false) {  // stay: lệnh của app từ tab khác — không chuyển sang tab Code
+    if (!stay) await show();
     if (P.m && document.body.contains(P.m)) closeModal(P.m);
     const m = P.m = openModal(`<div class="pal"><input class="field one pal-q" autocomplete="off" spellcheck="false" placeholder="${esc(t("pal_ph"))}">
       <div class="pal-list" role="listbox"></div><div class="pal-foot">${esc(t("pal_foot"))}</div></div>`, { box: "md", cls: "palette" });
@@ -1505,8 +1505,14 @@ window.CodeView = (() => {
   async function palItems(text) {
     const b = C.cur && C.bufs.get(C.cur), head = (s) => ({ head: s });
     if (text.startsWith(">")) {
-      const out = fuzzy((S.meta.code_commands || []).filter((c) => !c.file || b), text.slice(1), (c) => c.label + " " + c.kw)
+      const inCode = S.view === "code";
+      const code = fuzzy((S.meta.code_commands || []).filter((c) => !c.file || (b && inCode)), text.slice(1), (c) => c.label + " " + c.kw)
         .map((c) => ({ html: `${esc(c.label)}${c.key ? `<span class="pal-key">${esc(c.key)}</span>` : ""}`, val: ["cmd", c.id] }));
+      // lệnh /… của cả app (như gợi ý khi gõ "/"): chạy ngay, cần tham số thì điền vào ô nhập
+      const app = fuzzy(S.meta.commands || [], text.slice(1), (c) => `/${c.name} ${c.desc}`)
+        .map((c) => ({ html: `<b>/${esc(c.name)}</b>${c.args ? ` <span class="pal-dim">${esc(c.args)}</span>` : ""}<span class="pal-where">${esc(c.desc)}</span>`,
+          val: ["app", c.name, c.args.startsWith("<")] }));
+      const out = inCode ? code.concat(app) : app.concat(code);
       return out.length ? out : [head(t("pal_nocmd"))];
     }
     if (text.startsWith("#")) {  // symbol trong cả dự án
@@ -1583,7 +1589,11 @@ window.CodeView = (() => {
     if (v[0] === "file") open(v[1]);
     else if (v[0] === "line") activate(C.cur, v[1], v[2]);
     else if (v[0] === "sym") open(v[1], v[2]);
-    else if (v[0] === "cmd") runCmd(v[1]);
+    else if (v[0] === "cmd") { if (S.view !== "code") setView("code"); runCmd(v[1]); }
+    else if (v[0] === "app") {  // lệnh /… của app: cần tham số → điền ô nhập; không thì chạy ngay
+      if (v[2] || ["task", "chat", "handoff", "continue", "schedule"].includes(v[1])) { setView(S.view === "code" ? "board" : S.view); prefill(`/${v[1]} `); updateSuggest(); }
+      else request("submit", { text: "/" + v[1] }, t("busy_cmd", { v: "/" + v[1] }));
+    }
   }
   function selRef() {  // "@đường/dẫn (dòng a–b)" của đoạn đang chọn — để hỏi / giao việc cho agent
     const st = C.view.state, s = st.selection.main;
@@ -1833,16 +1843,19 @@ window.CodeView = (() => {
       e.preventDefault(); setMd(MD_MODES[(MD_MODES.indexOf(C.md) + 1) % MD_MODES.length]);
     }
   });
-  document.addEventListener("keydown", (e) => {  // ⌘P mở nhanh file · ⌘⇧P lệnh · ⌘⇧O symbol — ở mọi tab, như VS Code
+  document.addEventListener("keydown", (e) => {  // ⌘P mở nhanh file · ⌘⇧P / ⌘K lệnh · ⌘⇧O symbol — ở mọi tab, như VS Code
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
     const k = e.key.toLowerCase();
-    if (k !== "p" && !(k === "o" && e.shiftKey)) return;
+    const cmds = (k === "p" && e.shiftKey) || (k === "k" && !e.shiftKey);
+    if (k !== "p" && !(k === "o" && e.shiftKey) && !cmds) return;
+    if (e.target.closest && e.target.closest(".xterm, .cm-editor") && k === "k") return;  // ⌘K của editor / terminal
     if (e.target.closest && e.target.closest(".xterm")) return;
     const top = topModal();
     if (top && top !== P.m) return;  // popup khác đang mở
     e.preventDefault(); e.stopPropagation();
+    if (cmds) return palette(">", S.view !== "code");  // lệnh của cả app: mở ngay tại tab đang xem
     if (S.view !== "code") setView("code");
-    palette(k === "o" ? "@" : e.shiftKey ? ">" : "");
+    palette(k === "o" ? "@" : "");
   }, true);
   window.addEventListener("beforeunload", (e) => {
     if (C.restored) persist();
