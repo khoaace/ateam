@@ -102,13 +102,14 @@ class CodeWeb:
 
     async def api_base(self, r: web.Request) -> web.Response:
         """Nội dung file ở HEAD cho dấu thay đổi git ở lề editor: {"repo", "tracked", "ignored", "text"}.
-        Chưa theo dõi → tracked false, text "" (cả file là dòng mới); bị .gitignore → ignored (không có dấu)."""
+        Chưa theo dõi → tracked false, text "" (cả file là dòng mới); bị .gitignore → ignored (không có dấu).
+        ?ref=index: bản đã stage (diff hai cột của nhóm "Thay đổi" so với index, như VS Code)."""
         p = safe_path(self.app.root, r.query.get("path", ""))
         if p is None:
             return web.json_response({"error": tr("Đường dẫn không hợp lệ (ngoài dự án): {path}", path=r.query.get("path", ""))})
         repo = self.app.git.repo
         rel = p.relative_to(self.app.root.resolve()).as_posix()
-        rc, out = await repo.run("show", f"HEAD:./{rel}")
+        rc, out = await repo.run("show", f":./{rel}" if r.query.get("ref") == "index" else f"HEAD:./{rel}")
         if rc == 0:
             return web.json_response({"repo": True, "tracked": True, "ignored": False, "text": out.replace("\r\n", "\n")})
         rc_repo, _ = await repo.run("rev-parse", "--git-dir")

@@ -547,6 +547,13 @@ def test_web_code_files(env, project, monkeypatch):
             assert (await (await client.get("/api/file/base?path=moi.txt")).json())["tracked"] is False
             assert (await (await client.get("/api/file/base?path=x.log")).json())["ignored"] is True
             assert "error" in await (await client.get("/api/file/base?path=../ngoai.txt")).json()
+            # diff hai cột của tab Code (Source Control): ?ref=index = bản đã stage, HEAD giữ nguyên
+            git("add", "src/app.py")
+            (project / "src" / "app.py").write_text("changed again\n")
+            idx = await (await client.get("/api/file/base?ref=index&path=src/app.py")).json()
+            assert idx["tracked"] and idx["text"] == "changed\n"
+            assert (await (await client.get("/api/file/base?path=src/app.py")).json())["text"] == "x\n"
+            assert (await (await client.get("/api/file/base?ref=index&path=moi.txt")).json())["tracked"] is False
         finally:
             await client.close()
 
@@ -1148,3 +1155,18 @@ def test_web_workflow_from_goal(env, project, monkeypatch, tmp_path):
         assert "FINISHED GOAL" in log and "1. [codex, code] Viết API — waits for: none" in log
         assert "2. [lead, review] Review — waits for: 1" in log and "Bỏ" not in log  # task huỷ không gửi
     asyncio.run(main())
+
+
+def test_codemirror_bundle_has_merge_view():
+    """Diff hai cột của tab Code (code.js) cần MergeView + nhảy đoạn trong gói CodeMirror (scripts/editor/entry.js)."""
+    from pathlib import Path
+
+    import pytest
+    pytest.importorskip("aiohttp")
+    from ateam.web import STATIC
+    bundle = (Path(STATIC) / "vendor" / "codemirror.js").read_text(encoding="utf-8")
+    for name in ("MergeView", "goToNextChunk", "goToPreviousChunk", "unifiedMergeView"):
+        assert name in bundle
+    used = set(__import__("re").findall(r"\bCM\.(\w+)", (Path(STATIC) / "code.js").read_text(encoding="utf-8")))
+    entry = (Path(__file__).parent.parent / "scripts" / "editor" / "entry.js").read_text(encoding="utf-8")
+    assert all(n in entry for n in used), sorted(n for n in used if n not in entry)

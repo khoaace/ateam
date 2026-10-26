@@ -2,7 +2,7 @@
 import { basicSetup } from "codemirror";
 import { EditorState, Compartment, StateField, StateEffect, RangeSet, Text } from "@codemirror/state";
 import { EditorView, keymap, gutter, GutterMarker } from "@codemirror/view";
-import { Chunk, unifiedMergeView, acceptChunk, rejectChunk, getChunks, getOriginalDoc } from "@codemirror/merge";
+import { Chunk, MergeView, unifiedMergeView, acceptChunk, rejectChunk, getChunks, getOriginalDoc, goToNextChunk, goToPreviousChunk } from "@codemirror/merge";
 import { indentWithTab } from "@codemirror/commands";
 import { StreamLanguage } from "@codemirror/language";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -64,6 +64,7 @@ window.CM = {
   basicSetup, EditorState, Compartment, EditorView, keymap, indentWithTab, oneDark, vim, Vim, getCM,
   StateField, StateEffect, RangeSet, Text, gutter, GutterMarker,  // dấu thay đổi git ở lề
   Chunk, unifiedMergeView, acceptChunk, rejectChunk, getChunks, getOriginalDoc,  // diff của ⌘K (AI sửa inline)
+  MergeView, goToNextChunk, goToPreviousChunk,  // diff hai cột của file thay đổi (Source Control)
   languageFor(filename) {
     const base = filename.split("/").pop();
     const hit = LANGS.find(([, re]) => re.test(base));
