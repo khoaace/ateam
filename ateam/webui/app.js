@@ -1252,12 +1252,14 @@ function renderTerm() {
   $("#jobs").innerHTML = `<div class="jobs-head sh-head">⌨ ${esc(t("sh_title"))}<button class="btn sm ghost" data-action="sh-new" title="${esc(t("sh_new"))}" aria-label="${esc(t("sh_new"))}">＋</button></div>`
     + shells.map((x) => `<div class="job${sh && x.id === sh.id ? " sel" : ""}" data-action="open-sh" data-sh="${esc(x.id)}">
       <div class="job-cmd">⌨ ${esc(x.title)}${x.task != null ? ` <span class="chip">#${x.task} ${esc(t("worktree"))}</span>` : ""}</div>
-      <div class="job-meta">${shLabel(x)}${x.cwd ? `<span class="mono sh-cwd" title="${esc(x.cwd)}">${esc(x.cwd)}</span>` : ""}</div></div>`).join("")
+      <div class="job-meta">${shLabel(x)}${x.cwd ? `<span class="mono sh-cwd" title="${esc(x.cwd)}">${esc(x.cwd)}</span>` : ""}
+        ${x.status === "run" ? `<button class="btn sm ghost job-stop" data-action="sh-stop" data-sh="${esc(x.id)}" title="${esc(t("stop"))}" aria-label="${esc(t("stop"))}">■</button>` : ""}</div></div>`).join("")
     + `<div class="jobs-head">${esc(t("jobs"))}</div>` + (jobs.length ? jobs.map((j) => `
     <div class="job${!sh && j.id === S.openJob ? " sel" : ""}" data-action="open-job" data-job="${j.id}">
       <div class="job-cmd">${j.status === "running" ? '<span class="spin" style="--c:var(--running);width:11px;height:11px"></span>' : ""}${esc(j.cmd)}</div>
       <div class="job-meta">${badge(j.status === "stopped" ? "cancelled" : j.status === "running" ? "running" : j.status, label(j))}${elapsedHtml(j.started, j.finished)}
-        ${j.ports.map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">:${p}</a>`).join("")}</div>
+        ${j.ports.map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">:${p}</a>`).join("")}
+        ${j.status === "running" ? `<button class="btn sm ghost job-stop" data-action="job" data-act="stop" data-job="${j.id}" title="${esc(t("stop"))}" aria-label="${esc(t("stop"))}">■</button>` : ""}</div>
     </div>`).join("") : `<div class="panel-sub" style="padding:4px 16px 8px">${esc(t("no_jobs_hint"))}</div>`)
     + (scripts ? `<div class="jobs-head">${esc(t("scripts"))}</div><div class="scripts">${scripts}</div>` : "");
   $("#tw-body").classList.toggle("hidden", !!sh);
@@ -1283,7 +1285,7 @@ function renderTerm() {
     head.dataset.sig = sig;
     head.innerHTML = sh ? `<span class="cmd">⌨ ${esc(sh.title)}${sh.cwd ? ` · ${esc(sh.cwd)}` : ""}</span>
       <span style="margin-left:auto;display:flex;gap:6px">
-        ${sh.status !== "run" ? `<button class="btn sm" data-action="sh-start" data-sh="${esc(sh.id)}">↻ ${esc(t("sh_reopen"))}</button>` : ""}
+        ${sh.status !== "run" ? `<button class="btn sm" data-action="sh-start" data-sh="${esc(sh.id)}">↻ ${esc(t("sh_reopen"))}</button>` : `<button class="btn sm" data-action="sh-stop" data-sh="${esc(sh.id)}">■ ${esc(t("stop"))}</button>`}
         <button class="btn sm" data-action="sh-close" data-sh="${esc(sh.id)}" title="${esc(t("sh_close_hint"))}">✕ ${esc(t("sh_close"))}</button>
       </span>` : job ? `<span class="lights"><i></i><i></i><i></i></span><span class="cmd">$ ${esc(job.cmd)}</span>
       ${job.ports.map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">localhost:${p}</a>`).join("")}
@@ -2346,6 +2348,7 @@ const ACTIONS = {
   "sh-new": (el) => tsNew(el.dataset.cmd || ""),
   "open-sh": (el) => tsShow(el.dataset.sh),
   "sh-close": (el) => tsClose(el.dataset.sh),
+  "sh-stop": (el) => send("grid_stop", { id: el.dataset.sh }),
   "sh-start": (el) => { const term = TS.terms[el.dataset.sh]; send("grid_start", { id: el.dataset.sh, rows: term ? term.rows : 24, cols: term ? term.cols : 80 }); if (term) term.focus(); },
   "sh-key": (el) => { if (S.openShell) { send("grid_in", { id: S.openShell, data: PTY_KEYS[+el.dataset.k][1] }); TS.terms[S.openShell] && TS.terms[S.openShell].focus(); } },
   "task-shell": (el) => { closeDrawer(); tsNew("", +el.dataset.task); },
