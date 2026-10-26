@@ -1131,6 +1131,20 @@ def test_web_todo_fab_wired():
         assert "M4 15v-3a8 8" not in html and "M9 17.5V5.5l11-2v12" in html
 
 
+def test_web_row_actions_buttons_spaced():
+    """Thanh nút cuối popup (.row-actions): HTML hay viết nút liền nhau (Thôi|Lưu ở Thêm workflow, Thêm agent, Luồng
+    mặc định) nên khe phải đến từ CSS — flex + gap, và `.end` mới đẩy được nút sang phải."""
+    import re
+
+    from ateam.web import STATIC
+    css = (STATIC / "app.css").read_text(encoding="utf-8")
+    rule = re.search(r"^\.row-actions \{([^}]*)\}", css, re.M)
+    assert rule and "display: flex" in rule.group(1) and re.search(r"gap: [1-9]", rule.group(1))
+    js = (STATIC / "setup.js").read_text(encoding="utf-8")
+    assert 'data-wf="cancel"' in js  # popup trong ảnh lỗi vẫn dùng .row-actions
+    assert re.search(r"^\.wf-btns \{[^}]*gap: [4-9]px", css, re.M)
+
+
 def test_web_workflow_from_goal(env, project, monkeypatch, tmp_path):
     """🔀 Lưu mục tiêu thành workflow: chỉ mục tiêu đã xong; trưởng nhóm nhận các task (agent, loại, chờ bước nào) →
     form điền sẵn, tick 'Chỉ dự án này'."""
