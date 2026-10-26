@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.56.1 — 26/10/2026
+
+- **Hạn mức dạng vòng tròn khi thu gọn thanh bên (web)** — thay ô vuông màu bằng vòng tròn đồng tâm (ngoài 5h, trong
+  tuần), giữa vòng là % cao nhất, dưới là 3 chữ đầu tên CLI: nhìn là biết đã dùng bao nhiêu, không cần rê chuột.
+
 ## 0.56.0 — 26/10/2026
 
 - **Source Control ở tab Code (web)** — tab *Thay đổi* ở cột trái liệt kê file đã sửa (đã stage / chưa stage, danh
