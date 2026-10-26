@@ -1,5 +1,11 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Source Control ở tab Code (web)** — tab *Thay đổi* ở cột trái liệt kê file đã sửa (đã stage / chưa stage, danh
+  sách hoặc cây) kèm stage, bỏ stage, bỏ thay đổi và ô commit (✨ AI viết). Bấm file mở **diff hai cột như VS Code**:
+  cũ bên trái, mới bên phải và **sửa thẳng bên phải** rồi ⌘S lưu, nút → lấy lại từng đoạn cũ, F7 / ⇧F7 nhảy đoạn.
+
 ## 0.55.0 — 26/10/2026
 
 - **Breadcrumb ở tab Code (web)** — đường dẫn `src › services › paths.ts › tên hàm` trên editor như VS Code: bấm một

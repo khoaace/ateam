@@ -4867,4 +4867,44 @@ EN: dict[str, str] = {
         "Run this command in an interactive shell — for commands that ask questions (npm init, ssh…)",
     "Mở shell trong worktree của task — sửa tay, chạy test; ✓ Merge sẽ gồm cả phần bạn sửa":
         "Open a shell in the task's worktree — edit by hand, run tests; ✓ Merge includes your edits",
+    'Source Control — file thay đổi, bấm để xem diff':
+        'Source Control — changed files, click to see the diff',
+    'Commit message (⌘Enter) — chưa stage gì: commit tất cả':
+        'Commit message (⌘Enter) — nothing staged: commits everything',
+    'Commit':
+        'Commit',
+    'Mở file':
+        'Open file',
+    'Stage':
+        'Stage',
+    'Bỏ stage':
+        'Unstage',
+    'Xem thay đổi so với git (diff hai cột, sửa được)':
+        'Open changes against git (side-by-side diff, editable)',
+    'Lấy lại đoạn cũ (bên trái) cho bên phải':
+        'Revert this chunk to the left (old) version',
+    '{n} đoạn thay đổi':
+        '{n} changes',
+    'Không có thay đổi':
+        'No changes',
+    'Thu gọn các đoạn không đổi':
+        'Collapse unchanged regions',
+    'Lưu file trước khi stage':
+        'Save the file before staging',
+    'HEAD (commit cuối)':
+        'HEAD (last commit)',
+    'Index (đã stage / commit cuối)':
+        'Index (staged / last commit)',
+    'Index (đã stage) — chỉ đọc':
+        'Index (staged) — read-only',
+    'Thư mục làm việc — sửa được':
+        'Working tree — editable',
+    '(Index)':
+        '(Index)',
+    '(Working Tree)':
+        '(Working Tree)',
+    'Bản đã stage — chỉ đọc · F7 / ⇧F7 đoạn sau / trước':
+        'Staged version — read-only · F7 / ⇧F7 next / previous change',
+    'Sửa bên phải rồi ⌘S lưu · → lấy lại đoạn cũ · F7 / ⇧F7 đoạn sau / trước':
+        'Edit the right side, ⌘S to save · → reverts a chunk · F7 / ⇧F7 next / previous change',
 }

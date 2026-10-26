@@ -5,7 +5,8 @@
    chế độ, nhớ trong localStorage "ateam-md"). 🔍 Tìm & thay trong toàn dự án (⌘⇧F, như VS Code) ở sidebar — logic
    ở ateam/search.py. Chia đôi hai khung (⌘\\, mỗi file ở một khung), ảnh / PDF xem tại chỗ, ⌥Tab đổi file vừa dùng,
    Outline, palette # (symbol cả dự án), F12 / ⌘+click đi tới định nghĩa, ⇧⌥F format (ruff, prettier…), tự lưu.
-   ✨ ⌘I: agent viết lại đoạn đang chọn → diff ngay trong editor (chấp nhận / bỏ từng đoạn); ⌘⇧E giải thích đoạn chọn. */
+   ✨ ⌘I: agent viết lại đoạn đang chọn → diff ngay trong editor (chấp nhận / bỏ từng đoạn); ⌘⇧E giải thích đoạn chọn.
+   Tab Thay đổi (Source Control): file thay đổi theo git, bấm → diff hai cột (MergeView), sửa bên phải rồi ⌘S lưu. */
 "use strict";
 
 window.CodeView = (() => {
@@ -109,9 +110,10 @@ window.CodeView = (() => {
     el().innerHTML = `
       <aside class="code-side">
         <div class="side-tabs">
-          <button class="side-tab on" data-side="files" title="${esc(t("sr_files"))}"><svg viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2z"/></svg>${esc(t("sr_files"))}</button>
-          <button class="side-tab" data-side="search" title="${esc(t("sr_search"))} (⌘⇧F)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>${esc(t("sr_search"))}</button>
-          <button class="side-tab" data-side="outline" title="${esc(t("sr_outline"))}"><svg viewBox="0 0 24 24"><path d="M5 6h14M8 12h11M11 18h8"/></svg>${esc(t("sr_outline"))}</button>
+          <button class="side-tab on" data-side="files" title="${esc(t("sr_files"))}"><svg viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2z"/></svg><span class="slbl">${esc(t("sr_files"))}</span></button>
+          <button class="side-tab" data-side="search" title="${esc(t("sr_search"))} (⌘⇧F)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><span class="slbl">${esc(t("sr_search"))}</span></button>
+          <button class="side-tab" data-side="scm" title="${esc(t("scm_title"))}"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8M18 10c0 4-6 3-11.5 6.5"/></svg><span class="slbl">${esc(t("scm_tab"))}</span><span class="scm-n" id="scm-n"></span></button>
+          <button class="side-tab" data-side="outline" title="${esc(t("sr_outline"))}"><svg viewBox="0 0 24 24"><path d="M5 6h14M8 12h11M11 18h8"/></svg><span class="slbl">${esc(t("sr_outline"))}</span></button>
         </div>
         <div class="side-pane" id="side-files">
           <div class="code-filter-row"><input class="field one" id="code-filter" placeholder="${esc(t("code_filter"))}" autocomplete="off" spellcheck="false">
@@ -120,6 +122,7 @@ window.CodeView = (() => {
           <div class="tree" id="code-tree"></div>
         </div>
         <div class="side-pane hidden" id="side-search">${searchPane()}</div>
+        <div class="side-pane hidden" id="side-scm">${scmPane()}</div>
         <div class="side-pane hidden" id="side-outline"><div class="outline" id="code-outline"></div></div>
       </aside>
       <section class="code-main">
@@ -130,10 +133,16 @@ window.CodeView = (() => {
           <div class="code-host hidden" id="code-editor2"><div class="code-media"></div></div>
           <div class="code-preview md" id="code-preview"></div>
           <aside class="code-ai hidden" id="code-ai"></aside>
+          <div class="code-diff" id="code-diff"><div class="diff-bar"></div><div class="diff-mv"></div></div>
         </div>
         <div class="code-status" id="code-status"></div>
       </section>`;
     bindSearch();
+    $("#side-scm").addEventListener("click", scmClick);
+    $("#side-scm").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && e.target.id === "scm-msg") { e.preventDefault(); scmCommit(); }
+    });
+    $("#code-diff").addEventListener("click", diffClick);
     $("#code-filter").addEventListener("input", (e) => { C.filter = e.target.value; renderTree(); });
     $("#code-new").addEventListener("click", () => runCmd("new_file"));
     $("#code-refresh").addEventListener("click", () => refreshTree(true));
@@ -221,7 +230,11 @@ window.CodeView = (() => {
   /* ---------------------------------------------------------------- git: trạng thái file + dấu ở lề */
   async function loadGit() {  // true nếu trạng thái đổi (cần vẽ lại cây)
     const r = await getJSON("/api/git/status");
+    if (r.is_repo === false) { C.gitRepo = false; C.gitGroups = null; renderScm(); }
     if (!r.groups) return false;
+    C.gitRepo = r.is_repo !== false;
+    const gk = JSON.stringify(r.groups);
+    if (gk !== SC.key) { SC.key = gk; C.gitGroups = r.groups; renderScm(); }
     const st = {}, dirs = new Set(), g = r.groups;
     const put = (rows, fn) => (rows || []).forEach((f) => { if (!st[f.path]) st[f.path] = fn(f.icon); });
     put(g.c, () => "C"); put(g.w, (i) => i); put(g.s, (i) => i);
@@ -317,10 +330,13 @@ window.CodeView = (() => {
     if (!box) return;
     box.innerHTML = C.order.map((p) => {
       const b = C.bufs.get(p);
-      return `<div class="ctab${p === C.cur ? " on" : C.panes[1] && paneOf(p) >= 0 ? " other" : ""}" data-path="${esc(p)}" title="${esc(p)}">
+      return `<div class="ctab${p === C.cur && !diffOn() ? " on" : C.panes[1] && paneOf(p) >= 0 ? " other" : ""}" data-path="${esc(p)}" title="${esc(p)}">
         <span class="tname">${esc(p.split("/").pop())}</span>${b.dirty ? `<span class="dot-dirty">●</span>` : ""}
         <button class="ctab-x" data-close="${esc(p)}">×</button></div>`;
-    }).join("") || `<div class="muted small pad">${esc(t("code_hint"))}</div>`;
+    }).join("") + (C.diff ? `<div class="ctab diff${diffOn() ? " on" : ""}" data-diff="1" title="${esc(C.diff.path)}">
+        <span class="tname">Δ ${esc(C.diff.path.split("/").pop())}</span><span class="tsub">${esc(t(C.diff.code === "s" ? "diff_tab_index" : "diff_tab_work"))}</span>
+        ${C.diff.dirty ? `<span class="dot-dirty">●</span>` : ""}<button class="ctab-x" data-close-diff="1">×</button></div>` : "")
+      || `<div class="muted small pad">${esc(t("code_hint"))}</div>`;
     $$("#code-tree .tnode.file").forEach((n) => n.classList.toggle("dirty", !!(C.bufs.get(n.dataset.path) || {}).dirty));
   }
   function renderStatus() {
@@ -328,6 +344,11 @@ window.CodeView = (() => {
     const box = $("#code-status");
     if (!box) return;
     const b = C.cur && C.bufs.get(C.cur);
+    if (diffOn()) {
+      const lang = CM.languageFor(C.diff.path);
+      box.innerHTML = `<span>${esc(t(C.diff.ro ? "diff_ro_hint" : "diff_edit_hint"))}</span><span style="flex:1"></span>${runChip()}<span>${esc((lang && lang.name) || t("code_plain"))}</span>`;
+      return;
+    }
     if (!b) { box.innerHTML = `<span>${esc(vimOn() ? t("code_vim_hint") : t("code_novim_hint"))}</span>`; return; }
     if (b.media) {
       box.innerHTML = `<span style="flex:1"></span>${runChip()}
@@ -341,6 +362,7 @@ window.CodeView = (() => {
       <span class="mono">${esc(t("code_pos", { r: line.number, n: st.doc.lines, c: pos - line.from + 1 }))}</span>
       ${isMd(b) && !C.panes[1] ? `<span class="seg" title="${esc(t("code_md_title"))}">${MD_MODES.map((m) =>
         `<button class="mini${m === C.md ? " on" : ""}" data-cact="md" data-md="${m}">${esc(t("code_md_" + m))}</button>`).join("")}</span>` : ""}
+      ${C.git[b.path] && C.git[b.path] !== "C" ? `<button class="mini" data-cact="diff" title="${esc(t("scm_open_changes"))}">Δ ${esc(t("scm_changes_btn"))}</button>` : ""}
       <button class="mini" data-cact="vim" title="/vim on|off">vim ${vimOn() ? "✓" : "✗"}</button>`;
   }
 
@@ -493,6 +515,7 @@ window.CodeView = (() => {
   function activate(path, line, col, len) {
     const b = C.bufs.get(path);
     if (!b) return;
+    hideDiff();  // tab diff đang hiện: về editor
     const other = paneOf(path);
     if (other >= 0 && other !== C.act) setActive(other);  // mỗi file ở một khung: đang hiện ở khung kia thì sang đó
     if (AI.review && AI.review.view === C.view && C.cur !== path) aiFinish(true);  // rời file đang duyệt diff: giữ phần AI sửa
@@ -688,6 +711,7 @@ window.CodeView = (() => {
     return saving;
   }
   async function doSave(force) {
+    if (diffOn()) return saveDiff(force);
     const b = C.cur && C.bufs.get(C.cur);
     if (!b || b.media) return false;
     if (AI.review && AI.review.path === b.path) aiFinish(true);  // lưu = chấp nhận phần AI sửa
@@ -765,7 +789,348 @@ window.CodeView = (() => {
   }
   function tick() {
     checkDisk();
+    if (S.view === "code" && !document.hidden) checkDiff();
     if (++C.ticks % 3 === 0) refreshTree();
+  }
+
+  /* ---------------------------------------------------------------- Source Control: file thay đổi (sidebar) + diff hai cột
+     Như VS Code: bấm file ở nhóm "Thay đổi" → so index ↔ thư mục làm việc, bên phải sửa được rồi ⌘S lưu; nhóm "Đã stage"
+     → HEAD ↔ index (chỉ đọc). Diff là một tab riêng ở thanh tab (C.diff), thay chỗ editor khi đang xem. */
+  const SC = { key: "", tree: (() => { try { return localStorage.getItem("ateam-scm-tree") === "1"; } catch (e) { return false; } })(),
+    fold: new Set(), sel: null };
+  const GROUPS = [["c", "git_conflicts"], ["s", "git_staged"], ["w", "git_changes"]];
+  const scmCount = () => { const g = C.gitGroups || {}; return ["c", "s", "w"].reduce((n, k) => n + (g[k] || []).length, 0); };
+  function scmPane() {
+    return `<div class="scm-commit">
+        <textarea class="field" id="scm-msg" rows="2" placeholder="${esc(t("scm_msg"))}" spellcheck="false"></textarea>
+        <div class="scm-commit-row"><button class="btn sm primary" data-scm="commit" title="⌘Enter">✓ ${esc(t("scm_commit"))}</button>
+          <button class="btn sm ghost" data-scm="ai" title="${esc(t("git_ai_agent"))}">✨ ${esc(t("git_ai"))}</button>
+          <span style="flex:1"></span>
+          <button class="icon-btn" data-scm="tree" title="${esc(t("git_tree_hint"))}" aria-label="${esc(t("git_tree_hint"))}">≡</button>
+          <button class="icon-btn" data-scm="refresh" title="${esc(t("code_refresh"))}" aria-label="${esc(t("code_refresh"))}">⟳</button></div>
+      </div>
+      <div class="scm-list" id="scm-list"></div>`;
+  }
+  function scmRow(code, f, depth, label) {
+    const name = label || f.path.split("/").pop(), dir = depth == null && f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
+    const st = code === "c" ? "C" : f.icon, on = SC.sel && SC.sel.code === code && SC.sel.path === f.path;
+    return `<div class="tnode file snode g-${esc(st)}${on ? " on" : ""}" data-code="${code}" data-path="${esc(f.path)}" title="${esc(f.path)}${f.orig ? " ← " + esc(f.orig) : ""}"
+        style="padding-left:${10 + (depth || 0) * 14}px"><span class="ticon">${icon({ name })}</span><span class="tname${st === "D" ? " gone" : ""}">${esc(name)}</span>
+      <span class="sdir">${esc(dir)}</span><span class="sacts">
+        <button class="mini" data-sact="open" title="${esc(t("scm_open_file"))}">✎</button>
+        ${code === "w" ? `<button class="mini" data-sact="discard" title="${esc(t("git_discard_title"))}">↺</button>` : ""}
+        ${code !== "c" ? `<button class="mini" data-sact="${code === "s" ? "unstage" : "stage"}" title="${esc(t(code === "s" ? "scm_unstage" : "scm_stage"))}">${code === "s" ? "−" : "+"}</button>` : ""}
+      </span><span class="gst" title="${esc(t("git_st_" + st))}">${esc(st)}</span></div>`;
+  }
+  function scmTree(code, files) {  // cây thư mục, chuỗi thư mục chỉ có một thư mục con gộp lại ("src/app")
+    const root = { dirs: {}, files: [] };
+    for (const f of files) {
+      let n = root;
+      for (const part of f.path.split("/").slice(0, -1)) n = n.dirs[part] || (n.dirs[part] = { dirs: {}, files: [] });
+      n.files.push(f);
+    }
+    const out = [];
+    const walk = (n, prefix, depth) => {
+      for (const name of Object.keys(n.dirs).sort()) {
+        let child = n.dirs[name], label = name, path = prefix + name;
+        while (!child.files.length && Object.keys(child.dirs).length === 1) {
+          const k = Object.keys(child.dirs)[0];
+          label += "/" + k; path += "/" + k; child = child.dirs[k];
+        }
+        const fk = code + ":" + path;
+        out.push(`<div class="tnode dir snode" data-code="${code}" data-dir="${esc(path)}" style="padding-left:${10 + depth * 14}px">
+          <span class="ticon">${SC.fold.has(fk) ? "▸" : "▾"}</span><span class="tname">${esc(label)}</span><span class="sdir"></span><span class="sacts">
+          ${code !== "c" ? `<button class="mini" data-sact="${code === "s" ? "unstage" : "stage"}" title="${esc(t(code === "s" ? "scm_unstage" : "scm_stage"))}">${code === "s" ? "−" : "+"}</button>` : ""}
+          </span><span class="gst">●</span></div>`);
+        if (!SC.fold.has(fk)) walk(child, path + "/", depth + 1);
+      }
+      for (const f of n.files.sort((a, b) => a.path.localeCompare(b.path))) out.push(scmRow(code, f, depth));
+    };
+    walk(root, "", 1);
+    return out.join("");
+  }
+  function renderScm() {
+    const n = scmCount(), badge = $("#scm-n");
+    if (badge) badge.textContent = n ? String(n) : "";
+    const box = $("#scm-list");
+    if (!box || C.side !== "scm") return;
+    $("[data-scm=tree]", el()).textContent = SC.tree ? "≡" : "▤";
+    if (C.gitRepo === false) { box.innerHTML = `<div class="muted small pad">${esc(t("git_norepo"))}</div>`; return; }
+    const g = C.gitGroups || {};
+    box.innerHTML = GROUPS.filter(([k]) => (g[k] || []).length).map(([k, label]) => {
+      const fold = SC.fold.has(k), list = g[k];
+      return `<div class="scm-group" data-code="${k}"><span class="ticon">${fold ? "▸" : "▾"}</span><span class="tname">${esc(t(label))}</span>
+          <span class="sacts">${k === "s" ? `<button class="mini" data-sact="unstage_all" title="${esc(t("git_unstage_all"))}">−</button>`
+            : k === "w" ? `<button class="mini" data-sact="stage_all" title="${esc(t("git_stage_all"))}">+</button>` : ""}</span>
+          <span class="scm-count">${list.length}</span></div>`
+        + (fold ? "" : SC.tree ? scmTree(k, list) : list.map((f) => scmRow(k, f)).join(""));
+    }).join("") || `<div class="muted small pad">✓ ${esc(t("git_clean"))}</div>`;
+  }
+  async function scmAct(action, data = {}) {
+    const r = await request("git", Object.assign({ action }, data), t("git_working"));
+    if (await loadGit()) renderTree();
+    renderScm();
+    return r;
+  }
+  async function scmCommit() {
+    const box = $("#scm-msg"), msg = box.value.trim();
+    if (!msg) { toast(t("git_need_msg"), "warn"); box.focus(); return; }
+    const r = await scmAct("commit", { message: msg });
+    if (r.committed) box.value = "";
+  }
+  async function scmClick(e) {
+    const b = e.target.closest("[data-scm]");
+    if (b) {
+      const a = b.dataset.scm;
+      if (a === "commit") return scmCommit();
+      if (a === "refresh") return refreshTree(true).then(renderScm);
+      if (a === "tree") {
+        SC.tree = !SC.tree;
+        try { localStorage.setItem("ateam-scm-tree", SC.tree ? "1" : "0"); } catch (err) { /* chặn lưu */ }
+        return renderScm();
+      }
+      if (a === "ai") {
+        const r = await request("git", { action: "ai_message" }, t("git_ai_wait", { lead: (S.state && S.state.lead) || "lead" }));
+        if (r.git_msg) { $("#scm-msg").value = r.git_msg; $("#scm-msg").focus(); }
+      }
+      return;
+    }
+    const grp = e.target.closest(".scm-group"), row = e.target.closest(".snode"), act = e.target.closest("[data-sact]");
+    const code = (grp || row || {}).dataset ? (grp || row).dataset.code : null;
+    if (!code) return;
+    const g = C.gitGroups || {};
+    const paths = row && row.dataset.dir != null ? (g[code] || []).map((f) => f.path).filter((p) => p.startsWith(row.dataset.dir + "/"))
+      : row ? [row.dataset.path] : (g[code] || []).map((f) => f.path);
+    if (act) {
+      e.stopPropagation();
+      const a = act.dataset.sact;
+      if (a === "open") return open(row.dataset.path);
+      if (a === "stage" || a === "unstage") return scmAct(a, { paths });
+      if (a === "stage_all") return scmAct("stage_all");
+      if (a === "unstage_all") return scmAct("unstage_all");
+      if (a === "discard") {
+        const f = (g.w || []).find((x) => x.path === row.dataset.path);
+        const q = f && f.icon === "U" ? t("git_discard_new", { path: f.path }) : t("git_discard_q", { path: row.dataset.path });
+        if (!await confirmBox(t("git_discard_title"), q, t("git_discard_yes"))) return;
+        await scmAct("discard", { path: row.dataset.path });
+        if (C.diff && C.diff.path === row.dataset.path && !C.diff.dirty) reloadDiff();
+        const ob = C.bufs.get(row.dataset.path);
+        if (ob && !ob.dirty) reload(true, ob.path);
+      }
+      return;
+    }
+    if (grp) { if (SC.fold.has(code)) SC.fold.delete(code); else SC.fold.add(code); return renderScm(); }
+    if (row.dataset.dir != null) {
+      const fk = code + ":" + row.dataset.dir;
+      if (SC.fold.has(fk)) SC.fold.delete(fk); else SC.fold.add(fk);
+      return renderScm();
+    }
+    openDiff(row.dataset.path, code);
+  }
+
+  /* ---------------------------------------------------------------- diff hai cột (MergeView), bên phải sửa được */
+  const diffOn = () => !!(C.diff && C.diff.on);
+  const narrow = () => window.innerWidth < 800;  // điện thoại: diff một cột (unifiedMergeView)
+  function groupOf(path) {  // nhóm của file trong Source Control: ưu tiên chưa stage (như mở từ cây / palette)
+    const g = C.gitGroups || {};
+    for (const k of ["c", "w", "s"]) { const f = (g[k] || []).find((x) => x.path === path); if (f) return [k, f]; }
+    return [null, null];
+  }
+  function openChanges(path) {  // menu cây / palette "Xem thay đổi git": file có thay đổi → diff hai cột
+    const [code] = groupOf(path);
+    if (code === "w" || code === "s") return openDiff(path, code);
+    DiffView.git({ kind: "file", path });
+  }
+  async function diffSides(path, code) {  // {left, right, saved, mtime, ro, label} hoặc {error}
+    const f = ((C.gitGroups || {})[code] || []).find((x) => x.path === path);
+    const gone = f && f.icon === "D";
+    const base = await getJSON(`/api/file/base?path=${encodeURIComponent(path)}${code === "w" ? "&ref=index" : ""}`);
+    if (base.error) return base;
+    const left = String(base.text || "");
+    if (code === "s") {
+      const idx = gone ? { text: "" } : await getJSON(`/api/file/base?ref=index&path=${encodeURIComponent(path)}`);
+      return { left, right: String(idx.text || ""), saved: null, mtime: 0, ro: true };
+    }
+    if (gone) return { left, right: "", saved: "", mtime: 0, ro: true };
+    const b = C.bufs.get(path);
+    if (b && !b.media) return { left, right: liveText(b), saved: b.saved, mtime: b.mtime, ro: false, roNote: b.ro ? b.note : "" };
+    const r = await getJSON("/api/file?quiet=1&path=" + encodeURIComponent(path));
+    if (r.error || r.media || r.dir) return { error: r.error || t("diff_binary") };
+    return { left, right: r.text, saved: r.text, mtime: r.mtime, ro: false, roNote: r.read_only ? r.note : "" };
+  }
+  async function openDiff(path, code) {
+    if (code === "c") return open(path);  // xung đột: sửa thẳng file (có <<<<<<< ===== >>>>>>>)
+    await show();
+    if (C.diff && C.diff.path === path && C.diff.code === code) { SC.sel = { code, path }; renderScm(); return showDiff(); }
+    if (C.diff && C.diff.dirty
+      && !await confirmBox(t("code_unsaved"), t("code_unsaved_q", { path: C.diff.path }), t("code_discard"))) return;
+    const sides = await diffSides(path, code);
+    if (sides.error) { toast(sides.error, "warn"); DiffView.git({ kind: code === "s" ? "staged" : "unstaged", path }); return; }
+    SC.sel = { code, path };
+    renderScm();
+    dropDiff();
+    C.diff = Object.assign({ path, code, on: true, dirty: false, inline: narrow(), collapse: false }, sides);
+    buildDiff(sides.right);
+    showDiff();
+  }
+  async function reloadDiff() {  // file / index đổi (agent sửa, stage…) khi diff chưa sửa dở: lấy lại hai bên
+    const D = C.diff;
+    if (!D || D.dirty) return;
+    const sides = await diffSides(D.path, D.code);
+    if (sides.error || C.diff !== D || D.dirty) return;
+    Object.assign(D, sides);
+    buildDiff(sides.right);
+  }
+  function diffExt(ro) {
+    const D = C.diff, lang = CM.languageFor(D.path);
+    return [
+      ro ? [] : vimOn() ? CM.vim() : [],
+      CM.basicSetup,
+      isDark() ? CM.oneDark : [],
+      lang ? lang.support : [],
+      C.wrap ? CM.EditorView.lineWrapping : [],
+      CM.EditorState.readOnly.of(ro),
+      ro ? CM.EditorView.editable.of(false) : [],
+    ];
+  }
+  const diffCfg = () => `${vimOn()}|${isDark()}|${C.wrap}`;
+  function buildDiff(text) {  // dựng lại editor diff (mở, nạp lại, đổi một cột / hai cột, đổi sáng-tối)
+    const D = C.diff;
+    D.cfg = diffCfg();
+    const host = $("#code-diff .diff-mv"), keep = D.mv ? D.mv.dom.scrollTop : D.edit ? D.edit.scrollDOM.scrollTop : 0;
+    if (D.mv) D.mv.destroy(); else if (D.edit) D.edit.destroy();
+    D.mv = D.edit = null;
+    host.innerHTML = "";
+    const ro = D.ro || !!D.roNote;
+    const own = [
+      CM.keymap.of([{ key: "Mod-s", run: () => { save(); return true; } },
+        { key: "F7", run: (v) => CM.goToNextChunk(v) }, { key: "Shift-F7", run: (v) => CM.goToPreviousChunk(v) }]),
+      CM.EditorView.updateListener.of((u) => { if (u.docChanged) { D.dirty = D.saved != null && u.state.doc.toString() !== D.saved; renderTabs(); renderDiffBar(); } }),
+    ];
+    const collapse = D.collapse ? { margin: 3, minSize: 6 } : undefined;
+    if (D.inline) {
+      D.edit = new CM.EditorView({ parent: host, state: CM.EditorState.create({ doc: text, extensions: [diffExt(D.ro), own,
+        CM.unifiedMergeView({ original: D.left, mergeControls: false, highlightChanges: true, gutter: true, syntaxHighlightDeletions: true, collapseUnchanged: collapse })] }) });
+    } else {
+      D.mv = new CM.MergeView({
+        a: { doc: D.left, extensions: diffExt(true) },
+        b: { doc: text, extensions: [diffExt(D.ro), own] },
+        parent: host, highlightChanges: true, gutter: true, collapseUnchanged: collapse,
+        revertControls: D.ro ? undefined : "a-to-b",
+        renderRevertControl: () => { const btn = document.createElement("button"); btn.textContent = "→"; btn.title = t("diff_revert_chunk"); return btn; },
+      });
+      D.edit = D.mv.b;
+    }
+    (D.mv ? D.mv.dom : D.edit.scrollDOM).scrollTop = keep;
+    D.dirty = D.saved != null && text !== D.saved;
+    renderDiffBar(); renderTabs();
+  }
+  function renderDiffBar() {
+    const D = C.diff, bar = $("#code-diff .diff-bar");
+    if (!D || !bar) return;
+    const [, f] = groupOf(D.path), st = f ? f.icon : D.code === "s" ? "A" : "M";
+    const ch = D.edit && CM.getChunks(D.edit.state), n = ch ? ch.chunks.length : 0;
+    const dir = D.path.includes("/") ? D.path.slice(0, D.path.lastIndexOf("/")) : "";
+    const lbl = (k) => `<span class="diff-side">${esc(t(k))}</span>`;
+    bar.innerHTML = `<div class="diff-title"><span class="fstat s-${{ A: "done", U: "done", D: "failed", R: "draft" }[st] || "review"}">${esc(st)}</span>
+        <b>${esc(D.path.split("/").pop())}</b><span class="muted small">${esc(dir)}</span>${D.dirty ? `<span class="dot-dirty">●</span>` : ""}
+        <span class="muted small">${esc(n ? t("diff_n_changes", { n }) : t("diff_no_changes"))}</span>
+        ${D.roNote ? `<span class="chip warn">${esc(t("code_readonly", { v: D.roNote }))}</span>` : ""}
+        <span style="flex:1"></span>
+        <button class="mini" data-dfa="prev" title="${esc(t("hunk_prev"))} (⇧F7)">↑</button>
+        <button class="mini" data-dfa="next" title="${esc(t("hunk_next"))} (F7)">↓</button>
+        <button class="mini${D.collapse ? " on" : ""}" data-dfa="collapse" title="${esc(t("diff_collapse"))}">⇕</button>
+        <button class="mini${D.inline ? "" : " on"}" data-dfa="split" title="${esc(t("split_view"))}">⫴</button>
+        ${D.code === "w" ? `<button class="mini" data-dfa="stage" title="${esc(t("scm_stage"))}">+</button>` : `<button class="mini" data-dfa="unstage" title="${esc(t("scm_unstage"))}">−</button>`}
+        <button class="mini" data-dfa="open" title="${esc(t("scm_open_file"))}">✎</button>
+        ${D.ro ? "" : `<button class="btn sm${D.dirty ? " primary" : " ghost"}" data-dfa="save" title="⌘S">${esc(t("diff_save"))}</button>`}</div>
+      ${D.inline ? "" : `<div class="diff-heads">${lbl(D.code === "s" ? "diff_l_head" : "diff_l_index")}${lbl(D.code === "s" ? "diff_r_index" : "diff_r_work")}</div>`}`;
+  }
+  function showDiff() {
+    if (!C.diff) return;
+    stash();
+    C.diff.on = true;
+    el().classList.add("diffing");
+    renderTabs(); renderStatus();
+    if (C.diff.edit) { C.diff.edit.requestMeasure(); C.diff.edit.focus(); }
+  }
+  function hideDiff() {
+    if (!diffOn()) return;
+    C.diff.on = false;
+    el().classList.remove("diffing");
+    C.crumbKey = null;
+    renderTabs(); renderStatus();
+  }
+  function dropDiff() {
+    if (!C.diff) return;
+    if (C.diff.mv) C.diff.mv.destroy(); else if (C.diff.edit) C.diff.edit.destroy();
+    C.diff = null;
+  }
+  async function closeDiff(force) {
+    const D = C.diff;
+    if (!D) return;
+    if (D.dirty && !force && !await confirmBox(t("code_unsaved"), t("code_unsaved_q", { path: D.path }), t("code_discard"))) return;
+    const was = D.on;
+    hideDiff(); dropDiff();
+    SC.sel = null;
+    renderScm(); renderTabs();
+    if (was && C.view) C.view.focus();
+  }
+  async function diffOpenFile() {  // đang sửa dở: chữ chuyển sang editor (bỏ tab diff), không thì giữ tab diff
+    const D = C.diff, line = D.edit ? D.edit.state.doc.lineAt(D.edit.state.selection.main.head).number : 1;
+    const text = D.dirty ? D.edit.state.doc.toString() : null;
+    await open(D.path, line);
+    if (text == null || C.diff !== D) return;
+    syncBuf(D.path, text, D.mtime, D.saved);
+    dropDiff(); SC.sel = null; renderScm(); renderTabs();
+  }
+  async function saveDiff(force = false) {
+    const D = C.diff;
+    if (!D || D.ro) return false;
+    const text = D.edit.state.doc.toString();
+    const r = await request("save", { path: D.path, text, mtime: D.mtime, force });
+    const sv = r.save || {};
+    if (sv.conflict) return await confirmBox(t("code_conflict"), t("code_conflict_q", { path: D.path }), t("code_overwrite")) && saveDiff(true);
+    if (sv.read_only) return await confirmBox(t("code_readonly_title"), t("code_readonly_q", { v: D.roNote }), t("code_write_anyway")) && saveDiff(true);
+    if (!sv.mtime || C.diff !== D) return false;
+    D.saved = text; D.mtime = sv.mtime; D.roNote = "";
+    D.dirty = D.edit.state.doc.toString() !== text;
+    syncBuf(D.path, text, sv.mtime);
+    renderTabs(); renderDiffBar();
+    loadGit().then((ch) => { if (ch) renderTree(); renderScm(); });
+    return true;
+  }
+  /* file đang mở ở tab thường: theo nội dung vừa lưu ở diff (saved = bản trên đĩa nếu chữ chưa lưu) */
+  function syncBuf(path, text, mtime, saved = text) {
+    const b = C.bufs.get(path);
+    if (!b || b.media) return;
+    const pi = paneOf(path), st = liveState(b);
+    b.saved = saved; b.mtime = mtime; b.syms = null; b.dirty = text !== saved; C.warned[path] = 0;
+    b.state = CM.EditorState.create({ doc: text, extensions: extensions(b), selection: { anchor: Math.min(st ? st.selection.main.head : 0, text.length) } });
+    if (pi >= 0) { C.panes[pi].view.setState(b.state); if (pi === C.act) refreshConfig(); applyGit(pi); }
+    renderTabs();
+  }
+  async function checkDiff() {  // agent sửa file đang so: chưa sửa dở → nạp lại, đang sửa → cảnh báo một lần
+    const D = C.diff;
+    if (!D || D.ro || !D.mtime) return;
+    const r = await getJSON("/api/file/stat?path=" + encodeURIComponent(D.path));
+    if (!r.mtime || r.mtime === D.mtime || C.diff !== D) return;
+    if (!D.dirty) { const b = C.bufs.get(D.path); if (b && !b.dirty) await reload(true, D.path); reloadDiff(); }
+    else if (D.warned !== r.mtime) { D.warned = r.mtime; toast(t("code_changed_tab", { path: D.path }), "warn"); }
+  }
+  function diffClick(e) {
+    const b = e.target.closest("[data-dfa]");
+    if (!b || !C.diff) return;
+    const D = C.diff, a = b.dataset.dfa;
+    if (a === "next" || a === "prev") { (a === "next" ? CM.goToNextChunk : CM.goToPreviousChunk)(D.edit); D.edit.focus(); }
+    if (a === "collapse") { D.collapse = !D.collapse; buildDiff(D.edit.state.doc.toString()); }
+    if (a === "split") { D.inline = !D.inline; buildDiff(D.edit.state.doc.toString()); }
+    if (a === "save") save();
+    if (a === "open") diffOpenFile();
+    if (a === "stage" || a === "unstage") {
+      if (D.dirty) { toast(t("diff_save_first"), "warn"); return; }
+      scmAct(a, { paths: [D.path] }).then(() => { const [code] = groupOf(D.path); if (code && code !== D.code && C.diff === D) openDiff(D.path, code); });
+    }
   }
 
   /* ---------------------------------------------------------------- outline: symbol của file đang xem (sidebar) */
@@ -1026,7 +1391,7 @@ window.CodeView = (() => {
   function sidePane(which, prefill) {
     C.side = which;
     $$(".side-tab").forEach((b) => b.classList.toggle("on", b.dataset.side === which));
-    for (const k of ["files", "search", "outline"]) $("#side-" + k).classList.toggle("hidden", which !== k);
+    for (const k of ["files", "search", "scm", "outline"]) $("#side-" + k).classList.toggle("hidden", which !== k);
     el().classList.toggle("searching", which === "search");
     el().classList.remove("no-side");
     if (which === "outline") {
@@ -1034,6 +1399,9 @@ window.CodeView = (() => {
       if (b && !b.syms) loadSyms(b);
       renderOutline();
       if (C.view) C.view.focus();
+    } else if (which === "scm") {
+      renderScm();
+      loadGit().then((ch) => { if (ch) renderTree(); });
     } else if (which === "search") {
       const q = $("#sr-q");
       if (prefill && !prefill.includes("\n")) { q.value = SR.query = prefill; runSearch(); }
@@ -1342,7 +1710,7 @@ window.CodeView = (() => {
       { label: t("ctx_delete"), run: () => deleteFile(path), danger: true },
       "-",
       { label: t("ctx_copy_path"), run: () => copyText(path) },
-      { label: t("ctx_git_diff"), run: () => DiffView.git({ kind: "file", path }) },
+      { label: t("ctx_git_diff"), run: () => openChanges(path) },
     ]);
   }
 
@@ -1373,7 +1741,7 @@ window.CodeView = (() => {
       case "toggle_wrap":
         C.wrap = !C.wrap; refreshConfig(); toast(t(C.wrap ? "pal_wrap_on" : "pal_wrap_off"), "info"); return;
       case "copy_path": return copyText(`${C.cur}:${line}`);
-      case "git_diff": return DiffView.git({ kind: "file", path: C.cur });
+      case "git_diff": return openChanges(C.cur);
       case "open_vscode": return send("open_vscode", { path: C.cur, line });
       case "new_file": return newFile(b && C.cur.includes("/") ? C.cur.slice(0, C.cur.lastIndexOf("/") + 1) : "");
       case "rename_file": return renameFile(C.cur, line);
@@ -1414,6 +1782,9 @@ window.CodeView = (() => {
     const ai = e.target.closest("#code-ai [data-ai]");
     if (ai && ai.dataset.ai === "close") $("#code-ai").classList.add("hidden");
     if (ai && ai.dataset.ai === "copy") copyText($("#code-ai")._text || "");
+    if (e.target.closest("[data-close-diff]")) { e.stopPropagation(); return closeDiff(); }
+    if (e.target.closest(".ctab[data-diff]")) return showDiff();
+    if (e.target.closest("[data-cact=diff]")) return openChanges(C.cur);
     const x = e.target.closest("[data-close]");
     if (x) { e.stopPropagation(); return close(x.dataset.close); }
     const tab = e.target.closest(".ctab");
@@ -1476,16 +1847,19 @@ window.CodeView = (() => {
   window.addEventListener("beforeunload", (e) => {
     if (C.restored) persist();
     if (S.switching) return;  // đổi dự án (/open): đã hỏi bỏ thay đổi
-    if ([...C.bufs.values()].some((b) => b.dirty || (!b.media && liveText(b) !== b.saved))) { e.preventDefault(); e.returnValue = ""; }
+    if ([...C.bufs.values()].some((b) => b.dirty || (!b.media && liveText(b) !== b.saved)) || (C.diff && C.diff.dirty)) { e.preventDefault(); e.returnValue = ""; }
   });
 
   return {
     show, open, palette, search: (q) => show().then(() => sidePane("search", q || "")),
-    prefsChanged() { if (window.CM && C.view) { refreshConfig(); renderStatus(); } },
+    prefsChanged() {
+      if (window.CM && C.view) { refreshConfig(); renderStatus(); }
+      if (C.diff && C.diff.edit && C.diff.cfg !== diffCfg()) buildDiff(C.diff.edit.state.doc.toString());  // vim / sáng-tối đổi
+    },
     stateChanged() {  // ảnh chụp trạng thái mới: chip "agent đang chạy"
       const k = runningAgents().join(",");
       if (k !== C.runKey) { C.runKey = k; renderStatus(); }
     },
-    unsaved: () => [...C.bufs.values()].filter((b) => b.dirty).map((b) => b.path),
+    unsaved: () => [...C.bufs.values()].filter((b) => b.dirty).map((b) => b.path).concat(C.diff && C.diff.dirty ? [C.diff.path] : []),
   };
 })();

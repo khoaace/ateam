@@ -1654,3 +1654,61 @@ html.grid-full .side, html.grid-full .top, html.grid-full .composer, html.grid-f
 .sk-gh-list .rule-list { max-height: 46vh; overflow: auto; }
 .sk-name-err { min-height: 16px; color: var(--review); }
 @media (max-width: 640px) { .sk-top .sk-q { width: 100%; } }
+
+/* tab Code: Source Control (file thay đổi) + diff hai cột sửa được (MergeView) */
+.side-tabs { overflow-x: auto; scrollbar-width: none; }
+.side-tab { flex: none; }
+.scm-n { min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: #fff; font: 700 10px/16px var(--font); text-align: center; }
+.scm-n:empty { display: none; }
+.scm-commit { padding: 8px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid var(--border); }
+.code-side .scm-commit .field { margin: 0; width: 100%; resize: vertical; min-height: 38px; font-size: 12px; }
+.scm-commit-row { display: flex; align-items: center; gap: 4px; }
+.scm-list { flex: 1; min-height: 0; overflow: auto; padding: 4px 0; font-size: 12.5px; }
+.scm-group { display: flex; align-items: center; gap: 6px; padding: 3px 8px; cursor: pointer; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-2); }
+.scm-group:hover { background: var(--surface-2); }
+.scm-count { margin-left: auto; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--surface-3); color: var(--text); font-size: 10px; line-height: 16px; text-align: center; }
+.snode { position: relative; }
+.snode .tname { overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
+.snode .tname.gone { text-decoration: line-through; }
+.snode .sdir { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; flex: 1 1 0; min-width: 0; }
+.snode .gst { margin-left: 0; }
+.scm-group .sacts, .snode .sacts { display: none; gap: 2px; flex: none; }
+.scm-group:hover .sacts, .snode:hover .sacts, .snode.on .sacts { display: flex; }
+.scm-group .sacts { margin-left: auto; }
+.scm-group:hover .sacts + .scm-count { margin-left: 4px; }
+.sacts .mini { height: 18px; min-width: 18px; padding: 0 4px; font-size: 12px; line-height: 1; }
+.ctab .tsub { color: var(--muted); font-weight: 400; font-style: italic; }
+.ctab.diff .tname { font-style: italic; }
+.code-diff { display: none; flex: 1; min-width: 0; min-height: 0; flex-direction: column; background: var(--term-bg); }
+.code.diffing .code-diff { display: flex; }
+.code.diffing .code-body > :not(.code-diff), .code.diffing .code-crumbs { display: none !important; }
+.diff-bar { flex: none; border-bottom: 1px solid var(--border); background: var(--bg); }
+.diff-title { display: flex; align-items: center; gap: 8px; padding: 4px 10px; font-size: 12px; white-space: nowrap; overflow: hidden; }
+.diff-title .muted { overflow: hidden; text-overflow: ellipsis; }
+.diff-title .mini.on { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
+.diff-heads { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border); }
+.diff-side { padding: 2px 12px; font-size: 11px; color: var(--muted); }
+.diff-side + .diff-side { border-left: 1px solid var(--border); }
+.diff-mv { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.diff-mv > .cm-editor { flex: 1; min-height: 0; }
+.diff-mv .cm-mergeView { flex: 1; min-height: 0; height: 100%; }
+.code-diff .cm-editor { font-size: 13px; }
+.code-diff .cm-editor, .code-diff .cm-gutters { background-color: transparent !important; }
+.code-diff .cm-scroller { font-family: var(--mono); line-height: 1.55; }
+.code-diff .cm-editor.cm-focused { outline: none; }
+.code-diff .cm-gutters { border-right: 1px solid var(--border); color: var(--term-dim); }
+.code-diff .cm-mergeViewEditor + .cm-merge-revert + .cm-mergeViewEditor, .code-diff .cm-merge-revert + .cm-mergeViewEditor { border-left: 1px solid var(--border); }
+.code-diff .cm-merge-a .cm-changedLine, .code-diff .cm-deletedChunk { background: var(--diff-del) !important; }
+.code-diff .cm-merge-a .cm-changedText, .code-diff .cm-deletedChunk .cm-deletedText, .code-diff .cm-deletedChunk del { background: var(--diff-del-mark) !important; text-decoration: none; }
+.code-diff .cm-merge-b .cm-changedLine, .code-diff .cm-insertedLine, .code-diff > .diff-mv > .cm-editor .cm-changedLine { background: var(--diff-add) !important; }
+.code-diff .cm-merge-b .cm-changedText, .code-diff > .diff-mv > .cm-editor .cm-changedText { background: var(--diff-add-mark) !important; }
+.code-diff .cm-changeGutter { width: 3px; padding: 0; }
+.code-diff .cm-merge-a .cm-changedLineGutter, .code-diff .cm-deletedLineGutter { background: var(--failed); }
+.code-diff .cm-merge-b .cm-changedLineGutter, .code-diff .cm-changedLineGutter { background: var(--done); }
+.code-diff .cm-merge-revert { width: 26px; background: var(--bg); }
+.code-diff .cm-merge-revert button { width: 22px; height: 20px; margin: 0 2px; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text-2); cursor: pointer; font-size: 12px; line-height: 1; }
+.code-diff .cm-merge-revert button:hover { color: var(--text); border-color: var(--accent); }
+.code-diff .cm-mergeSpacer { background-image: repeating-linear-gradient(-45deg, transparent, transparent 6px, var(--border) 6px, var(--border) 7px); }
+.code-diff .cm-collapsedLines { background: var(--surface-2); color: var(--muted); font-size: 11px; }
+.code:not(.searching) .side-tab:not(.on) .slbl { display: none; }  /* 4 tab trong sidebar hẹp: tab không chọn chỉ còn icon */
+@media (max-width: 760px) { .code .side-tab .slbl { display: inline !important; } }

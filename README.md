@@ -490,6 +490,12 @@ trên 2 MB / 20 000 dòng không tô màu, trên 5 MB mở chỉ đọc, file nh
 - **Theo dõi agent**: lề editor có dấu dòng thêm / sửa / xoá so với HEAD (bấm dấu để xem đoạn cũ và hoàn tác đoạn
   đó), cây file hiện `M` / `U` / `A` / `C` như VS Code và tự làm mới khi agent tạo file (nút ⟳ làm mới ngay). Có
   task đang chạy ở chế độ shared thì thanh dưới báo "⚙ claude đang chạy". Mọi tab đang mở đều được so với đĩa.
+- **Source Control (web)**: tab **Thay đổi** ở cột trái liệt kê file đã sửa như VS Code — nhóm *Đã stage* / *Thay đổi*
+  (xem dạng danh sách hoặc cây thư mục), di chuột để mở file, `+` stage, `−` bỏ stage, `↺` bỏ thay đổi; ô commit
+  message + **✨ AI viết** + **Commit** (⌘⏎). Bấm một file mở **diff hai cột** (cũ bên trái, mới bên phải): bên phải
+  **sửa được**, **⌘S** lưu, nút **→** giữa hai cột lấy lại đoạn cũ, **F7** / **⇧F7** sang đoạn sau / trước, `⇕` thu
+  gọn đoạn không đổi; file đã stage so HEAD ↔ index (chỉ đọc). Trên điện thoại diff hiện một cột. Nút *Δ Thay đổi* ở
+  thanh dưới (hoặc chuột phải › *Xem thay đổi git*) mở diff của file đang xem.
 - **Điều hướng**: palette **`#`** tìm hàm / class trong cả dự án, **F12** hoặc **⌘+click** đi tới định nghĩa,
   **⌥Tab** đổi file theo thứ tự vừa dùng (giữ ⌥, bấm Tab nữa để đổi), tab **Outline** ở cột trái; **breadcrumb**
   `src › services › paths.ts › tên hàm` trên editor như VS Code — bấm một đoạn xổ ra file / thư mục cùng cấp (bấm hoặc
