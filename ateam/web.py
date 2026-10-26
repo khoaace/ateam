@@ -389,7 +389,7 @@ def ui_strings() -> dict[str, str]:
         "code_reloaded_by": tr("File đổi trên đĩa ({v} đang chạy task) — đã nạp lại", v="{v}"),
         "code_running": tr("{v} đang chạy", v="{v}"),
         "sr_outline": tr("Outline"), "outline_empty": tr("Không có symbol (hàm, class, heading) nào"),
-        "pal_goto_symbol": tr("Tới symbol trong file (@)"),
+        "pal_goto_symbol": tr("Tới symbol trong file (@)"), "code_empty_dir": tr("(thư mục trống)"),
         "pal_ws_hint": tr("Gõ tên hàm / class — tìm trong cả dự án"), "pal_ws_none": tr("Không thấy symbol nào khớp trong dự án"),
         "pal_ws_partial": tr("Dự án lớn — mới quét một phần, gõ lại sau vài giây để thấy thêm"),
         "pal_media": tr("Ảnh / PDF — không có dòng hay symbol"),

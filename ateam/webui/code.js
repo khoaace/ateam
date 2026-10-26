@@ -124,6 +124,7 @@ window.CodeView = (() => {
       </aside>
       <section class="code-main">
         <div class="code-tabs" id="code-tabs"></div>
+        <nav class="code-crumbs hidden" id="code-crumbs"></nav>
         <div class="code-body" data-md="edit">
           <div class="code-host" id="code-editor"><div class="code-media"></div></div>
           <div class="code-host hidden" id="code-editor2"><div class="code-media"></div></div>
@@ -323,27 +324,114 @@ window.CodeView = (() => {
     $$("#code-tree .tnode.file").forEach((n) => n.classList.toggle("dirty", !!(C.bufs.get(n.dataset.path) || {}).dirty));
   }
   function renderStatus() {
+    renderCrumbs();
     const box = $("#code-status");
     if (!box) return;
     const b = C.cur && C.bufs.get(C.cur);
     if (!b) { box.innerHTML = `<span>${esc(vimOn() ? t("code_vim_hint") : t("code_novim_hint"))}</span>`; return; }
     if (b.media) {
-      box.innerHTML = `<span class="mono cpath">${esc(b.path)}</span><span style="flex:1"></span>${runChip()}
+      box.innerHTML = `<span style="flex:1"></span>${runChip()}
         <span>${esc(b.language || "")}</span><span class="mono">${esc(fmtSize(b.size))}</span>`;
       return;
     }
     const st = C.view.state, pos = st.selection.main.head, line = st.doc.lineAt(pos);
     const mode = vimOn() ? `<span class="vmode m-${esc(C.mode)}">${esc(C.mode.toUpperCase())}</span>` : "";
-    const sym = symAt(b.syms, line.number);
-    box.innerHTML = `${mode}<span class="mono cpath">${esc(b.path)}</span>${b.dirty ? `<span class="dot-dirty">●</span>` : ""}
-      ${sym ? `<span class="mono crumb" data-cact="crumb" title="${esc(t("pal_goto_symbol"))}">› ${esc(sym.name)}</span>` : ""}
-      <span style="flex:1"></span>${runChip()}${S.prefs.autosave ? `<span class="chip" title="${esc(t("code_autosave_tip"))}">${esc(t("code_autosave_chip"))}</span>` : ""}${b.ro ? `<span class="chip warn">${esc(t("code_readonly", { v: b.note }))}</span>` : ""}
+    box.innerHTML = `${mode}${b.dirty ? `<span class="dot-dirty">●</span>` : ""}<span style="flex:1"></span>${runChip()}${S.prefs.autosave ? `<span class="chip" title="${esc(t("code_autosave_tip"))}">${esc(t("code_autosave_chip"))}</span>` : ""}${b.ro ? `<span class="chip warn">${esc(t("code_readonly", { v: b.note }))}</span>` : ""}
       ${b.newline === "\r\n" ? `<span class="chip">CRLF</span>` : ""}<span>${esc((b.lang && b.lang.name) || b.language || t("code_plain"))}</span>
       <span class="mono">${esc(t("code_pos", { r: line.number, n: st.doc.lines, c: pos - line.from + 1 }))}</span>
       ${isMd(b) && !C.panes[1] ? `<span class="seg" title="${esc(t("code_md_title"))}">${MD_MODES.map((m) =>
         `<button class="mini${m === C.md ? " on" : ""}" data-cact="md" data-md="${m}">${esc(t("code_md_" + m))}</button>`).join("")}</span>` : ""}
       <button class="mini" data-cact="vim" title="/vim on|off">vim ${vimOn() ? "✓" : "✗"}</button>`;
   }
+
+  /* ---------------------------------------------------------------- breadcrumb kiểu VS Code: thư mục › file › symbol;
+     bấm một đoạn → xổ danh sách cùng cấp (thư mục mở rộng tại chỗ, file thì mở), đoạn symbol → danh sách symbol */
+  function symChain(syms, s) {  // symbol đang đứng + các symbol chứa nó (theo depth), ngoài cùng trước
+    const out = s ? [s] : [];
+    for (let k = s ? syms.indexOf(s) - 1 : -1; k >= 0 && out[0].depth > 0; k--) if (syms[k].depth < out[0].depth) out.unshift(syms[k]);
+    return out;
+  }
+  function renderCrumbs() {
+    const box = $("#code-crumbs");
+    if (!box) return;
+    const b = C.cur && C.bufs.get(C.cur);
+    const chain = b && !b.media && C.view ? symChain(b.syms || [], symAt(b.syms, C.view.state.doc.lineAt(C.view.state.selection.main.head).number)) : [];
+    const key = b ? b.path + "\n" + chain.map((s) => s.line).join(",") : "";
+    if (key === C.crumbKey) return;  // gọi ở mỗi lần di con trỏ: chỉ vẽ lại khi đổi
+    C.crumbKey = key;
+    box.classList.toggle("hidden", !b);
+    if (!b) { box.innerHTML = ""; return; }
+    const parts = b.path.split("/"), sep = `<span class="bc-sep">›</span>`;
+    box.innerHTML = parts.map((p, i) => `<button class="bc${i === parts.length - 1 ? " file" : ""}" data-bc="${i}" title="${esc(parts.slice(0, i + 1).join("/"))}">
+        ${i === parts.length - 1 ? icon({ name: p }) : ""}<span>${esc(p)}</span></button>`).join(sep)
+      + chain.map((s) => sep + `<button class="bc sym" data-bc="sym" data-line="${s.line}" title="${esc(t("pal_goto_symbol"))}">
+        <span class="okind k-${esc(s.kind)}">${KIND_ICON[s.kind] || "•"}</span><span>${esc(s.name)}</span></button>`).join("");
+  }
+  async function crumbRows(dir, depth, on, exp) {
+    let h = "";
+    for (const n of await loadDir(dir)) {
+      h += `<button class="ctx-item bc-item${n.path === on ? " on" : ""}" data-path="${esc(n.path)}" data-dir="${n.dir ? 1 : 0}" data-up="${esc(dir)}" style="padding-left:${8 + depth * 14}px">
+        <span class="bc-ic">${n.dir ? (exp.has(n.path) ? "▾" : "▸") : icon(n)}</span><span class="tname">${esc(n.name)}</span></button>`;
+      if (n.dir && exp.has(n.path)) h += await crumbRows(n.path, depth + 1, on, exp);
+    }
+    return h || `<div class="muted small pad">${esc(t("code_empty_dir"))}</div>`;
+  }
+  async function crumbPop(btn) {
+    const which = btn.dataset.bc + ":" + (btn.dataset.line || "");
+    if (C.crumbSkip === which) { C.crumbSkip = null; return; }  // bấm lại đoạn đang xổ: chỉ đóng
+    const b = C.cur && C.bufs.get(C.cur);
+    if (!b) return;
+    const r = btn.getBoundingClientRect();
+    if (btn.dataset.bc === "sym") {
+      const syms = b.syms || [];
+      const m = floating(r.left, r.bottom + 2, "ctx-menu bc-pop", syms.map((s) => `<button class="ctx-item bc-item${s.line === +btn.dataset.line ? " on" : ""}" data-line="${s.line}" style="padding-left:${8 + s.depth * 14}px">
+          <span class="okind k-${esc(s.kind)}">${KIND_ICON[s.kind] || "•"}</span><span class="tname">${esc(s.name)}</span><span class="oline">${s.line}</span></button>`).join("")
+        || `<div class="muted small pad">${esc(t("outline_empty"))}</div>`);
+      m.dataset.bc = which;
+      m.addEventListener("click", (e) => { const it = e.target.closest("[data-line]"); if (it) { closeCtx(); activate(C.cur, +it.dataset.line); } });
+      focusOn(m);
+      return;
+    }
+    const parts = b.path.split("/"), i = +btn.dataset.bc, on = parts.slice(0, i + 1).join("/"), dir = parts.slice(0, i).join("/");
+    const exp = new Set();
+    const m = floating(r.left, r.bottom + 2, "ctx-menu bc-pop", await crumbRows(dir, 0, on, exp));
+    m.dataset.bc = which;
+    const redraw = async (path) => {
+      m.innerHTML = await crumbRows(dir, 0, on, exp);
+      const it = $$(".bc-item", m).find((x) => x.dataset.path === path);
+      if (it) it.focus();
+    };
+    const toggle = (it, want) => {
+      const p = it.dataset.path;
+      if (want === exp.has(p)) return;
+      if (exp.has(p)) exp.delete(p); else exp.add(p);
+      redraw(p);
+    };
+    m.addEventListener("click", (e) => {
+      const it = e.target.closest(".bc-item");
+      if (!it) return;
+      if (it.dataset.dir === "1") return toggle(it, !exp.has(it.dataset.path));
+      closeCtx();
+      open(it.dataset.path);
+    });
+    m.addEventListener("keydown", (e) => {  // → mở thư mục, ← đóng thư mục (hoặc về thư mục cha)
+      const it = e.target.closest(".bc-item");
+      if (!it || (e.key !== "ArrowRight" && e.key !== "ArrowLeft")) return;
+      e.preventDefault();
+      if (e.key === "ArrowRight") { if (it.dataset.dir === "1") toggle(it, true); return; }
+      if (it.dataset.dir === "1" && exp.has(it.dataset.path)) return toggle(it, false);
+      if (exp.has(it.dataset.up)) { exp.delete(it.dataset.up); redraw(it.dataset.up); }
+    });
+    focusOn(m);
+  }
+  function focusOn(m) {  // focus mục đang chọn (không phải mục đầu như menu thường)
+    const on = $(".bc-item.on", m);
+    if (on) { on.focus(); on.scrollIntoView({ block: "center" }); }
+  }
+  document.addEventListener("mousedown", (e) => {  // đăng ký trước floating(): biết popup nào đang mở trước khi nó bị đóng
+    const bc = e.target.closest && e.target.closest("#code-crumbs .bc");
+    C.crumbSkip = bc && CTX && CTX.m.dataset.bc === bc.dataset.bc + ":" + (bc.dataset.line || "") ? CTX.m.dataset.bc : null;
+  }, true);
 
   function fmtSize(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : (n || 0) + " B"; }
   function showMedia(pi, b) {  // ảnh / PDF thay cho editor của khung pi
@@ -1321,7 +1409,8 @@ window.CodeView = (() => {
     if (on) return activate(C.cur, +on.dataset.line);
     const media = e.target.closest(".code-host");
     if (media && C.panes[1]) setActive(HOSTS.indexOf("#" + media.id));
-    if (e.target.closest("[data-cact=crumb]")) return palette("@");
+    const bc = e.target.closest("#code-crumbs .bc");
+    if (bc) return crumbPop(bc);
     const ai = e.target.closest("#code-ai [data-ai]");
     if (ai && ai.dataset.ai === "close") $("#code-ai").classList.add("hidden");
     if (ai && ai.dataset.ai === "copy") copyText($("#code-ai")._text || "");

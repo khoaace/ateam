@@ -4220,6 +4220,8 @@ EN: dict[str, str] = {
         'No symbols (functions, classes, headings)',
     'Tới symbol trong file (@)':
         'Go to symbol in file (@)',
+    '(thư mục trống)':
+        '(empty folder)',
     'Gõ tên hàm / class — tìm trong cả dự án':
         'Type a function / class name — searches the whole project',
     'Không thấy symbol nào khớp trong dự án':

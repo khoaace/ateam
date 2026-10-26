@@ -491,8 +491,9 @@ trên 2 MB / 20 000 dòng không tô màu, trên 5 MB mở chỉ đọc, file nh
   đó), cây file hiện `M` / `U` / `A` / `C` như VS Code và tự làm mới khi agent tạo file (nút ⟳ làm mới ngay). Có
   task đang chạy ở chế độ shared thì thanh dưới báo "⚙ claude đang chạy". Mọi tab đang mở đều được so với đĩa.
 - **Điều hướng**: palette **`#`** tìm hàm / class trong cả dự án, **F12** hoặc **⌘+click** đi tới định nghĩa,
-  **⌥Tab** đổi file theo thứ tự vừa dùng (giữ ⌥, bấm Tab nữa để đổi), tab **Outline** ở cột trái, bấm `› tên hàm`
-  ở thanh dưới để mở `@`.
+  **⌥Tab** đổi file theo thứ tự vừa dùng (giữ ⌥, bấm Tab nữa để đổi), tab **Outline** ở cột trái; **breadcrumb**
+  `src › services › paths.ts › tên hàm` trên editor như VS Code — bấm một đoạn xổ ra file / thư mục cùng cấp (bấm hoặc
+  **→** để mở rộng thư mục tại chỗ, bấm file để mở), bấm đoạn tên hàm xổ ra danh sách symbol.
 - **Soạn thảo**: **⇧⌥F** format bằng công cụ của dự án (ruff/black, prettier, gofmt, rustfmt, shfmt — bản trong
   `node_modules/.bin` / `.venv` được ưu tiên), `>Bật/tắt format khi lưu`, `>Bật/tắt tự lưu` (lưu sau 1,5 giây ngừng
   gõ); **⌘\\** chia đôi hai khung (chuột phải file › *Mở bên phải*); ảnh và PDF xem ngay trong tab.

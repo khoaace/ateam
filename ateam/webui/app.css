@@ -464,7 +464,6 @@ button.ag-model:hover { border-color: var(--border); background: var(--surface);
 .pal-win:hover { color: var(--accent); border-color: var(--border); }
 @media (hover: none) { .pal-win { opacity: 1; } }
 .pal-foot { padding: 6px 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
-.code-status .crumb { color: var(--accent); }
 .pty-box { flex: 1; min-height: 0; padding: 6px 8px; background: var(--term-bg); }
 .pty-keys { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border); }
 .mini-log { margin: 0 10px 8px; height: 210px; min-height: 0; overflow: auto; border-radius: var(--radius); border: 1px solid var(--border); background: var(--term-bg); color: var(--term-fg); padding: 8px 10px; font: 12px/1.55 var(--mono); }
@@ -814,6 +813,18 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 .seg .mini:first-child { border-radius: var(--radius) 0 0 var(--radius); }
 .seg .mini:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
 .seg .mini.on { background: var(--accent); border-color: var(--accent); color: var(--on-fill); }
+.code-crumbs { display: flex; align-items: center; gap: 1px; padding: 2px 8px; flex: none; min-height: 24px; overflow-x: auto; scrollbar-width: none; white-space: nowrap; font-size: 12px; color: var(--text-2); border-bottom: 1px solid var(--border); background: var(--bg); }
+.code-crumbs::-webkit-scrollbar { display: none; }
+.code-crumbs .bc { display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 1px 4px; border: 0; border-radius: var(--radius); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.code-crumbs .bc:hover { background: var(--surface-2); color: var(--text); }
+.code-crumbs .bc.file { color: var(--text); }
+.code-crumbs .bc-sep { color: var(--muted); flex: none; padding: 0 1px; }
+.bc-pop { max-height: min(420px, 60vh); overflow-y: auto; min-width: 220px; max-width: min(420px, calc(100vw - 16px)); }
+.bc-pop .bc-item { gap: 6px; padding-top: 2px; padding-bottom: 2px; white-space: nowrap; }
+.bc-pop .bc-item.on { background: var(--accent-soft); font-weight: 600; }
+.bc-pop .bc-item .tname { overflow: hidden; text-overflow: ellipsis; }
+.bc-pop .bc-ic { width: 14px; flex: none; text-align: center; color: var(--muted); }
+.bc-pop .oline { margin-left: auto; padding-left: 12px; color: var(--muted); font: 11px var(--mono); }
 .code-status { display: flex; align-items: center; gap: 12px; padding: 3px 10px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); flex: none; background: var(--side); min-height: 26px; }
 .vmode { font: 650 11px var(--mono); padding: 0 6px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text-2); }
 .vmode.m-insert { background: var(--done); color: var(--on-fill); border-color: var(--done); }
@@ -1375,8 +1386,6 @@ body.readonly .card-actions { display: none !important; }
 .hunk-old { margin: 0; padding: 6px 10px; max-height: 240px; overflow: auto; font: 12px/1.5 var(--mono); background: var(--diff-del); white-space: pre; }
 .code-status .chip.run { color: var(--running); border-color: color-mix(in srgb, var(--running) 45%, var(--border)); cursor: default; max-width: 340px; }
 .code-status { white-space: nowrap; overflow: hidden; }
-.code-status .crumb { cursor: pointer; }
-.code-status .crumb:hover { text-decoration: underline; }
 /* chia đôi khung editor; ảnh / PDF thay cho editor; outline; ⌥Tab */
 .code-host { position: relative; }
 .code-body.split2 .code-host { flex: 1 1 0; }
@@ -1425,8 +1434,7 @@ body.readonly .card-actions { display: none !important; }
 .mru-pop { position: fixed; z-index: 1000; left: 50%; top: 12vh; transform: translateX(-50%); width: min(520px, calc(100vw - 32px)); padding: 4px;
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-pop), 0 8px 28px rgba(0, 0, 0, .3); }
 .code-status > * { flex: none; }
-.code-status .crumb, .code-status .chip.run, .code-status .cpath { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.code-status .crumb { flex-shrink: 4; } .code-status .chip.run { flex-shrink: 2; }  /* hẹp: bớt symbol trước, đường dẫn sau cùng */
+.code-status .chip.run { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* giải quyết xung đột git (git.js: resolve) */
 .cf-body { display: flex; flex-direction: column; gap: 10px; max-height: 75vh; overflow: auto; }
