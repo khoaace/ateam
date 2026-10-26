@@ -801,6 +801,42 @@ class GitRepo:
         return out.strip() if rc == 0 and out.strip() else EMPTY_TREE
 
 
+def ago(ts: float, now: float | None = None) -> str:
+    """"vừa xong" / "5 phút trước" / "3 ngày trước"… cho blame."""
+    import time as _time
+    s = max(0, int((now or _time.time()) - ts))
+    for secs, unit in ((31536000, tr("năm")), (2592000, tr("tháng")), (86400, tr("ngày")), (3600, tr("giờ")),
+                       (60, tr("phút"))):
+        if s >= secs:
+            return tr("{n} {unit} trước", n=s // secs, unit=unit)
+    return tr("vừa xong")
+
+
+async def blame_line(root: Path, rel: str, line: int, text: str | None = None) -> dict | str:
+    """Ai sửa dòng `line` (từ 1) lần cuối: {"sha", "short", "author", "time", "summary", "uncommitted"}; text: nội dung
+    đang sửa trong editor (chưa lưu) — git so với nó nên dòng mới gõ là "chưa commit". Chuỗi = lỗi."""
+    args = ["blame", "--porcelain", "-L", f"{line},{line}"]
+    if text is not None:
+        args += ["--contents", "-"]
+    rc, out = await GitRepo(root).run(*args, "--", rel, stdin=text.encode("utf-8") if text is not None else None)
+    if rc != 0:
+        low = out.lower()
+        if "no such path" in low or "not a git repository" in low or "no such ref" in low or "has only" in low:
+            return tr("File chưa có trong git")
+        return short_error(out)
+    head, *rest = out.splitlines() or [""]
+    info = {"sha": head.split(" ")[0]}
+    for ln in rest:
+        k, _, v = ln.partition(" ")
+        if k in ("author", "author-time", "summary") and k not in info:
+            info[k] = v
+    sha = info["sha"]
+    uncommitted = not sha.strip("0")
+    return {"sha": sha, "short": sha[:8], "author": tr("Bạn (chưa commit)") if uncommitted else info.get("author", ""),
+            "time": float(info.get("author-time") or 0), "summary": "" if uncommitted else info.get("summary", ""),
+            "when": ago(float(info.get("author-time") or 0)) if not uncommitted else "", "uncommitted": uncommitted}
+
+
 def untracked_file(root: Path, path: str):
     """FileDiff "A" cho file chưa theo dõi (git diff không liệt kê)."""
     from .diffview import added_file

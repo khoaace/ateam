@@ -56,7 +56,7 @@ window.CodeView = (() => {
       c.vim.of(vimOn() ? CM.vim() : []),  // vim trước các keymap khác
       CM.basicSetup,
       CM.keymap.of([CM.indentWithTab, { key: "Mod-s", run: () => { save(); return true; } },
-        { key: "F12", run: (v) => { gotoDef(v); return true; } }]),  // ⇧⌥F, ⌘\\: bắt ở document (vim nuốt phím ⌥)
+        { key: "F12", run: (v) => { gotoDef(v); return true; } }, { key: "Shift-F12", run: (v) => { findRefs(v); return true; } }]),  // ⇧⌥F, ⌘\\: bắt ở document (vim nuốt phím ⌥)
       CM.EditorView.domEventHandlers({ mousedown: (e, v) => {  // ⌘+click (Ctrl+click): đi tới định nghĩa
         if (!(e.metaKey || e.ctrlKey) || e.button !== 0) return false;
         const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
@@ -339,6 +339,36 @@ window.CodeView = (() => {
       || `<div class="muted small pad">${esc(t("code_hint"))}</div>`;
     $$("#code-tree .tnode.file").forEach((n) => n.classList.toggle("dirty", !!(C.bufs.get(n.dataset.path) || {}).dirty));
   }
+  /* git blame dòng đang đứng (gitops.blame_line): bật ở palette → thanh trạng thái hiện "✎ tác giả, khi nào · commit" */
+  C.blame = (() => { try { return localStorage.getItem("ateam-blame") === "1"; } catch (e) { return false; } })();
+  const fmtBlame = (x) => typeof x === "string" ? { label: x, title: x }
+    : x.uncommitted ? { label: "✎ " + x.author, title: x.author }
+    : { label: `✎ ${x.author}, ${x.when}${x.summary ? " · " + x.summary.slice(0, 48) : ""}`, title: `${x.short} · ${x.author} · ${x.when}\n${x.summary}` };
+  async function fetchBlame(b, line) {
+    const text = liveText(b);
+    const r = await request("code_blame", { path: b.path, line, text: text !== b.saved ? text : null });
+    return r && r.blame != null ? fmtBlame(r.blame) : null;
+  }
+  async function blameNow(line) {
+    const b = C.cur && C.bufs.get(C.cur);
+    if (!b || b.media) return;
+    const x = await fetchBlame(b, line);
+    if (x) toast(x.title.replace("\n", " — "), "info");
+  }
+  function blameChip(b, line) {
+    if (!C.blame || !b || b.media) return "";
+    const k = `${b.path}:${line}:${b.dirty ? 1 : 0}`;
+    if (C.blameKey !== k) {  // dừng con trỏ ~0,35 giây mới hỏi git
+      C.blameKey = k; C.blameInfo = null; clearTimeout(C.blameTimer);
+      C.blameTimer = setTimeout(async () => {
+        const x = await fetchBlame(b, line);
+        if (C.blameKey === k) { C.blameInfo = x; renderStatus(); }
+      }, 350);
+    }
+    const x = C.blameInfo;
+    return x ? `<span class="blame" title="${esc(x.title)}">${esc(x.label)}</span>` : "";
+  }
+
   function renderStatus() {
     renderCrumbs();
     const box = $("#code-status");
@@ -357,7 +387,7 @@ window.CodeView = (() => {
     }
     const st = C.view.state, pos = st.selection.main.head, line = st.doc.lineAt(pos);
     const mode = vimOn() ? `<span class="vmode m-${esc(C.mode)}">${esc(C.mode.toUpperCase())}</span>` : "";
-    box.innerHTML = `${mode}${b.dirty ? `<span class="dot-dirty">●</span>` : ""}<span style="flex:1"></span>${runChip()}${S.prefs.autosave ? `<span class="chip" title="${esc(t("code_autosave_tip"))}">${esc(t("code_autosave_chip"))}</span>` : ""}${b.ro ? `<span class="chip warn">${esc(t("code_readonly", { v: b.note }))}</span>` : ""}
+    box.innerHTML = `${mode}${b.dirty ? `<span class="dot-dirty">●</span>` : ""}${blameChip(b, line.number)}<span style="flex:1"></span>${runChip()}${S.prefs.autosave ? `<span class="chip" title="${esc(t("code_autosave_tip"))}">${esc(t("code_autosave_chip"))}</span>` : ""}${b.ro ? `<span class="chip warn">${esc(t("code_readonly", { v: b.note }))}</span>` : ""}
       ${b.newline === "\r\n" ? `<span class="chip">CRLF</span>` : ""}<span>${esc((b.lang && b.lang.name) || b.language || t("code_plain"))}</span>
       <span class="mono">${esc(t("code_pos", { r: line.number, n: st.doc.lines, c: pos - line.from + 1 }))}</span>
       ${isMd(b) && !C.panes[1] ? `<span class="seg" title="${esc(t("code_md_title"))}">${MD_MODES.map((m) =>
@@ -1181,12 +1211,55 @@ window.CodeView = (() => {
   }
 
   /* ---------------------------------------------------------------- đi tới định nghĩa (F12, ⌘+click) */
+  /* language server (lsp.py) khi máy có pyright, typescript-language-server, gopls…: chính xác theo ngữ nghĩa;
+     không có thì tìm theo tên như cũ. Kết quả và lỗi nằm trong payload (không toast mỗi lần bấm) */
+  async function lspQuery(kind, view, pos) {
+    const b = C.cur && C.bufs.get(C.cur), line = view.state.doc.lineAt(pos);
+    const r = await request("code_lsp", { kind, path: b.path, text: view.state.doc.toString(), line: line.number, ch: pos - line.from },
+      t("lsp_busy"));
+    return (r && r.lsp) || { unavailable: true };
+  }
+  function locList(title, items) {  // nhiều kết quả: danh sách đường dẫn:dòng + dòng code, bấm để mở
+    const m = openModal(`${modalHead(esc(title))}<div class="pal-list refs">${items.map((x, i) =>
+      `<div class="pal-item${x.inside ? "" : " off"}" data-i="${i}" role="option"><span class="mono">${esc(x.path)}:${x.line}</span><span class="pal-desc">${esc(x.text)}</span></div>`).join("")}</div>`,
+      { box: "md", cls: "palette" });
+    m.addEventListener("click", (e) => {
+      const r = e.target.closest("[data-i]"), x = r && items[+r.dataset.i];
+      if (!x) return;
+      if (!x.inside) { toast(t("lsp_outside", { v: `${x.path}:${x.line}` }), "info"); return; }
+      closeModal(m); open(x.path, x.line);
+    });
+  }
+  function wordAtPos(view, pos) {
+    const w = view.state.wordAt(pos), word = w ? view.state.sliceDoc(w.from, w.to) : "";
+    return /^[\p{L}_$][\p{L}\p{N}_$]*$/u.test(word) ? word : "";
+  }
+  async function findRefs(view = C.view, pos) {
+    const b = C.cur && C.bufs.get(C.cur);
+    if (!view || !b || b.media) return;
+    if (pos == null) pos = view.state.selection.main.head;
+    const word = wordAtPos(view, pos);
+    if (!word) { toast(t("def_noword"), "info"); return; }
+    const r = await lspQuery("references", view, pos);
+    if (r.items && r.items.length) return locList(t("refs_title", { v: word, n: r.items.length }), r.items);
+    if (r.items) { toast(t("refs_none", { v: word }), "info"); return; }
+    if (r.error) toast(r.error, "warn");
+    sidePane("search", word);  // không có language server: tìm chữ trong cả dự án
+  }
   async function gotoDef(view = C.view, pos) {
     const b = C.cur && C.bufs.get(C.cur);
     if (!view || !b || b.media) return;
     if (pos == null) pos = view.state.selection.main.head;
-    const w = view.state.wordAt(pos), word = w ? view.state.sliceDoc(w.from, w.to) : "";
-    if (!/^[\p{L}_$][\p{L}\p{N}_$]*$/u.test(word)) { toast(t("def_noword"), "info"); return; }
+    const word = wordAtPos(view, pos);
+    if (!word) { toast(t("def_noword"), "info"); return; }
+    const lsp = await lspQuery("definition", view, pos);
+    if (lsp.items && lsp.items.length) {
+      const inside = lsp.items.filter((x) => x.inside);
+      if (inside.length === 1) return open(inside[0].path, inside[0].line);
+      if (!inside.length) { toast(t("lsp_outside", { v: `${lsp.items[0].path}:${lsp.items[0].line}` }), "info"); return; }
+      return locList(t("defs_title", { v: word }), lsp.items);
+    }
+    if (lsp.error && !lsp.unavailable) toast(lsp.error, "warn");
     const r = await getJSON("/api/wsymbols?exact=1&q=" + encodeURIComponent(word));
     const items = r.items || [], here = items.filter((x) => x.path === b.path);
     const hit = items.length === 1 ? items[0] : here.length === 1 ? here[0] : null;
@@ -1510,7 +1583,7 @@ window.CodeView = (() => {
         .map((c) => ({ html: `${esc(c.label)}${c.key ? `<span class="pal-key">${esc(c.key)}</span>` : ""}`, val: ["cmd", c.id] }));
       // lệnh /… của cả app (như gợi ý khi gõ "/"): chạy ngay, cần tham số thì điền vào ô nhập
       const app = fuzzy(S.meta.commands || [], text.slice(1), (c) => `/${c.name} ${c.desc}`)
-        .map((c) => ({ html: `<b>/${esc(c.name)}</b>${c.args ? ` <span class="pal-dim">${esc(c.args)}</span>` : ""}<span class="pal-where">${esc(c.desc)}</span>`,
+        .map((c) => ({ html: `<b>/${esc(c.name)}</b>${c.args ? ` <span class="pal-dim">${esc(c.args)}</span>` : ""}<span class="pal-desc">${esc(c.desc)}</span>`,
           val: ["app", c.name, c.args.startsWith("<")] }));
       const out = inCode ? code.concat(app) : app.concat(code);
       return out.length ? out : [head(t("pal_nocmd"))];
@@ -1732,6 +1805,12 @@ window.CodeView = (() => {
     switch (id) {
       case "search_project": return sidePane("search", b && !b.media ? C.view.state.sliceDoc(C.view.state.selection.main.from, C.view.state.selection.main.to) : "");
       case "goto_definition": return gotoDef();
+      case "find_references": return findRefs();
+      case "blame_line": return blameNow(line);
+      case "toggle_blame":
+        C.blame = !C.blame; C.blameKey = "";
+        try { localStorage.setItem("ateam-blame", C.blame ? "1" : "0"); } catch (e) { /* trình duyệt chặn */ }
+        renderStatus(); return;
       case "recent_buffer": if (!switcher(1)) toast(t("mru_none"), "info"); return;
       case "format": return formatDoc(false);
       case "toggle_fmt_save": return request("prefs", { fmt_save: !S.prefs.fmt_save });

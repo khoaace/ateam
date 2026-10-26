@@ -32,7 +32,7 @@ from textual.widgets import (Button, Checkbox, DataTable, Input, OptionList,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, projects, quota, reports, rules, skills,
+from . import (clipboard, diffview, editor, gitops, lsp, mentions, notify, palette, projects, quota, reports, rules, skills,
                search, shell, theme, todos, update, wizard)
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
 from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TASK_KINDS, TIERS,
@@ -5417,6 +5417,8 @@ class TeamApp(App):
         Binding("ctrl+e", "code_ai_edit", tr("✨ Sửa bằng AI"), show=False, priority=True),  # Ctrl+I = Tab trong terminal
         Binding("f8,ctrl+shift+p", "palette('>')", tr("Lệnh"), show=False, priority=True),
         Binding("f9,ctrl+shift+o", "palette('@')", tr("Symbol"), show=False, priority=True),
+        Binding("f12", "code_cmd('goto_definition')", tr("Đi tới định nghĩa"), show=False, priority=True),
+        Binding("shift+f12", "code_cmd('find_references')", tr("Tìm chỗ dùng"), show=False, priority=True),
         Binding("f10", "grid_arrange", tr("Sắp xếp lưới"), show=False, priority=True),
         Binding("ctrl+b", "toggle_sidebar", tr("Thanh bên"), show=False, priority=True),
         *[Binding(f"alt+{i + 1}", f"goto_tab({i})", show=False, priority=True) for i in range(9)],
@@ -5437,6 +5439,8 @@ class TeamApp(App):
         # khung hình — trên terminal là giật, lag
         self.animation_level = "none"
         self.orch = Orchestrator(root, cfg, db, on_event=self.on_orch_event)
+        self.lsp = lsp.Hub(root)  # F12 / Shift+F12 ở tab Code: language server nếu máy có (lsp.py)
+        self._ws_cache: dict = {}  # palette.workspace_symbols: {rel: (mtime, [symbol])}
         self.view_task = SYSTEM
         self.log_styler = LogStyler()  # trạng thái tô màu của log đang xem (#log)
         self.shell = shell.ShellManager(root, on_event=self.on_shell_event)  # lệnh terminal (!lệnh)
@@ -6134,7 +6138,7 @@ class TeamApp(App):
                 return False  # Ctrl+R, Ctrl+T, Ctrl+O… trong CLI: nhường cho CLI
         if action == "palette" and isinstance(self.screen, ModalScreen):
             return False  # đang mở popup khác (kể cả chính palette): để phím cho popup đó
-        if action in ("code_close_file", "code_ai_edit"):  # chỉ ở tab Code có file mở; ô nhập giữ Ctrl+W / Ctrl+E
+        if action in ("code_close_file", "code_ai_edit", "code_cmd"):  # chỉ ở tab Code có file mở; ô nhập giữ Ctrl+W / Ctrl+E
             return (self.query_one("#tabs", TabbedContent).active == "tab-code" and bool(self.code_cur)
                     and not isinstance(self.screen, ModalScreen) and not isinstance(self.focused, Input))
         if action == "retry" and isinstance(self.screen, SearchScreen):
@@ -6396,6 +6400,10 @@ class TeamApp(App):
         self.refresh_code_files()
         self._refresh_code_head()
         self.query_one("#code-filter", Input).focus()
+
+    def action_code_cmd(self, cid: str) -> None:
+        """F12 đi tới định nghĩa · Shift+F12 tìm chỗ dùng (tab Code)."""
+        self.code_command(cid)
 
     def action_code_close_file(self) -> None:
         self.code_close()
@@ -6689,6 +6697,64 @@ class TeamApp(App):
             return f"@{rel}"
         return f"@{rel} " + (tr("(dòng {a})", a=a + 1) if a == b else tr("(dòng {a}–{b})", a=a + 1, b=b + 1))
 
+    async def _code_lsp(self, cid: str, rel: str, text: str, line: int, col: int) -> None:
+        """F12 đi tới định nghĩa / Shift+F12 tìm chỗ dùng: language server nếu có, không thì tìm theo tên (định nghĩa)
+        hoặc tìm chữ trong dự án (chỗ dùng)."""
+        src = text.split("\n")[line - 1] if 0 < line <= text.count("\n") + 1 else ""
+        word = next((m.group(0) for m in re.finditer(r"\w+", src) if m.start() <= col <= m.end()), "")
+        if not word:
+            self.notify(tr("Đặt con trỏ vào tên hàm / class cần tìm"), severity="warning")
+            return
+        refs = cid == "find_references"
+        with self.busy(tr("Đang hỏi language server…")):
+            res = await self.lsp.query("references" if refs else "definition", rel, text, line, col)
+        items = res.get("items")
+        if res.get("error") and not res.get("unavailable"):
+            self.notify(res["error"], severity="warning")
+        if not items and refs:
+            if items is not None:
+                self.notify(tr("Không thấy chỗ nào dùng {v}", v=word))
+            else:
+                self.action_search(word)
+            return
+        if not items:  # không có server: symbol cùng tên trong cả dự án
+            index = self.query_one("#cmd", CommandInput).index
+            if index.stale():
+                await index.refresh()
+            idx = await asyncio.to_thread(palette.workspace_symbols, self.root, list(index.entries), word,
+                                          self._ws_cache, True)
+            items = [{"path": x["path"], "line": x["line"], "col": 0, "text": x.get("name", ""), "inside": True}
+                     for x in idx.get("items") or []]
+        inside = [x for x in items if x["inside"]]
+        if not refs and len(inside) == 1:
+            self.open_code(inside[0]["path"], inside[0]["line"], inside[0]["col"])
+            return
+        if not inside:
+            self.notify(tr("Không thấy định nghĩa của {v}", v=word) if not items else
+                        tr("Nằm ngoài dự án: {v}", v=f"{items[0]['path']}:{items[0]['line']}"))
+            return
+
+        def rows(q: str) -> list[tuple[Text, object]]:
+            out = []
+            for x in palette.fuzzy(inside, q, key=lambda x: f"{x['path']}:{x['line']} {x['text']}"):
+                t = Text(f"{x['path']}:{x['line']}", "bold")
+                t.append(f"   {x['text']}", "dim")
+                out.append((t, (x["path"], x["line"], x["col"])))
+            return out
+        title = tr("Chỗ dùng {v} ({n})", v=word, n=len(inside)) if refs else tr("Định nghĩa của {v}", v=word)
+        self.push_screen(PaletteScreen("", items=rows, placeholder=title, foot=tr("↑↓ chọn · Enter mở · Esc đóng")),
+                         lambda v: v and self.open_code(v[0], v[1], v[2]))
+
+    async def _code_blame(self, rel: str, text: str, line: int) -> None:
+        res = await gitops.blame_line(self.root, rel, line, text)
+        if isinstance(res, str):
+            self.notify(res, severity="warning")
+        elif res["uncommitted"]:
+            self.notify(tr("Dòng {n}: {v}", n=line, v=res["author"]))
+        else:
+            self.notify(f"{res['short']} · {res['author']} · {res['when']}\n{res['summary']}",
+                        title=tr("Git blame dòng {n}", n=line))
+
     def code_command(self, cid: str) -> None:
         """Chạy một lệnh của palette (`palette.CODE_COMMANDS`)."""
         ed = self.code_editor()
@@ -6722,6 +6788,11 @@ class TeamApp(App):
             self.run_worker(self._open_vscode(sf.path, ed.cursor_location[0] + 1), group="vscode")
         elif cid == "git_diff":
             self.run_worker(self._code_git_diff(rel), group="code-diff")
+        elif cid in ("goto_definition", "find_references"):
+            row, col = ed.cursor_location
+            self.run_worker(self._code_lsp(cid, rel, ed.text, row + 1, col), group="code-lsp", exclusive=True)
+        elif cid == "blame_line":
+            self.run_worker(self._code_blame(rel, ed.text, ed.cursor_location[0] + 1), group="code-blame")
         elif cid == "new_file":
             base = (str(Path(rel).parent) + "/") if rel and Path(rel).parent != Path(".") else ""
             self.push_screen(PromptScreen(tr("📄 File mới"), base, tr("đường/dẫn/file.ext")), self._code_new_file)
@@ -8758,6 +8829,7 @@ class TeamApp(App):
             return
         self.shell.stop_all()  # không để lại dev server mồ côi sau khi thoát
         self.grid.shutdown()  # CLI trong các ô của tab 🔲 Lưới
+        await self.lsp.close()
         for run in self.orch.all_runs():  # cả lượt trưởng nhóm (lập kế hoạch, /init…): không để CLI chạy mồ côi
             run.cancel()
         if self._loop_task:

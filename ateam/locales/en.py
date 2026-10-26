@@ -5053,4 +5053,52 @@ EN: dict[str, str] = {
         "Usage: /handoff <from> <to> [request]  — agents: {v}",
     "Chuyển cuộc chat này cho agent khác (/handoff)":
         "Hand this chat to another agent (/handoff)",
+    "vừa xong":
+        "just now",
+    "năm":
+        "y",
+    "tháng":
+        "mo",
+    "ngày":
+        "d",
+    "giờ":
+        "h",
+    "phút":
+        "min",
+    "{n} {unit} trước":
+        "{n} {unit} ago",
+    "File chưa có trong git":
+        "File is not in git yet",
+    "Bạn (chưa commit)":
+        "You (not committed)",
+    "{v} không khởi động được: {e}":
+        "{v} failed to start: {e}",
+    "language server đã dừng":
+        "language server stopped",
+    "{v} không trả lời sau {n} giây":
+        "{v} did not answer within {n} seconds",
+    "language server không trả lời":
+        "language server did not answer",
+    "Tìm chỗ dùng":
+        "Find references",
+    "Git blame: ai sửa dòng này":
+        "Git blame: who changed this line",
+    "Bật/tắt blame dòng hiện tại ở thanh trạng thái":
+        "Toggle current-line blame in the status bar",
+    "Chỗ dùng {v} ({n})":
+        "References to {v} ({n})",
+    "Định nghĩa của {v}":
+        "Definitions of {v}",
+    "Đang hỏi language server…":
+        "Asking the language server…",
+    "Không thấy chỗ nào dùng {v}":
+        "No references to {v}",
+    "Nằm ngoài dự án: {v}":
+        "Outside the project: {v}",
+    "↑↓ chọn · Enter mở · Esc đóng":
+        "↑↓ select · Enter open · Esc close",
+    "Dòng {n}: {v}":
+        "Line {n}: {v}",
+    "Git blame dòng {n}":
+        "Git blame line {n}",
 }
