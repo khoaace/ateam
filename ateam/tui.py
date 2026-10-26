@@ -156,7 +156,7 @@ Kiểm tra & duyệt code:
 Hạn mức:
   /usage                            thống kê lượt chạy, thời gian, token ước tính theo agent, rồi hỏi
                                     hạn mức thật từ từng CLI (claude/agy: /usage, opencode stats, codex)
-  /update                           kiểm tra và cập nhật ateam lên bản mới nhất (mở lại app sau đó)
+  /update                           kiểm tra và cập nhật ateam lên bản mới nhất (tự mở lại app)
   /cooldown <agent> <phút>          cho agent tạm nghỉ (vd khi bạn biết nó sắp hết hạn mức)
   /cooldown <agent> off             cho agent làm việc lại ngay
 
@@ -8975,9 +8975,36 @@ class TeamApp(App):
     async def _self_update(self) -> None:
         self.notify(tr("Đang kiểm tra bản mới…"), timeout=3)
         ok, msg = await update.run_update(lambda line: self.orch.log("  " + line))
-        self.orch.log(("✓ " if ok else "ℹ ") + msg)
-        self.notify(msg, severity="information" if ok else "warning", timeout=12)
-        self.show_task(SYSTEM)
+        if not ok or "WebDriver" in os.environ.get("TEXTUAL_DRIVER", ""):
+            # ateam web --tui: app thoát là "Session ended" -> người dùng tự mở lại (cli.cmd_tui không execv)
+            if ok:
+                msg += " " + tr("Thoát rồi mở lại ateam để dùng bản mới.")
+            self.orch.log(("✓ " if ok else "ℹ ") + msg)
+            self.notify(msg, severity="information" if ok else "warning", timeout=12)
+            self.show_task(SYSTEM)
+            return
+        self.orch.log("✓ " + msg)
+        self.restart_for_update()
+
+    def restart_for_update(self) -> None:
+        """Cài bản mới xong: mở lại app (cli.cmd_tui execv) để dùng ngay; agent đang chạy thì hỏi trước."""
+        def go(yes) -> None:
+            if not yes:
+                self.orch.log("ℹ " + tr("Đã cập nhật — thoát (Ctrl+Q) rồi mở lại ateam để dùng bản mới."))
+                self.show_task(SYSTEM)
+                return
+            self.orch.log(tr("↻ Khởi động lại ateam để dùng bản mới…"))
+            self.notify(tr("↻ Đã cập nhật — đang khởi động lại…"), timeout=3)
+            self.restart_requested = True
+            self.set_timer(0.8, self.action_quit)
+        busy = len(self.orch.runs) + len(self.orch.lead_busy)
+        if busy:
+            self.push_screen(ConfirmScreen(tr("Đã cập nhật ateam"),
+                                           tr("{n} lượt agent đang chạy sẽ bị dừng khi khởi động lại (task dở thành "
+                                              "lỗi — /retry sau).\nKhởi động lại ngay?", n=busy),
+                                           yes=tr("Dừng & khởi động lại")), go)
+        else:
+            go(True)
 
     def models_text(self, only: str | None = None) -> str:
         return reports.models_text(self.cfg, only)

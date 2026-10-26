@@ -74,7 +74,7 @@ async def run_update(on_line: Callable[[str], None], force: bool = False) -> tup
     if code != 0:
         return False, tr("Cập nhật thất bại (mã thoát {code}) — xem log ở trên, hoặc chạy tay: "
                          "curl -fsSL {GET_SH} | bash", code=code, GET_SH=GET_SH)
-    return True, tr("Đã cập nhật lên {latest}. Thoát (Ctrl+Q) rồi mở lại ateam để dùng bản mới.", latest=latest)
+    return True, tr("Đã cập nhật lên {latest}.", latest=latest)  # TUI / web tự mở lại; `ateam update` dặn thêm
 
 
 async def check_new() -> Optional[str]:

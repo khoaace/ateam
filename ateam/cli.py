@@ -266,7 +266,8 @@ def cmd_web(args) -> int:
                 continue
             argv.append(a)
         # execv bỏ bộ đệm stdout chưa ghi; extra: --host 0.0.0.0 / --tunnel (argparse lấy giá trị cuối)
-        print(tr("↻ Chạy lại ở chế độ từ xa…") if extra else tr("↪ Mở dự án {v}", v=nxt), flush=True)
+        print(tr("↻ Chạy lại ở chế độ từ xa…") if extra else tr("↻ Chạy lại bằng bản ateam mới…") if nxt == root
+              else tr("↪ Mở dự án {v}", v=nxt), flush=True)
         reexec(argv + ["--port", str(port)] + extra, nxt)
     return 0
 
@@ -679,6 +680,8 @@ def cmd_update(args) -> int:
     from .update import run_update
     ok, msg = asyncio.run(run_update(print, force=args.force))
     print(("✓ " if ok else "ℹ ") + msg)
+    if ok:
+        print(tr("Phiên ateam đang mở: thoát (Ctrl+Q) rồi mở lại để dùng bản mới."))
     from . import __version__ as cur
     return 0 if ok or msg == tr("Đang dùng bản mới nhất ({version}).", version=cur) else 1
 

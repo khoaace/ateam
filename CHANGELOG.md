@@ -2,6 +2,11 @@
 
 ## Chưa phát hành
 
+- **Tự khởi động lại sau `/update`** — gõ `/update` hoặc bấm *Cập nhật* trên thông báo bản mới: cài xong, TUI tự mở
+  lại và `ateam web` tự chạy lại server (cùng cổng), mọi tab trình duyệt tự tải lại trang để dùng ngay bản mới. Đang
+  có agent chạy thì hỏi trước (TUI: hộp xác nhận; web: thông báo kèm nút *↻ Khởi động lại*). Web qua Cloudflare
+  Tunnel nhanh (URL đổi mỗi lần chạy) thì chỉ báo chạy lại tay.
+
 - **Source Control ở tab Code (web)** — tab *Thay đổi* ở cột trái liệt kê file đã sửa (đã stage / chưa stage, danh
   sách hoặc cây) kèm stage, bỏ stage, bỏ thay đổi và ô commit (✨ AI viết). Bấm file mở **diff hai cột như VS Code**:
   cũ bên trái, mới bên phải và **sửa thẳng bên phải** rồi ⌘S lưu, nút → lấy lại từng đoạn cũ, F7 / ⇧F7 nhảy đoạn.

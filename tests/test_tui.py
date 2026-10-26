@@ -1098,8 +1098,8 @@ def test_tui_usage_and_update_commands(env, project, monkeypatch):
                     break
             sys_log = (project / ".ateam/logs/system.log").read_text()
             assert "→ Tải ateam (main)" in sys_log and "Đã cập nhật lên 99.0.0" in sys_log
-            assert "mở lại" in sys_log
-            await pilot.press("ctrl+q")
+            assert "Khởi động lại ateam" in sys_log  # không agent nào chạy: tự mở lại bằng bản mới
+            assert await wait_for(pilot, lambda: not app.is_running) and app.restart_requested
 
     asyncio.run(main())
 
@@ -2049,4 +2049,46 @@ def test_tui_workflow_gate_bar(env, project, monkeypatch):
             assert not app.query_one("#grill-askcancel", Button).display
             assert "Đã duyệt" in app.orch.answer_task(g, "1")
             assert db.task(g).status == DONE
+    asyncio.run(main())
+
+
+def test_tui_update_restarts_app(env, project, monkeypatch):
+    """/update cài xong: app tự thoát với restart_requested (cli.cmd_tui execv mở lại bằng bản mới); agent đang chạy
+    thì hỏi trước — từ chối thì chỉ dặn mở lại sau."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("TEXTUAL_DRIVER", raising=False)
+    git_init(project)
+
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam import update
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import ConfirmScreen, TeamApp
+
+    async def done(on_line, force=False):
+        return True, "Đã cập nhật lên 99.0.0."
+    monkeypatch.setattr(update, "run_update", done)
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        async with app.run_test(size=(140, 40)) as pilot:
+            await pilot.pause(0.3)
+            app.orch.lead_busy.add(1)
+            app.run_command("/update")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, ConfirmScreen))
+            await pilot.press("n")
+            await pilot.pause(0.5)
+            assert not app.restart_requested and app.is_running
+            app.run_command("/update")
+            assert await wait_for(pilot, lambda: isinstance(app.screen, ConfirmScreen))
+            await pilot.press("y")
+            await pilot.pause(1.5)
+            assert app.restart_requested
+        assert app.restart_requested and not app.is_running
+
     asyncio.run(main())
