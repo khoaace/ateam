@@ -5031,4 +5031,26 @@ EN: dict[str, str] = {
         "Undo",
     "⏰ Lịch hẹn":
         "⏰ Schedules",
+    "Chọn hai agent khác nhau":
+        "Pick two different agents",
+    "Chưa chat với {agent} — /chat {agent} trước rồi mới chuyển":
+        "No chat with {agent} yet — /chat {agent} first, then hand it off",
+    "{agent} đang trả lời tin trước — đợi xong rồi chuyển":
+        "{agent} is still answering — wait for it, then hand off",
+    "↪ từ {src}: {v}":
+        "↪ from {src}: {v}",
+    "↪ review cuộc chat với {src}":
+        "↪ review the chat with {src}",
+    "↪ Chuyển cuộc chat {src} → {dst} ({n} lượt): {title}":
+        "↪ Handed the chat {src} → {dst} ({n} turns): {title}",
+    "<từ> <tới> [yêu cầu]":
+        "<from> <to> [request]",
+    "chuyển cuộc chat với 1 agent sang agent khác (trống: nhờ review việc agent kia đã làm)":
+        "hand a chat with one agent to another (empty: ask it to review what the first one did)",
+    "/handoff — agent có cuộc chat, rồi agent nhận":
+        "/handoff — the agent with the chat, then the receiving agent",
+    "Dùng: /handoff <từ> <tới> [yêu cầu]  — agent: {v}":
+        "Usage: /handoff <from> <to> [request]  — agents: {v}",
+    "Chuyển cuộc chat này cho agent khác (/handoff)":
+        "Hand this chat to another agent (/handoff)",
 }

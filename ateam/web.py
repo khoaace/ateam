@@ -78,6 +78,7 @@ def ui_strings() -> dict[str, str]:
         "dash_chart": tr("Token theo ngày (14 ngày)"), "dash_by_agent": tr("Theo agent (30 ngày)"),
         "dash_by_model": tr("Theo model (30 ngày)"), "dash_history": tr("Lịch sử mục tiêu"),
         "dash_no_goals": tr("Chưa có mục tiêu nào. Gõ mục tiêu ở ô dưới để bắt đầu."),
+        "handoff_btn": tr("Chuyển cuộc chat này cho agent khác (/handoff)"),
         "quota": tr("Hạn mức"), "quota_title": tr("Hạn mức 5 giờ / tuần"), "quota_refresh": tr("Hỏi lại hạn mức"),
         "quota_loading": tr("Đang hỏi hạn mức các CLI…"), "quota_none": tr("Chưa có CLI nào báo hạn mức (claude, codex, agy)"),
         "quota_used": tr("đã dùng {v}%"), "quota_reset_in": tr("hồi sau {v}"), "quota_reset_past": tr("đã tới giờ hồi"),
@@ -1464,7 +1465,10 @@ class WebApp:
             if act == "skip":
                 return o.answer_task(tid, None), "info"
         if op == "chat":
-            return self.chat(str(d.get("agent") or ""), str(d.get("text") or ""))
+            agent, text = str(d.get("agent") or ""), str(d.get("text") or "").strip()
+            if text.startswith("/handoff "):  # trong ô 💬 của agent: /handoff <tới> [yêu cầu]
+                return await self.command(f"/handoff {agent} {text[9:].strip()}")
+            return self.chat(agent, text)
         if op == "retry":
             return o.retry(int(d["task"])), "info"
         if op == "cancel":
@@ -1711,6 +1715,17 @@ class WebApp:
                 return tr("Dùng: /chat <agent> <tin nhắn>  — agent: {v}", v=", ".join(agents)), "warn"
             reply = self.chat(agent, msg) if msg.strip() else None
             return reply or ("", "", {"open": {"view": "team", "chat": agent}})
+        if cmd == "handoff":
+            parts = rest.split(maxsplit=2)
+            if len(parts) < 2:
+                return tr("Dùng: /handoff <từ> <tới> [yêu cầu]  — agent: {v}", v=", ".join(agents)), "warn"
+            res = o.handoff(parts[0], parts[1], parts[2] if len(parts) > 2 else "")
+            if isinstance(res, str):
+                return res, "warn"
+            self._queue({"k": "log", "task": None, "agent": parts[1], "line": tr("── cuộc trò chuyện mới ──")})
+            self._queue({"k": "log", "task": res, "agent": parts[1],
+                         "line": tr("› bạn: {text}", text=self.db.task(res).title)})
+            return "", "", {"open": {"view": "team", "chat": parts[1]}}
         if cmd == "skills":
             return "", "", {"open": {"view": "skills"}}
         if cmd == "rules":

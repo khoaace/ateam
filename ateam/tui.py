@@ -269,6 +269,8 @@ WELCOME = tr("""\
 COMMANDS = [
     ("task", tr("<agent> <nội dung>"), tr("giao tay cho 1 agent, gửi nguyên văn")),
     ("chat", tr("<agent> [tin nhắn]"), tr("chat trực tiếp với 1 agent như trong terminal (giữ phiên, ô 💬 ở tab Agents)")),
+    ("handoff", tr("<từ> <tới> [yêu cầu]"), tr("chuyển cuộc chat với 1 agent sang agent khác (trống: nhờ review "
+                                                "việc agent kia đã làm)")),
     ("focus", tr("[agent]"), tr("phóng to 1 agent cả màn hình để chat riêng (F7; gõ lại / Esc để thu)")),
     ("go", tr("[mục tiêu]"), tr("duyệt kế hoạch nháp và chạy")),
     ("drop", tr("[mục tiêu]"), tr("bỏ kế hoạch nháp (huỷ mọi task nháp của nó)")),
@@ -2617,7 +2619,8 @@ class CommandInput(TextInput):
             self._fill_continue(cont.group(1))
             return
         # tham số đầu là tên agent: /task (sau đó :model @effort), /focus, /chat (rồi tới tin nhắn), /grid (+ :shell)
-        a = re.fullmatch(r"/(task|t|focus|chat|grid) ([^\s:@]*|:\S*)", before)
+        a = (re.fullmatch(r"/(task|t|focus|chat|grid) ([^\s:@]*|:\S*)", before)
+             or re.fullmatch(r"/(handoff)(?: \S+)? ([^\s:@]*)", before))  # /handoff <từ> <tới>: cả hai là agent
         if a and self.cursor_position == len(self.value) and (a.group(1) == "grid" or not a.group(2).startswith(":")):
             self._mode, self._span = "agent", (a.start(2), self.cursor_position)
             self._fill_agents(a.group(2), a.group(1))
@@ -2710,7 +2713,8 @@ class CommandInput(TextInput):
         popup.highlighted = 0
         popup.border_title = {"focus": tr("/focus — phóng to agent để chat riêng"),
                               "chat": tr("/chat — chọn agent rồi gõ tin nhắn"),
-                              "grid": tr("/grid — mở CLI thật trong một ô lưới")}.get(cmd, tr("/task — chọn agent"))
+                              "grid": tr("/grid — mở CLI thật trong một ô lưới"),
+                              "handoff": tr("/handoff — agent có cuộc chat, rồi agent nhận")}.get(cmd, tr("/task — chọn agent"))
         popup.display = True
 
     def _fill_continue(self, query: str) -> None:
@@ -9220,6 +9224,9 @@ class TeamApp(App):
         if text == "/focus":
             self.action_focus_agent(agent)
             return
+        if text.startswith("/handoff "):  # trong ô 💬 của agent: /handoff <tới> [yêu cầu]
+            self.run_command(f"/handoff {agent} {text[9:].strip()}")
+            return
         new = text == "/new" or text.startswith("/new ")
         if new:
             text = text[4:].strip()
@@ -9269,6 +9276,23 @@ class TeamApp(App):
                 self.set_focus_agent(agent)  # tab Agents là danh sách: chat = phóng to ô của agent
             if msg.strip():
                 self.send_chat(agent, msg.strip())
+        elif cmd == "handoff":
+            parts = rest.split(maxsplit=2)
+            if len(parts) < 2:
+                self.notify(tr("Dùng: /handoff <từ> <tới> [yêu cầu]  — agent: {v}", v=", ".join(agents)),
+                            severity="warning")
+                return
+            res = o.handoff(parts[0], parts[1], parts[2] if len(parts) > 2 else "")
+            if isinstance(res, str):
+                self.notify(res, severity="warning")
+                return
+            self.query_one("#tabs", TabbedContent).active = "tab-team"
+            if self.focus_agent != parts[1]:
+                self.set_focus_agent(parts[1])
+            pane = self.pane(parts[1])
+            if pane:
+                pane.body.write(Text(tr("── cuộc trò chuyện mới ──"), "dim"))
+                pane.body.write(Text(tr("› bạn: {text}", text=o.db.task(res).title), "bold"))
         elif cmd == "skills":
             self.push_screen(SkillsScreen())
         elif cmd == "rules":

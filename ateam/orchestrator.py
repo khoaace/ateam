@@ -1150,7 +1150,31 @@ class Orchestrator:
         self.emit("changed")
         return tid
 
-    def chat(self, agent: str, text: str, new: bool = False) -> int | str:
+    def handoff(self, src: str, dst: str, request: str = "") -> int | str:
+        """/handoff: kể lại cuộc chat với `src` cho `dst` (cuộc chat mới với dst) kèm yêu cầu — trống = nhờ dst review
+        việc src đã làm. Trả id lượt chat mới của dst, hoặc chuỗi lỗi."""
+        agents = self.cfg.active_agents()
+        for a in (src, dst):
+            if a not in agents:
+                return tr("Không có agent '{agent}' — agent: {v}", agent=a, v=", ".join(agents))
+        if src == dst:
+            return tr("Chọn hai agent khác nhau")
+        last = self.chat_last(src)
+        if not last:
+            return tr("Chưa chat với {agent} — /chat {agent} trước rồi mới chuyển", agent=src)
+        if last.status in (QUEUED, RUNNING):
+            return tr("{agent} đang trả lời tin trước — đợi xong rồi chuyển", agent=src)
+        turns = self.thread_of(last, limit=20) + [(last.prompt, last.result or last.error or "")]
+        prompt = P.handoff_prompt(src, turns, request, str(self.root))
+        title = (tr("↪ từ {src}: {v}", src=src, v=request.strip()) if request.strip()
+                 else tr("↪ review cuộc chat với {src}", src=src))
+        tid = self.chat(dst, prompt, new=True, title=title)
+        if isinstance(tid, int):
+            self.log(tr("↪ Chuyển cuộc chat {src} → {dst} ({n} lượt): {title}", src=src, dst=dst, n=len(turns),
+                        title=title))
+        return tid
+
+    def chat(self, agent: str, text: str, new: bool = False, title: str = "") -> int | str:
         """Nhắn thẳng cho một agent như dùng CLI của nó trong terminal: mỗi tin là một lượt chạy tiếp đúng phiên CLI
         của lượt chat trước (--resume), ở thư mục gốc, không verify/worktree/giao việc chéo. Trả id task của lượt,
         hoặc chuỗi lỗi."""
@@ -1166,7 +1190,7 @@ class Orchestrator:
         if new or agent in self._chat_new:  # /new: cuộc trò chuyện mới, phiên CLI mới
             self._chat_new.discard(agent)
             last = None
-        title = text.splitlines()[0][:60] + ("…" if len(text) > 60 else "")
+        title = title[:80] or text.splitlines()[0][:60] + ("…" if len(text) > 60 else "")
         tid = self.db.add_task(agent, title, text, status=QUEUED, source=CHAT,
                                parent_id=last.id if last else None)
         if last and last.session and last.session_agent == agent:  # tiếp tục phiên: chỉ gửi tin mới
