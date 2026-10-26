@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.55.0 — 26/10/2026
 
 - **Breadcrumb ở tab Code (web)** — đường dẫn `src › services › paths.ts › tên hàm` trên editor như VS Code: bấm một
   đoạn xổ ra file / thư mục cùng cấp (thư mục mở rộng tại chỗ bằng chuột hoặc **→**/**←**, bấm file để mở), bấm đoạn
