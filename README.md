@@ -27,8 +27,9 @@ ateam doctor
 Hoặc tải file `.zip` từ trang docs, rồi chạy `./install.sh` trong thư mục giải nén.
 
 **Cập nhật**: gõ `/update` trong app (hoặc `ateam update`) — ateam so phiên bản với trang docs, có bản mới
-thì chạy lại lệnh cài ở trên; xong thoát rồi mở lại app. Bản cài từ mã nguồn (`pip install -e`) thì cập
-nhật bằng `git pull`.
+thì chạy lại lệnh cài ở trên; xong app (hoặc server `ateam web` — trang trên trình duyệt tự tải lại) **tự khởi
+động lại** bằng bản mới. Đang có agent chạy thì ateam hỏi trước khi dừng chúng. Bản cài từ mã nguồn
+(`pip install -e`) thì cập nhật bằng `git pull`.
 
 ## Cài đặt từ mã nguồn (macOS)
 

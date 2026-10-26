@@ -149,7 +149,9 @@ def ui_strings() -> dict[str, str]:
         "cu_make_default": tr("★ Đặt mặc định"), "cu_unset_default": tr("☆ Bỏ mặc định"),
         "placeholder_grill": tr("Trả lời câu hỏi của trưởng nhóm (Enter) · gõ số để chọn phương án"),
         "send_hint": tr("Enter gửi · Shift+Enter xuống dòng · ⌘V / kéo-thả để dán ảnh"),
-        "update_now": tr("Cập nhật"), "retry": tr("Chạy lại"), "cancel": tr("Huỷ task"), "delete_task": tr("Xoá"),
+        "update_now": tr("Cập nhật"), "upd_restarting": tr("↻ Đã cập nhật — đang khởi động lại server…"),
+        "upd_busy": tr("Đã cập nhật ateam. {n} lượt agent đang chạy — khởi động lại sẽ dừng chúng (task dở thành lỗi, /retry sau)."),
+        "upd_restart": tr("↻ Khởi động lại"), "retry": tr("Chạy lại"), "cancel": tr("Huỷ task"), "delete_task": tr("Xoá"),
         "delete_task_q": tr("Xoá task #{id}?"),
         "delete_task_text": tr("Xoá hẳn task khỏi bảng việc cùng file log và nhánh git của nó — không hoàn tác được."), "diff": tr("Xem diff"), "merge": tr("Merge"),
         "reject": tr("Từ chối"), "reject_ph": tr("Góp ý (để trống = chỉ từ chối, có góp ý = giao làm lại)"),
@@ -840,6 +842,42 @@ class WebApp:
         return tr("↻ Đang chạy lại server…"), "info", {"restarting": True,
                                                        "token": load_token(self.root / ".ateam")}
 
+    def busy_count(self) -> int:
+        return len(self.orch.runs) + len(self.orch.lead_busy)
+
+    async def _self_update(self) -> None:
+        """/update, nút Cập nhật trên thông báo: cài xong thì chạy lại server bằng bản mới (cùng cổng) — trình duyệt
+        nối lại thấy phiên bản khác thì tự tải lại trang. Agent đang chạy thì hỏi trước (tin "updated" kèm busy)."""
+        try:
+            ok, msg = await update.run_update(lambda line: self.orch.log("  " + line))
+        except Exception as e:
+            self.orch.log(tr("Lỗi: {e}", e=e))
+            return
+        if not ok:
+            self.orch.log("ℹ " + msg)
+            return
+        self.latest = None
+        self.orch.log("✓ " + msg)
+        if self.remote.tunnel and not self.remote.public_url:  # tunnel nhanh: chạy lại là đổi URL, điện thoại mất kết nối
+            msg = tr("Cloudflare Tunnel nhanh đổi URL mỗi lần chạy nên server không tự chạy lại — dừng (Ctrl+C) rồi "
+                     "chạy lại `ateam web` để dùng bản mới.")
+            self.orch.log("ℹ " + msg)
+            self.broadcast({"t": "updated", "manual": True, "text": msg})
+            return
+        self.restart_for_update()
+
+    def restart_for_update(self, force: bool = False) -> tuple:
+        busy = self.busy_count()
+        if busy and not force:
+            self.broadcast({"t": "updated", "busy": busy})
+            return "", "", {"busy": busy}
+        self.orch.log(tr("↻ Khởi động lại server để dùng bản mới…"))
+        self.next_root = self.root
+        self.next_args = []
+        self.broadcast({"t": "updated", "restarting": True})
+        asyncio.get_running_loop().call_later(0.5, self.stop_server)  # gửi tin cho trình duyệt xong mới dừng
+        return tr("↻ Đang khởi động lại server…"), "info", {"restarting": True}
+
     @staticmethod
     async def _listening(port: int) -> bool:
         try:
@@ -1396,6 +1434,8 @@ class WebApp:
             return await self.open_window(d)
         if op == "remote_restart":
             return self.remote_restart(d)
+        if op == "update_restart":  # đã cập nhật nhưng agent đang chạy: người dùng bấm "Khởi động lại"
+            return self.restart_for_update(force=True)
         if op == "approve":
             n = o.approve(d.get("goal"))
             return (tr("▶ Đã duyệt {n} task", n=n), "ok") if n else (tr("Không có task nháp nào cần duyệt"), "warn")
@@ -1780,8 +1820,7 @@ class WebApp:
                                     + reports.usage_quota_text(cfg, res))
         if cmd == "update":
             o.log(tr("Đang kiểm tra bản mới…"))
-            self._spawn(self._bg_log(update.run_update(lambda line: o.log("  " + line)),
-                                     lambda res: ("✓ " if res[0] else "ℹ ") + res[1]))
+            self._spawn(self._self_update())
             return tr("Đang kiểm tra bản mới…"), "info", {"open": {"task_link": SYSTEM}}  # nút "Xem" trên toast, không tự mở ngăn log
         if cmd == "setup":
             return "", "", {"open": {"modal": "setup"}}

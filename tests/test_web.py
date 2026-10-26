@@ -1170,3 +1170,46 @@ def test_codemirror_bundle_has_merge_view():
     used = set(__import__("re").findall(r"\bCM\.(\w+)", (Path(STATIC) / "code.js").read_text(encoding="utf-8")))
     entry = (Path(__file__).parent.parent / "scripts" / "editor" / "entry.js").read_text(encoding="utf-8")
     assert all(n in entry for n in used), sorted(n for n in used if n not in entry)
+
+
+def test_web_update_restarts_server(env, project, monkeypatch):
+    """/update (hay nút Cập nhật trên thông báo) cài xong: chạy lại server cùng dự án bằng bản mới, báo mọi tab tải lại;
+    agent đang chạy thì chỉ hỏi (nút Khởi động lại = op update_restart)."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    from ateam import update
+    wa = _web_app(env, project, monkeypatch)
+    sent, stops = [], []
+    monkeypatch.setattr(wa, "broadcast", sent.append)
+    monkeypatch.setattr(wa, "stop_server", lambda: stops.append(1))
+
+    async def done(on_line, force=False):
+        return True, "Đã cập nhật lên 99.0.0."
+    monkeypatch.setattr(update, "run_update", done)
+
+    async def main():
+        wa.orch.lead_busy.add(1)  # trưởng nhóm đang lập kế hoạch
+        await wa.command("/update")
+        await asyncio.sleep(0.1)
+        assert sent[-1] == {"t": "updated", "busy": 1} and wa.next_root is None
+        r = await wa.handle({"op": "update_restart"})
+        assert r[2] == {"restarting": True}
+        await asyncio.sleep(0.7)
+        assert stops == [1] and wa.next_root == wa.root and wa.next_args == []
+        assert sent[-1] == {"t": "updated", "restarting": True}
+        wa.orch.lead_busy.clear()
+        wa.next_root, sent[:], stops[:] = None, [], []
+        await wa.command("/update")  # không ai chạy: chạy lại luôn
+        await asyncio.sleep(0.7)
+        assert stops == [1] and wa.next_root == wa.root and sent[-1]["restarting"]
+
+        async def fail(on_line, force=False):
+            return False, "Đang dùng bản mới nhất."
+        monkeypatch.setattr(update, "run_update", fail)
+        wa.next_root, sent[:], stops[:] = None, [], []
+        await wa.command("/update")
+        await asyncio.sleep(0.7)
+        assert not stops and not sent and wa.next_root is None
+
+    asyncio.run(main())
+    assert {"upd_restarting", "upd_busy", "upd_restart"} <= set(wa.hello()["T"])

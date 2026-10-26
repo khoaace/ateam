@@ -71,6 +71,7 @@ function connect() {
     else if (m.t === "toast") onToast(m);
     else if (m.t === "notice") onNotice(m);
     else if (m.t === "update") { Object.assign(S.meta, m); showUpdate(); }
+    else if (m.t === "updated") onUpdated(m);
     else if (m.t === "prefs") applyPrefs(m);
     else if (m.t === "quota" && window.QuotaView) QuotaView.onState(m);
     else if (m.t === "discovered" && window.Setup) Setup.discovered();
@@ -101,7 +102,7 @@ async function busyBtn(btn, promise) {
 function setConn(ok) {
   S.connected = ok;
   $("#conn").classList.toggle("ok", ok);
-  $("#conn-text").textContent = ok ? t("connected") : t(S.restartToken ? "phone_restarting" : S.switching ? "proj_switching" : "disconnected");
+  $("#conn-text").textContent = ok ? t("connected") : t(S.restartToken ? "phone_restarting" : S.updating ? "upd_restarting" : S.switching ? "proj_switching" : "disconnected");
 }
 /* bản mới (server kiểm tra lúc mở + mỗi 6 giờ): ⬆ ở chân thanh bên + toast một lần mỗi phiên bản; chỉ báo,
    cập nhật vẫn bằng /update (bản cài từ mã nguồn: git pull, không có nút) */
@@ -120,9 +121,18 @@ function showUpdate() {
   S.updShown = m.latest;
   toast(m.update_text, "info", can ? { label: t("update_now"), run: () => send("submit", { text: "/update" }) } : null);
 }
+/* /update xong: server tự chạy lại bằng bản mới (onHello thấy phiên bản khác -> tải lại trang); agent đang chạy thì
+   hỏi trước khi dừng chúng; tunnel nhanh (URL đổi khi chạy lại) thì chỉ báo */
+function onUpdated(m) {
+  if (m.restarting) { S.updating = true; toast(t("upd_restarting"), "info"); return; }
+  if (m.manual) { toast(m.text, "info"); return; }
+  if (m.busy && !S.meta.readonly) toast(t("upd_busy", { n: m.busy }), "warn", { label: t("upd_restart"), run: () => request("update_restart", {}) });
+}
 function onHello(m) {
   // /open: server đã chạy lại ở dự án khác -> nạp lại trang (mọi view, buffer đều thuộc dự án cũ)
   if (S.meta.root && m.root !== S.meta.root) { S.switching = true; location.reload(); return; }
+  // /update: server đã chạy lại bằng bản mới -> nạp lại trang để lấy JS/CSS mới
+  if (S.meta.version && (m.version !== S.meta.version || S.updating)) { S.updating = true; location.reload(); return; }
   const first = !S.meta.version;
   S.T = m.T; S.commands = m.commands; S.meta = m;
   S.agentNames = m.agents.map((a) => a.name);
