@@ -54,6 +54,10 @@ Bản tổng quan dự án (`/init`, `ateam/overview.py`) ở `<dự án>/.ateam
 dòng đầu `<!-- ateam:init commit=<sha> date=<YYYY-MM-DD> -->`, còn lại là markdown — sửa tay được, `/init` lần sau
 giữ phần người dùng sửa. Xoá file = thôi gửi kèm prompt.
 
+Lịch `/schedule` nằm trong bảng `schedules` của `.ateam/team.db` (chỉ chạy khi một phiên ateam đang mở). Điểm khôi
+phục `/undo` là ref git `refs/ateam/checkpoints/m<id>` (commit) + `…/m<id>-tree` (ảnh chụp thư mục làm việc) và
+`refs/ateam/checkpoints/redo`; nhánh lúc chụp ghi ở `.ateam/checkpoints.json`. Xoá: `git update-ref -d <ref>`.
+
 `XDG_CONFIG_HOME` đổi được vị trí thư mục `~/.config`.
 `ATEAM_NO_UPDATE_CHECK=1` tắt việc hỏi trang docs có bản ateam mới mỗi lần mở TUI / `ateam web` (web hỏi lại mỗi 6
 giờ); test đặt sẵn trong `tests/conftest.py`.

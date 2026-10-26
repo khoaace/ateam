@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.57.0 — 26/10/2026
+
+- **⏰ Hẹn giờ chạy mục tiêu** — `/schedule 22:30 <mục tiêu>`, `+45m`, `daily 08:00` (hằng ngày) hoặc `quota claude`
+  (chạy khi claude còn / hồi hạn mức 5 giờ); thêm `/flow <tên>` sau giờ hẹn để chạy workflow. Kế hoạch của mục tiêu
+  do lịch tạo tự duyệt để chạy được khi bạn vắng mặt. `/schedule` xem lịch, `/schedule rm <số>` huỷ; cũng có
+  `ateam schedule`. Lịch chỉ chạy khi ateam đang mở (TUI, `ateam web`, `ateam run`).
+- **↩ Điểm khôi phục và `/undo`** — trước khi mục tiêu chạy, ateam chụp lại dự án (kể cả file chưa commit) vào ref git
+  riêng, không tạo commit. `/undo m12` đưa nhánh và thư mục về đúng lúc trước mục tiêu #12 sau khi hỏi lại kèm danh
+  sách file sẽ đổi; `/undo redo` lấy lại. Không cho hoàn tác khi agent đang chạy; file bị `.gitignore` không đụng tới.
+- **↪ `/handoff <từ> <tới> [yêu cầu]`** — chuyển cuộc chat với một agent sang agent khác (vd nhờ codex review lại việc
+  claude vừa làm): agent mới nhận các lượt gần nhất kèm yêu cầu, mở cuộc chat mới. Web: nút ↪ trong popup chat.
+- **Command palette toàn app** — F8 (TUI) / ⌘K, ⌘⇧P (web) ở mọi tab có cả lệnh `/…` của app: lệnh không cần tham số
+  chạy ngay, lệnh cần tham số điền sẵn vào ô nhập.
+- **F12 / Shift+F12 qua language server** ở tab Code (web + TUI) — đi tới định nghĩa và tìm chỗ dùng chính xác bằng
+  pyright / basedpyright / pylsp, typescript-language-server, gopls, rust-analyzer, clangd nếu máy hoặc dự án có
+  (ưu tiên bản trong `node_modules/.bin`, `.venv`); không có thì tìm theo tên như trước.
+- **Git blame dòng hiện tại** — palette → *Git blame*: ai sửa dòng đang đứng, commit nào, bao lâu trước (cả khi đang
+  sửa chưa lưu). Web: bật *blame ở thanh trạng thái* để luôn thấy blame dòng con trỏ.
+
 ## 0.56.1 — 26/10/2026
 
 - **Hạn mức dạng vòng tròn khi thu gọn thanh bên (web)** — thay ô vuông màu bằng vòng tròn đồng tâm (ngoài 5h, trong

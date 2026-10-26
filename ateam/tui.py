@@ -132,9 +132,14 @@ Giao việc:
   /continue <m12|t40> <yêu cầu>     tiếp tục mục tiêu (m) hoặc thread /task (t) đã xong: trưởng nhóm
                                     lập task bổ sung dựa trên việc đã làm / agent nhận kèm các lượt trước.
                                     F6 (Ctrl+O) với task đang chọn, hoặc bấm "↪ Tiếp tục" ở khung mục tiêu
+  /undo [m<mục tiêu>|redo]          đưa dự án về đúng lúc trước khi mục tiêu chạy (ateam tự chụp lại trước mỗi
+                                    mục tiêu, kể cả file chưa commit); hỏi lại kèm danh sách file trước khi làm.
+                                    /undo redo: lấy lại trạng thái trước lần hoàn tác
   /note <nội dung>                  ghi chú chung cho cả đội
   /chat <agent> [tin]               chat trực tiếp với 1 agent, giữ phiên CLI (ô 💬 ở tab Agents; /new: cuộc
                                     mới · /term: mở CLI thật của agent tiếp tục phiên đó)
+  /handoff <từ> <tới> [yêu cầu]     chuyển cuộc chat với một agent sang agent khác (vd /handoff claude codex
+                                    review lại): agent mới nhận tóm tắt các lượt + yêu cầu (nút ↪ ở popup chat web)
   F7   /focus [agent]               phóng to 1 agent (chat riêng, cả màn hình); F7 / Esc thu lại
 
 Lệnh, file, ảnh trong ô nhập:
@@ -157,6 +162,9 @@ Hạn mức:
   /usage                            thống kê lượt chạy, thời gian, token ước tính theo agent, rồi hỏi
                                     hạn mức thật từ từng CLI (claude/agy: /usage, opencode stats, codex)
   /update                           kiểm tra và cập nhật ateam lên bản mới nhất (tự mở lại app)
+  /schedule <khi> <mục tiêu>        hẹn giờ chạy mục tiêu: 22:30 · +45m · daily 08:00 · quota claude (chạy khi
+                                    claude còn / hồi hạn mức); /flow <tên> sau giờ hẹn = chạy workflow.
+                                    /schedule: xem lịch · /schedule rm <số>: huỷ (chỉ chạy khi ateam đang mở)
   /cooldown <agent> <phút>          cho agent tạm nghỉ (vd khi bạn biết nó sắp hết hạn mức)
   /cooldown <agent> off             cho agent làm việc lại ngay
 
@@ -232,6 +240,9 @@ Xem & sửa code (tab 📝 Code — Ctrl+T xoay tới, hoặc /code):
                                     F8 = lệnh, F9 = symbol (web: ⌘⇧P, ⌘⇧O). Lệnh: lưu tất cả, file mới,
                                     đổi tên, xoá vào Thùng rác, xuống dòng mềm, xem diff git, mở VS Code,
                                     hỏi / giao task cho agent về file hoặc đoạn đang chọn
+  F12   Shift+F12                   đi tới định nghĩa / tìm chỗ dùng — qua language server nếu máy có (pyright,
+                                    typescript-language-server, gopls, rust-analyzer, clangd), không thì tìm theo
+                                    tên. F8 → Git blame: ai sửa dòng đang đứng, commit nào, bao lâu trước
   /code [@file[:dòng]]              mở file trong editor (trống: mở tab, gõ để lọc file bên trái);
                                     /edit @file cũng được
                                     phím e ở tab Git (file đang chọn) / màn hình diff (đúng đoạn đang xem)

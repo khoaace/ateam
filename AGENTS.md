@@ -16,7 +16,8 @@ một đội trên cùng một repo của người dùng:
   khối `<<<DELEGATE …>>>` trong output.
 - Tự chạy lệnh kiểm tra sau task (fail thì giao sửa), worktree + duyệt diff trước khi merge,
   phát hiện hết hạn mức và chuyển sang agent dự phòng.
-- Chat 💬 trực tiếp với từng agent (tab 🤖 Agents, `/chat`): mỗi tin một lượt `--resume` đúng phiên CLI; ⌨ / `/term` mở CLI thật.
+- Chat 💬 trực tiếp với từng agent (tab 🤖 Agents, `/chat`): mỗi tin một lượt `--resume` đúng phiên CLI; ⌨ / `/term` mở CLI thật; `/handoff` chuyển cuộc chat sang agent khác.
+- ⏰ `/schedule` hẹn giờ / chạy khi hồi hạn mức; ↩ `/undo` đưa dự án về trước một mục tiêu.
 - Tab 🌿 Git quản lý git của dự án (stage, commit — AI viết message (trưởng nhóm hoặc agent chọn), nhánh, pull/push, stash, lịch sử).
 
 Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị cho người dùng viết bằng tiếng Việt.**
@@ -52,6 +53,8 @@ Người dùng là developer Việt Nam, dùng macOS. **Mọi chữ hiển thị
 | `ateam/limits.py` | Nhận diện thông báo hết hạn mức, đoán giờ hồi, lưu cooldown |
 | `ateam/quota.py` | Hạn mức 5h/tuần dạng số cho web + TUI (thanh bên, đầu tab Thống kê — `TeamApp.refresh_quota`): bóc `claude -p /usage`, `agy -p /usage`, `rate_limits` trong file phiên codex; `WebApp._quota_loop` hỏi lại mỗi 60 giây, đẩy tin `quota` qua WebSocket |
 | `ateam/usage_logs.py` | Token & cost thật của một lượt: đọc file phiên Claude Code / Codex, bảng giá (`[prices]`) — dashboard, `/usage` |
+| `ateam/schedule.py`, `ateam/checkpoint.py` | `/schedule` (`ateam schedule`): bóc giờ hẹn (`22:30`, `+45m`, `daily 08:00`, `quota claude`), bảng `schedules`, `Orchestrator.check_schedules` gọi trong `tick`; ↩ checkpoint trước mỗi mục tiêu (ref `refs/ateam/checkpoints/m<id>` + tree, kể cả file chưa commit) và `/undo` (`Orchestrator.undo`, bản `redo`) |
+| `ateam/lsp.py` | F12 / Shift+F12 ở tab Code: client LSP (JSON-RPC qua stdio) cho pyright, typescript-language-server, gopls, rust-analyzer, clangd nếu có; `Hub` dùng chung TUI + web; không có server thì tìm theo tên. Git blame dòng: `gitops.blame_line` |
 | `ateam/notify.py` | Thông báo kế hoạch/diff chờ duyệt, task lỗi: `Watcher` so trạng thái, `desktop()` (osascript/notify-send), `/notify` |
 | `tests/` | pytest; `tests/fakebin/` là các CLI giả lập `claude`, `codex`, `agy`, `grok` (Grok Build), `opencode`, `mycli` (agent tuỳ chỉnh), `code` (VS Code, cho phím `o` ở màn hình diff), `ruff` (format ở tab Code) |
 | `site/`, `scripts/build_site.py`, `wrangler.jsonc` | Trang docs (`index.html` tiếng Việt, `en/index.html` tiếng Anh, CSS/JS chung ở `assets/`) + gói zip, deploy Cloudflare Workers; `scripts/site_shots.py` chụp ảnh app cho `site/shots/` (`--lang en` → `shots/en/`) |
