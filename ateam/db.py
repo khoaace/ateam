@@ -72,6 +72,19 @@ CREATE TABLE IF NOT EXISTS runs (
     cost REAL,
     tok_src TEXT
 );
+CREATE TABLE IF NOT EXISTS schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    flow TEXT,
+    kind TEXT NOT NULL,
+    at REAL,
+    daily TEXT,
+    agent TEXT,
+    status TEXT NOT NULL DEFAULT 'waiting',
+    goal_id INTEGER,
+    created REAL,
+    fired REAL
+);
 CREATE TABLE IF NOT EXISTS notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     author TEXT,
@@ -328,6 +341,32 @@ class DB:
         """Xoá hẳn task / mục tiêu (dọn bảng việc). Bảng runs giữ nguyên để /usage vẫn đủ số liệu."""
         self.conn.executemany("DELETE FROM tasks WHERE id=?", [(i,) for i in task_ids])
         self.conn.executemany("DELETE FROM goals WHERE id=?", [(i,) for i in goal_ids])
+
+    # ---------- lịch chạy (schedule.py) ----------
+    def add_schedule(self, text: str, kind: str, *, at: float | None = None, daily: str | None = None,
+                     agent: str | None = None, flow: str | None = None) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO schedules(text, flow, kind, at, daily, agent, status, created) VALUES (?,?,?,?,?,?,?,?)",
+            (text, flow or None, kind, at, daily, agent, "waiting", time.time()))
+        return int(cur.lastrowid)
+
+    def schedules(self, status: str | None = None) -> list[dict]:
+        q = "SELECT * FROM schedules" + (" WHERE status=?" if status else "") + " ORDER BY id"
+        return [dict(r) for r in self.conn.execute(q, (status,) if status else ())]
+
+    def update_schedule(self, sid: int, **fields) -> None:
+        if fields:
+            keys = ", ".join(f"{k}=?" for k in fields)
+            self.conn.execute(f"UPDATE schedules SET {keys} WHERE id=?", (*fields.values(), sid))
+
+    def claim_schedule(self, sid: int, at: float | None, next_at: float | None) -> bool:
+        """Chiếm một lượt hẹn nguyên tử (chỉ một tiến trình — TUI, web, `ateam run` — chạy nó): lịch lặp lại dời `at`
+        sang lượt sau, lịch một lần thành 'done'. So khớp `at` cũ để tiến trình chậm chân không chạy trùng."""
+        cur = self.conn.execute(
+            "UPDATE schedules SET fired=?, at=?, status=? WHERE id=? AND status='waiting' AND at IS ?",
+            (time.time(), next_at if next_at is not None else at, "waiting" if next_at is not None else "done",
+             sid, at))
+        return cur.rowcount == 1
 
     # ---------- notes ----------
     def add_note(self, author: str, text: str) -> None:

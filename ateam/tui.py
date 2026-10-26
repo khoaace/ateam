@@ -32,7 +32,7 @@ from textual.widgets import (Button, Checkbox, DataTable, Input, OptionList,
 from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
-from . import (clipboard, diffview, editor, gitops, mentions, notify, palette, projects, quota, reports, rules, skills,
+from . import (clipboard, diffview, editor, gitops, lsp, mentions, notify, palette, projects, quota, reports, rules, skills,
                search, shell, theme, todos, update, wizard)
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
 from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TASK_KINDS, TIERS,
@@ -132,9 +132,14 @@ Giao việc:
   /continue <m12|t40> <yêu cầu>     tiếp tục mục tiêu (m) hoặc thread /task (t) đã xong: trưởng nhóm
                                     lập task bổ sung dựa trên việc đã làm / agent nhận kèm các lượt trước.
                                     F6 (Ctrl+O) với task đang chọn, hoặc bấm "↪ Tiếp tục" ở khung mục tiêu
+  /undo [m<mục tiêu>|redo]          đưa dự án về đúng lúc trước khi mục tiêu chạy (ateam tự chụp lại trước mỗi
+                                    mục tiêu, kể cả file chưa commit); hỏi lại kèm danh sách file trước khi làm.
+                                    /undo redo: lấy lại trạng thái trước lần hoàn tác
   /note <nội dung>                  ghi chú chung cho cả đội
   /chat <agent> [tin]               chat trực tiếp với 1 agent, giữ phiên CLI (ô 💬 ở tab Agents; /new: cuộc
                                     mới · /term: mở CLI thật của agent tiếp tục phiên đó)
+  /handoff <từ> <tới> [yêu cầu]     chuyển cuộc chat với một agent sang agent khác (vd /handoff claude codex
+                                    review lại): agent mới nhận tóm tắt các lượt + yêu cầu (nút ↪ ở popup chat web)
   F7   /focus [agent]               phóng to 1 agent (chat riêng, cả màn hình); F7 / Esc thu lại
 
 Lệnh, file, ảnh trong ô nhập:
@@ -157,6 +162,9 @@ Hạn mức:
   /usage                            thống kê lượt chạy, thời gian, token ước tính theo agent, rồi hỏi
                                     hạn mức thật từ từng CLI (claude/agy: /usage, opencode stats, codex)
   /update                           kiểm tra và cập nhật ateam lên bản mới nhất (tự mở lại app)
+  /schedule <khi> <mục tiêu>        hẹn giờ chạy mục tiêu: 22:30 · +45m · daily 08:00 · quota claude (chạy khi
+                                    claude còn / hồi hạn mức); /flow <tên> sau giờ hẹn = chạy workflow.
+                                    /schedule: xem lịch · /schedule rm <số>: huỷ (chỉ chạy khi ateam đang mở)
   /cooldown <agent> <phút>          cho agent tạm nghỉ (vd khi bạn biết nó sắp hết hạn mức)
   /cooldown <agent> off             cho agent làm việc lại ngay
 
@@ -232,6 +240,9 @@ Xem & sửa code (tab 📝 Code — Ctrl+T xoay tới, hoặc /code):
                                     F8 = lệnh, F9 = symbol (web: ⌘⇧P, ⌘⇧O). Lệnh: lưu tất cả, file mới,
                                     đổi tên, xoá vào Thùng rác, xuống dòng mềm, xem diff git, mở VS Code,
                                     hỏi / giao task cho agent về file hoặc đoạn đang chọn
+  F12   Shift+F12                   đi tới định nghĩa / tìm chỗ dùng — qua language server nếu máy có (pyright,
+                                    typescript-language-server, gopls, rust-analyzer, clangd), không thì tìm theo
+                                    tên. F8 → Git blame: ai sửa dòng đang đứng, commit nào, bao lâu trước
   /code [@file[:dòng]]              mở file trong editor (trống: mở tab, gõ để lọc file bên trái);
                                     /edit @file cũng được
                                     phím e ở tab Git (file đang chọn) / màn hình diff (đúng đoạn đang xem)
@@ -269,6 +280,8 @@ WELCOME = tr("""\
 COMMANDS = [
     ("task", tr("<agent> <nội dung>"), tr("giao tay cho 1 agent, gửi nguyên văn")),
     ("chat", tr("<agent> [tin nhắn]"), tr("chat trực tiếp với 1 agent như trong terminal (giữ phiên, ô 💬 ở tab Agents)")),
+    ("handoff", tr("<từ> <tới> [yêu cầu]"), tr("chuyển cuộc chat với 1 agent sang agent khác (trống: nhờ review "
+                                                "việc agent kia đã làm)")),
     ("focus", tr("[agent]"), tr("phóng to 1 agent cả màn hình để chat riêng (F7; gõ lại / Esc để thu)")),
     ("go", tr("[mục tiêu]"), tr("duyệt kế hoạch nháp và chạy")),
     ("drop", tr("[mục tiêu]"), tr("bỏ kế hoạch nháp (huỷ mọi task nháp của nó)")),
@@ -309,6 +322,9 @@ COMMANDS = [
     ("tags", "", tr("quản lý tag dùng chung cho To-do và Ghi chú")),
     ("grid", tr("[agent]"), tr("mở tab 🔲 Lưới: mỗi ô là CLI thật của một agent; kèm agent thì thêm ô")),
     ("continue", tr("<m12|t40> <yêu cầu>"), tr("tiếp tục mục tiêu / thread đã xong (F6)")),
+    ("undo", tr("[m<mục tiêu>|redo]"), tr("↩ đưa dự án về lúc trước mục tiêu (hỏi lại trước); redo: lấy lại")),
+    ("schedule", tr("[khi] [mục tiêu]"), tr("⏰ hẹn giờ chạy mục tiêu: 22:30 · +45m · daily 08:00 · quota claude; "
+                                             "trống: xem lịch · rm <số>: huỷ")),
     ("note", tr("<nội dung>"), tr("ghi chú chung cho cả đội")),
     ("diff", "<task>", tr("xem thay đổi của task")),
     ("merge", "<task>", tr("duyệt và merge task đang chờ")),
@@ -339,7 +355,7 @@ COMMANDS = [
     ("help", "", tr("toàn bộ lệnh & phím tắt")),
     ("quit", "", tr("thoát")),
 ]
-COMMAND_ALIASES = {"tim": "search", "find": "search", "grep": "search", "vaitro": "roles", "role": "roles", "grill-me": "grill", "hoi": "grill", "h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
+COMMAND_ALIASES = {"hen": "schedule", "lich": "schedule", "at": "schedule", "tim": "search", "find": "search", "grep": "search", "vaitro": "roles", "role": "roles", "grill-me": "grill", "hoi": "grill", "h": "help", "?": "help", "t": "task", "tiep": "continue", "c": "continue", "flows": "flow", "workflow": "custom",
                    "workflows": "custom", "agent-moi": "team", "exit": "quit", "q": "quit"}
 
 
@@ -2614,7 +2630,8 @@ class CommandInput(TextInput):
             self._fill_continue(cont.group(1))
             return
         # tham số đầu là tên agent: /task (sau đó :model @effort), /focus, /chat (rồi tới tin nhắn), /grid (+ :shell)
-        a = re.fullmatch(r"/(task|t|focus|chat|grid) ([^\s:@]*|:\S*)", before)
+        a = (re.fullmatch(r"/(task|t|focus|chat|grid) ([^\s:@]*|:\S*)", before)
+             or re.fullmatch(r"/(handoff)(?: \S+)? ([^\s:@]*)", before))  # /handoff <từ> <tới>: cả hai là agent
         if a and self.cursor_position == len(self.value) and (a.group(1) == "grid" or not a.group(2).startswith(":")):
             self._mode, self._span = "agent", (a.start(2), self.cursor_position)
             self._fill_agents(a.group(2), a.group(1))
@@ -2707,7 +2724,8 @@ class CommandInput(TextInput):
         popup.highlighted = 0
         popup.border_title = {"focus": tr("/focus — phóng to agent để chat riêng"),
                               "chat": tr("/chat — chọn agent rồi gõ tin nhắn"),
-                              "grid": tr("/grid — mở CLI thật trong một ô lưới")}.get(cmd, tr("/task — chọn agent"))
+                              "grid": tr("/grid — mở CLI thật trong một ô lưới"),
+                              "handoff": tr("/handoff — agent có cuộc chat, rồi agent nhận")}.get(cmd, tr("/task — chọn agent"))
         popup.display = True
 
     def _fill_continue(self, query: str) -> None:
@@ -5410,6 +5428,8 @@ class TeamApp(App):
         Binding("ctrl+e", "code_ai_edit", tr("✨ Sửa bằng AI"), show=False, priority=True),  # Ctrl+I = Tab trong terminal
         Binding("f8,ctrl+shift+p", "palette('>')", tr("Lệnh"), show=False, priority=True),
         Binding("f9,ctrl+shift+o", "palette('@')", tr("Symbol"), show=False, priority=True),
+        Binding("f12", "code_cmd('goto_definition')", tr("Đi tới định nghĩa"), show=False, priority=True),
+        Binding("shift+f12", "code_cmd('find_references')", tr("Tìm chỗ dùng"), show=False, priority=True),
         Binding("f10", "grid_arrange", tr("Sắp xếp lưới"), show=False, priority=True),
         Binding("ctrl+b", "toggle_sidebar", tr("Thanh bên"), show=False, priority=True),
         *[Binding(f"alt+{i + 1}", f"goto_tab({i})", show=False, priority=True) for i in range(9)],
@@ -5430,6 +5450,8 @@ class TeamApp(App):
         # khung hình — trên terminal là giật, lag
         self.animation_level = "none"
         self.orch = Orchestrator(root, cfg, db, on_event=self.on_orch_event)
+        self.lsp = lsp.Hub(root)  # F12 / Shift+F12 ở tab Code: language server nếu máy có (lsp.py)
+        self._ws_cache: dict = {}  # palette.workspace_symbols: {rel: (mtime, [symbol])}
         self.view_task = SYSTEM
         self.log_styler = LogStyler()  # trạng thái tô màu của log đang xem (#log)
         self.shell = shell.ShellManager(root, on_event=self.on_shell_event)  # lệnh terminal (!lệnh)
@@ -6127,7 +6149,7 @@ class TeamApp(App):
                 return False  # Ctrl+R, Ctrl+T, Ctrl+O… trong CLI: nhường cho CLI
         if action == "palette" and isinstance(self.screen, ModalScreen):
             return False  # đang mở popup khác (kể cả chính palette): để phím cho popup đó
-        if action in ("code_close_file", "code_ai_edit"):  # chỉ ở tab Code có file mở; ô nhập giữ Ctrl+W / Ctrl+E
+        if action in ("code_close_file", "code_ai_edit", "code_cmd"):  # chỉ ở tab Code có file mở; ô nhập giữ Ctrl+W / Ctrl+E
             return (self.query_one("#tabs", TabbedContent).active == "tab-code" and bool(self.code_cur)
                     and not isinstance(self.screen, ModalScreen) and not isinstance(self.focused, Input))
         if action == "retry" and isinstance(self.screen, SearchScreen):
@@ -6390,6 +6412,10 @@ class TeamApp(App):
         self._refresh_code_head()
         self.query_one("#code-filter", Input).focus()
 
+    def action_code_cmd(self, cid: str) -> None:
+        """F12 đi tới định nghĩa · Shift+F12 tìm chỗ dùng (tab Code)."""
+        self.code_command(cid)
+
     def action_code_close_file(self) -> None:
         self.code_close()
 
@@ -6511,7 +6537,8 @@ class TeamApp(App):
 
     # ---------------------------------------------------------------- command palette (tab 📝 Code)
     def action_palette(self, query: str = "") -> None:
-        """Ctrl+P mở nhanh file · F8 (Ctrl+Shift+P) lệnh · F9 (Ctrl+Shift+O) symbol trong file đang mở."""
+        """Ctrl+P mở nhanh file · F8 (Ctrl+Shift+P) lệnh (cả lệnh /… của app, ở mọi tab) · F9 (Ctrl+Shift+O) symbol
+        trong file đang mở."""
         ed = self.code_editor()
         sf = ed.buffer
         self._pal_syms = palette.symbols(sf.path, ed.text) if sf is not None and query.startswith("@") else None
@@ -6527,15 +6554,25 @@ class TeamApp(App):
             return Text(msg, dim), None
 
         if text.startswith(">"):
-            out = []
+            in_code = self.query_one("#tabs", TabbedContent).active == "tab-code"
+            code = []
             for cid, label, key, _web in palette.fuzzy(palette.CODE_COMMANDS, text[1:],
                                                          key=lambda c: c[1] + " " + palette.KEYWORDS.get(c[0], "")):
-                if (cid in palette.NEEDS_FILE and sf is None) or cid in palette.TUI_SKIP:
+                if (cid in palette.NEEDS_FILE and (sf is None or not in_code)) or cid in palette.TUI_SKIP:
                     continue
                 t = Text(label)
                 if key:
                     t.append(f"   {key}", dim)
-                out.append((t, ("cmd", cid)))
+                code.append((t, ("cmd", cid)))
+            # lệnh /… của cả app (cùng danh sách gợi ý khi gõ "/"): chạy ngay, hoặc điền vào ô nhập nếu cần tham số
+            app = []
+            for name, args, desc in palette.fuzzy(COMMANDS, text[1:], key=lambda c: f"/{c[0]} {c[2]}"):
+                t = Text(f"/{name}", "bold")
+                if args:
+                    t.append(f" {args}", dim)
+                t.append(f"   {desc}", dim)
+                app.append((t, ("app", name, args.startswith("<"))))
+            out = code + app if in_code else app + code
             return out or [head(tr("Không có lệnh nào khớp"))]
         if sf is None and text[:1] in ("@", ":", "/"):
             return [head(tr("Chưa mở file nào — gõ tên file để mở"))]
@@ -6604,6 +6641,14 @@ class TeamApp(App):
             ed.focus()
         elif kind == "cmd":
             self.code_command(value[1])
+        elif kind == "app":  # lệnh /… từ palette: cần tham số thì điền vào ô nhập, không thì chạy luôn
+            if value[2] or value[1] in ("task", "chat", "handoff", "continue", "schedule"):
+                box = self.query_one("#cmd", Input)
+                box.value = f"/{value[1]} "
+                box.cursor_position = len(box.value)
+                box.focus()
+            else:
+                self.run_command(f"/{value[1]}")
 
     # ---------------------------------------------------------------- mở folder / dự án khác (/open)
     def action_open_project(self, query: str = "") -> None:
@@ -6663,6 +6708,64 @@ class TeamApp(App):
             return f"@{rel}"
         return f"@{rel} " + (tr("(dòng {a})", a=a + 1) if a == b else tr("(dòng {a}–{b})", a=a + 1, b=b + 1))
 
+    async def _code_lsp(self, cid: str, rel: str, text: str, line: int, col: int) -> None:
+        """F12 đi tới định nghĩa / Shift+F12 tìm chỗ dùng: language server nếu có, không thì tìm theo tên (định nghĩa)
+        hoặc tìm chữ trong dự án (chỗ dùng)."""
+        src = text.split("\n")[line - 1] if 0 < line <= text.count("\n") + 1 else ""
+        word = next((m.group(0) for m in re.finditer(r"\w+", src) if m.start() <= col <= m.end()), "")
+        if not word:
+            self.notify(tr("Đặt con trỏ vào tên hàm / class cần tìm"), severity="warning")
+            return
+        refs = cid == "find_references"
+        with self.busy(tr("Đang hỏi language server…")):
+            res = await self.lsp.query("references" if refs else "definition", rel, text, line, col)
+        items = res.get("items")
+        if res.get("error") and not res.get("unavailable"):
+            self.notify(res["error"], severity="warning")
+        if not items and refs:
+            if items is not None:
+                self.notify(tr("Không thấy chỗ nào dùng {v}", v=word))
+            else:
+                self.action_search(word)
+            return
+        if not items:  # không có server: symbol cùng tên trong cả dự án
+            index = self.query_one("#cmd", CommandInput).index
+            if index.stale():
+                await index.refresh()
+            idx = await asyncio.to_thread(palette.workspace_symbols, self.root, list(index.entries), word,
+                                          self._ws_cache, True)
+            items = [{"path": x["path"], "line": x["line"], "col": 0, "text": x.get("name", ""), "inside": True}
+                     for x in idx.get("items") or []]
+        inside = [x for x in items if x["inside"]]
+        if not refs and len(inside) == 1:
+            self.open_code(inside[0]["path"], inside[0]["line"], inside[0]["col"])
+            return
+        if not inside:
+            self.notify(tr("Không thấy định nghĩa của {v}", v=word) if not items else
+                        tr("Nằm ngoài dự án: {v}", v=f"{items[0]['path']}:{items[0]['line']}"))
+            return
+
+        def rows(q: str) -> list[tuple[Text, object]]:
+            out = []
+            for x in palette.fuzzy(inside, q, key=lambda x: f"{x['path']}:{x['line']} {x['text']}"):
+                t = Text(f"{x['path']}:{x['line']}", "bold")
+                t.append(f"   {x['text']}", "dim")
+                out.append((t, (x["path"], x["line"], x["col"])))
+            return out
+        title = tr("Chỗ dùng {v} ({n})", v=word, n=len(inside)) if refs else tr("Định nghĩa của {v}", v=word)
+        self.push_screen(PaletteScreen("", items=rows, placeholder=title, foot=tr("↑↓ chọn · Enter mở · Esc đóng")),
+                         lambda v: v and self.open_code(v[0], v[1], v[2]))
+
+    async def _code_blame(self, rel: str, text: str, line: int) -> None:
+        res = await gitops.blame_line(self.root, rel, line, text)
+        if isinstance(res, str):
+            self.notify(res, severity="warning")
+        elif res["uncommitted"]:
+            self.notify(tr("Dòng {n}: {v}", n=line, v=res["author"]))
+        else:
+            self.notify(f"{res['short']} · {res['author']} · {res['when']}\n{res['summary']}",
+                        title=tr("Git blame dòng {n}", n=line))
+
     def code_command(self, cid: str) -> None:
         """Chạy một lệnh của palette (`palette.CODE_COMMANDS`)."""
         ed = self.code_editor()
@@ -6696,6 +6799,11 @@ class TeamApp(App):
             self.run_worker(self._open_vscode(sf.path, ed.cursor_location[0] + 1), group="vscode")
         elif cid == "git_diff":
             self.run_worker(self._code_git_diff(rel), group="code-diff")
+        elif cid in ("goto_definition", "find_references"):
+            row, col = ed.cursor_location
+            self.run_worker(self._code_lsp(cid, rel, ed.text, row + 1, col), group="code-lsp", exclusive=True)
+        elif cid == "blame_line":
+            self.run_worker(self._code_blame(rel, ed.text, ed.cursor_location[0] + 1), group="code-blame")
         elif cid == "new_file":
             base = (str(Path(rel).parent) + "/") if rel and Path(rel).parent != Path(".") else ""
             self.push_screen(PromptScreen(tr("📄 File mới"), base, tr("đường/dẫn/file.ext")), self._code_new_file)
@@ -7721,6 +7829,7 @@ class TeamApp(App):
         self.quota_busy = True
         try:
             self.quota_items = await quota.collect(self.orch)
+            self.orch.quota_items = self.quota_items  # lịch "khi hồi hạn mức" (/schedule quota …)
         except Exception as e:  # CLI in lạ, file phiên hỏng…: giữ số cũ, lần sau hỏi lại
             self.orch.log(f"⚠ quota: {e}")
         finally:
@@ -8731,6 +8840,7 @@ class TeamApp(App):
             return
         self.shell.stop_all()  # không để lại dev server mồ côi sau khi thoát
         self.grid.shutdown()  # CLI trong các ô của tab 🔲 Lưới
+        await self.lsp.close()
         for run in self.orch.all_runs():  # cả lượt trưởng nhóm (lập kế hoạch, /init…): không để CLI chạy mồ côi
             run.cancel()
         if self._loop_task:
@@ -9216,6 +9326,9 @@ class TeamApp(App):
         if text == "/focus":
             self.action_focus_agent(agent)
             return
+        if text.startswith("/handoff "):  # trong ô 💬 của agent: /handoff <tới> [yêu cầu]
+            self.run_command(f"/handoff {agent} {text[9:].strip()}")
+            return
         new = text == "/new" or text.startswith("/new ")
         if new:
             text = text[4:].strip()
@@ -9265,6 +9378,23 @@ class TeamApp(App):
                 self.set_focus_agent(agent)  # tab Agents là danh sách: chat = phóng to ô của agent
             if msg.strip():
                 self.send_chat(agent, msg.strip())
+        elif cmd == "handoff":
+            parts = rest.split(maxsplit=2)
+            if len(parts) < 2:
+                self.notify(tr("Dùng: /handoff <từ> <tới> [yêu cầu]  — agent: {v}", v=", ".join(agents)),
+                            severity="warning")
+                return
+            res = o.handoff(parts[0], parts[1], parts[2] if len(parts) > 2 else "")
+            if isinstance(res, str):
+                self.notify(res, severity="warning")
+                return
+            self.query_one("#tabs", TabbedContent).active = "tab-team"
+            if self.focus_agent != parts[1]:
+                self.set_focus_agent(parts[1])
+            pane = self.pane(parts[1])
+            if pane:
+                pane.body.write(Text(tr("── cuộc trò chuyện mới ──"), "dim"))
+                pane.body.write(Text(tr("› bạn: {text}", text=o.db.task(res).title), "bold"))
         elif cmd == "skills":
             self.push_screen(SkillsScreen())
         elif cmd == "rules":
@@ -9394,6 +9524,24 @@ class TeamApp(App):
             self.notify(o.force_review(num(rest)))
         elif cmd == "note":
             o.note(rest)
+        elif cmd == "undo":
+            async def _u(ref=rest):
+                res = await o.undo_preview(ref)
+                if isinstance(res, str):
+                    self.notify(res, severity="warning")
+                    return
+
+                def done(yes) -> None:
+                    if not yes:
+                        return
+
+                    async def _go() -> None:
+                        ok, msg = await o.undo(ref)
+                        self.notify(msg, severity="information" if ok else "error")
+                        self.refresh_view()
+                    self.run_worker(_go(), exclusive=False)
+                self.push_screen(ConfirmScreen(res[0], res[1], yes=tr("Hoàn tác")), done)
+            self.run_worker(_u(), exclusive=False)
         elif cmd == "compact":
             async def _c(focus=rest):
                 ok, msg = await o.compact(focus)
@@ -9421,6 +9569,12 @@ class TeamApp(App):
             self.query_one("#tabs", TabbedContent).active = "tab-board"
         elif cmd == "agents":
             self.write_sys(reports.agents_text(self.cfg))
+        elif cmd in ("schedule", "hen", "lich", "at"):
+            msg = o.schedule_command(rest)
+            if rest and rest.split()[0].lower() not in ("list", "ls"):
+                self.notify(msg, severity="warning" if not msg.startswith("⏰") else "information")
+            else:
+                self.write_sys(msg)
         elif cmd == "setup":
             self.open_setup()
             return

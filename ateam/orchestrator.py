@@ -12,12 +12,14 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
+from . import checkpoint
 from . import limits
 from . import mentions
 from . import usage_logs
 from . import overview
 from . import prompts as P
 from . import rules
+from . import schedule
 from . import skills
 from .config import (EFFORT_REJECTED_RE, KIND_CODE, KIND_GATE, KIND_REVIEW, KIND_VERIFY, LEAD_ALIAS, AgentConfig,
                      Config, task_kind)
@@ -114,6 +116,10 @@ class Orchestrator:
         self.lead_spans: list[list] = []
         # agent đang tạm nghỉ vì hết hạn mức: tên -> thời điểm hồi lại
         self.cooldown: dict[str, float] = limits.load_cooldowns()
+        # hạn mức 5h/tuần gần nhất giao diện hỏi được (quota.collect) — lịch "khi hồi hạn mức" dùng
+        self.quota_items: list[dict] | None = None
+        self._sched_at = 0.0  # lần cuối xem lịch hẹn (check_schedules)
+        self._cp_pending: set[int] = set()  # mục tiêu đang chụp điểm khôi phục: task của nó chưa chạy (checkpoint.py)
         self.opencode = OpenCode(self.root, self.env_for, self.log)
         self._opencode_applied: dict[str, tuple[AgentConfig, str, Catalog]] = {}
 
@@ -377,6 +383,7 @@ class Orchestrator:
     # ------------------------------------------------------------------ mục tiêu
     def new_goal(self, text: str) -> int:
         gid = self.db.add_goal(text)
+        self._checkpoint_goal(gid)
         self.lead_busy.add(gid)
         self.log(tr("🎯 Mục tiêu #{gid}: {text}", gid=gid, text=text))
         self._spawn(self._plan(gid))
@@ -598,6 +605,7 @@ class Orchestrator:
     def start_grill(self, text: str) -> int:
         """Mục tiêu mới, nhưng trưởng nhóm phỏng vấn người dùng (từng câu một) trước khi lập kế hoạch."""
         gid = self.db.add_goal(text)
+        self._checkpoint_goal(gid)
         self.db.update_goal(gid, status="grilling")
         self.db.set_grill(gid, {"qa": [], "spec": "", "error": ""})
         self.log(tr("🔎 Mục tiêu #{gid} (hỏi đáp trước): {text}", gid=gid, text=text))
@@ -800,6 +808,7 @@ class Orchestrator:
         if not wf.steps:
             return tr("Workflow '{name}' chưa có bước nào", name=name)
         gid = self.db.add_goal(text, workflow=name)
+        self._checkpoint_goal(gid)
         self.log(tr("🎯 Mục tiêu #{gid} theo workflow '{name}': {text}", gid=gid, name=name, text=text))
         from . import wizard
         for w in wizard.flow_warnings(self.cfg, wf):
@@ -1141,7 +1150,31 @@ class Orchestrator:
         self.emit("changed")
         return tid
 
-    def chat(self, agent: str, text: str, new: bool = False) -> int | str:
+    def handoff(self, src: str, dst: str, request: str = "") -> int | str:
+        """/handoff: kể lại cuộc chat với `src` cho `dst` (cuộc chat mới với dst) kèm yêu cầu — trống = nhờ dst review
+        việc src đã làm. Trả id lượt chat mới của dst, hoặc chuỗi lỗi."""
+        agents = self.cfg.active_agents()
+        for a in (src, dst):
+            if a not in agents:
+                return tr("Không có agent '{agent}' — agent: {v}", agent=a, v=", ".join(agents))
+        if src == dst:
+            return tr("Chọn hai agent khác nhau")
+        last = self.chat_last(src)
+        if not last:
+            return tr("Chưa chat với {agent} — /chat {agent} trước rồi mới chuyển", agent=src)
+        if last.status in (QUEUED, RUNNING):
+            return tr("{agent} đang trả lời tin trước — đợi xong rồi chuyển", agent=src)
+        turns = self.thread_of(last, limit=20) + [(last.prompt, last.result or last.error or "")]
+        prompt = P.handoff_prompt(src, turns, request, str(self.root))
+        title = (tr("↪ từ {src}: {v}", src=src, v=request.strip()) if request.strip()
+                 else tr("↪ review cuộc chat với {src}", src=src))
+        tid = self.chat(dst, prompt, new=True, title=title)
+        if isinstance(tid, int):
+            self.log(tr("↪ Chuyển cuộc chat {src} → {dst} ({n} lượt): {title}", src=src, dst=dst, n=len(turns),
+                        title=title))
+        return tid
+
+    def chat(self, agent: str, text: str, new: bool = False, title: str = "") -> int | str:
         """Nhắn thẳng cho một agent như dùng CLI của nó trong terminal: mỗi tin là một lượt chạy tiếp đúng phiên CLI
         của lượt chat trước (--resume), ở thư mục gốc, không verify/worktree/giao việc chéo. Trả id task của lượt,
         hoặc chuỗi lỗi."""
@@ -1157,7 +1190,7 @@ class Orchestrator:
         if new or agent in self._chat_new:  # /new: cuộc trò chuyện mới, phiên CLI mới
             self._chat_new.discard(agent)
             last = None
-        title = text.splitlines()[0][:60] + ("…" if len(text) > 60 else "")
+        title = title[:80] or text.splitlines()[0][:60] + ("…" if len(text) > 60 else "")
         tid = self.db.add_task(agent, title, text, status=QUEUED, source=CHAT,
                                parent_id=last.id if last else None)
         if last and last.session and last.session_agent == agent:  # tiếp tục phiên: chỉ gửi tin mới
@@ -1862,7 +1895,7 @@ class Orchestrator:
         queued = self.db.tasks(status=QUEUED)
         index = self.db.task_index() if queued else {}  # trạng thái mọi task, một truy vấn cho cả lượt
         for t in queued:
-            if t.id in self.runs:
+            if t.id in self.runs or t.goal_id in self._cp_pending:
                 continue
             if t.agent not in agents:
                 self.db.update_task(t.id, status=FAILED, error=tr("Không có agent '{agent}'", agent=t.agent))
@@ -1923,8 +1956,165 @@ class Orchestrator:
             changed = True
         if self._check_goals():
             changed = True
+        if time.time() - self._sched_at >= schedule.CHECK_EVERY:
+            self._sched_at = time.time()
+            if self.check_schedules():
+                changed = True
         if changed:
             self.emit("changed")
+
+    # ------------------------------------------------------------------ ↩ điểm khôi phục, /undo (checkpoint.py)
+    def _checkpoint_goal(self, gid: int) -> None:
+        """Chụp HEAD + thư mục làm việc trước mục tiêu (nền); task của mục tiêu chờ chụp xong mới chạy."""
+        if not (self.root / ".git").exists():
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:  # gọi ngoài vòng lặp (test, CLI đồng bộ): bỏ qua
+            return
+        self._cp_pending.add(gid)
+
+        async def run() -> None:
+            try:
+                err = await checkpoint.create(self.root, f"m{gid}")
+                if err:
+                    self.log(tr("⚠ Không tạo được điểm khôi phục cho mục tiêu #{gid}: {e}", gid=gid, e=err))
+            finally:
+                self._cp_pending.discard(gid)
+        self._spawn(run())
+
+    def undo_ref(self, ref: str) -> str:
+        """"" = mục tiêu mới nhất; "m12" / "12" / "#12" = mục tiêu 12; "redo" = bản chụp ngay trước lần /undo cuối.
+        Trả khoá checkpoint ("m12", "redo") hoặc "" nếu không hiểu."""
+        ref = ref.strip().lower()
+        if ref in (checkpoint.REDO, "lai", "back"):
+            return checkpoint.REDO
+        if not ref:
+            goals = self.db.goals()
+            return f"m{goals[-1].id}" if goals else ""
+        m = re.fullmatch(r"#?m?(\d+)", ref)
+        return f"m{m.group(1)}" if m else ""
+
+    async def undo_preview(self, ref: str) -> tuple[str, str] | str:
+        """(tiêu đề, nội dung hỏi lại) trước khi /undo, hoặc chuỗi lỗi."""
+        key = self.undo_ref(ref)
+        if not key:
+            return tr("Dùng: /undo [m<số mục tiêu>|redo]")
+        files = await checkpoint.changes(self.root, key)
+        if isinstance(files, str):
+            return files
+        if not files:
+            return tr("Thư mục dự án đã giống lúc {key} — không có gì để hoàn tác", key=key)
+        names = [ln.split("\t", 1)[-1] for ln in files]
+        new = sum(1 for ln in files if ln.startswith("A"))
+        body = tr("Đưa nhánh và mọi file của dự án về lúc trước mục tiêu #{gid}: {n} file đổi lại, {new} file tạo "
+                  "sau đó bị xoá.", gid=key[1:], n=len(files), new=new) if key != checkpoint.REDO else \
+            tr("Lấy lại trạng thái ngay trước lần /undo gần nhất: {n} file đổi lại.", n=len(files))
+        if key != checkpoint.REDO:
+            later = [g for g in self.db.goals() if g.id > int(key[1:]) and g.status != "cancelled"]
+            if later:
+                body += "\n" + tr("⚠ Thay đổi của mục tiêu sau đó cũng mất: {v}", v=", ".join(f"#{g.id}" for g in later))
+            body += "\n" + tr("Lấy lại được bằng /undo redo. File bị .gitignore (node_modules, .env…) giữ nguyên.")
+        body += "\n\n" + "\n".join("  " + x for x in names[:12]) + (f"\n  … +{len(names) - 12}" if len(names) > 12 else "")
+        return tr("↩ Hoàn tác về trước mục tiêu #{gid}?", gid=key[1:]) if key != checkpoint.REDO else \
+            tr("↩ Lấy lại thay đổi trước /undo?"), body
+
+    async def undo(self, ref: str) -> tuple[bool, str]:
+        """Hoàn tác về điểm khôi phục: huỷ việc còn dở của mục tiêu đó và các mục tiêu sau, rồi khôi phục file."""
+        key = self.undo_ref(ref)
+        if not key:
+            return False, tr("Dùng: /undo [m<số mục tiêu>|redo]")
+        if self.runs or self.lead_busy or self._cp_pending:
+            return False, tr("Đang có agent chạy — đợi xong hoặc huỷ (/cancel) rồi /undo")
+        ok, msg = await checkpoint.restore(self.root, key)
+        if not ok:
+            self.log(tr("✗ /undo: {e}", e=msg))
+            return False, msg
+        if key != checkpoint.REDO:
+            gid = int(key[1:])
+            for g in self.db.goals():
+                if g.id < gid:
+                    continue
+                for t in self.db.tasks(goal_id=g.id, status=ACTIVE):
+                    self.db.update_task(t.id, status=CANCELLED, finished=time.time(), error=tr("Hoàn tác bằng /undo"))
+                if g.status not in GOAL_ENDED:
+                    self.db.update_goal(g.id, status="cancelled", summary=tr("Hoàn tác bằng /undo"))
+                elif g.id == gid:
+                    self.db.update_goal(g.id, summary=((g.summary or "") + "\n" + tr("↩ Đã hoàn tác bằng /undo")).strip())
+        self.log("↩ " + msg)
+        self.emit("changed")
+        return True, "↩ " + msg
+
+    # ------------------------------------------------------------------ ⏰ lịch hẹn (schedule.py)
+    def schedule_command(self, rest: str) -> str:
+        """/schedule, `ateam schedule`: không tham số = xem lịch; rm <số> = huỷ; <khi> <mục tiêu> = hẹn mới."""
+        words = rest.split()
+        if not words or words[0].lower() in ("list", "ls"):
+            return schedule.list_text(self.db.schedules())
+        if words[0].lower() in schedule.REMOVE_WORDS:
+            ids = [int(w.lstrip("#")) for w in words[1:] if w.lstrip("#").isdigit()]
+            if not ids:
+                return tr("Dùng: /schedule rm <số>")
+            have = {s["id"] for s in self.db.schedules("waiting")}
+            for sid in ids:
+                if sid in have:
+                    self.db.update_schedule(sid, status="cancelled")
+            gone = [f"#{i}" for i in ids if i in have]
+            self.emit("changed")
+            return (tr("⏰ Đã huỷ lịch {v}", v=", ".join(gone)) if gone
+                    else tr("Không có lịch đang chờ nào số {v}", v=", ".join(map(str, ids))))
+        res = schedule.parse(rest, list(self.cfg.active_agents()))
+        if isinstance(res, str):
+            return res
+        if res["flow"] and res["flow"] not in self.cfg.workflows:
+            return tr("Không có workflow '{name}'", name=res["flow"])
+        sid = self.db.add_schedule(res["text"], res["kind"], at=res["at"], daily=res["daily"], agent=res["agent"],
+                                   flow=res["flow"])
+        label = schedule.when_label(res)
+        self.log(tr("⏰ Hẹn #{sid} ({when}): {text}", sid=sid, when=label, text=res["text"]))
+        self.emit("changed")
+        return tr("⏰ Đã hẹn #{sid} — {when}: {text} (ateam cần đang mở lúc đó; kế hoạch tự duyệt)", sid=sid,
+                  when=label, text=res["text"])
+
+    def check_schedules(self, now: float | None = None) -> bool:
+        """Chạy các lịch hẹn tới giờ; mục tiêu do lịch tạo thì tự duyệt kế hoạch (người dùng không ngồi đó)."""
+        now = time.time() if now is None else now
+        changed = False
+        rows = self.db.schedules()
+        for gid in {r["goal_id"] for r in rows if r.get("goal_id") and (r.get("fired") or 0) > now - 86400}:
+            g = self.db.goal(gid)
+            if g and g.status == "awaiting":  # kế hoạch nháp (cả vòng sau) của mục tiêu do lịch tạo
+                self.approve(gid)
+                changed = True
+        for s in rows:
+            if s["status"] != "waiting":
+                continue
+            if s["kind"] == schedule.QUOTA:
+                a = self.cfg.agents.get(s["agent"] or "")
+                if not a or self.in_cooldown(s["agent"]) or schedule.quota_blocked(self.quota_items, a.binary, now):
+                    continue
+            elif not s.get("at") or s["at"] > now:
+                continue
+            nxt = schedule.next_hhmm(s["daily"], now) if s["kind"] == schedule.DAILY else None
+            if not self.db.claim_schedule(s["id"], s.get("at"), nxt):
+                continue
+            changed = True
+            self.log(tr("⏰ Tới lịch #{sid}: {text}", sid=s["id"], text=s["text"]))
+            flow = s.get("flow") or self.cfg.default_workflow
+            if flow and flow in self.cfg.workflows:
+                res = self.run_workflow(flow, s["text"])
+            elif self.cfg.agents.get(self.cfg.lead):
+                res = self.new_goal(s["text"])
+            else:
+                res = tr("Không có trưởng nhóm '{lead}' trong cấu hình", lead=self.cfg.lead)
+            if isinstance(res, str):
+                self.log(tr("✗ Lịch #{sid} không chạy được: {e}", sid=s["id"], e=res))
+                continue
+            self.db.update_schedule(s["id"], goal_id=res)
+            g = self.db.goal(res)
+            if g and g.status == "awaiting":  # workflow: bước nháp có ngay
+                self.approve(res)
+        return changed
 
     def _check_goals(self) -> bool:
         changed = False

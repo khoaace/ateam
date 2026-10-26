@@ -87,19 +87,18 @@ Thứ tự là mức đáng làm ước tính; mỗi mục có gợi ý chỗ s�
 7. ~~**Agent hỏi lại người dùng**~~ — đã làm (`<<<ASK>>>`, trạng thái `asking`, khung /grill).
 8. **Phân việc dựa trên lịch sử** — thống kê từ bảng `runs` (tỉ lệ thành công, thời gian theo agent),
    chèn vào `plan_prompt`.
-9. **Checkpoint / `/undo`** — git tag trước mỗi mục tiêu; `/undo <mục tiêu>` reset về tag (cần xác
-   nhận vì xoá thay đổi).
-10. **Chuyển giao phiên giữa agent** — "nhờ codex review phiên chat với claude": tóm tắt thread chat (`thread_of`) thành
-    prompt cho agent khác, mở chat mới với agent đó. Gợi ý: `/handoff <từ> <tới> [yêu cầu]`.
+9. ~~**Checkpoint / `/undo`**~~ — đã làm (`checkpoint.py`): ref `refs/ateam/checkpoints/m<id>` chụp cả file chưa
+   commit, `/undo m<id>` hỏi lại kèm danh sách file, `/undo redo` lấy lại. Còn: checkpoint theo từng task.
+10. ~~**Chuyển giao phiên giữa agent**~~ — đã làm (`/handoff <từ> <tới> [yêu cầu]`, nút ↪ ở popup chat web).
 11. **Ngân sách chi phí theo mục tiêu** — `budget = 5.0` (USD) ở cấu hình hoặc `/goal --budget`; cộng `runs.cost` theo
     `goal_id`, vượt thì tạm dừng mục tiêu và hỏi người dùng.
-12. ~~**Bảng lệnh (Ctrl+P)**~~ — đã làm cho tab Code (`palette.py`). Còn: đưa cả lệnh `/…` (`COMMANDS`) và thao tác
-    của tab khác vào palette.
+12. ~~**Bảng lệnh (Ctrl+P)**~~ — đã làm: tab Code (`palette.py`) và lệnh `/…` của cả app ở mọi tab (F8 / ⌘K).
+    Còn: thao tác riêng của từng tab (Git, Bảng việc) dạng lệnh palette.
 13. **Tab Code kiểu VS Code, phần còn thiếu** — web đã có (10/2026): dấu thay đổi git ở lề, màu git trong cây,
     symbol cả dự án + đi tới định nghĩa (theo tên, chưa phải LSP), ⌥Tab, outline, format bằng công cụ của dự án,
-    tự lưu, chia đôi, xem ảnh/PDF, ⌘I AI sửa inline (diff duyệt từng đoạn), giải thích đoạn chọn. Còn: đưa các
-    phần này sang TUI (`palette.TUI_SKIP`), tìm chỗ dùng / định nghĩa chính xác bằng LSP (pyright,
-    typescript-language-server nếu có), git blame dòng.
+    tự lưu, chia đôi, xem ảnh/PDF, ⌘I AI sửa inline (diff duyệt từng đoạn), giải thích đoạn chọn, F12 / Shift+F12 qua
+    language server (`lsp.py`), git blame dòng. Còn: đưa các phần còn lại sang TUI (`palette.TUI_SKIP`), chẩn đoán
+    (diagnostics) và hover từ LSP; LSP mới thử thật với pyright và typescript-language-server.
 
 Ghi chú cho mục 3: khung chat (💬) hưởng lợi nhiều nhất — `claude -p` ở chế độ chữ chỉ in khi xong lượt, nên câu trả lời
 chat chưa hiện dần.

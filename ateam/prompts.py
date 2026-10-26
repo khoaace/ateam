@@ -154,6 +154,41 @@ def thread_prompt(turns: list[tuple[str, str]], new: str) -> str:
     return "\n".join(parts)
 
 
+HANDOFF_TURN_MAX = 4000   # ký tự mỗi câu trả lời của agent cũ đưa sang agent mới (/handoff)
+HANDOFF_TOTAL_MAX = 24000  # tổng — giữ các lượt mới nhất
+
+
+def handoff_prompt(src: str, turns: list[tuple[str, str]], request: str, cwd: str) -> str:
+    """/handoff: chuyển một cuộc chat với agent `src` sang agent khác — kể lại các lượt (tin của người dùng, câu trả
+    lời của src) rồi giao yêu cầu mới (trống = review việc src đã làm)."""
+    blocks: list[str] = []
+    total = 0
+    for i, (msg, reply) in reversed(list(enumerate(turns, 1))):  # giữ lượt mới nhất khi quá dài
+        reply = (reply or "(no reply)").strip()
+        if len(reply) > HANDOFF_TURN_MAX:
+            reply = reply[:HANDOFF_TURN_MAX] + "\n…(truncated)"
+        msg = msg.strip()
+        if len(msg) > HANDOFF_TURN_MAX:
+            msg = msg[:HANDOFF_TURN_MAX] + "\n…(truncated)"
+        b = f"[{i}] USER:\n{msg}\n[{i}] {src.upper()}:\n{reply}"
+        if blocks and total + len(b) > HANDOFF_TOTAL_MAX:
+            blocks.append(f"(… {i} earlier turn(s) omitted)")
+            break
+        blocks.append(b)
+        total += len(b)
+    ask = request.strip() or (f"Review what {src} did in this conversation: check its claims and the actual changes "
+                              "in the working tree (git status / git diff), point out bugs, risks and gaps, and suggest "
+                              "concrete improvements. Do not rewrite everything — change files only if something is "
+                              "clearly broken, and say what you changed.")
+    return "\n".join([
+        f'The user is handing over a conversation they had with another AI coding agent ("{src}") in this project, '
+        f"so you can continue from where it left off. Working directory: {cwd}",
+        "Any file changes it made are already in the working tree.",
+        "", "CONVERSATION SO FAR (oldest first):", "", "\n\n".join(reversed(blocks)), "",
+        "YOUR TASK:", ask, "",
+        "Reply in the language the user wrote in above."])
+
+
 def task_prompt(cfg: Config, *, agent: str, task_id: int, title: str, prompt: str,
                 goal: str | None, deps: list[tuple[int, str, str, str]], notes: str,
                 cwd: str, can_delegate: bool, qa: list[dict] | None = None,

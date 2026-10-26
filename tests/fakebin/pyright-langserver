@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Language server giả lập (thay pyright-langserver --stdio) cho tab Code: definition = dòng `def tên` / `class tên`
+trong các file .py của dự án, references = mọi chỗ khác nhắc `tên`. Hỏi ngược client workspace/configuration như
+pyright thật; ATEAM_FAKE_LSP_DEAD=1: thoát ngay (server hỏng)."""
+import json
+import os
+import re
+import sys
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
+if os.environ.get("ATEAM_FAKE_LSP_DEAD"):
+    sys.exit(1)
+inp, out = sys.stdin.buffer, sys.stdout.buffer
+docs, root = {}, Path(".")
+
+
+def send(msg):
+    body = json.dumps(msg).encode()
+    out.write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
+    out.flush()
+
+
+def read():
+    n = 0
+    while True:
+        line = inp.readline()
+        if not line:
+            sys.exit(0)
+        if line in (b"\r\n", b"\n"):
+            break
+        if line.lower().startswith(b"content-length:"):
+            n = int(line.split(b":")[1])
+    return json.loads(inp.read(n))
+
+
+def text_of(p):
+    return docs.get(p.as_uri()) or p.read_text()
+
+
+def word_at(uri, pos):
+    ln = text_of(Path(unquote(urlparse(uri).path))).split("\n")[pos["line"]]
+    ch = len(ln.encode("utf-16-le")[:pos["character"] * 2].decode("utf-16-le", "ignore"))
+    for m in re.finditer(r"\w+", ln):
+        if m.start() <= ch <= m.end():
+            return m.group(0)
+    return ""
+
+
+def loc(p, i, c):
+    return {"uri": p.resolve().as_uri(), "range": {"start": {"line": i, "character": c}, "end": {"line": i, "character": c}}}
+
+
+while True:
+    msg = read()
+    m, params = msg.get("method"), msg.get("params") or {}
+    if m == "initialize":
+        root = Path(unquote(urlparse(params["rootUri"]).path))
+        send({"jsonrpc": "2.0", "id": 900, "method": "workspace/configuration", "params": {"items": [{"section": "python"}]}})
+        send({"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {"definitionProvider": True,
+                                                                            "referencesProvider": True}}})
+    elif m == "textDocument/didOpen":
+        docs[params["textDocument"]["uri"]] = params["textDocument"]["text"]
+    elif m == "textDocument/didChange":
+        docs[params["textDocument"]["uri"]] = params["contentChanges"][-1]["text"]
+    elif m in ("textDocument/definition", "textDocument/references"):
+        w = word_at(params["textDocument"]["uri"], params["position"])
+        res = []
+        for p in sorted(root.rglob("*.py")):
+            for i, ln in enumerate(text_of(p.resolve()).split("\n")):
+                d = re.match(r"\s*(?:def|class)\s+" + re.escape(w) + r"\b", ln) if w else None
+                if m.endswith("definition") and d:
+                    res.append({"targetUri": p.resolve().as_uri(), "targetSelectionRange": loc(p, i, ln.index(w))["range"],
+                                "targetRange": loc(p, i, 0)["range"]})
+                elif m.endswith("references") and w and not d:
+                    res += [loc(p, i, len(ln[:x.start()].encode("utf-16-le")) // 2)
+                            for x in re.finditer(r"\b" + re.escape(w) + r"\b", ln)]
+        send({"jsonrpc": "2.0", "id": msg["id"], "result": res})
+    elif m == "shutdown":
+        send({"jsonrpc": "2.0", "id": msg["id"], "result": None})
+    elif m == "exit":
+        sys.exit(0)
+    elif "id" in msg and m:
+        send({"jsonrpc": "2.0", "id": msg["id"], "result": None})

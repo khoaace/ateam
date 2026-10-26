@@ -224,3 +224,56 @@ def test_web_focus_command(env, project, monkeypatch):
     assert r[2]["open"] == {"view": "team", "focus": "codex"}
     assert asyncio.run(wa.handle({"op": "submit", "text": "/focus"}))[2]["open"]["focus"] == ""
     assert asyncio.run(wa.handle({"op": "submit", "text": "/focus khong-co"}))[1] == "warn"
+
+
+def test_handoff_retells_chat_to_another_agent(env, project, monkeypatch):
+    o = _orch(env, project, monkeypatch)
+
+    async def main():
+        await o.setup()
+        assert "Chưa chat với claude" in o.handoff("claude", "codex")
+        assert "khác nhau" in o.handoff("claude", "claude") and "Không có agent" in o.handoff("claude", "x")
+        o.chat("claude", "viết hàm cộng")
+        await o.run_until_idle()
+        o.chat("claude", "thêm test")
+        assert "đang trả lời" in o.handoff("claude", "codex")
+        await o.run_until_idle()
+        tid = o.handoff("claude", "codex")  # trống: nhờ review
+        t = o.db.task(tid)
+        assert t.agent == "codex" and t.source == "chat" and t.parent_id is None  # cuộc chat mới của codex
+        assert t.title == "↪ review cuộc chat với claude"
+        assert t.prompt.index("viết hàm cộng") < t.prompt.index("thêm test")  # cũ → mới, đủ hai lượt
+        assert "[2] CLAUDE:" in t.prompt and "git diff" in t.prompt
+        await o.run_until_idle()
+        assert o.db.task(tid).status == "done"
+        t2 = o.db.task(o.handoff("codex", "claude", "sửa theo góp ý"))
+        assert t2.title == "↪ từ codex: sửa theo góp ý" and "YOUR TASK:\nsửa theo góp ý" in t2.prompt
+        await o.run_until_idle()
+    asyncio.run(main())
+
+
+def test_handoff_prompt_keeps_newest_turns():
+    from ateam import prompts as P
+    turns = [(f"tin {i}", "x" * 6000) for i in range(1, 11)]
+    p = P.handoff_prompt("claude", turns, "", "/tmp/p")
+    assert "tin 10" in p and "tin 1\n" not in p and "earlier turn(s) omitted" in p
+    assert len(p) < P.HANDOFF_TOTAL_MAX + 6000 and "…(truncated)" in p
+
+
+def test_web_handoff_from_chat_box(env, project, monkeypatch):
+    import pytest
+    pytest.importorskip("aiohttp")
+    from test_web import _web_app
+    wa = _web_app(env, project, monkeypatch)
+
+    async def main():
+        await wa.orch.setup()
+        assert (await wa.command("/handoff claude"))[1] == "warn"  # thiếu agent nhận
+        wa.orch.chat("claude", "viết hàm cộng")
+        await wa.orch.run_until_idle()
+        r = await wa.handle({"op": "chat", "agent": "claude", "text": "/handoff codex xem lại giúp"})  # ô 💬 của claude
+        assert r[2]["open"] == {"view": "team", "chat": "codex"}
+        t = wa.orch.chat_last("codex")
+        assert t.title == "↪ từ claude: xem lại giúp" and "viết hàm cộng" in t.prompt
+        await wa.orch.run_until_idle()
+    asyncio.run(main())

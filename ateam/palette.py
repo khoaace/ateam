@@ -22,7 +22,10 @@ CODE_COMMANDS: list[tuple[str, str, str, str]] = [
     ("quick_open", tr("Mở nhanh file…"), "Ctrl+P", "Ctrl/⌘+P"),
     ("goto_symbol", tr("Tới symbol trong file… (@)"), "F9", "Ctrl/⌘+Shift+O"),
     ("workspace_symbol", tr("Tìm symbol trong cả dự án… (#)"), "", ""),
-    ("goto_definition", tr("Đi tới định nghĩa"), "", "F12 · ⌘+click"),
+    ("goto_definition", tr("Đi tới định nghĩa"), "F12", "F12 · ⌘+click"),
+    ("find_references", tr("Tìm chỗ dùng"), "Shift+F12", "Shift+F12"),
+    ("blame_line", tr("Git blame: ai sửa dòng này"), "", ""),
+    ("toggle_blame", tr("Bật/tắt blame dòng hiện tại ở thanh trạng thái"), "", ""),
     ("recent_buffer", tr("Đổi sang file vừa dùng"), "", "⌥Tab"),
     ("goto_line", tr("Tới dòng… (:)"), "", ""),
     ("find", tr("Tìm trong file… (/)"), "", ""),
@@ -56,17 +59,19 @@ CODE_COMMANDS: list[tuple[str, str, str, str]] = [
 # từ khoá tiếng Anh để gõ kiểu VS Code (vd ">wrap", ">rename") vẫn khớp nhãn tiếng Việt
 KEYWORDS: dict[str, str] = {'quick_open': 'open file', 'goto_symbol': 'symbol outline', 'goto_line': 'goto line', 'find': 'find search', 'search_project': 'search replace', 'ask_agent': 'ask chat agent', 'task_agent': 'task agent', 'save': 'save write', 'save_all': 'save all', 'close': 'close', 'next': 'next buffer', 'prev': 'previous buffer', 'new_file': 'new file create', 'rename_file': 'rename move', 'delete_file': 'delete remove trash', 'copy_path': 'copy path', 'git_diff': 'git diff changes', 'open_vscode': 'vscode code editor', 'toggle_wrap': 'word wrap', 'toggle_numbers': 'line numbers', 'toggle_vim': 'vim', 'toggle_files': 'sidebar files explorer',
             'open_folder': 'open folder project recent workspace switch', 'workspace_symbol': 'workspace symbol project',
-            'goto_definition': 'go to definition declaration', 'recent_buffer': 'recent buffer switch mru',
+            'goto_definition': 'go to definition declaration lsp', 'find_references': 'find references usages lsp',
+            'blame_line': 'git blame author annotate', 'toggle_blame': 'git blame inline annotate status', 'recent_buffer': 'recent buffer switch mru',
             'format': 'format document prettier ruff black', 'toggle_fmt_save': 'format on save',
             'toggle_autosave': 'auto save autosave', 'toggle_split': 'split editor right', 'outline': 'outline symbols',
             'ai_edit': 'ai edit inline rewrite refactor', 'ai_explain': 'ai explain'}
 # lệnh cần file đang mở
 NEEDS_FILE = {"goto_symbol", "goto_line", "find", "save", "save_all", "close", "next", "prev", "rename_file",
-              "delete_file", "copy_path", "git_diff", "open_vscode", "goto_definition", "format", "outline", "ai_edit", "ai_explain"}
+              "delete_file", "copy_path", "git_diff", "open_vscode", "goto_definition", "format", "outline", "ai_edit", "ai_explain",
+              "find_references", "blame_line"}
 
 
 WEB_SKIP = {"toggle_numbers"}  # CodeMirror của web luôn có số dòng
-TUI_SKIP = {"workspace_symbol", "goto_definition", "recent_buffer", "format", "toggle_fmt_save", "toggle_autosave",
+TUI_SKIP = {"workspace_symbol", "toggle_blame", "recent_buffer", "format", "toggle_fmt_save", "toggle_autosave",
             "toggle_split", "outline"}  # mới có ở web
 WS_SYMBOL_MAX_BYTES = 512 * 1024  # symbol toàn dự án: bỏ qua file lớn hơn
 WS_SYMBOL_FILES = 4000

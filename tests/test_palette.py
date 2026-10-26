@@ -296,3 +296,43 @@ def test_web_code_navigation_format_media(env, project, monkeypatch):
         finally:
             await client.close()
     asyncio.run(main())
+
+
+def test_tui_palette_runs_app_commands_from_any_tab(env, project, monkeypatch):
+    """F8 / Ctrl+Shift+P ở mọi tab: lệnh /… của cả app — chạy ngay, hoặc điền ô nhập nếu cần tham số. Kèm /schedule,
+    /handoff và /undo (hỏi lại) chạy từ TUI."""
+    tui, app = _app(env, project, monkeypatch)
+
+    async def main():
+        async def wait(cond, n=600):
+            for _ in range(n):
+                await pilot.pause(0.05)
+                if cond():
+                    return True
+            return False
+
+        async with app.run_test(size=(150, 45)) as pilot:
+            assert await wait(lambda: app._booted)
+            assert app.query_one("#tabs").active == "tab-board"
+            await pilot.press("f8")
+            assert await wait(lambda: isinstance(app.screen, tui.PaletteScreen))
+            await pilot.press(*"dash")
+            await pilot.pause(0.1)
+            assert app.screen.values[0] == ("app", "dash", False)  # ngoài tab Code: lệnh của app đứng trước
+            await pilot.press("enter")
+            assert await wait(lambda: app.query_one("#tabs").active == "tab-dash")
+            await pilot.press("f8")
+            assert await wait(lambda: isinstance(app.screen, tui.PaletteScreen))
+            await pilot.press(*"schedule", "enter")  # cần tham số: điền vào ô nhập
+            assert await wait(lambda: app.query_one("#cmd").value == "/schedule ")
+            app.query_one("#cmd").value = ""
+            app.run_command("/schedule +30m viết README")
+            assert app.db.schedules()[0]["text"] == "viết README"
+            app.run_command("/handoff claude codex")
+            await pilot.pause(0.1)
+            assert not app.orch.chat_last("codex")  # chưa chat với claude: chỉ báo
+            app.run_command("/undo m9")  # không có điểm khôi phục: báo, không hỏi lại
+            await pilot.pause(0.5)
+            assert not isinstance(app.screen, tui.ConfirmScreen)
+            await pilot.press("ctrl+q")
+    asyncio.run(main())

@@ -529,6 +529,26 @@ def cmd_note(args) -> int:
     return 0
 
 
+def cmd_schedule(args) -> int:
+    msg = _orch(args).schedule_command(" ".join(args.spec))
+    print(msg)
+    return 0 if msg.startswith("⏰") or not args.spec else 1
+
+
+def cmd_undo(args) -> int:
+    o = _orch(args)
+    res = asyncio.run(o.undo_preview(args.ref or ""))
+    if isinstance(res, str):
+        print(res)
+        return 1
+    print(res[0] + "\n" + res[1])
+    if not args.yes and input(tr("Hoàn tác? [y/N] ")).strip().lower() not in ("y", "yes", "c", "co"):
+        return 1
+    ok, msg = asyncio.run(o.undo(args.ref or ""))
+    print(msg)
+    return 0 if ok else 1
+
+
 def cmd_compact(args) -> int:
     o = _orch(args)
     ok, msg = asyncio.run(o.compact(" ".join(args.focus)))
@@ -782,6 +802,13 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--local", action="store_true", help=tr("chỉ thống kê của ateam, không hỏi các CLI"))
     s = sub.add_parser("update", help=tr("cập nhật ateam lên bản mới nhất"))
     s.add_argument("--force", action="store_true", help=tr("cài lại kể cả khi đã là bản mới nhất"))
+    s = sub.add_parser("undo", help=tr("↩ đưa dự án về lúc trước một mục tiêu (m12; trống = mục tiêu mới nhất; "
+                                       "redo = lấy lại lần /undo trước)"))
+    s.add_argument("ref", nargs="?")
+    s.add_argument("-y", "--yes", action="store_true", help=tr("không hỏi lại"))
+    s = sub.add_parser("schedule", help=tr("⏰ hẹn giờ chạy mục tiêu (22:30 · +45m · daily 08:00 · quota claude); "
+                                           "trống: xem lịch · rm <số>: huỷ — chạy khi ateam đang mở"))
+    s.add_argument("spec", nargs=argparse.REMAINDER)
     s = sub.add_parser("cooldown", help=tr("cho agent tạm nghỉ N phút, hoặc 'off'"))
     s.add_argument("agent")
     s.add_argument("minutes", nargs="?")
@@ -796,7 +823,8 @@ def main(argv: list[str] | None = None) -> int:
                 "compact": cmd_compact, "list": cmd_list,
                 "log": cmd_log, "run": cmd_run, "set": cmd_set, "models": cmd_models, "diff": cmd_diff,
                 "merge": cmd_merge, "reject": cmd_reject, "verify": cmd_verify,
-                "usage": cmd_usage, "update": cmd_update, "cooldown": cmd_cooldown}
+                "usage": cmd_usage, "update": cmd_update, "cooldown": cmd_cooldown,
+                "schedule": cmd_schedule, "undo": cmd_undo}
     try:
         return handlers[args.cmd](args)
     except KeyboardInterrupt:

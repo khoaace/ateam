@@ -25,8 +25,8 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import (__version__, clipboard, mentions, notes, notify, palette, projects, quota, reports, rules, shell, theme,
-               todos, update, wizard)
+from . import (__version__, clipboard, gitops, lsp, mentions, notes, notify, palette, projects, quota, reports, rules,
+               shell, theme, todos, update, wizard)
 from .config import Config, found_models, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import DB, GOAL_ENDED, Goal, Task
 from .qr import QR
@@ -37,6 +37,7 @@ from .opencode import ATTACHMENT_MAX
 from .pty_session import PtySession
 from .grid import SHELL, WHERE, GridHub, preset_names
 from .logtail import read_tail
+from .palette import safe_path
 from .web_code import CodeWeb
 from .web_git import GitWeb
 from .web_setup import SetupWeb
@@ -78,6 +79,7 @@ def ui_strings() -> dict[str, str]:
         "dash_chart": tr("Token theo ngày (14 ngày)"), "dash_by_agent": tr("Theo agent (30 ngày)"),
         "dash_by_model": tr("Theo model (30 ngày)"), "dash_history": tr("Lịch sử mục tiêu"),
         "dash_no_goals": tr("Chưa có mục tiêu nào. Gõ mục tiêu ở ô dưới để bắt đầu."),
+        "handoff_btn": tr("Chuyển cuộc chat này cho agent khác (/handoff)"),
         "quota": tr("Hạn mức"), "quota_title": tr("Hạn mức 5 giờ / tuần"), "quota_refresh": tr("Hỏi lại hạn mức"),
         "quota_loading": tr("Đang hỏi hạn mức các CLI…"), "quota_none": tr("Chưa có CLI nào báo hạn mức (claude, codex, agy)"),
         "quota_used": tr("đã dùng {v}%"), "quota_reset_in": tr("hồi sau {v}"), "quota_reset_past": tr("đã tới giờ hồi"),
@@ -419,6 +421,9 @@ def ui_strings() -> dict[str, str]:
         "pal_ws_partial": tr("Dự án lớn — mới quét một phần, gõ lại sau vài giây để thấy thêm"),
         "pal_media": tr("Ảnh / PDF — không có dòng hay symbol"),
         "def_none": tr("Không thấy định nghĩa của {v}", v="{v}"), "def_noword": tr("Đặt con trỏ vào tên hàm / class cần tìm"),
+        "lsp_busy": tr("Đang hỏi language server…"), "lsp_outside": tr("Nằm ngoài dự án: {v}", v="{v}"),
+        "refs_title": tr("Chỗ dùng {v} ({n})", v="{v}", n="{n}"), "refs_none": tr("Không thấy chỗ nào dùng {v}", v="{v}"),
+        "defs_title": tr("Định nghĩa của {v}", v="{v}"),
         "split_need": tr("Mở thêm một file để chia đôi"), "ctx_open_right": tr("Mở bên phải"),
         "mru_title": tr("File vừa dùng — giữ ⌥ và bấm Tab để đổi, thả ⌥ để mở"), "mru_none": tr("Chưa mở file nào khác"),
         "busy_formatting": tr("Đang format…"), "fmt_same": tr("{v}: file đã gọn, không có gì đổi", v="{v}"),
@@ -661,6 +666,7 @@ class WebApp:
         self.index = mentions.FileIndex(root)
         self.git = GitWeb(self)
         self.code = CodeWeb(self)
+        self.lsp = lsp.Hub(root)  # đi tới định nghĩa / tìm chỗ dùng bằng language server (tab Code)
         self.setup = SetupWeb(self)
         self.skills = SkillsOps(self)
         self.clients: set[web.WebSocketResponse] = set()
@@ -751,6 +757,7 @@ class WebApp:
         for sess, _ws in list(self.ptys.values()):
             sess.kill_now()
         self.grid.shutdown()
+        await self.lsp.close()
         runs = [j.run for j in self.shell.jobs.values() if j.run and j.alive]
         runs += self.orch.all_runs()
         self.shell.stop_all()  # không để lại dev server mồ côi
@@ -1055,6 +1062,7 @@ class WebApp:
                 self.orch.log(f"⚠ quota: {e}")
                 return self.quota
             self.quota = {"t": "quota", "items": items, "at": time.time()}
+            self.orch.quota_items = items  # lịch "khi hồi hạn mức" (/schedule quota …)
         self.broadcast(self.quota)
         return self.quota
 
@@ -1267,7 +1275,8 @@ class WebApp:
             return d.get("action") in self.SLOW_GIT
         if op == "submit":
             return str(d.get("text") or "").strip().startswith(self.SLOW_CMDS)
-        return op in ("workflow_suggest", "workflow_from_goal", "code_format", "code_ai", "open_window") + SKILL_SLOW
+        return op in ("workflow_suggest", "workflow_from_goal", "code_format", "code_ai", "code_lsp", "code_blame",
+                      "open_window") + SKILL_SLOW
 
     async def _answer(self, ws: web.WebSocketResponse, data) -> None:
         """Chạy một thao tác rồi trả lời bằng toast (kèm ref nếu trình duyệt đang chờ)."""
@@ -1463,7 +1472,10 @@ class WebApp:
             if act == "skip":
                 return o.answer_task(tid, None), "info"
         if op == "chat":
-            return self.chat(str(d.get("agent") or ""), str(d.get("text") or ""))
+            agent, text = str(d.get("agent") or ""), str(d.get("text") or "").strip()
+            if text.startswith("/handoff "):  # trong ô 💬 của agent: /handoff <tới> [yêu cầu]
+                return await self.command(f"/handoff {agent} {text[9:].strip()}")
+            return self.chat(agent, text)
         if op == "retry":
             return o.retry(int(d["task"])), "info"
         if op == "cancel":
@@ -1519,6 +1531,20 @@ class WebApp:
             return self.code.save(d)
         if op == "code_format":
             return await self.code.format(d)
+        if op == "code_lsp":  # F12 / Shift+F12: kết quả nằm trong payload (lỗi cũng vậy — không toast mỗi lần bấm)
+            rel = str(d.get("path") or "")
+            if safe_path(self.root, rel) is None:
+                return "", "", {"lsp": {"error": tr("Đường dẫn không hợp lệ (ngoài dự án): {path}", path=rel)}}
+            kind = "references" if d.get("kind") == "references" else "definition"
+            return "", "", {"lsp": await self.lsp.query(kind, rel, str(d.get("text") or ""), int(d.get("line") or 1),
+                                                        int(d.get("ch") or 0), utf16=True)}
+        if op == "code_blame":  # blame dòng đang đứng (thanh trạng thái / palette)
+            rel = str(d.get("path") or "")
+            if safe_path(self.root, rel) is None:
+                return "", "", {"blame": tr("Đường dẫn không hợp lệ (ngoài dự án): {path}", path=rel)}
+            text = d.get("text")
+            return "", "", {"blame": await gitops.blame_line(self.root, rel, int(d.get("line") or 1),
+                                                             str(text) if text is not None else None)}
         if op == "code_ai":  # ⌘I sửa inline / giải thích đoạn chọn: agent chỉ trả lời, trang hiện diff để duyệt
             mode = "explain" if d.get("mode") == "explain" else "edit"
             ok, res = await self.orch.code_ai(mode, str(d.get("path") or ""), str(d.get("text") or ""),
@@ -1710,6 +1736,17 @@ class WebApp:
                 return tr("Dùng: /chat <agent> <tin nhắn>  — agent: {v}", v=", ".join(agents)), "warn"
             reply = self.chat(agent, msg) if msg.strip() else None
             return reply or ("", "", {"open": {"view": "team", "chat": agent}})
+        if cmd == "handoff":
+            parts = rest.split(maxsplit=2)
+            if len(parts) < 2:
+                return tr("Dùng: /handoff <từ> <tới> [yêu cầu]  — agent: {v}", v=", ".join(agents)), "warn"
+            res = o.handoff(parts[0], parts[1], parts[2] if len(parts) > 2 else "")
+            if isinstance(res, str):
+                return res, "warn"
+            self._queue({"k": "log", "task": None, "agent": parts[1], "line": tr("── cuộc trò chuyện mới ──")})
+            self._queue({"k": "log", "task": res, "agent": parts[1],
+                         "line": tr("› bạn: {text}", text=self.db.task(res).title)})
+            return "", "", {"open": {"view": "team", "chat": parts[1]}}
         if cmd == "skills":
             return "", "", {"open": {"view": "skills"}}
         if cmd == "rules":
@@ -1811,6 +1848,20 @@ class WebApp:
             return "", "", text_box("Model & effort", reports.models_text(cfg, parts[0] if parts else None))
         if cmd == "agents":
             return "", "", text_box("Agent", reports.agents_text(cfg))
+        if cmd == "undo":
+            if rest.endswith(" --yes") or rest == "--yes":
+                ok, msg = await o.undo(rest[:-5].strip())
+                return msg, "ok" if ok else "error"
+            res = await o.undo_preview(rest)
+            if isinstance(res, str):
+                return res, "warn"
+            return "", "", {"open": {"confirm": {"title": res[0], "text": res[1], "yes": tr("Hoàn tác"),
+                                                 "cmd": f"/undo {rest} --yes".replace("  ", " ")}}}
+        if cmd == "schedule":
+            msg = o.schedule_command(rest)
+            if not rest or rest.split()[0].lower() in ("list", "ls"):
+                return "", "", text_box(tr("⏰ Lịch hẹn"), msg)
+            return msg, "ok" if msg.startswith("⏰") else "warn"
         if cmd == "usage":  # chờ hạn mức từ CLI (song song, toast "đang chạy…" ở trình duyệt) rồi mở một khung
             names = reports.usage_agents(cfg)
             o.log(tr("\nĐang hỏi hạn mức từ CLI của {v}…", v=", ".join(names)))

@@ -213,6 +213,9 @@ function onToast(m) {
   if (o.picker) pickerModal(o.picker);
   if (o.project != null) o.project ? openProject(o.project) : projectModal();
   if (o.prefill) prefill(o.prefill);
+  if (o.confirm) confirmBox(o.confirm.title, o.confirm.text, o.confirm.yes).then((ok) => {  // /undo… hỏi lại rồi chạy
+    if (ok) request("submit", { text: o.confirm.cmd }, t("busy_cmd", { v: o.confirm.cmd.split(/\s/)[0] }));
+  });
   if (o.theme) setThemeMode(o.theme);
   if (o.code && window.CodeView) { setView("code"); CodeView.open(o.code.path, o.code.line); }
 }
@@ -1132,6 +1135,7 @@ function chatModal(agent) {
         <input class="field one chat-in" autocomplete="off" placeholder="${esc(t("chat_ph", { agent }))}">
         <button class="btn sm primary" type="submit">${esc(t("chat_send"))}</button>
         <button class="btn sm ghost" type="button" data-action="agent-term" data-agent="${esc(agent)}" title="${esc(t("open_term"))}" aria-label="${esc(t("open_term"))}">⌨</button>
+        <button class="btn sm ghost" type="button" data-action="handoff" data-agent="${esc(agent)}" title="${esc(t("handoff_btn"))}" aria-label="${esc(t("handoff_btn"))}">↪</button>
       </form></div>`, { box: "lg", cls: "chat" });
   const log = $(".mini-log", m);
   if (S.agentLogs[agent]) { appendLines(log, S.agentLogs[agent], 300); log.scrollTop = log.scrollHeight; }
@@ -1959,6 +1963,7 @@ async function argSuggestions(cmd, args, tok) {
     }
     case "focus": return pos ? null : { head: t("sg_agent_focus"), items: agentItems(tok) };
     case "chat": return pos ? null : { head: t("sg_agent_chat"), items: agentItems(tok, " ") };
+    case "handoff": return pos > 1 ? null : { head: t("sg_agent"), items: agentItems(tok, " ").filter((i) => i.value.trim() !== args[0]) };
     case "grid": {  // agent có CLI tương tác + ô terminal trống (:shell)
       if (pos) return null;
       const tty = new Set(A.filter((a) => a.tty).map((a) => a.name));
@@ -2345,6 +2350,7 @@ const ACTIONS = {
   "open-job": (el) => openJob(+el.dataset.job),
   "job": (el) => send("job", { id: +el.dataset.job, action: el.dataset.act }),
   "run-script": (el) => send("submit", { text: "!" + el.dataset.cmd }),
+  handoff: (el) => { closeModal(el.closest(".modal")); prefill(`/handoff ${el.dataset.agent} `); updateSuggest(); },  // ↪ ở popup 💬: chọn agent nhận
   "sh-new": (el) => tsNew(el.dataset.cmd || ""),
   "open-sh": (el) => tsShow(el.dataset.sh),
   "sh-close": (el) => tsClose(el.dataset.sh),
