@@ -1,5 +1,11 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Breadcrumb ở tab Code (web)** — đường dẫn `src › services › paths.ts › tên hàm` trên editor như VS Code: bấm một
+  đoạn xổ ra file / thư mục cùng cấp (thư mục mở rộng tại chỗ bằng chuột hoặc **→**/**←**, bấm file để mở), bấm đoạn
+  symbol xổ ra danh sách hàm / class trong file. Đường dẫn và tên hàm chuyển từ thanh dưới lên breadcrumb.
+
 ## 0.54.1 — 25/10/2026
 
 - **Ghi chú (web)** — nút nổi ✅ To-do không còn che nút *Xoá* ở chân trang ghi chú.
