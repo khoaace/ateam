@@ -1,6 +1,6 @@
 /* Hạn mức 5 giờ / tuần của claude, codex, agy: tin "quota" qua WebSocket (server hỏi lại mỗi 60 giây — quota.py),
    nút ⟳ gọi GET /api/quota?refresh=1. Khối nhỏ ở chân thanh bên (mỗi khung lấy nhóm model dùng nhiều nhất — giới
-   hạn chạm trước) + chi tiết ở đầu trang Thống kê. Đếm ngược giờ hồi tính ở trình duyệt, vẽ lại mỗi 30 giây. */
+   hạn chạm trước; thanh bên thu gọn thì thành vòng tròn: ngoài 5h, trong tuần, giữa là % cao nhất) + chi tiết ở đầu trang Thống kê. Đếm ngược giờ hồi tính ở trình duyệt, vẽ lại mỗi 30 giây. */
 "use strict";
 
 window.QuotaView = (() => {
@@ -20,6 +20,14 @@ window.QuotaView = (() => {
   const reset = (w) => (w.resets_at ? `${left(w.resets_at)} · ${when(w.resets_at)}` : "");
   const tip = (w) => [w.group, t("quota_used", { v: pct(w.used) }), reset(w)].filter(Boolean).join(" · ");
   const bar = (w, big) => `<div class="qbar${big ? " big" : ""} ${level(w.used)}"><i style="width:${w.used}%"></i></div>`;
+  // vòng tròn cho thanh bên thu gọn: mỗi khung một vòng đồng tâm (ngoài → trong theo KINDS), màu theo mức của khung đó
+  function ring(ws, top) {
+    const arcs = ws.slice(0, 2).map((w, k) => {
+      const r = 15 - k * 5, v = Math.min(100, Math.max(0, w.used));
+      return `<circle class="q-track" r="${r}" cx="18" cy="18"/>${v > 0 ? `<circle class="q-arc ${level(w.used)}" r="${r}" cx="18" cy="18" pathLength="100" stroke-dasharray="${v} 100"/>` : ""}`;
+    }).join("");
+    return `<div class="q-ring ${level(top)}"><svg viewBox="0 0 36 36" aria-hidden="true">${arcs}</svg><span${top >= 99.5 ? ' class="full"' : ""}>${pct(top)}</span></div>`;
+  }
   const refreshBtn = () => `<button class="q-refresh${Q.busy ? " busy" : ""}" type="button" data-action="quota-refresh" title="${esc(t("quota_refresh"))}">⟳</button>`;
 
   function worst(item) {
@@ -36,6 +44,7 @@ window.QuotaView = (() => {
       const ws = worst(i), top = Math.max(...ws.map((w) => w.used)), name = NAMES[i.cli] || i.cli;
       return `<div class="q-cli" data-action="quota-open" title="${esc(name + " · " + ws.map((w) => `${w.label} ${pct(w.used)}%`).join(" · "))}">
         <div class="q-name"><span class="q-dot ${level(top)}"></span><span class="q-n">${esc(name)}</span></div>
+        ${ring(ws, top)}<div class="q-abbr">${esc(name.slice(0, 3))}</div>
         ${ws.map((w) => `<div class="q-row" title="${esc(tip(w))}"><span>${esc(w.label)}</span>${bar(w)}<span class="q-v">${pct(w.used)}%</span></div>`).join("")}</div>`;
     }).join("");
   }
