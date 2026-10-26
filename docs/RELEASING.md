@@ -57,6 +57,8 @@ Tái hiện lỗi chỉ có trên Ubuntu: chạy test với `HOME` trống và `
   Chạy lại và commit khi giao diện đổi đáng kể.
 - `site/shots/web-*.webp` là ảnh giao diện web: `python scripts/site_shots.py --web` (chạy `ateam web` trên cùng dự
   án demo, chụp bằng Chrome headless qua DevTools protocol; cần `aiohttp` và Chrome/Chromium, biến `CHROME` nếu ở chỗ khác).
+  Gồm cả cảnh breadcrumb, Source Control (`web-scm`), Terminal (shell tương tác), Skills và Thống kê với thanh bên thu
+  gọn (vòng tròn hạn mức — CLI giả trả `/usage`). Trên Linux: `CHROME=/đường/dẫn/chromium`.
 - Bản tiếng Anh: thêm `--lang en` (cả hai lệnh trên) → `site/shots/en/`; app chạy tiếng Anh, dữ liệu demo dịch theo
   bảng `EN` trong `site_shots.py` (thiếu bản dịch thì script dừng và chỉ ra chỗ còn chữ Việt).
 - Gói zip chứa thư mục `ateam/` với `pyproject.toml`, `README.md`, `install.sh` và package `ateam/`

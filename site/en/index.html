@@ -163,9 +163,12 @@
           <button role="tab" aria-controls="g-board" aria-selected="false" tabindex="-1"><span>03</span>task board</button>
           <button role="tab" aria-controls="g-grid" aria-selected="false" tabindex="-1"><span>04</span>terminal grid</button>
           <button role="tab" aria-controls="g-git" aria-selected="false" tabindex="-1"><span>05</span>git &amp; diff</button>
-          <button role="tab" aria-controls="g-code" aria-selected="false" tabindex="-1"><span>06</span>vim-style code</button>
-          <button role="tab" aria-controls="g-agents" aria-selected="false" tabindex="-1"><span>07</span>agents &amp; workflows</button>
-          <button role="tab" aria-controls="g-todo" aria-selected="false" tabindex="-1"><span>08</span>to-do &amp; notes</button>
+          <button role="tab" aria-controls="g-code" aria-selected="false" tabindex="-1"><span>06</span>code &amp; source control</button>
+          <button role="tab" aria-controls="g-term" aria-selected="false" tabindex="-1"><span>07</span>terminal &amp; shell</button>
+          <button role="tab" aria-controls="g-agents" aria-selected="false" tabindex="-1"><span>08</span>agents &amp; workflows</button>
+          <button role="tab" aria-controls="g-skills" aria-selected="false" tabindex="-1"><span>09</span>skills</button>
+          <button role="tab" aria-controls="g-todo" aria-selected="false" tabindex="-1"><span>10</span>to-do &amp; notes</button>
+          <button role="tab" aria-controls="g-dash" aria-selected="false" tabindex="-1"><span>11</span>usage &amp; quota</button>
         </div>
 
         <div>
@@ -226,12 +229,23 @@
 
           <div class="gal-panel" id="g-code" role="tabpanel" hidden>
             <div class="gal-bar"><span class="title">app/auth/google.py</span><span class="sp"></span>
-              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-code-tui" aria-selected="true">terminal</button><button role="tab" aria-controls="g-code-web" aria-selected="false" tabindex="-1">web</button></span></div>
-            <div class="shot"><img id="g-code-tui" src="/shots/en/code.svg" width="1848" height="1075" loading="lazy" alt="Code tab: the Python file codex just wrote, syntax highlighted, lines selected in VISUAL LINE mode"><img id="g-code-web" hidden src="/shots/en/web-code.webp" width="2880" height="1800" loading="lazy" alt="Code tab in the web UI: file tree and a syntax-highlighted editor with vim keys"></div>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-code-tui" aria-selected="true">terminal</button><button role="tab" aria-controls="g-code-web" aria-selected="false" tabindex="-1">web</button><button role="tab" aria-controls="g-code-crumbs" aria-selected="false" tabindex="-1">breadcrumb</button><button role="tab" aria-controls="g-code-scm" aria-selected="false" tabindex="-1">source control</button></span></div>
+            <div class="shot"><img id="g-code-tui" src="/shots/en/code.svg" width="1848" height="1075" loading="lazy" alt="Code tab: the Python file codex just wrote, syntax highlighted, lines selected in VISUAL LINE mode"><img id="g-code-web" hidden src="/shots/en/web-code.webp" width="2880" height="1800" loading="lazy" alt="Code tab in the web UI: file tree, syntax-highlighted editor with vim keys and a breadcrumb above it"><img id="g-code-crumbs" hidden src="/shots/en/web-crumbs.webp" width="2880" height="1800" loading="lazy" alt="Breadcrumb app › auth › google.py › callback: clicking auth drops down its sibling folder, with auth expanded in place"><img id="g-code-scm" hidden src="/shots/en/web-scm.webp" width="2880" height="1800" loading="lazy" alt="Changes tab (Source Control): changed files, a commit box, and a side-by-side diff of models.py with an editable right side"></div>
             <div class="gal-note">
-              <h3>Read &amp; edit with vim keys, without leaving</h3>
-              <p>Open what an agent just wrote right in the app: syntax highlighting, vim keys, multiple files, smooth even on files tens of thousands of lines long.</p>
-              <ul><li><kbd>Ctrl</kbd>+<kbd>P</kbd> files, <code>&gt;</code> commands, <code>@</code> symbols</li><li><kbd>F3</kbd> project-wide search &amp; replace</li><li>Open files reload when an agent edits them</li></ul>
+              <h3>Read, edit and review changes like in VS Code</h3>
+              <p>Open what an agent just wrote right in the app: syntax highlighting, vim keys, smooth even on files tens of thousands of lines long. On the web, a breadcrumb jumps to sibling files or symbols, and the <em>Changes</em> tab is Source Control: stage, commit, and a side-by-side diff you edit on the right.</p>
+              <ul><li><kbd>Ctrl</kbd>+<kbd>P</kbd> files, <code>&gt;</code> commands, <code>@</code> symbols · <kbd>F3</kbd> search &amp; replace</li><li>Click <code>app › auth › google.py</code> to drop down files / folders, <kbd>→</kbd> <kbd>←</kbd> expand in place</li><li>Side-by-side diff: edit the right, <kbd>⌘</kbd>+<kbd>S</kbd> to save, → to restore a hunk, <kbd>F7</kbd> to jump</li><li>✨ AI edits / explains a selection (TUI: <kbd>Ctrl</kbd>+<kbd>E</kbd>, <kbd>F8</kbd>)</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-term" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">terminal · shell + ! commands</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-term-web" aria-selected="true">web</button></span></div>
+            <div class="shot"><img id="g-term-web" src="/shots/en/web-term.webp" width="2880" height="1800" loading="lazy" alt="Terminal tab: an interactive bash shell that just ran git log; on the left, the shell list and a running python3 -m http.server with port 5173 detected, each row with a stop button"></div>
+            <div class="gal-note">
+              <h3>A real terminal, inside the app</h3>
+              <p>The Terminal tab has interactive shells — your own zsh, so vim, htop, ssh and prompts all work. <code>!yarn dev</code> runs alongside, ports are detected, and ■ stops any row in place.</p>
+              <ul><li><b>＋</b> opens another shell; output survives a page reload</li><li><code>/term #12</code> opens a shell in a task's worktree to tweak it before merging</li><li>Script suggestions from package.json / Makefile; in the TUI too (<code>/term</code>)</li></ul>
             </div>
           </div>
 
@@ -241,8 +255,19 @@
             <div class="shot"><img id="g-agents-tui" src="/shots/en/agents.svg" width="1848" height="1075" loading="lazy" alt="Agents tab: an inline roles table, agent list with model, effort, status, Chat and Terminal buttons"><img id="g-agents-flow" hidden src="/shots/en/workflows.svg" width="1848" height="1075" loading="lazy" alt="Workflows tab: built-in and custom workflows"><img id="g-agents-web" hidden src="/shots/en/web-agents.webp" width="2880" height="1800" loading="lazy" alt="Agents page in the web UI: roles, agent list and custom agents"></div>
             <div class="gal-note">
               <h3>Your team, your way</h3>
-              <p>Change the CLI, model and effort for each role right on the Agents tab. Add your own CLIs (Gemini CLI, Cursor CLI, Aider…) and workflows like design → code → review.</p>
-              <ul><li>💬 chat with any agent, keeping its CLI session</li><li>⌨ open the real CLI to continue that session</li><li>Describe a workflow in words, the lead drafts the steps</li></ul>
+              <p>Change the CLI, model and effort for each role right on the Agents tab. Add your own CLIs (Gemini CLI, Cursor CLI, Aider…) and workflows like design → ⏸ your approval → code → review, per project if you like.</p>
+              <ul><li>💬 chat with any agent, keeping its CLI session</li><li>⌨ open the real CLI to continue that session</li><li>⏸ approval steps inside a workflow; describe one in words, or 🔀 save a finished goal as a workflow</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-skills" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">skills · shared library</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-skills-web" aria-selected="true">web</button></span></div>
+            <div class="shot"><img id="g-skills-web" src="/shots/en/web-skills.webp" width="2880" height="1800" loading="lazy" alt="Skills page: project skills, the ateam library and a Claude Code skill, toggled per project, with install from GitHub, AI-written skills and create buttons"></div>
+            <div class="gal-note">
+              <h3>One set of skills for the whole team</h3>
+              <p>ateam collects skills (the Agent Skills standard, folders with <code>SKILL.md</code>) from every CLI's skill folder, the repo and its own library, and sends them with the prompt — claude, codex, agy, grok and opencode all get the same copy. The lead attaches the right skills to each task (🧩 chip).</p>
+              <ul><li>Type <code>$skill-name</code> in a goal, <code>/task</code> or chat</li><li>✨ AI writes a skill from a description · 💾 save how the team did a goal as a skill</li><li>Install skills from GitHub; TUI: <code>/skills</code> to browse and toggle</li></ul>
             </div>
           </div>
 
@@ -254,6 +279,17 @@
               <h3>Your tasks, next to the team's</h3>
               <p>Type <code>Fix login bug #api !high @tomorrow 17:00</code> and the tag, priority and due date are parsed for you. Markdown notes for decisions, ideas and prompts you reuse.</p>
               <ul><li>Shared tags; filter by tag, due date, priority</li><li>Stored per project, outside the repo</li><li>Shared between terminal and web</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-dash" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">usage · quota</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Version"><button role="tab" aria-controls="g-dash-web" aria-selected="true">web</button></span></div>
+            <div class="shot"><img id="g-dash-web" src="/shots/en/web-dash.webp" width="2880" height="1800" loading="lazy" alt="Usage page with the sidebar collapsed: quota rings for claude and antigravity at the bottom of the sidebar, 5-hour / weekly quota with reset times at the top, tokens per day below"></div>
+            <div class="gal-note">
+              <h3>Know your quota before you hand out work</h3>
+              <p>The 5-hour / weekly quota of claude, codex and antigravity sits at the bottom of the sidebar — collapse the sidebar and it becomes concentric rings (outer 5h, inner week), readable at a glance. The Usage tab has real tokens and cost from CLI session logs, by day, agent and model.</p>
+              <ul><li>Reset countdowns, green / amber / red by level</li><li>Rate-limited mid-task: the task moves to a fallback agent</li><li>In the TUI too: sidebar footer and the 📊 Usage tab</li></ul>
             </div>
           </div>
         </div>
@@ -274,7 +310,8 @@
             <li><b>A real lead</b> — plans, picks the right agent, reviews results and adds work when something is missing, up to 3 rounds.</li>
             <li><b>Parallel, dependency-aware</b> — with a concurrency limit; agents can delegate a part to a better-suited teammate.</li>
             <li><b>Agents ask instead of guessing</b> — on ambiguity an agent pauses to ask you, then resumes the same session.</li>
-            <li><b>Workflows</b> — design → code → review out of the box, or describe one in words and the lead drafts the steps.</li>
+            <li><b>Workflows</b> — design → ⏸ your approval → code → review; describe one in words for the lead to draft, or save a finished goal as a workflow.</li>
+            <li><b>🧩 Shared skills</b> — one skill library for every CLI; the lead attaches them to tasks, <code>$skill-name</code> calls one directly.</li>
             <li><b>Keeps context, saves tokens</b> — <code>/retry</code>, test-fix rounds and <code>/continue</code> resume the same CLI session; <code>/init</code> writes a project overview once.</li>
           </ul>
         </div>
@@ -291,10 +328,10 @@
         <div class="group">
           <h3>built-in tools</h3>
           <ul>
-            <li><b>Code</b> — vim-key editor, command palette, project-wide search &amp; replace.</li>
+            <li><b>Code</b> — vim-key editor, breadcrumb, command palette, search &amp; replace; Source Control with an editable side-by-side diff.</li>
             <li><b>Git</b> — stage, commit (AI-written messages), branches, pull/push, stash, history, revert.</li>
             <li><b>Grid &amp; chat</b> — several agents' real CLIs side by side; chat with any agent in its own session.</li>
-            <li><b>Terminal</b> — <code>!yarn dev</code> runs inside the app, suggests package.json / Makefile scripts, detects ports.</li>
+            <li><b>Terminal</b> — real interactive shells (vim, htop, ssh), even in a task's worktree; <code>!yarn dev</code> with an in-place ■ stop, port detection.</li>
             <li><b>To-do, notes, @file, image paste</b> — <code>@</code> mentions files in each CLI's syntax, <kbd>Ctrl</kbd>+<kbd>V</kbd> pastes screenshots.</li>
           </ul>
         </div>
@@ -302,9 +339,9 @@
           <h3>remote &amp; insight</h3>
           <ul>
             <li><b><code>ateam web</code></b> — everything the terminal does; multiple tabs never run a task twice.</li>
-            <li><b>From your phone</b> — <code>--tunnel</code>: Cloudflare Tunnel over https + QR code, token-protected, with a read-only mode.</li>
-            <li><b>Usage</b> — real tokens and cost from CLI session logs, goal history, remaining quota.</li>
-            <li><b>Notifications</b> — macOS / browser alerts when something awaits review or a task fails.</li>
+            <li><b>From your phone</b> — <code>--tunnel</code>: Cloudflare Tunnel over https + QR code, token-protected, with a read-only mode; or hit ↻ in the 📱 popup to restart in remote mode.</li>
+            <li><b>Usage &amp; quota</b> — real tokens and cost from CLI session logs, goal history; 5h / weekly quota in the sidebar, as rings when it's collapsed.</li>
+            <li><b>Notifications &amp; updates</b> — macOS / browser alerts when something awaits review or a task fails; new versions are announced, <code>/update</code> installs and restarts.</li>
             <li><b>21 themes · English / Tiếng Việt</b> — dark, light, custom accent; <code>/lang vi</code> switches the whole UI.</li>
           </ul>
         </div>
@@ -401,7 +438,11 @@
               <tr><td><code>/git</code> · <code>/commit</code></td><td>Git tab · commit (empty: AI writes the message)</td></tr>
               <tr><td><code>/grid</code> · <code>/todo</code> · <code>/notes</code></td><td>Terminal grid · to-do · notes</td></tr>
               <tr><td><code>/roles</code> · <code>/setup</code></td><td>Quick role edits · full team setup</td></tr>
-              <tr><td><code>/open ~/code/app</code></td><td>Switch to another project</td></tr>
+              <tr><td><code>/open ~/code/app</code></td><td>Switch to another project (web: ⧉ opens it in a new window)</td></tr>
+              <tr><td><code>/skills</code> · <code>$skill-name</code></td><td>Browse, toggle skills · attach a skill to a goal, task or chat</td></tr>
+              <tr><td><code>/term #12</code></td><td>Interactive shell in a task's worktree</td></tr>
+              <tr><td><code>/delete 7</code></td><td>Delete a task outside any plan</td></tr>
+              <tr><td><code>/update</code></td><td>Update ateam and restart</td></tr>
               <tr><td><code>/usage</code> · <code>/dash</code></td><td>Runs and remaining quota · tokens &amp; cost</td></tr>
               <tr><td><code>/theme nord purple</code> · <code>/lang en</code></td><td>Change theme · switch UI language</td></tr>
             </tbody>

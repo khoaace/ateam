@@ -38,6 +38,13 @@ name="$(basename "$0")"
 P="${@: -1}"
 prev=""; for a in "$@"; do [ "$prev" = "-p" ] && P="$a"; prev="$a"; done  # claude/agy: prompt sau -p
 case "$P" in --version) echo "$name 1.0.0"; exit 0 ;; --help) echo "Usage: $name"; exit 0 ;; esac
+if [ "$P" = "/usage" ]; then  # hạn mức 5h / tuần (giờ hồi điền lúc tạo file — make_bin)
+  case "$name" in
+    claude) printf '%s\n' "Current session: 64% used · resets __C5H__" "Current week (all models): 38% used · resets __CWK__" ;;
+    agy) printf '%s\r\n' "Gemini Models  Five Hour Limit Remaining  81%  __A5H__" "Gemini Models  Weekly Limit Remaining  12%  __AWK__" ;;
+  esac
+  exit 0
+fi
 case "${1:-}" in
   models) case "$name" in
             opencode) printf 'xai/grok-build-0.1\nxai/grok-4.7\nanthropic/claude-sonnet-5-5\n' ;;
@@ -72,7 +79,7 @@ fi
 if [[ "$P" == *"Reply with ONLY a JSON array"* ]]; then
   echo "Đang đọc cấu trúc dự án…"; slow
   cat <<'J'
-[{"id":1,"agent":"codex","title":"API đăng nhập Google OAuth","prompt":"Thêm route /auth/google và /auth/callback dùng OAuth 2.0, lưu phiên đăng nhập.","depends_on":[],"effort":"high"},
+[{"id":1,"agent":"codex","title":"API đăng nhập Google OAuth","prompt":"Thêm route /auth/google và /auth/callback dùng OAuth 2.0, lưu phiên đăng nhập.","depends_on":[],"effort":"high","skills":["flask-blueprint"]},
  {"id":2,"agent":"antigravity","title":"Nút & trang đăng nhập","prompt":"Trang /login với nút Đăng nhập bằng Google, hiện avatar khi đã đăng nhập.","depends_on":[]},
  {"id":3,"agent":"grok","title":"Test luồng đăng nhập","prompt":"Viết test cho callback OAuth: thành công, sai state, hết hạn.","depends_on":[1]},
  {"id":4,"agent":"opencode","title":"Cập nhật README","prompt":"Thêm hướng dẫn cấu hình GOOGLE_CLIENT_ID vào README.","depends_on":[1,2]}]
@@ -236,6 +243,17 @@ class User(db.Model):
     name = db.Column(db.String(120), default="")
     avatar = db.Column(db.String(500))
 ''',
+    ".agents/skills/flask-blueprint/SKILL.md": """---
+name: flask-blueprint
+description: Thêm route Flask theo quy ước của dự án — mỗi nhóm route một Blueprint, đăng ký trong create_app, kèm test.
+---
+
+# Thêm route Flask
+
+1. Tạo Blueprint trong `app/<nhóm>/` với `url_prefix` riêng.
+2. Đăng ký trong `create_app()` ở `app/__init__.py`.
+3. Viết test bằng `app.test_client()` cho đường đi thành công và lỗi.
+""",
     "README.md": "# Sổ tay nhóm\n\nỨng dụng Flask nhỏ để ghi chú cho nhóm.\n",
     "requirements.txt": "flask>=3.0\nflask-sqlalchemy>=3.1\n",
 }
@@ -246,6 +264,31 @@ class User(db.Model):
 # cụm dài thay trước. Thiếu cặp thì loc() báo để khỏi lọt chữ Việt vào ảnh tiếng Anh.
 EN = [
     ("so-tay-nhom", "team-notebook"),
+    ("# hạn mức 5h / tuần (giờ hồi điền lúc tạo file — make_bin)", "# 5h / weekly quota (reset times filled in by make_bin)"),
+    ("Thêm route Flask theo quy ước của dự án — mỗi nhóm route một Blueprint, đăng ký trong create_app, kèm test.",
+     "Add Flask routes the project's way — one Blueprint per route group, registered in create_app, with tests."),
+    ("# Thêm route Flask", "# Add a Flask route"),
+    ("1. Tạo Blueprint trong `app/<nhóm>/` với `url_prefix` riêng.", "1. Create a Blueprint in `app/<group>/` with its own `url_prefix`."),
+    ("2. Đăng ký trong `create_app()` ở `app/__init__.py`.", "2. Register it in `create_app()` in `app/__init__.py`."),
+    ("3. Viết test bằng `app.test_client()` cho đường đi thành công và lỗi.",
+     "3. Write tests with `app.test_client()` for the success and error paths."),
+    ("Bạn duyệt thiết kế", "You approve the design"),
+    ("review-bao-mat", "security-review"),
+    ("viet-changelog", "write-changelog"),
+    ("Soát lỗi bảo mật web trước khi merge: OAuth, phiên đăng nhập, CSRF, lộ secret, SQL injection.",
+     "Check web security before merging: OAuth, login sessions, CSRF, leaked secrets, SQL injection."),
+    ("# Review bảo mật", "# Security review"),
+    ("- Kiểm tra `state` / PKCE ở mọi luồng OAuth", "- Check `state` / PKCE in every OAuth flow"),
+    ("- Cookie phiên: `HttpOnly`, `Secure`, `SameSite`", "- Session cookie: `HttpOnly`, `Secure`, `SameSite`"),
+    ("- Không log token hay secret", "- Never log tokens or secrets"),
+    ("- Truy vấn DB luôn có tham số", "- Always parameterize DB queries"),
+    ("Viết mục CHANGELOG ngắn gọn bằng giọng người dùng: tính năng gì, dùng thế nào, khác gì trước.",
+     "Write short CHANGELOG entries in the user's voice: what the feature is, how to use it, what changed."),
+    ("# Viết CHANGELOG", "# Write the CHANGELOG"),
+    ("Mỗi mục một gạch đầu dòng, in đậm tên tính năng, rồi một câu nói người dùng được gì.",
+     "One bullet per entry, the feature name in bold, then one sentence on what the user gets."),
+    ("Đọc, tách trang, gộp và điền form PDF bằng pypdf.", "Read, split, merge and fill PDF forms with pypdf."),
+    ("Dùng `pypdf` để đọc và ghi file PDF.", "Use `pypdf` to read and write PDF files."),
     ("# chạy tương tác trong pty (tab Lưới): màn hình CLI giả", "# interactive run in a pty (Grid tab): fake CLI screen"),
     ("Tóm tắt các route đăng nhập", "Summarize the login routes"),
     ("Đọc %sapp/auth/google.py%s", "Reading %sapp/auth/google.py%s"),
@@ -422,6 +465,10 @@ title = "Thiết kế {goal}"
 prompt = "Thiết kế ngắn gọn: {goal}"
 
 [[workflows.tinh-nang-moi.steps]]
+type = "gate"
+title = "Bạn duyệt thiết kế"
+
+[[workflows.tinh-nang-moi.steps]]
 agent = "codex"
 title = "Viết code"
 prompt = "Cài đặt theo thiết kế: {goal}"
@@ -447,15 +494,38 @@ prompt = "Sửa lỗi và thêm test chống tái diễn: {goal}"
 """
 
 
+SKILLS = [
+    ("review-bao-mat", "Soát lỗi bảo mật web trước khi merge: OAuth, phiên đăng nhập, CSRF, lộ secret, SQL injection.",
+     "# Review bảo mật\n\n- Kiểm tra `state` / PKCE ở mọi luồng OAuth\n- Cookie phiên: `HttpOnly`, `Secure`, `SameSite`\n"
+     "- Không log token hay secret\n- Truy vấn DB luôn có tham số\n"),
+    ("viet-changelog", "Viết mục CHANGELOG ngắn gọn bằng giọng người dùng: tính năng gì, dùng thế nào, khác gì trước.",
+     "# Viết CHANGELOG\n\nMỗi mục một gạch đầu dòng, in đậm tên tính năng, rồi một câu nói người dùng được gì.\n"),
+]
+CLI_SKILL = """---
+name: pdf
+description: Đọc, tách trang, gộp và điền form PDF bằng pypdf.
+---
+
+# PDF
+
+Dùng `pypdf` để đọc và ghi file PDF.
+"""
+
+
 def seed_demo(proj: Path) -> None:
     """Agent/workflow tuỳ chỉnh (trang Agents, Workflows) + to-do và ghi chú (tab To-do, Ghi chú)."""
     import datetime as dt
 
-    from ateam import notes, todos
+    from ateam import notes, skills, todos
     from ateam.config import CUSTOM_FILE
     CUSTOM_FILE.parent.mkdir(parents=True, exist_ok=True)
     CUSTOM_FILE.write_text(loc(CUSTOM), encoding="utf-8")
     today = dt.date.today()
+    for name, desc, body in SKILLS:
+        skills.create(loc(name), loc(desc), loc(body), overwrite=True)
+    cli = skills.home_dir() / ".claude" / "skills" / "pdf"
+    cli.mkdir(parents=True, exist_ok=True)
+    (cli / "SKILL.md").write_text(loc(CLI_SKILL), encoding="utf-8")
 
     def due(days: int, hm: str = "") -> str:
         return (today + dt.timedelta(days=days)).isoformat() + (("T" + hm) if hm else "")
@@ -485,9 +555,18 @@ def seed_demo(proj: Path) -> None:
 def make_bin(base: Path) -> Path:
     bindir = base / "bin"
     bindir.mkdir()
+    import datetime as dt
+
+    now = dt.datetime.now().astimezone()
+    h5, wk = now + dt.timedelta(hours=2, minutes=40), now + dt.timedelta(days=3)
+    tz = now.strftime("%z")
+    agy = lambda t: t.strftime("%Y-%m-%d %H:%M ") + tz[:3]  # noqa: E731
+    ampm = lambda t: f"{t.hour % 12 or 12}{t.strftime('%p').lower()}"  # noqa: E731
+    text = (loc(AGENT).replace("__C5H__", ampm(h5)).replace("__CWK__", wk.strftime("%b ") + f"{wk.day} at " + ampm(wk))
+            .replace("__A5H__", agy(h5)).replace("__AWK__", agy(wk)))
     for name in ("claude", "codex", "agy", "grok", "opencode", "gemini"):
         p = bindir / name
-        p.write_text(loc(AGENT), encoding="utf-8")
+        p.write_text(text, encoding="utf-8")
         p.chmod(0o755)
     return bindir
 
@@ -609,6 +688,24 @@ async def shoot(base: Path, proj: Path) -> None:
 
 
 # ------------------------------------------------------------------ giao diện web (ateam web + Chrome headless)
+MODELS_EDIT = '''from datetime import datetime
+
+from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy()
+
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(120), default="")
+    avatar = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_login = db.Column(db.DateTime)
+
+    def __repr__(self) -> str:
+        return f"<User {self.email}>"
+'''
 GOAL = loc("Thêm đăng nhập bằng Google, có test và cập nhật README")
 
 
@@ -628,7 +725,9 @@ def find_chrome() -> str:
 
 # đường dẫn thư mục tạm trên trang -> ~/code (như clean_svg)
 SCRUB = r"""(() => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n;
-  while ((n = w.nextNode())) n.nodeValue = n.nodeValue.replace(/\/\S*?ateam-shots-[^\/\s]+/g, "~/code"); })()"""
+  while ((n = w.nextNode())) n.nodeValue = n.nodeValue
+    .replace(/\/\S*?ateam-shots-[^\/\s]+\/xdg/g, "~/.config").replace(/\/\S*?ateam-shots-[^\/\s]+\/home/g, "~")
+    .replace(/\/\S*?ateam-shots-[^\/\s]+/g, "~/code"); })()"""
 
 
 class CDP:
@@ -733,6 +832,24 @@ async def shoot_web(base: Path, proj: Path) -> None:
                 await c.until("document.querySelector('#code .cm-editor')")
                 await asyncio.sleep(1.2)
                 await c.shot("web-code")
+                # breadcrumb: bấm đoạn "auth" xổ ra thư mục cùng cấp, mở rộng auth tại chỗ
+                await c.js("document.querySelector('#code-crumbs .bc[data-bc=\"1\"]').click()")
+                await c.until("document.querySelector('.bc-pop .bc-item[data-dir=\"1\"]')")
+                await c.js("document.querySelector('.bc-pop .bc-item.on').click()")
+                await c.until("document.querySelector('.bc-pop .bc-item[data-path=\"app/auth/google.py\"]')")
+                await asyncio.sleep(0.6)
+                await c.shot("web-crumbs")
+                await c.js("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
+                await c.js("document.querySelectorAll('.bc-pop').forEach((m) => m.remove())")
+                # Source Control + diff hai cột: một thay đổi tay ở app/models.py
+                (proj / "app" / "models.py").write_text(MODELS_EDIT, encoding="utf-8")
+                await c.js("document.querySelector('.side-tab[data-side=\"scm\"]').click()")
+                await c.until("document.querySelector('#scm-list .snode[data-path=\"app/models.py\"]')")
+                await c.js("document.querySelector('#scm-list .snode[data-path=\"app/models.py\"]').click()")
+                await c.until("document.querySelector('#code .cm-mergeView, #code .cm-merge-b')")
+                await asyncio.sleep(1.2)
+                await c.shot("web-scm")
+                await c.js("document.querySelector('.side-tab[data-side=\"files\"]').click()")
                 await c.js("setView('git')")
                 await c.until("document.querySelectorAll('#git .gfile').length")
                 await asyncio.sleep(1.0)
@@ -745,6 +862,29 @@ async def shoot_web(base: Path, proj: Path) -> None:
                 await c.until("document.querySelectorAll('#custom .c-row').length >= 2")
                 await asyncio.sleep(0.6)
                 await c.shot("web-workflows")
+                await c.js("setView('skills')")
+                await c.until("document.querySelectorAll('#view-skills [data-skill], #view-skills .sk-row').length >= 3")
+                await asyncio.sleep(0.8)
+                await c.shot("web-skills")
+                # tab Terminal: lệnh ! đang chạy (nút ■ trên dòng, bắt port) + shell tương tác
+                await c.js("setView('term')")
+                await c.until("S.openShell")
+                await c.js("window.demoShell = S.openShell")
+                await asyncio.sleep(1.5)
+                await c.js("send('submit', {text: '!python3 -m http.server 5173'})")  # mở dòng lệnh đó
+                await asyncio.sleep(2.0)
+                await c.js("send('grid_in', {id: demoShell, data: 'git log --oneline -3 && ls app\\r'})")
+                await asyncio.sleep(1.0)
+                await c.js("tsShow(demoShell)")
+                await asyncio.sleep(1.0)
+                await c.js("document.querySelector('#toasts').replaceChildren()")
+                await c.shot("web-term")
+                # hạn mức: thanh bên thu gọn = vòng tròn; đầu trang Thống kê đủ mọi khung
+                await c.js("setSideMin(true); setView('dash')")
+                await c.until("document.querySelector('#quota .q-ring')")
+                await asyncio.sleep(1.0)
+                await c.shot("web-dash")
+                await c.js("setSideMin(false)")
                 await c.js("setView('todo')")
                 await asyncio.sleep(1.2)
                 await c.shot("web-todo")
@@ -777,6 +917,15 @@ def main() -> None:
         proj = make_project(base)
         os.environ["PATH"] = f"{bindir}{os.pathsep}{os.environ['PATH']}"
         os.environ["XDG_CONFIG_HOME"] = str(base / "xdg")
+        home = base / "home"
+        home.mkdir()
+        os.environ["ATEAM_SKILLS_HOME"] = str(home)
+        if "--web" in sys.argv:  # shell của tab Terminal: prompt gọn, không lộ thư mục tạm
+            prompt = "~/code/" + loc("so-tay-nhom")
+            (home / ".bashrc").write_text(f"PS1='\\[\\e[36m\\]{prompt}\\[\\e[0m\\] $ '\n", encoding="utf-8")
+            (home / ".bash_profile").write_text(". ~/.bashrc\n", encoding="utf-8")  # bash chạy kiểu login shell
+            (home / ".zshrc").write_text(f"PROMPT='%F{{cyan}}{prompt}%f %# '\n", encoding="utf-8")
+            os.environ["HOME"] = str(home)
         os.environ["ATEAM_LANG"] = LANG
         os.environ["DEMO_SLOW"] = "0.8"
         os.environ["GIT_AUTHOR_NAME"] = os.environ["GIT_COMMITTER_NAME"] = "demo"

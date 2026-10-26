@@ -165,9 +165,12 @@
           <button role="tab" aria-controls="g-board" aria-selected="false" tabindex="-1"><span>03</span>bảng việc</button>
           <button role="tab" aria-controls="g-grid" aria-selected="false" tabindex="-1"><span>04</span>lưới terminal</button>
           <button role="tab" aria-controls="g-git" aria-selected="false" tabindex="-1"><span>05</span>git &amp; diff</button>
-          <button role="tab" aria-controls="g-code" aria-selected="false" tabindex="-1"><span>06</span>code kiểu vim</button>
-          <button role="tab" aria-controls="g-agents" aria-selected="false" tabindex="-1"><span>07</span>agents &amp; workflows</button>
-          <button role="tab" aria-controls="g-todo" aria-selected="false" tabindex="-1"><span>08</span>to-do &amp; ghi chú</button>
+          <button role="tab" aria-controls="g-code" aria-selected="false" tabindex="-1"><span>06</span>code &amp; source control</button>
+          <button role="tab" aria-controls="g-term" aria-selected="false" tabindex="-1"><span>07</span>terminal &amp; shell</button>
+          <button role="tab" aria-controls="g-agents" aria-selected="false" tabindex="-1"><span>08</span>agents &amp; workflows</button>
+          <button role="tab" aria-controls="g-skills" aria-selected="false" tabindex="-1"><span>09</span>skills</button>
+          <button role="tab" aria-controls="g-todo" aria-selected="false" tabindex="-1"><span>10</span>to-do &amp; ghi chú</button>
+          <button role="tab" aria-controls="g-dash" aria-selected="false" tabindex="-1"><span>11</span>thống kê &amp; hạn mức</button>
         </div>
 
         <div>
@@ -228,12 +231,23 @@
 
           <div class="gal-panel" id="g-code" role="tabpanel" hidden>
             <div class="gal-bar"><span class="title">app/auth/google.py</span><span class="sp"></span>
-              <span class="seg" role="tablist" aria-label="Phiên bản"><button role="tab" aria-controls="g-code-tui" aria-selected="true">terminal</button><button role="tab" aria-controls="g-code-web" aria-selected="false" tabindex="-1">web</button></span></div>
-            <div class="shot"><img id="g-code-tui" src="/shots/code.svg" width="1848" height="1075" loading="lazy" alt="Tab Code: file Python do codex vừa viết, tô màu cú pháp, đang chọn dòng ở chế độ VISUAL LINE"><img id="g-code-web" hidden src="/shots/web-code.webp" width="2880" height="1800" loading="lazy" alt="Tab Code trên web: cây thư mục, editor tô màu cú pháp với phím vim"></div>
+              <span class="seg" role="tablist" aria-label="Phiên bản"><button role="tab" aria-controls="g-code-tui" aria-selected="true">terminal</button><button role="tab" aria-controls="g-code-web" aria-selected="false" tabindex="-1">web</button><button role="tab" aria-controls="g-code-crumbs" aria-selected="false" tabindex="-1">breadcrumb</button><button role="tab" aria-controls="g-code-scm" aria-selected="false" tabindex="-1">source control</button></span></div>
+            <div class="shot"><img id="g-code-tui" src="/shots/code.svg" width="1848" height="1075" loading="lazy" alt="Tab Code: file Python do codex vừa viết, tô màu cú pháp, đang chọn dòng ở chế độ VISUAL LINE"><img id="g-code-web" hidden src="/shots/web-code.webp" width="2880" height="1800" loading="lazy" alt="Tab Code trên web: cây thư mục, editor tô màu cú pháp với phím vim, breadcrumb trên editor"><img id="g-code-crumbs" hidden src="/shots/web-crumbs.webp" width="2880" height="1800" loading="lazy" alt="Breadcrumb app › auth › google.py › callback: bấm đoạn auth xổ ra thư mục cùng cấp, thư mục auth mở rộng tại chỗ"><img id="g-code-scm" hidden src="/shots/web-scm.webp" width="2880" height="1800" loading="lazy" alt="Tab Thay đổi (Source Control): danh sách file đã sửa, ô commit, diff hai cột của models.py với bên phải sửa được"></div>
             <div class="gal-note">
-              <h3>Đọc &amp; sửa code kiểu vim, không rời app</h3>
-              <p>Mở file agent vừa viết ngay trong app: tô màu cú pháp, phím vim, nhiều file, mượt cả với file hàng chục nghìn dòng.</p>
-              <ul><li><kbd>Ctrl</kbd>+<kbd>P</kbd> mở file, <code>&gt;</code> lệnh, <code>@</code> tới hàm</li><li><kbd>F3</kbd> tìm &amp; thay toàn dự án</li><li>Agent sửa file đang mở → tự nạp lại</li></ul>
+              <h3>Đọc, sửa code và duyệt thay đổi như VS Code</h3>
+              <p>Mở file agent vừa viết ngay trong app: tô màu cú pháp, phím vim, mượt cả với file hàng chục nghìn dòng. Trên web có breadcrumb tới file cùng thư mục hay hàm trong file, và tab <em>Thay đổi</em> là Source Control: stage, commit, diff hai cột sửa thẳng bên phải.</p>
+              <ul><li><kbd>Ctrl</kbd>+<kbd>P</kbd> mở file, <code>&gt;</code> lệnh, <code>@</code> tới hàm · <kbd>F3</kbd> tìm &amp; thay</li><li>Bấm <code>app › auth › google.py</code> xổ file / thư mục, <kbd>→</kbd> <kbd>←</kbd> mở rộng tại chỗ</li><li>Diff hai cột: sửa bên phải rồi <kbd>⌘</kbd>+<kbd>S</kbd>, → lấy lại đoạn cũ, <kbd>F7</kbd> nhảy đoạn</li><li>✨ AI sửa / giải thích đoạn chọn (TUI: <kbd>Ctrl</kbd>+<kbd>E</kbd>, <kbd>F8</kbd>)</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-term" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">terminal · shell + lệnh !</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Phiên bản"><button role="tab" aria-controls="g-term-web" aria-selected="true">web</button></span></div>
+            <div class="shot"><img id="g-term-web" src="/shots/web-term.webp" width="2880" height="1800" loading="lazy" alt="Tab Terminal: shell bash tương tác vừa chạy git log, bên trái là danh sách shell và lệnh python3 -m http.server đang chạy, bắt được port 5173, mỗi dòng có nút dừng"></div>
+            <div class="gal-note">
+              <h3>Terminal thật, ngay trong app</h3>
+              <p>Tab Terminal có shell tương tác — zsh của bạn, nên vim, htop, ssh hay lệnh hỏi đáp đều chạy. Lệnh <code>!yarn dev</code> chạy cạnh đó, tự bắt port, và ■ dừng ngay trên từng dòng.</p>
+              <ul><li><b>＋</b> mở thêm shell; tải lại trang vẫn giữ output</li><li><code>/term #12</code> mở shell trong worktree của task, sửa tay trước khi merge</li><li>Gợi ý script từ package.json / Makefile; TUI cũng có (<code>/term</code>)</li></ul>
             </div>
           </div>
 
@@ -243,8 +257,19 @@
             <div class="shot"><img id="g-agents-tui" src="/shots/agents.svg" width="1848" height="1075" loading="lazy" alt="Tab Agents: bảng vai trò sửa ngay tại chỗ, danh sách agent với model, effort, trạng thái, nút Chat và Terminal"><img id="g-agents-flow" hidden src="/shots/workflows.svg" width="1848" height="1075" loading="lazy" alt="Tab Workflows: workflow dựng sẵn và workflow tuỳ chỉnh"><img id="g-agents-web" hidden src="/shots/web-agents.webp" width="2880" height="1800" loading="lazy" alt="Trang Agents trên web: vai trò, danh sách agent và agent tuỳ chỉnh"></div>
             <div class="gal-note">
               <h3>Đội của bạn, theo cách của bạn</h3>
-              <p>Đổi CLI, model, effort cho từng vai trò ngay trên tab Agents. Thêm CLI riêng (Gemini CLI, Cursor CLI, Aider…) và workflow như thiết kế → code → review.</p>
-              <ul><li>💬 chat riêng từng agent, giữ đúng phiên CLI</li><li>⌨ mở CLI thật để tiếp tục phiên đó</li><li>Mô tả workflow bằng lời, trưởng nhóm dựng các bước</li></ul>
+              <p>Đổi CLI, model, effort cho từng vai trò ngay trên tab Agents. Thêm CLI riêng (Gemini CLI, Cursor CLI, Aider…) và workflow như thiết kế → ⏸ bạn duyệt → code → review, riêng cho từng dự án nếu muốn.</p>
+              <ul><li>💬 chat riêng từng agent, giữ đúng phiên CLI</li><li>⌨ mở CLI thật để tiếp tục phiên đó</li><li>Bước ⏸ chờ bạn duyệt giữa workflow; mô tả bằng lời để trưởng nhóm dựng, hoặc 🔀 lưu mục tiêu đã xong thành workflow</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-skills" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">skills · thư viện chung</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Phiên bản"><button role="tab" aria-controls="g-skills-web" aria-selected="true">web</button></span></div>
+            <div class="shot"><img id="g-skills-web" src="/shots/web-skills.webp" width="2880" height="1800" loading="lazy" alt="Trang Skills: skill của dự án, thư viện ateam và skill của Claude Code, bật/tắt theo dự án, nút cài từ GitHub, AI viết skill, tạo skill"></div>
+            <div class="gal-note">
+              <h3>Một bộ skill cho cả đội</h3>
+              <p>ateam gom skill (chuẩn Agent Skills, thư mục có <code>SKILL.md</code>) từ thư mục của mọi CLI, trong repo và thư viện riêng, rồi gửi kèm prompt — claude, codex, agy, grok, opencode cùng nhận một bản. Trưởng nhóm tự gắn skill hợp việc vào task (chip 🧩).</p>
+              <ul><li>Gõ <code>$tên-skill</code> trong mục tiêu, <code>/task</code> hay chat</li><li>✨ AI viết skill theo mô tả · 💾 lưu cách đội đã làm một mục tiêu thành skill</li><li>Cài skill từ GitHub; TUI: <code>/skills</code> xem và bật / tắt</li></ul>
             </div>
           </div>
 
@@ -256,6 +281,17 @@
               <h3>Việc của bạn, cạnh việc của đội</h3>
               <p>Gõ nhanh <code>Sửa lỗi đăng nhập #api !cao @mai 17:00</code> là tự bóc tag, ưu tiên và hạn. Ghi chú markdown cho quyết định, ý tưởng, đoạn prompt hay dùng.</p>
               <ul><li>Tag dùng chung, lọc theo tag, hạn, ưu tiên</li><li>Lưu theo dự án, ngoài repo</li><li>Dùng chung giữa terminal và web</li></ul>
+            </div>
+          </div>
+
+          <div class="gal-panel" id="g-dash" role="tabpanel" hidden>
+            <div class="gal-bar"><span class="title">thống kê · hạn mức</span><span class="sp"></span>
+              <span class="seg" role="tablist" aria-label="Phiên bản"><button role="tab" aria-controls="g-dash-web" aria-selected="true">web</button></span></div>
+            <div class="shot"><img id="g-dash-web" src="/shots/web-dash.webp" width="2880" height="1800" loading="lazy" alt="Trang Thống kê với thanh bên thu gọn: vòng tròn hạn mức của claude và antigravity ở chân thanh bên, đầu trang là hạn mức 5 giờ / tuần kèm giờ hồi, dưới là token theo ngày"></div>
+            <div class="gal-note">
+              <h3>Biết còn bao nhiêu hạn mức trước khi giao việc</h3>
+              <p>Hạn mức 5 giờ / tuần của claude, codex, antigravity luôn ở chân thanh bên — thu gọn thanh bên thì thành vòng tròn đồng tâm (ngoài 5h, trong tuần), nhìn là biết. Tab Thống kê có token và cost thật từ log phiên CLI, theo ngày, agent và model.</p>
+              <ul><li>Giờ hồi đếm ngược, xanh / vàng / đỏ theo mức</li><li>Hết hạn mức giữa chừng: task tự chuyển sang agent dự phòng</li><li>Có cả trong TUI: chân thanh bên và tab 📊 Thống kê</li></ul>
             </div>
           </div>
         </div>
@@ -276,7 +312,8 @@
             <li><b>Trưởng nhóm thật sự</b> — lập kế hoạch, chọn agent hợp việc, review kết quả và giao thêm khi còn thiếu, tối đa 3 vòng.</li>
             <li><b>Song song theo phụ thuộc</b> — có giới hạn số task cùng lúc; agent tự giao phần việc hợp với thành viên khác.</li>
             <li><b>Agent hỏi lại thay vì đoán</b> — gặp chỗ mơ hồ, agent dừng hỏi bạn rồi làm tiếp đúng phiên.</li>
-            <li><b>Workflow dựng sẵn</b> — thiết kế → code → review, hoặc mô tả bằng lời để trưởng nhóm dựng các bước.</li>
+            <li><b>Workflow dựng sẵn</b> — thiết kế → ⏸ bạn duyệt → code → review; mô tả bằng lời để trưởng nhóm dựng, hoặc lưu mục tiêu đã xong thành workflow.</li>
+            <li><b>🧩 Skills dùng chung</b> — một thư viện skill cho mọi CLI; trưởng nhóm tự gắn vào task, <code>$tên-skill</code> để gọi ngay.</li>
             <li><b>Nhớ ngữ cảnh, đỡ token</b> — <code>/retry</code>, vòng sửa test, <code>/continue</code> tiếp tục đúng phiên CLI; <code>/init</code> viết tổng quan dự án một lần.</li>
           </ul>
         </div>
@@ -293,10 +330,10 @@
         <div class="group">
           <h3>công cụ trong app</h3>
           <ul>
-            <li><b>Code</b> — editor phím vim, command palette, tìm &amp; thay toàn dự án.</li>
+            <li><b>Code</b> — editor phím vim, breadcrumb, command palette, tìm &amp; thay; Source Control với diff hai cột sửa được.</li>
             <li><b>Git</b> — stage, commit (AI viết message), nhánh, pull/push, stash, lịch sử, revert.</li>
             <li><b>Lưới &amp; chat</b> — CLI thật của nhiều agent cạnh nhau; chat riêng từng agent, giữ phiên.</li>
-            <li><b>Terminal</b> — <code>!yarn dev</code> chạy ngay trong app, gợi ý script từ package.json / Makefile, bắt port.</li>
+            <li><b>Terminal</b> — shell tương tác thật (vim, htop, ssh), kể cả trong worktree của task; <code>!yarn dev</code> có ■ dừng tại chỗ, bắt port.</li>
             <li><b>To-do, ghi chú, @file, dán ảnh</b> — <code>@</code> nhắc file theo cú pháp từng CLI, <kbd>Ctrl</kbd>+<kbd>V</kbd> dán ảnh chụp màn hình.</li>
           </ul>
         </div>
@@ -304,9 +341,9 @@
           <h3>từ xa &amp; theo dõi</h3>
           <ul>
             <li><b><code>ateam web</code></b> — đủ chức năng như terminal; mở nhiều tab không chạy trùng task.</li>
-            <li><b>Từ điện thoại</b> — <code>--tunnel</code>: Cloudflare Tunnel https + mã QR, bảo vệ bằng token, có chế độ chỉ xem.</li>
-            <li><b>Thống kê</b> — token và cost thật từ log phiên CLI, lịch sử mục tiêu, hạn mức còn lại.</li>
-            <li><b>Thông báo</b> — macOS / trình duyệt khi có việc chờ duyệt hoặc task lỗi.</li>
+            <li><b>Từ điện thoại</b> — <code>--tunnel</code>: Cloudflare Tunnel https + mã QR, bảo vệ bằng token, có chế độ chỉ xem; hoặc bấm ↻ trong popup 📱 để chạy lại ở chế độ từ xa.</li>
+            <li><b>Thống kê &amp; hạn mức</b> — token và cost thật từ log phiên CLI, lịch sử mục tiêu; hạn mức 5h / tuần ở thanh bên, thu gọn thì thành vòng tròn.</li>
+            <li><b>Thông báo &amp; cập nhật</b> — macOS / trình duyệt khi có việc chờ duyệt hoặc task lỗi; có bản mới thì báo, <code>/update</code> cài xong tự khởi động lại.</li>
             <li><b>21 theme · Việt / English</b> — theme tối, sáng, màu nhấn tuỳ chọn; <code>/lang en</code> đổi toàn bộ giao diện.</li>
           </ul>
         </div>
@@ -403,7 +440,11 @@
               <tr><td><code>/git</code> · <code>/commit</code></td><td>Tab Git · commit (trống: AI viết message)</td></tr>
               <tr><td><code>/grid</code> · <code>/todo</code> · <code>/notes</code></td><td>Lưới terminal · việc cần làm · ghi chú</td></tr>
               <tr><td><code>/roles</code> · <code>/setup</code></td><td>Sửa nhanh vai trò · thiết lập đội đầy đủ</td></tr>
-              <tr><td><code>/open ~/code/app</code></td><td>Chuyển sang dự án khác</td></tr>
+              <tr><td><code>/open ~/code/app</code></td><td>Chuyển sang dự án khác (web: ⧉ mở ở cửa sổ mới)</td></tr>
+              <tr><td><code>/skills</code> · <code>$tên-skill</code></td><td>Xem, bật / tắt skill · gắn skill vào mục tiêu, task, chat</td></tr>
+              <tr><td><code>/term #12</code></td><td>Shell tương tác trong worktree của task</td></tr>
+              <tr><td><code>/delete 7</code></td><td>Xoá hẳn một task ngoài kế hoạch</td></tr>
+              <tr><td><code>/update</code></td><td>Cập nhật ateam, tự khởi động lại</td></tr>
               <tr><td><code>/usage</code> · <code>/dash</code></td><td>Lượt chạy, hạn mức còn lại · token &amp; cost</td></tr>
               <tr><td><code>/theme nord tím</code> · <code>/lang en</code></td><td>Đổi theme · giao diện tiếng Anh</td></tr>
             </tbody>
