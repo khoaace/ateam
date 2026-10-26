@@ -1319,7 +1319,7 @@ class WebApp:
     async def grid_op(self, ws: web.WebSocketResponse, d: dict) -> tuple | None:
         """grid_attach (mở mục Lưới: nhận bố cục + output gần nhất của từng ô, rồi output mới), grid_add {agent,
         model, effort, resume, near, where, rows, cols}, grid_start {id, rows, cols} (mở lại CLI), grid_in {id, data},
-        grid_size {id, rows, cols}, grid_close {id}, grid_move {src, dst, where}, grid_preset {preset},
+        grid_size {id, rows, cols}, grid_stop {id}, grid_close {id}, grid_move {src, dst, where}, grid_preset {preset},
         grid_sizes {widths, heights}, grid_bcast {on}, grid_cell {id, bcast}; grid_shell {task, cmd, rows, cols}: ⌨ shell
         rời ở tab Terminal (không vào bố cục), task = mở trong worktree của task đó."""
         op, g = d.get("op"), self.grid
@@ -1353,7 +1353,9 @@ class WebApp:
         if op == "grid_start":
             err = await g.start(cid, rows, cols)
             return (err, "error") if err else None
-        if op == "grid_close":
+        if op == "grid_stop":  # dừng CLI/shell nhưng giữ ô (↻ Mở lại chạy tiếp)
+            g.stop(cid)
+        elif op == "grid_close":
             g.close(cid)
         elif op == "grid_move":
             if g.layout.move(str(d.get("src") or ""), str(d.get("dst") or ""), str(d.get("where") or "")):

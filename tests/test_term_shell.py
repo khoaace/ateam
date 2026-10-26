@@ -119,6 +119,11 @@ def test_web_shell_ops(env, project, monkeypatch):
             rep = await recv_until(ws2, lambda m: m["t"] == "gpty" and m.get("replay") and m["id"] == cid)
             assert b"hi-5" in base64.b64decode(rep["data"])
             await ws2.close()
+            # ■ Dừng trên dòng shell: dừng tiến trình nhưng giữ shell trong danh sách (↻ Mở lại chạy tiếp)
+            await ws.send_json({"op": "grid_stop", "id": cid2})
+            st = await recv_until(ws, lambda m: m["t"] == "state"
+                                  and any(x["id"] == cid2 and x["status"] == "exit" for x in m["shells"]))
+            assert {x["id"] for x in st["shells"]} == {cid, cid2}
             await ws.send_json({"op": "grid_close", "id": cid2})
             assert await _until(lambda: list(wa.grid.loose) == [cid] and cid2 not in wa.grid.terms)
             await ws.close()
