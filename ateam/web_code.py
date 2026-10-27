@@ -164,11 +164,15 @@ class CodeWeb:
         return web.json_response([f for f in palette.recent_files(root) if (root / f).is_file()])
 
     async def file_op(self, op: str, d: dict) -> tuple | None:
-        """Thao tác file của palette: file_new {path}, file_rename {path, to}, file_delete {path}, open_vscode
+        """Thao tác file của palette: file_new {path}, dir_new {path}, file_rename {path, to}, file_delete {path}, open_vscode
         {path, line}."""
         root, path = self.app.root, str(d.get("path") or "")
         if op == "file_new":
             err = palette.file_new(root, path)
+        elif op == "dir_new":
+            err = palette.dir_new(root, path)
+            if not err:
+                self.app.index.add_dir(path)
         elif op == "file_rename":
             err = palette.file_rename(root, path, str(d.get("to") or ""))
         elif op == "file_delete":

@@ -5101,4 +5101,24 @@ EN: dict[str, str] = {
         "Line {n}: {v}",
     "Git blame dòng {n}":
         "Git blame line {n}",
+    "Thư mục mới…":
+        "New folder…",
+    "📁 Thư mục mới":
+        "📁 New folder",
+    "＋ Thư mục":
+        "＋ Folder",
+    "đường/dẫn/thư-mục":
+        "path/to/folder",
+    "Thư mục mới ở đây…":
+        "New folder here…",
+    "Đã tạo thư mục {v}":
+        "Created folder {v}",
+    "Thu hẹp cột file":
+        "Narrow file column",
+    "Nới rộng cột file":
+        "Widen file column",
+    "Cột file về độ rộng mặc định":
+        "Reset file column width",
+    "Kéo để đổi độ rộng · bấm đúp: về mặc định":
+        "Drag to resize · double-click: reset",
 }

@@ -5191,14 +5191,51 @@ class CodeEditor(TextArea):
 
 class CodeFileList(OptionList):
     """Danh sách file ở tab Code: buffer đang mở ở trên, dưới là cây thư mục (ô lọc trống) hoặc kết quả lọc.
-    Enter/→ mở thư mục, Enter/← thu gọn, ← trên file nhảy về thư mục cha."""
+    Enter/→ mở thư mục, Enter/← thu gọn, ← trên file nhảy về thư mục cha. < / > thu hẹp / nới cột, = về mặc định."""
 
     BINDINGS = [
         Binding("right", "app.code_fold(1)", tr("Mở thư mục"), show=False),
         Binding("l", "app.code_fold(1)", tr("Mở thư mục"), show=False),
         Binding("left", "app.code_fold(0)", tr("Thu gọn thư mục"), show=False),
         Binding("h", "app.code_fold(0)", tr("Thu gọn thư mục"), show=False),
+        Binding("less_than_sign", "app.code_side_resize(-4)", tr("Thu hẹp cột file"), show=False),
+        Binding("greater_than_sign", "app.code_side_resize(4)", tr("Nới rộng cột file"), show=False),
+        Binding("equals_sign", "app.code_side_resize(0)", tr("Cột file về độ rộng mặc định"), show=False),
     ]
+
+
+class CodeSplit(Static):
+    """Mép giữa cột file và editor ở tab Code: giữ chuột kéo sang trái/phải để đổi độ rộng cột file (nhớ trong
+    state.json), bấm đúp để về mặc định."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self._down = False
+
+    def _width_at(self, x: int) -> int:
+        return x - self.app.query_one("#code-side").region.x
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        event.stop()
+        self._down = True
+        self.add_class("-drag")
+        self.capture_mouse()
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        if self._down:
+            self.app.code_side_width(self._width_at(event.screen_x))
+
+    def on_mouse_up(self, event: events.MouseUp) -> None:
+        if not self._down:
+            return
+        self._down = False
+        self.remove_class("-drag")
+        self.release_mouse()
+        self.app.code_side_width(self._width_at(event.screen_x), save=True)
+
+    def on_click(self, event: events.Click) -> None:
+        if event.chain >= 2:
+            self.app.code_side_width(None, save=True)
 
 
 class TaskTable(DataTable):
@@ -5335,9 +5372,14 @@ class TeamApp(App):
     #code.narrow #code-side { width: 24; }
     #code.hide-side #code-side { display: none; }
     #code-filter { margin: 0; }
-    #code-new { width: 100%; height: 1; min-width: 0; }
+    #code-new-row { height: 1; }
+    #code-new, #code-new-dir { width: 1fr; height: 1; min-width: 0; padding: 0; }
+    #code-new-dir { margin-left: 1; }
     #code-files { height: 1fr; border: none; }
-    #code-main { width: 1fr; margin-left: 1; }
+    #code-split { width: 1; height: 1fr; }
+    #code-split:hover, #code-split.-drag { background: $accent 50%; }
+    #code.hide-side #code-split { display: none; }
+    #code-main { width: 1fr; }
     #code-head { height: 1; padding: 0 1; background: $boost; overflow: hidden hidden; }
     #code-status { height: 1; padding: 0 1; background: $panel; overflow: hidden hidden; }
     /* cao cố định: chiều cao đổi theo từng task thì mỗi lần lướt bảng cả màn hình phải tính lại bố cục */
@@ -5464,6 +5506,8 @@ class TeamApp(App):
         self._git_at = 0.0
         self._grayed: set = set()  # theme đã đăng ký đè bản nền xám (theme.grayed)
         self.git_tree = bool(load_state().get("git_tree"))  # tab Git: danh sách file dạng cây thư mục (phím t)
+        # tab Code: độ rộng cột file người dùng kéo / chỉnh (None = theo CSS, hẹp lại khi màn hình hẹp)
+        self.code_side_w: int | None = load_state().get("code_side_w") or None
         self._git_closed: set = set()  # thư mục đang thu gọn ở chế độ cây: "nhóm\0thư/mục/"
         self.busy_ops: dict[int, str] = {}  # thao tác chạy lâu (commit, push, AI viết…): hiện ⠋ ở thanh trạng thái
         self._busy_seq = 0
@@ -5557,8 +5601,11 @@ class TeamApp(App):
                 with Horizontal(id="code"):
                     with Vertical(id="code-side", classes="box"):
                         yield TextInput(id="code-filter", placeholder=tr("Tìm file… (Enter mở)"))
-                        yield Btn(tr("＋ File mới"), id="code-new")
+                        with Horizontal(id="code-new-row"):
+                            yield Btn(tr("＋ File mới"), id="code-new")
+                            yield Btn(tr("＋ Thư mục"), id="code-new-dir")
                         yield CodeFileList(id="code-files")
+                    yield CodeSplit(id="code-split")
                     with Vertical(id="code-main", classes="box"):
                         yield Static(id="code-head")
                         yield CodeEditor(id="code-editor")
@@ -5765,6 +5812,7 @@ class TeamApp(App):
         board.set_class(NARROW_WIDTH <= w < 140, "mid")
         self.query_one("#git-main").set_class(w < NARROW_WIDTH, "narrow")
         self.query_one("#code").set_class(w < 110, "narrow")
+        self.code_side_width(self.code_side_w, total=w)
         self.query_one("#git-top").set_class(w < 140, "narrow")
 
     def _preload_panes(self) -> None:
@@ -6211,7 +6259,7 @@ class TeamApp(App):
         entries = self.query_one("#cmd", CommandInput).index.entries
         if not q:
             if self._code_tree[0] is not entries:
-                self._code_tree = (entries, editor.build_tree([e for e in entries if not e.endswith("/")]))
+                self._code_tree = (entries, editor.build_tree(entries))
             rows = editor.tree_rows(self._code_tree[1], self.code_open)
             if rows:
                 opts.append(Option(Text(tr("Thư mục dự án"), "bold dim"), disabled=True))
@@ -6807,6 +6855,9 @@ class TeamApp(App):
         elif cid == "new_file":
             base = (str(Path(rel).parent) + "/") if rel and Path(rel).parent != Path(".") else ""
             self.push_screen(PromptScreen(tr("📄 File mới"), base, tr("đường/dẫn/file.ext")), self._code_new_file)
+        elif cid == "new_folder":
+            base = (str(Path(rel).parent) + "/") if rel and Path(rel).parent != Path(".") else ""
+            self.push_screen(PromptScreen(tr("📁 Thư mục mới"), base, tr("đường/dẫn/thư-mục")), self._code_new_folder)
         elif cid == "rename_file":
             self.push_screen(PromptScreen(tr("✎ Đổi tên / chuyển {v}", v=rel), rel), self._code_rename_file)
         elif cid == "delete_file":
@@ -6876,6 +6927,53 @@ class TeamApp(App):
         self.query_one("#cmd", CommandInput).index.loaded_at = 0  # Ctrl+P / @ thấy file mới ngay
         self.open_code(rel)
 
+    def _code_new_folder(self, rel: str | None) -> None:
+        """Tạo thư mục rồi mở cây tới đó (thư mục rỗng vẫn hiện — git không liệt kê nhưng chỉ mục nhớ)."""
+        rel = (rel or "").strip().strip("/")
+        if not rel:
+            return
+        err = palette.dir_new(self.root, rel)
+        if err:
+            self.notify(err, severity="warning")
+            return
+        self.query_one("#cmd", CommandInput).index.add_dir(rel)
+        self.code_open.update(editor.parent_dirs(rel + "/"))
+        self.query_one("#code").remove_class("hide-side")
+        filt = self.query_one("#code-filter", Input)
+        if filt.value:
+            filt.value = ""
+        self.refresh_code_files()
+        ol = self.query_one("#code-files", CodeFileList)
+        ids = [ol.get_option_at_index(i).id for i in range(ol.option_count)]
+        if "d:" + rel + "/" in ids:
+            ol.highlighted = ids.index("d:" + rel + "/")
+        ol.focus()
+        self.notify(tr("Đã tạo thư mục {v}", v=rel))
+
+    def code_side_width(self, w: int | None, save: bool = False, total: int | None = None) -> None:
+        """Đặt độ rộng cột file tab Code (None: về mặc định của CSS). Giữ ít nhất 30 cột cho editor."""
+        side = self.query_one("#code-side")
+        if total is None:
+            total = self.query_one("#code").size.width or self.size.width
+        if w:
+            w = max(18, min(int(w), max(18, total - 30)))
+            side.styles.width = w
+        else:
+            w = None
+            side.styles.width = None
+        if save:
+            self.code_side_w = w
+            st = load_state()
+            if w:
+                st["code_side_w"] = w
+            else:
+                st.pop("code_side_w", None)
+            save_state(st)
+
+    def action_code_side_resize(self, delta: int) -> None:
+        cur = self.query_one("#code-side").outer_size.width
+        self.code_side_width(cur + delta if delta else None, save=True)
+
     def _code_rename_file(self, new: str | None) -> None:
         ed = self.code_editor()
         if not new or ed.buffer is None:
@@ -6944,7 +7042,7 @@ class TeamApp(App):
         ed = self.code_editor()
         name, _, arg = cmd.strip().partition(" ")
         arg = arg.strip()
-        if ed.buffer is None and name not in ("e", "edit", "files", "Ex", "Lex", "new", "enew"):
+        if ed.buffer is None and name not in ("e", "edit", "files", "vertical", "Ex", "Lex", "new", "enew"):
             ed.message = tr("Chưa mở file nào")
         elif name in ("w", "w!", "write", "update"):
             self.run_worker(self.code_save(force=name.endswith("!")), group="code-save")
@@ -6968,6 +7066,15 @@ class TeamApp(App):
             self.code_cycle(1)
         elif name in ("bp", "bprevious", "bprev", "bN"):
             self.code_cycle(-1)
+        elif name in ("files", "vertical") and arg:  # :files 40 / +4 / -4 / = — độ rộng cột file
+            n = arg.split()[-1]
+            cur = self.query_one("#code-side").outer_size.width
+            if n == "=":
+                self.code_side_width(None, save=True)
+            elif re.fullmatch(r"[+-]?\d+", n):
+                self.code_side_width(cur + int(n) if n[0] in "+-" else int(n), save=True)
+            else:
+                ed.message = tr("Lệnh không hỗ trợ: :{cmd}", cmd=cmd)
         elif name in ("files", "Ex", "Lex", "e", "edit"):
             box = self.query_one("#code")
             box.set_class(not box.has_class("hide-side"), "hide-side")
@@ -8537,9 +8644,9 @@ class TeamApp(App):
             event.stop()
             self.git_button(bid)
             return
-        if bid == "code-new":
+        if bid in ("code-new", "code-new-dir"):
             event.stop()
-            self.code_command("new_file")
+            self.code_command("new_file" if bid == "code-new" else "new_folder")
             return
         if bid.startswith("grill-"):
             event.stop()

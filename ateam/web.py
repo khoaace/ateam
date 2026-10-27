@@ -376,6 +376,9 @@ def ui_strings() -> dict[str, str]:
         "rules_save": tr("Lưu"), "rules_del": tr("Xoá rule"), "rules_del_q": tr("Xoá rule \"{v}\"?"),
         "rules_up": tr("Lên"), "rules_down": tr("Xuống"), "rules_toggle": tr("Bật/tắt"),
         "pal_new": tr("📄 File mới"), "pal_path": tr("đường/dẫn/file.ext"),
+        "pal_new_dir": tr("📁 Thư mục mới"), "pal_dir_path": tr("đường/dẫn/thư-mục"),
+        "ctx_new_dir_here": tr("Thư mục mới ở đây…"),
+        "code_side_resize": tr("Kéo để đổi độ rộng · bấm đúp: về mặc định"),
         "pal_rename": tr("✎ Đổi tên / chuyển {v}", v="{v}"), "pal_delete": tr("Xoá file"),
         "pal_delete_q": tr("Đưa {v} vào Thùng rác?", v="{v}"), "pal_delete_yes": tr("Xoá"),
         "pal_choose_agent": tr("Chọn agent"), "pal_ask": tr("Hỏi {agent} về {v}", agent="{agent}", v="{v}"),
@@ -1553,7 +1556,7 @@ class WebApp:
             if not ok:
                 return res, "warn"
             return "", "", {"code": res} if mode == "edit" else {"answer": res}
-        if op in ("file_new", "file_rename", "file_delete", "open_vscode"):
+        if op in ("file_new", "dir_new", "file_rename", "file_delete", "open_vscode"):
             return await self.code.file_op(op, d)
         if op == "setup_save":
             return await self.setup.save_setup(d)

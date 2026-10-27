@@ -250,6 +250,20 @@ class FileIndex:
         self.entries: list[str] = []
         self.loaded_at = 0.0
         self._task: asyncio.Task | None = None
+        self.made_dirs: set[str] = set()  # thư mục người dùng vừa tạo ở tab Code — git không liệt kê thư mục rỗng
+
+    def add_dir(self, rel: str) -> None:
+        """Thư mục vừa tạo hiện ngay trong cây (kể cả khi còn rỗng), và vẫn còn sau các lần quét lại."""
+        d = rel.strip().strip("/")
+        if d:
+            self.made_dirs.add(d + "/")
+            self.entries = self._with_made(self.entries)
+
+    def _with_made(self, entries: list[str]) -> list[str]:
+        self.made_dirs = {d for d in self.made_dirs if (self.root / d).is_dir()}
+        have = set(entries)
+        extra = [x for d in self.made_dirs for x in with_dirs([d + "x"])[:-1] if x not in have]
+        return sorted(set(extra)) + entries if extra else entries
 
     def stale(self) -> bool:
         return time.time() - self.loaded_at > self.ttl
@@ -266,7 +280,7 @@ class FileIndex:
         entries = await self._git_files()
         if entries is None:
             entries = await asyncio.get_running_loop().run_in_executor(None, walk, self.root)
-        self.entries = entries
+        self.entries = self._with_made(entries)
         self.loaded_at = time.time()
         return entries
 
@@ -282,7 +296,27 @@ class FileIndex:
         ignored = await self._ls_files("-oi", "--directory") or []
         files = sorted(files + [f for f in ignored if not f.endswith("/") and f.rsplit("/", 1)[-1].startswith(".env")])
         files = [f for f in files if not any(p in IGNORE_DIRS for p in f.split("/")[:-1])]
-        return with_dirs(files[:MAX_ENTRIES])
+        entries = with_dirs(files[:MAX_ENTRIES])
+        # thư mục chưa có file nào git thấy (rỗng, vừa tạo): -o --directory liệt kê nó một dòng "x/" — thêm vào
+        # (kèm thư mục con) để cây file tab Code vẫn hiện như VS Code
+        known = set(entries)
+        empty = [d for d in await self._ls_files("-o", "--directory") or []
+                 if d.endswith("/") and d not in known and not any(p in IGNORE_DIRS for p in d.split("/"))]
+        if empty:
+            empty = await asyncio.get_running_loop().run_in_executor(None, self._subdirs, empty)
+            entries = sorted(set(empty) - known) + entries
+        return entries
+
+    def _subdirs(self, dirs: list[str], limit: int = 500) -> list[str]:
+        out = list(dirs)
+        for d in dirs:
+            for cur, sub, _files in os.walk(self.root / d):
+                sub[:] = sorted(x for x in sub if x not in IGNORE_DIRS)
+                rel = os.path.relpath(cur, self.root).replace(os.sep, "/")
+                out += [f"{rel}/{x}/" for x in sub]
+                if len(out) >= limit:
+                    return out[:limit]
+        return out
 
     async def _ls_files(self, *args: str) -> list[str] | None:
         try:

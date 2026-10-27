@@ -71,14 +71,16 @@ def read_source(path: Path) -> SourceFile:
 
 
 def build_tree(paths: list[str]) -> dict:
-    """Cây lồng nhau từ danh sách đường dẫn file: khoá "tên/" là thư mục (giá trị dict), "tên" là file (None)."""
+    """Cây lồng nhau từ danh sách đường dẫn file: khoá "tên/" là thư mục (giá trị dict), "tên" là file (None).
+    Mục có "/" cuối là thư mục (để thư mục rỗng vẫn hiện)."""
     root: dict = {}
     for p in paths:
         node = root
         *dirs, name = p.split("/")
         for d in dirs:
             node = node.setdefault(d + "/", {})
-        node[name] = None
+        if name:
+            node[name] = None
     return root
 
 

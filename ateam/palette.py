@@ -40,6 +40,7 @@ CODE_COMMANDS: list[tuple[str, str, str, str]] = [
     ("next", tr("File kế tiếp"), ":bn", ":bn"),
     ("prev", tr("File trước"), ":bp", ":bp"),
     ("new_file", tr("File mới…"), "", ""),
+    ("new_folder", tr("Thư mục mới…"), "", ""),
     ("rename_file", tr("Đổi tên / chuyển file…"), "", ""),
     ("delete_file", tr("Xoá file (vào Thùng rác)"), "", ""),
     ("copy_path", tr("Chép đường dẫn (kèm dòng)"), "", ""),
@@ -57,7 +58,7 @@ CODE_COMMANDS: list[tuple[str, str, str, str]] = [
     ("open_folder", tr("Mở folder / dự án khác…"), "/open", "/open"),
 ]
 # từ khoá tiếng Anh để gõ kiểu VS Code (vd ">wrap", ">rename") vẫn khớp nhãn tiếng Việt
-KEYWORDS: dict[str, str] = {'quick_open': 'open file', 'goto_symbol': 'symbol outline', 'goto_line': 'goto line', 'find': 'find search', 'search_project': 'search replace', 'ask_agent': 'ask chat agent', 'task_agent': 'task agent', 'save': 'save write', 'save_all': 'save all', 'close': 'close', 'next': 'next buffer', 'prev': 'previous buffer', 'new_file': 'new file create', 'rename_file': 'rename move', 'delete_file': 'delete remove trash', 'copy_path': 'copy path', 'git_diff': 'git diff changes', 'open_vscode': 'vscode code editor', 'toggle_wrap': 'word wrap', 'toggle_numbers': 'line numbers', 'toggle_vim': 'vim', 'toggle_files': 'sidebar files explorer',
+KEYWORDS: dict[str, str] = {'quick_open': 'open file', 'goto_symbol': 'symbol outline', 'goto_line': 'goto line', 'find': 'find search', 'search_project': 'search replace', 'ask_agent': 'ask chat agent', 'task_agent': 'task agent', 'save': 'save write', 'save_all': 'save all', 'close': 'close', 'next': 'next buffer', 'prev': 'previous buffer', 'new_file': 'new file create', 'new_folder': 'new folder directory mkdir create', 'rename_file': 'rename move', 'delete_file': 'delete remove trash', 'copy_path': 'copy path', 'git_diff': 'git diff changes', 'open_vscode': 'vscode code editor', 'toggle_wrap': 'word wrap', 'toggle_numbers': 'line numbers', 'toggle_vim': 'vim', 'toggle_files': 'sidebar files explorer',
             'open_folder': 'open folder project recent workspace switch', 'workspace_symbol': 'workspace symbol project',
             'goto_definition': 'go to definition declaration lsp', 'find_references': 'find references usages lsp',
             'blame_line': 'git blame author annotate', 'toggle_blame': 'git blame inline annotate status', 'recent_buffer': 'recent buffer switch mru',
@@ -285,6 +286,21 @@ def file_new(root: Path, rel: str) -> str:
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.touch()
+    except OSError as e:
+        return str(e)
+    return ""
+
+
+def dir_new(root: Path, rel: str) -> str:
+    """Tạo thư mục (kèm thư mục cha). "" nếu xong, không thì lời báo lỗi."""
+    rel = rel.strip().rstrip("/")
+    p = safe_path(root, rel) if rel else None
+    if p is None or p == root.resolve():
+        return tr("Đường dẫn không hợp lệ: {v}", v=rel)
+    if p.exists():
+        return tr("Đã có {v}", v=rel)
+    try:
+        p.mkdir(parents=True)
     except OSError as e:
         return str(e)
     return ""
