@@ -476,6 +476,11 @@ trên 2 MB / 20 000 dòng không tô màu, trên 5 MB mở chỉ đọc, file nh
 - **`:42`** tới dòng 42, **`/chữ`** liệt kê các dòng có chữ đó trong file.
 - **＋ File mới**: nút ở cột danh sách file (hoặc `:new đường/dẫn` trên TUI, `>File mới` trong palette); gõ đường dẫn có
   thư mục thì thư mục được tạo luôn.
+- **＋ Thư mục mới**: nút cạnh ＋ File mới (web: biểu tượng 📁+, cũng có trong menu chuột phải "Thư mục mới ở đây…" và
+  `>Thư mục mới`); cây mở tới thư mục vừa tạo, thư mục rỗng vẫn hiện.
+- **Đổi độ rộng cột file**: kéo mép giữa cột file và editor (bấm đúp: về mặc định; web: chọn mép rồi `←` `→`). TUI còn
+  có `<` `>` `=` khi đang ở danh sách file, hoặc `:files 40` / `:files +4` / `:files =`. Độ rộng được nhớ (web: theo
+  trình duyệt; TUI: `state.json`).
 - **Hỏi agent về đoạn đang chọn** / **Giao task cho agent**: chọn agent, gõ câu hỏi — agent nhận `@file (dòng a–b)`
   kèm câu hỏi (hỏi = chat 💬 ở tab Agents; giao task = hiện trên Bảng việc).
 - **✨ AI sửa trên TUI (Ctrl+E** — terminal coi Ctrl+I là Tab): gõ yêu cầu, chọn agent (nhớ lần trước); agent trả đoạn

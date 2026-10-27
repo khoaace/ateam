@@ -1,5 +1,12 @@
 # Changelog
 
+## Chưa phát hành
+
+- Tab 📝 Code (web + TUI): **tạo thư mục mới** — nút cạnh ＋ File mới, menu chuột phải *Thư mục mới ở đây…*, `>Thư mục
+  mới` trong palette. Cây file giờ hiện cả thư mục rỗng (git không liệt kê thư mục rỗng nên trước đây không thấy).
+- Tab 📝 Code: **kéo mép để đổi độ rộng cột file**, bấm đúp về mặc định, độ rộng được nhớ. TUI thêm `<` `>` `=` ở danh
+  sách file và `:files 40` / `:files +4` / `:files =`.
+
 ## 0.57.0 — 26/10/2026
 
 - **⏰ Hẹn giờ chạy mục tiêu** — `/schedule 22:30 <mục tiêu>`, `+45m`, `daily 08:00` (hằng ngày) hoặc `quota claude`

@@ -118,12 +118,14 @@ window.CodeView = (() => {
         <div class="side-pane" id="side-files">
           <div class="code-filter-row"><input class="field one" id="code-filter" placeholder="${esc(t("code_filter"))}" autocomplete="off" spellcheck="false">
             <button class="icon-btn" id="code-new" title="${esc(t("pal_new"))}" aria-label="${esc(t("pal_new"))}">＋</button>
+            <button class="icon-btn" id="code-new-dir" title="${esc(t("pal_new_dir"))}" aria-label="${esc(t("pal_new_dir"))}"><svg viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2zM12 10v6M9 13h6"/></svg></button>
             <button class="icon-btn" id="code-refresh" title="${esc(t("code_refresh"))}" aria-label="${esc(t("code_refresh"))}">⟳</button></div>
           <div class="tree" id="code-tree"></div>
         </div>
         <div class="side-pane hidden" id="side-search">${searchPane()}</div>
         <div class="side-pane hidden" id="side-scm">${scmPane()}</div>
         <div class="side-pane hidden" id="side-outline"><div class="outline" id="code-outline"></div></div>
+        <div class="code-resizer" id="code-resizer" role="separator" aria-orientation="vertical" tabindex="0" title="${esc(t("code_side_resize"))}"></div>
       </aside>
       <section class="code-main">
         <div class="code-tabs" id="code-tabs"></div>
@@ -145,10 +147,47 @@ window.CodeView = (() => {
     $("#code-diff").addEventListener("click", diffClick);
     $("#code-filter").addEventListener("input", (e) => { C.filter = e.target.value; renderTree(); });
     $("#code-new").addEventListener("click", () => runCmd("new_file"));
+    $("#code-new-dir").addEventListener("click", () => runCmd("new_folder"));
+    bindResizer();
     $("#code-refresh").addEventListener("click", () => refreshTree(true));
     $("#code-filter").addEventListener("keydown", (e) => {
       if (e.key === "Enter") { const f = $("#code-tree .tnode.file"); if (f) open(f.dataset.path); }
       if (e.key === "Escape" && C.filter) { e.target.value = C.filter = ""; renderTree(); e.stopPropagation(); }
+    });
+  }
+
+  /* kéo mép phải cột bên để đổi độ rộng (nhớ theo trình duyệt); bấm đúp: về mặc định; ←/→ khi đang chọn mép */
+  const SIDE_KEY = "ateam-code-side-w";
+  function sideWidth(w) {
+    if (w) w = Math.round(Math.min(Math.max(w, 160), Math.max(200, el().clientWidth - 320)));
+    if (w) el().style.setProperty("--code-side-w", w + "px");
+    else el().style.removeProperty("--code-side-w");
+    try { if (w) localStorage.setItem(SIDE_KEY, String(w)); else localStorage.removeItem(SIDE_KEY); } catch (e) { /* trình duyệt chặn */ }
+  }
+  function bindResizer() {
+    try { const w = +localStorage.getItem(SIDE_KEY); if (w) el().style.setProperty("--code-side-w", w + "px"); } catch (e) { /* trình duyệt chặn */ }
+    const bar = $("#code-resizer"), side = $(".code-side");
+    bar.addEventListener("pointerdown", (e) => {
+      if (e.button) return;
+      e.preventDefault();
+      bar.setPointerCapture(e.pointerId);
+      el().classList.add("resizing");
+      const move = (ev) => sideWidth(ev.clientX - side.getBoundingClientRect().left);
+      const up = () => {
+        el().classList.remove("resizing");
+        bar.removeEventListener("pointermove", move);
+        bar.removeEventListener("pointerup", up);
+        bar.removeEventListener("pointercancel", up);
+      };
+      bar.addEventListener("pointermove", move);
+      bar.addEventListener("pointerup", up);
+      bar.addEventListener("pointercancel", up);
+    });
+    bar.addEventListener("dblclick", () => sideWidth(0));
+    bar.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      sideWidth(side.getBoundingClientRect().width + (e.key === "ArrowRight" ? 20 : -20));
     });
   }
 
@@ -1707,6 +1746,16 @@ window.CodeView = (() => {
     const p = await inputBox(t("pal_new"), t("pal_path"), dir);
     if (p && (await request("file_new", { path: p })).ok) { C.tree = {}; await open(p); }
   }
+  async function newFolder(dir) {
+    const p = ((await inputBox(t("pal_new_dir"), t("pal_dir_path"), dir)) || "").replace(/\/+$/, "");
+    if (!p || !(await request("dir_new", { path: p })).ok) return;
+    C.tree = {};
+    if (C.filter) { C.filter = ""; $("#code-filter").value = ""; }
+    sidePane("files");
+    await revealInTree(p + "/");
+    const n = $(`#code-tree .tnode[data-path="${CSS.escape(p)}"]`);
+    if (n) { n.classList.add("on"); n.scrollIntoView({ block: "nearest" }); }
+  }
   const under = (path) => [...C.bufs.keys()].filter((p) => p === path || p.startsWith(path + "/"));
   async function renameFile(path, line) {
     const open_ = under(path);
@@ -1777,6 +1826,7 @@ window.CodeView = (() => {
     if (n.dataset.dir === "1") {
       return ctxMenu(e, [
         { label: t("ctx_new_here"), run: () => newFile(path + "/") },
+        { label: t("ctx_new_dir_here"), run: () => newFolder(path + "/") },
         { label: t("ctx_search_in"), run: () => searchIn(path) },
         "-",
         { label: t("ctx_rename"), run: () => renameFile(path) },
@@ -1788,6 +1838,7 @@ window.CodeView = (() => {
       { label: t("ctx_open"), run: () => open(path) },
       { label: t("ctx_open_right"), run: () => (C.bufs.has(path) ? split(path) : open(path).then(() => split(path))), key: "⌘\\" },
       { label: t("ctx_new_here"), run: () => newFile(dir) },
+      { label: t("ctx_new_dir_here"), run: () => newFolder(dir) },
       "-",
       { label: t("ctx_rename"), run: () => renameFile(path) },
       { label: t("ctx_delete"), run: () => deleteFile(path), danger: true },
@@ -1833,6 +1884,7 @@ window.CodeView = (() => {
       case "git_diff": return openChanges(C.cur);
       case "open_vscode": return send("open_vscode", { path: C.cur, line });
       case "new_file": return newFile(b && C.cur.includes("/") ? C.cur.slice(0, C.cur.lastIndexOf("/") + 1) : "");
+      case "new_folder": return newFolder(b && C.cur.includes("/") ? C.cur.slice(0, C.cur.lastIndexOf("/") + 1) : "");
       case "rename_file": return renameFile(C.cur, line);
       case "delete_file": return deleteFile(C.cur);
       case "ask_agent": case "task_agent": {

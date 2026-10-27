@@ -781,11 +781,16 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
 
 /* ---------------------------------------------------------------- tab Code */
 .view-code { padding: 0 !important; }
-.code { display: grid; grid-template-columns: 260px 1fr; height: 100%; border-top: 1px solid var(--border); }
-.code.searching { grid-template-columns: minmax(260px, 380px) 1fr; }  /* ô Tìm cần rộng hơn cây file */
+.code { display: grid; grid-template-columns: var(--code-side-w, 260px) 1fr; height: 100%; border-top: 1px solid var(--border); }
+.code.searching { grid-template-columns: var(--code-side-w, minmax(260px, 380px)) 1fr; }  /* ô Tìm cần rộng hơn cây file */
 .code.no-side { grid-template-columns: 0 1fr; }
 .code.no-side .code-side { display: none; }
-.code-side { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; background: var(--side); }
+.code-side { position: relative; border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--side); }
+/* mép kéo đổi độ rộng cột bên (đè lên viền phải) */
+.code-resizer { position: absolute; top: 0; bottom: 0; right: -3px; width: 6px; z-index: 5; cursor: col-resize; touch-action: none; }
+.code-resizer:hover, .code-resizer:focus-visible, .code.resizing .code-resizer { background: var(--accent); opacity: .6; outline: none; }
+.code.resizing { cursor: col-resize; user-select: none; }
+.code.resizing .code-main { pointer-events: none; }  /* iframe / editor không nuốt sự kiện chuột khi kéo */
 .code-side .field { margin: 8px; width: auto; }
 .tree { flex: 1; overflow: auto; padding: 0 4px 10px; font-size: 12px; }
 .tnode { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: var(--radius); cursor: pointer; white-space: nowrap; }
@@ -976,6 +981,7 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
   .code, .code.searching { grid-template-columns: 1fr; grid-template-rows: 200px 1fr; }
   .code.searching { grid-template-rows: 45% 1fr; }
   .code-side { border-right: 0; border-bottom: 1px solid var(--border); }
+  .code-resizer { display: none; }
   .code-body[data-md="split"] { flex-direction: column; }
   .code-body[data-md="split"] .code-preview { border-left: 0; border-top: 1px solid var(--border); }
   .d-layout { grid-template-columns: 1fr; grid-template-rows: 140px 1fr; }
@@ -1377,6 +1383,7 @@ body.readonly .card-actions, body.readonly .job-stop { display: none !important;
 .code-filter-row { display: flex; align-items: center; gap: 6px; margin: 8px; }
 .code-side .code-filter-row .field { margin: 0; flex: 1; min-width: 0; }
 .code-filter-row .icon-btn { flex: none; font-size: 16px; }
+.code-filter-row .icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 /* menu chuột phải (cây file tab Code) */
 .ctx-menu { position: fixed; z-index: 1000; min-width: 190px; padding: 4px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-pop), 0 6px 20px rgba(0, 0, 0, .25); display: flex; flex-direction: column; }
 .ctx-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border: 0; background: transparent; color: var(--text); font: 12.5px/1.5 var(--font); text-align: left; cursor: pointer; border-radius: var(--radius); }

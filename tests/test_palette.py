@@ -336,3 +336,105 @@ def test_tui_palette_runs_app_commands_from_any_tab(env, project, monkeypatch):
             assert not isinstance(app.screen, tui.ConfirmScreen)
             await pilot.press("ctrl+q")
     asyncio.run(main())
+
+
+def test_dir_new_and_index_keeps_empty_dir(tmp_path):
+    """Thư mục mới (📁) — trong dự án, không trùng; chỉ mục git vẫn giữ thư mục rỗng sau các lần quét lại."""
+    import subprocess
+    from ateam import mentions
+    root = tmp_path / "p"
+    root.mkdir()
+    assert palette.dir_new(root, "src/components/") == "" and (root / "src/components").is_dir()
+    assert palette.dir_new(root, "src/components")  # đã có
+    assert palette.dir_new(root, "../ngoai") and not (tmp_path / "ngoai").exists()
+    assert palette.dir_new(root, ".git/hooks2") and palette.dir_new(root, "")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    (root / "a.py").write_text("x\n")
+    (root / "empty/inner").mkdir(parents=True)
+    (root / "node_modules/x").mkdir(parents=True)
+    idx = mentions.FileIndex(root)
+    asyncio.run(idx.refresh())
+    # thư mục rỗng (git không theo dõi) vẫn có trong chỉ mục, kể cả thư mục con; thư mục rác thì không
+    assert {"src/", "src/components/", "empty/", "empty/inner/", "a.py"} <= set(idx.entries)
+    assert not any(e.startswith("node_modules") for e in idx.entries)
+    idx.entries = ["a.py"]
+    (root / "lib/new").mkdir(parents=True)
+    idx.add_dir("lib/new")  # hiện ngay, chưa cần quét lại
+    assert {"lib/", "lib/new/"} <= set(idx.entries)
+    (root / "src/components").rmdir()
+    (root / "lib/new").rmdir()
+    asyncio.run(idx.refresh())
+    assert "src/components/" not in idx.entries and "src/" in idx.entries
+    assert "lib/new/" not in idx.entries and not idx.made_dirs
+
+
+def test_web_dir_new(env, project, monkeypatch):
+    import pytest
+    pytest.importorskip("aiohttp")
+    from aiohttp.test_utils import TestClient, TestServer
+    from test_web import _web_app
+    wa = _web_app(env, project, monkeypatch)
+    assert any(c["id"] == "new_folder" for c in wa.hello()["code_commands"])
+
+    async def main():
+        client = TestClient(TestServer(wa.make_app(), host="127.0.0.1", port=wa.port))
+        await client.start_server()
+        try:
+            r = await wa.handle({"op": "dir_new", "path": "lib/util/"})
+            assert r[2]["ok"] and (project / "lib/util").is_dir()
+            assert (await wa.handle({"op": "dir_new", "path": "lib/util"}))[1] == "warn"
+            assert (await wa.handle({"op": "dir_new", "path": "../ngoai"}))[1] == "warn"
+            tree = await (await client.get("/api/tree?dir=lib")).json()
+            assert {"name": "util", "path": "lib/util", "dir": True} in tree
+        finally:
+            await client.close()
+    asyncio.run(main())
+    wa.remote.readonly = True
+    assert asyncio.run(wa.handle({"op": "dir_new", "path": "khac"}))[1] == "warn"
+    assert not (project / "khac").exists()
+
+
+def test_tui_new_folder_and_side_width(env, project, monkeypatch):
+    """Nút ＋ Thư mục: tạo rồi mở cây tới thư mục mới (kể cả rỗng). Cột file đổi độ rộng bằng :files N, < / >,
+    kéo mép — nhớ trong state.json."""
+    from ateam.config import load_state
+    tui, app = _app(env, project, monkeypatch)
+
+    async def main():
+        async with app.run_test(size=(150, 45)) as pilot:
+            await pilot.pause(0.3)
+            app.query_one("#tabs").active = "tab-code"
+            await pilot.pause(0.2)
+            await pilot.click("#code-new-dir")
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, tui.PromptScreen)
+            app.screen.query_one("#prompt-in").value = "src/widgets"
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            assert (project / "src/widgets").is_dir()
+            ol = app.query_one("#code-files", tui.CodeFileList)
+            assert ol.get_option_at_index(ol.highlighted).id == "d:src/widgets/"
+            side = app.query_one("#code-side")
+            app.code_ex("files 50")
+            await pilot.pause(0.1)
+            assert side.outer_size.width == 50 and load_state()["code_side_w"] == 50
+            ol.focus()
+            await pilot.press(">")
+            await pilot.pause(0.1)
+            assert side.outer_size.width == 54
+            app.code_ex("files 999")  # giữ chỗ cho editor
+            await pilot.pause(0.1)
+            assert side.outer_size.width < app.query_one("#code").size.width - 20
+            # kéo mép giữa cột file và editor
+            split = app.query_one("#code-split")
+            await pilot.mouse_down(split)
+            x0 = side.region.x
+            await pilot.hover("#code", offset=(x0 - app.query_one("#code").region.x + 40, 5))
+            await pilot.mouse_up("#code", offset=(x0 - app.query_one("#code").region.x + 40, 5))
+            await pilot.pause(0.1)
+            assert side.outer_size.width == 40 and load_state()["code_side_w"] == 40
+            app.code_ex("files =")
+            await pilot.pause(0.1)
+            assert side.outer_size.width == 34 and "code_side_w" not in load_state()
+            await pilot.press("ctrl+q")
+    asyncio.run(main())
