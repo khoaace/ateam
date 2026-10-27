@@ -647,7 +647,8 @@ mục *Workflows* ở sidebar). Ở màn hình thiết lập vẫn có nút *Age
 
 **Gõ mục tiêu chạy workflow nào**: nút ngay bên trái ô nhập (TUI: bấm hoặc **F4**) cho chọn *★ Trưởng nhóm lập kế
 hoạch* hay một workflow (kể cả workflow bạn tự tạo) — từ đó gõ prompt thẳng là chạy workflow đó, không cần
-`/flow <tên>`; `/goal` vẫn luôn để trưởng nhóm lập kế hoạch. Mỗi workflow ở tab Workflows cũng có nút **★ Đặt mặc
+`/flow <tên>`; `/goal` vẫn luôn để trưởng nhóm lập kế hoạch và chạy kế hoạch đó luôn (không chờ duyệt, kể cả
+task bổ sung sau review). Mỗi workflow ở tab Workflows cũng có nút **★ Đặt mặc
 định** / **☆ Bỏ mặc định** và **▶ Chạy** (điền `/flow <tên>` vào ô nhập: gõ mục tiêu rồi Enter — chạy một lần, không
 đổi mặc định). Lựa chọn lưu **theo từng dự án** (dự án chưa chọn dùng lựa chọn chung cũ), dùng chung cho terminal và web.
 Trang Workflows tóm tắt các bước (`lead → codex ‖ grok → claude (review)`: `‖` = chạy song song) và cảnh báo ⚠ khi

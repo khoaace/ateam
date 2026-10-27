@@ -381,14 +381,22 @@ class Orchestrator:
         self.log(tr("Sẵn sàng. Trưởng nhóm: {lead}. Chế độ làm việc: {mode}.", lead=self.cfg.lead, mode=mode))
 
     # ------------------------------------------------------------------ mục tiêu
-    def new_goal(self, text: str) -> int:
-        gid = self.db.add_goal(text)
+    def new_goal(self, text: str, auto_run: bool = False) -> int:
+        """auto_run: /goal — kế hoạch của mục tiêu này chạy luôn, bỏ qua bước duyệt dù approve_plan bật."""
+        gid = self.db.add_goal(text, auto_run=auto_run)
         self._checkpoint_goal(gid)
         self.lead_busy.add(gid)
         self.log(tr("🎯 Mục tiêu #{gid}: {text}", gid=gid, text=text))
         self._spawn(self._plan(gid))
         self.emit("changed")
         return gid
+
+    def needs_approval(self, gid: int | None) -> bool:
+        """Kế hoạch / task bổ sung của mục tiêu gid có phải chờ /go không (mục tiêu tạo bằng /goal thì không)."""
+        if not self.cfg.approve_plan:
+            return False
+        g = self.db.goal(gid) if gid is not None else None
+        return not (g and g.auto_run)
 
     async def _call_lead(self, prompt: str, label: str, first: str = "", goal_id: int | None = None,
                          keep_session: bool = False, slow: bool = False, effort: str | None = None) -> str | None:
@@ -562,10 +570,13 @@ class Orchestrator:
                             ".ateam/logs/lead.log). Bạn vẫn có thể giao tay bằng /task.", gid=gid))
                 return
             ids = self._insert_plan(gid, plan, source="followup" if followup else "plan", asked=asked)
-            if self.cfg.approve_plan:
+            if self.needs_approval(gid):
                 self.db.update_goal(gid, status="awaiting")
                 self.log(tr("📋 Kế hoạch #{gid}: {v} task ở trạng thái NHÁP. Duyệt bằng /go {gid} "
                             "(trong TUI: F2 hoặc Ctrl+G); sửa trước bằng /edit, /assign, /cancel.", gid=gid, v=len(ids)))
+            elif self.cfg.approve_plan:  # chỉ /goal mới bỏ qua được bước duyệt đang bật
+                self.db.update_goal(gid, status="running")
+                self.log(tr("🚀 Kế hoạch #{gid}: {v} task — chạy luôn, không chờ duyệt (/goal).", gid=gid, v=len(ids)))
             else:
                 self.db.update_goal(gid, status="running")
                 self.log(tr("📋 Kế hoạch #{gid}: {v} task — bắt đầu chạy.", gid=gid, v=len(ids)))
@@ -933,7 +944,7 @@ class Orchestrator:
         # từ thư mục của CLI mình (claude đọc sẵn ~/.claude/skills)
         allowed = {x.name for x in skills.enabled(self.root, cat)} | set(asked or []) if cat else set()
         agents = self.cfg.active_agents()
-        status = DRAFT if self.cfg.approve_plan else QUEUED
+        status = DRAFT if self.needs_approval(gid) else QUEUED
         id_map: dict = {}
         created: list[tuple[int, list]] = []
         for i, item in enumerate(plan, 1):
@@ -2675,12 +2686,12 @@ class Orchestrator:
                 self.log(tr("🏁 Mục tiêu #{gid} đã hết {max_rounds} vòng. Đánh giá: {summary}", gid=gid, max_rounds=self.cfg.max_rounds, summary=summary))
             else:
                 self.db.update_goal(gid, round=g.round + 1, summary=summary,
-                                    status="awaiting" if self.cfg.approve_plan else "running")
+                                    status="awaiting" if self.needs_approval(gid) else "running")
                 self.log(f"🔁 Review #{gid}: {summary}")
                 text = g.full_text()  # $tên trong mục tiêu: task review thêm vào cũng nhận skill đó
                 ids = self._insert_plan(gid, new, source="review", asked=[
                     x.name for x in skills.mentioned(text, skills.scan(self.root))] if "$" in text else None)
-                if self.cfg.approve_plan:
+                if self.needs_approval(gid):
                     self.log(tr("📋 {v} task bổ sung đang ở trạng thái NHÁP — /go {gid} để chạy.", v=len(ids), gid=gid))
         except Exception as e:  # không để mục tiêu kẹt ở "reviewing"
             self.db.update_goal(gid, status="incomplete", summary=tr("Lỗi khi review: {e!r}", e=e))

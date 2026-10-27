@@ -78,7 +78,10 @@ Hằng số trạng thái ở đầu `db.py`; `ACTIVE = (draft, queued, running,
 
 (`grilling` →) `planning` → `awaiting` (có task nháp chờ /go) hoặc `running` → `reviewing` → `done` |
 `incomplete` | quay lại `awaiting`/`running` với `round + 1` nếu review giao thêm việc. `failed` khi
-không lập được kế hoạch. `cancelled` khi người dùng bỏ kế hoạch nháp (`discard_plan`). Khi có mục
+không lập được kế hoạch. `cancelled` khi người dùng bỏ kế hoạch nháp (`discard_plan`). Mục tiêu tạo bằng
+`/goal` có cột `auto_run = 1`: `Orchestrator.needs_approval(gid)` trả False nên mọi kế hoạch của nó (kế hoạch đầu, sau
+hỏi đáp, task bổ sung sau review, `/continue`) vào thẳng `queued`/`running`, bỏ qua `awaiting` dù `approve_plan` bật.
+Gõ câu thường, `/flow` vẫn theo `approve_plan`. Khi có mục
 tiêu `awaiting`, TUI hiện `PlanBar` (`#plan`, nằm ngoài các tab) cho mục tiêu chờ lâu nhất và chuyển
 focus vào nút duyệt nếu ô nhập đang trống. Mục tiêu tạo từ workflow (`run_workflow`, cột `workflow`) bỏ qua `planning`:
 các bước chèn thẳng qua `_insert_plan(from_user=True)` (giữ effort/model/loại của bước, không qua `_apply_checks`);
