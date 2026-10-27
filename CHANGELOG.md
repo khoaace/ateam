@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.58.0 — 27/10/2026
 
 - **🌐 Public một cổng local qua Cloudflare Tunnel** (web + TUI) — nút 🌐 cạnh cổng lệnh `!` in ra ở tab Terminal, hoặc
   `/share 3000` cho cổng bất kỳ đang chạy trên máy: ateam chạy `cloudflared` quick tunnel (không cần tài khoản) và
