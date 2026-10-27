@@ -882,6 +882,7 @@ function goalHeadHtml(g, ts, folded) {
     ${g.stub ? "" : badge(st, t("g_" + st), g.busy || st === "running")}
     ${g.round > 1 ? `<span class="muted small">${esc(t("round", { n: g.round }))}</span>` : ""}
     ${g.workflow ? `<span class="wf">⚙ ${esc(g.workflow)}</span>` : ""}
+    ${g.auto ? `<span class="wf" title="${esc(t("g_auto"))}">⚡</span>` : ""}
     <span class="bl-title">${esc(g.title)}</span>
     ${ts.length ? `<span class="progress bl-prog"><i class="p-done" style="width:${d / n * 100}%"></i><i class="p-run" style="width:${r / n * 100}%"></i><i class="p-bad" style="width:${b / n * 100}%"></i></span><span class="muted small mono">${d}/${ts.length}</span>` : ""}
     ${g.followups && g.followups.length ? `<span class="muted small">↪ ${esc(t("followups", { n: g.followups.length }))}</span>` : ""}

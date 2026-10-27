@@ -190,7 +190,7 @@ Agent & workflow tuỳ chỉnh:
   /custom                           thêm/sửa/xoá agent riêng (CLI bất kỳ) và workflow (chuỗi bước dựng sẵn)
   /flow <tên> <mục tiêu>            chạy mục tiêu theo workflow — các bước thành task ngay, không cần lập kế hoạch
   /flow                             xem các workflow đang có
-  /goal <mục tiêu>                  trưởng nhóm lập kế hoạch, kể cả khi đã đặt workflow mặc định
+  /goal <mục tiêu>                  trưởng nhóm lập kế hoạch rồi chạy luôn (không chờ duyệt, bỏ qua workflow mặc định)
   /grill <mục tiêu>                 "grill me": trưởng nhóm hỏi bạn từng câu (phạm vi, luồng, dữ liệu, ca
                                     biên, tiêu chí xong…) kèm phương án gợi ý, tới khi đủ rõ thì chốt đặc tả
                                     rồi lập kế hoạch. Trả lời ở ô nhập; gõ số / bấm để chọn phương án
@@ -285,7 +285,7 @@ COMMANDS = [
     ("focus", tr("[agent]"), tr("phóng to 1 agent cả màn hình để chat riêng (F7; gõ lại / Esc để thu)")),
     ("go", tr("[mục tiêu]"), tr("duyệt kế hoạch nháp và chạy")),
     ("drop", tr("[mục tiêu]"), tr("bỏ kế hoạch nháp (huỷ mọi task nháp của nó)")),
-    ("goal", tr("<mục tiêu>"), tr("trưởng nhóm lập kế hoạch (bỏ qua workflow mặc định)")),
+    ("goal", tr("<mục tiêu>"), tr("trưởng nhóm lập kế hoạch rồi chạy luôn (không chờ duyệt, bỏ qua workflow mặc định)")),
     ("grill", tr("<mục tiêu|xong|bỏ>"), tr("trưởng nhóm hỏi kỹ từng câu để làm rõ yêu cầu rồi mới "
                                             "lập kế hoạch")),
     ("sh", tr("<lệnh>"), tr("chạy lệnh terminal (như !lệnh), vd /sh yarn dev")),
@@ -8340,6 +8340,8 @@ class TeamApp(App):
                 if busy:
                     h.append(f"{SPIN[self._frame]} ", f"bold {RUNNING}")
                 h.append(f"[{label}] ", style)
+                if g.auto_run:  # /goal: kế hoạch chạy luôn, không chờ duyệt
+                    h.append("⚡ ", f"bold {RUNNING}")
             if ts:  # tiến độ trước tiêu đề: cột Task hẹp thì phần bị cắt là tiêu đề, không phải số liệu
                 n, d = len(ts), sum(1 for x in ts if x.status == "done")
                 r = sum(1 for x in ts if x.status in ("running", "review"))
@@ -9054,8 +9056,9 @@ class TeamApp(App):
         self.push_screen(ChoiceScreen(tr("Đổi agent cho task #{tid}", tid=tid), agents, t.agent,
                                       tr("Thôi (giữ {agent})", agent=t.agent)), done)
 
-    def start_goal(self, text: str, workflow: str = "") -> None:
-        """Mục tiêu mới: theo workflow (nếu có) hoặc để trưởng nhóm lập kế hoạch."""
+    def start_goal(self, text: str, workflow: str = "", auto_run: bool = False) -> None:
+        """Mục tiêu mới: theo workflow (nếu có) hoặc để trưởng nhóm lập kế hoạch.
+        auto_run (/goal): kế hoạch chạy luôn, không chờ duyệt."""
         if workflow:
             res = self.orch.run_workflow(workflow, text)
             if isinstance(res, str):
@@ -9065,7 +9068,7 @@ class TeamApp(App):
             if not self.cfg.agents.get(self.cfg.lead):
                 self.notify(tr("Không có trưởng nhóm '{lead}' trong cấu hình", lead=self.cfg.lead), severity="error")
                 return
-            self.orch.new_goal(text)
+            self.orch.new_goal(text, auto_run=auto_run)
         self.show_task(SYSTEM)
 
     def _show_input_mode(self) -> None:
@@ -9730,7 +9733,7 @@ class TeamApp(App):
             self.query_one("#tabs", TabbedContent).active = "tab-custom"  # popup vẫn mở từ /setup
             return
         elif cmd == "goal":
-            self.start_goal(rest.strip())
+            self.start_goal(rest.strip(), auto_run=True)
         elif cmd in ("theme", "giaodien", "mau"):
             args = rest.split()
             if not args:

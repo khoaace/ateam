@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS goals (
     followups TEXT,
     grill TEXT,
     lead_session TEXT,
-    lead_session_agent TEXT
+    lead_session_agent TEXT,
+    auto_run INTEGER
 );
 CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -175,6 +176,7 @@ class Goal:
     grill: dict | None = None
     lead_session: str | None = None        # phiên trưởng nhóm lúc lập kế hoạch (/continue m<id> tiếp tục)
     lead_session_agent: str | None = None
+    auto_run: int | None = None  # /goal: kế hoạch (cả task bổ sung sau review) chạy luôn, không chờ duyệt
 
     @classmethod
     def from_row(cls, r: sqlite3.Row) -> "Goal":
@@ -237,6 +239,8 @@ class DB:
         for col in ("workflow", "followups", "grill", "lead_session", "lead_session_agent"):
             if col not in gcols:  # nâng cấp DB cũ
                 self.conn.execute(f"ALTER TABLE goals ADD COLUMN {col} TEXT")
+        if "auto_run" not in gcols:
+            self.conn.execute("ALTER TABLE goals ADD COLUMN auto_run INTEGER")
         # sau migration (DB cũ thiếu cột thì chưa tạo index được): lọc thường gặp của bảng việc, /usage, ghi chú
         self.conn.executescript("""
             CREATE INDEX IF NOT EXISTS tasks_status ON tasks(status);
@@ -246,10 +250,10 @@ class DB:
         """)
 
     # ---------- goals ----------
-    def add_goal(self, text: str, workflow: str | None = None) -> int:
+    def add_goal(self, text: str, workflow: str | None = None, auto_run: bool = False) -> int:
         cur = self.conn.execute(
-            "INSERT INTO goals(text, status, round, created, workflow) VALUES (?, 'planning', 1, ?, ?)",
-            (text, time.time(), workflow))
+            "INSERT INTO goals(text, status, round, created, workflow, auto_run) VALUES (?, 'planning', 1, ?, ?, ?)",
+            (text, time.time(), workflow, 1 if auto_run else None))
         return int(cur.lastrowid)
 
     def goal(self, gid: int) -> Goal | None:

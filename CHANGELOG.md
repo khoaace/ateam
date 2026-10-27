@@ -1,5 +1,12 @@
 # Changelog
 
+## Chưa phát hành
+
+- **`/goal` chạy kế hoạch luôn, không chờ duyệt** (TUI + web) — kể cả khi `approve_plan = true`. Áp dụng cho mọi kế
+  hoạch của mục tiêu đó: kế hoạch đầu, sau khi trưởng nhóm hỏi lại, task giao thêm sau review và `/continue`. Gõ câu
+  thường hay `/flow` vẫn chờ duyệt như cũ. Thẻ mục tiêu có nhãn ⚡, log ghi 🚀; checkpoint vẫn có nên `/undo` được,
+  `merge = "review"` vẫn chờ duyệt diff.
+
 ## 0.57.1 — 27/10/2026
 
 - **Tab 📝 Code: tạo thư mục mới và kéo đổi độ rộng cột file** (web + TUI). Nút ＋ Thư mục cạnh ＋ File mới, menu chuột

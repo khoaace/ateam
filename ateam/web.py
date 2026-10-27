@@ -130,6 +130,7 @@ def ui_strings() -> dict[str, str]:
         "reassign": tr("Đổi agent"), "reassign_title": tr("Đổi agent cho task #{id}"),
         "reassign_hint": tr("Chọn agent khác — task chạy lại ngay với agent đó (prompt đầy đủ, phiên mới)"),
         "g_planning": tr("đang lập kế hoạch"), "g_awaiting": tr("chờ duyệt kế hoạch"),
+        "g_auto": tr("/goal: kế hoạch chạy luôn, không chờ duyệt"),
         "g_running": tr("đang chạy"), "g_reviewing": tr("đang review"), "g_done": tr("hoàn thành"),
         "g_incomplete": tr("chưa xong"), "g_failed": tr("thất bại"), "g_cancelled": tr("đã huỷ"),
         "g_grilling": tr("đang hỏi đáp"),
@@ -637,7 +638,7 @@ def goal_json(g: Goal, busy: bool) -> dict:
     qa = (g.grill or {}).get("qa") or []
     return {"id": g.id, "text": g.text, "title": _first_line(g.text, 200), "status": g.status, "round": g.round,
             "summary": g.summary, "workflow": g.workflow, "followups": g.followups or [],
-            "busy": busy, "spec": bool(g.spec), "qa": sum(1 for x in qa if x.get("a") is not None),
+            "auto": bool(g.auto_run), "busy": busy, "spec": bool(g.spec), "qa": sum(1 for x in qa if x.get("a") is not None),
             "created": g.created, "ended": g.status in GOAL_ENDED}
 
 
@@ -1672,13 +1673,13 @@ class WebApp:
         job = self.shell.start(cmd)
         return "", "", {"open": {"job": job.id}}
 
-    def start_goal(self, text: str, workflow: str = "") -> tuple[str, str] | None:
+    def start_goal(self, text: str, workflow: str = "", auto_run: bool = False) -> tuple[str, str] | None:
         if workflow:
             res = self.orch.run_workflow(workflow, text)
             return (res, "warn") if isinstance(res, str) else None
         if not self.cfg.agents.get(self.cfg.lead):
             return tr("Không có trưởng nhóm '{lead}' trong cấu hình", lead=self.cfg.lead), "error"
-        self.orch.new_goal(text)
+        self.orch.new_goal(text, auto_run=auto_run)
         return None
 
     async def _bg_log(self, coro, done_msg=None) -> None:
@@ -1773,8 +1774,8 @@ class WebApp:
                           v=", ".join(agents)), "warn"
             tid = o.add_task(m.group(1), prompt.strip(), model=m.group(2), effort=m.group(3))
             return tr("Đã thêm task #{tid} cho {to}", tid=tid, to=m.group(1)), "ok"
-        if cmd == "goal":
-            return self.start_goal(rest)
+        if cmd == "goal":  # /goal: trưởng nhóm lập kế hoạch rồi chạy luôn, không chờ duyệt
+            return self.start_goal(rest, auto_run=True)
         if cmd == "go":
             n = o.approve(num(rest) if rest else None)
             return (tr("Đã duyệt {n} task", n=n), "ok") if n else (tr("Không có task nháp"), "warn")
