@@ -605,7 +605,13 @@ bind); `/open` chạy lại với `--port <cổng thật>` để trình duyệt 
   xa (`Remote.enabled`: `--host` khác loopback, `--tunnel`, `--public-url`): mọi request trừ `/static` và `/login`
   cần token (`?t=` → cookie `ateam_auth`, hoặc `Authorization: Bearer`), Origin phải trùng Host, sai 20 lần/10 phút
   → 429; `--readonly` chặn mọi op WebSocket trừ `READONLY_OPS`. `--tunnel` chạy `cloudflared tunnel --url` trong
-  `_startup`, đọc URL `*.trycloudflare.com` từ stderr; `/api/remote` trả URL + mã QR (`qr.py`) cho nút 📱.
+  `_startup`, đọc URL `*.trycloudflare.com` từ stderr (`tunnel.quick_tunnel`); `/api/remote` trả URL + mã QR
+  (`qr.py`) cho nút 📱.
+- 🌐 `/share <cổng>` (`tunnel.py`): `TunnelManager` giữ một quick tunnel mỗi cổng (`cloudflared tunnel --url
+  http://localhost:PORT`, hoặc `[::1]` khi dev server chỉ nghe IPv6), chỉ mở khi cổng đang nghe trên máy, không cho
+  cổng của chính `ateam web` (`reserved`). TUI (`TeamApp.share`, nút `#job-share`, `#tunnels-info`) và web
+  (`WebApp.share`, `tunnels` trong ảnh chụp trạng thái kèm SVG mã QR, nút 🌐 / chip ở tab Terminal) hỏi lại một lần
+  mỗi phiên (`/share N --yes` sau khi đồng ý); thoát app → `stop_all`. Link không có token — khác `--tunnel`.
 - Chữ hiển thị nằm ở `ui_strings()` (qua `tr()`, có bản dịch); JS chỉ dùng khoá — `tests/test_web.py` bắt chữ
   tiếng Việt viết thẳng trong JS/HTML (trừ `vendor/`).
 

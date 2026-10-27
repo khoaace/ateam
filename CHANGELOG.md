@@ -1,5 +1,13 @@
 # Changelog
 
+## Chưa phát hành
+
+- **🌐 Public một cổng local qua Cloudflare Tunnel** (web + TUI) — nút 🌐 cạnh cổng lệnh `!` in ra ở tab Terminal, hoặc
+  `/share 3000` cho cổng bất kỳ đang chạy trên máy: ateam chạy `cloudflared` quick tunnel (không cần tài khoản) và
+  hiện link `https://….trycloudflare.com` kèm mã QR (web) / tự chép (TUI). Lần đầu mỗi phiên hỏi lại vì ai có link
+  đều vào được. `/share` liệt kê, `/share stop [cổng]` dừng; đóng ateam là tunnel tắt theo. Không mở app:
+  `ateam share 3000`.
+
 ## 0.57.1 — 27/10/2026
 
 - **Tab 📝 Code: tạo thư mục mới và kéo đổi độ rộng cột file** (web + TUI). Nút ＋ Thư mục cạnh ＋ File mới, menu chuột

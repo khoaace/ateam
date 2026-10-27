@@ -33,7 +33,7 @@ from textual.widgets.selection_list import Selection
 from textual.widgets.option_list import Option
 
 from . import (clipboard, diffview, editor, gitops, lsp, mentions, notify, palette, projects, quota, reports, rules, skills,
-               search, shell, theme, todos, update, wizard)
+               search, shell, theme, todos, tunnel, update, wizard)
 from .reports import fmt_dur, fmt_tokens, today_start  # noqa: F401 (test và code cũ import từ tui)
 from .config import (CUSTOM_FILE, INSTALL_HINTS, LEAD_ALIAS, PROVIDERS, ROLES, TASK_KINDS, TIERS,
                      WIZARD_FLOW, WORKFLOW_TEMPLATES, AgentConfig, Config, TeamPlan, task_kind,
@@ -291,6 +291,8 @@ COMMANDS = [
     ("sh", tr("<lệnh>"), tr("chạy lệnh terminal (như !lệnh), vd /sh yarn dev")),
     ("stop", tr("[số]"), tr("dừng lệnh terminal đang chọn (hoặc lệnh số đó)")),
     ("term", tr("[lệnh | #task]"), tr("⌨ shell tương tác ở tab Terminal; kèm lệnh: chạy lệnh đó trong shell")),
+    ("share", tr("[cổng | stop [cổng]]"), tr("🌐 public 1 cổng local ra internet qua Cloudflare Tunnel (link https "
+                                             "công khai); trống: xem các cổng đang public")),
     ("theme", tr("[tên] [màu nhấn]"), tr("chọn theme màu (xem trước trực tiếp)")),
     ("lang", "<en|vi>", tr("đổi ngôn ngữ giao diện (app tự mở lại)")),
     ("rules", tr("[rule mới]"), tr("rule của dự án mà mọi agent phải tuân theo; kèm nội dung thì thêm luôn")),
@@ -5319,7 +5321,8 @@ class TeamApp(App):
     #scripts-title, #jobs-title { height: 1; padding: 0 1; margin-top: 1; background: $panel; }
     #term-scripts { height: 1fr; border: none; }
     #jobs-buttons { height: auto; }
-    #jobs-buttons Button { margin-right: 1; }
+    #jobs-buttons Button { margin-right: 1; min-width: 0; }
+    #tunnels-info { height: auto; padding: 0 1; display: none; }
     #sh-bar { height: 1; background: $panel; }
     #sh-title { width: 1fr; padding: 0 1; }
     #sh-bar Button { height: 1; min-width: 0; border: none; margin: 0; }
@@ -5497,6 +5500,8 @@ class TeamApp(App):
         self.view_task = SYSTEM
         self.log_styler = LogStyler()  # trạng thái tô màu của log đang xem (#log)
         self.shell = shell.ShellManager(root, on_event=self.on_shell_event)  # lệnh terminal (!lệnh)
+        self.tunnels = tunnel.TunnelManager(self.on_tunnel_change)  # 🌐 /share: public cổng local
+        self._share_ok = False  # đã xác nhận cảnh báo "ai có link đều vào được" trong phiên này
         self.view_job: int | None = None
         self.job_styler = LogStyler(task_headers=False)
         self.git = gitops.GitRepo(root)  # tab 🌿 Git
@@ -5674,6 +5679,8 @@ class TeamApp(App):
                             yield Btn(tr("■ Dừng"), id="job-stop", variant="error")
                             yield Btn(tr("↻ Chạy lại"), id="job-restart")
                             yield Btn(tr("✗ Xoá"), id="job-remove")
+                            yield Btn(tr("🌐 Public"), id="job-share")
+                        yield Static(id="tunnels-info")
                         yield Static(Text(tr("📜 Script · Enter chạy · s: vào shell"), "bold"), id="scripts-title")
                         yield ScriptList(id="term-scripts")
                     with Vertical(id="job-view", classes="box"):
@@ -6080,6 +6087,7 @@ class TeamApp(App):
         empty = self.query_one("#jobs-empty", Static)
         ol.display, empty.display = bool(jobs), not jobs
         self.query_one("#jobs-buttons").display = bool(jobs)
+        self._refresh_tunnels()
         if not jobs:
             t = Text(tr("Chưa chạy lệnh nào.\n\n"), "bold")
             t.append(tr("Gõ "), "")
@@ -6120,8 +6128,89 @@ class TeamApp(App):
         for p in job.ports:
             head.append("   ")
             head.append(f"http://localhost:{p}", "underline cyan")
+            tn = self.tunnels.get(p)
+            if tn:
+                head.append("  🌐 ")
+                head.append(tn.url or tr("đang mở…"), "underline bold green" if tn.url else "dim")
         self.query_one("#job-head", Static).update(head)
         self.query_one("#job-stop", Button).disabled = not job.alive
+        share = self.query_one("#job-share", Button)
+        port = job.ports[0] if job.ports else None
+        share.disabled = port is None
+        share.label = tr("🌐 Tắt") if port is not None and self.tunnels.get(port) else tr("🌐 Public")
+        share.tooltip = tr("🌐 Public cổng {port} ra internet (Cloudflare Tunnel)", port=port) if port else None
+
+    def _refresh_tunnels(self) -> None:
+        """Các cổng đang public (🌐 /share) dưới danh sách lệnh ở tab Terminal."""
+        info = self.query_one("#tunnels-info", Static)
+        ts = self.tunnels.active()
+        info.display = bool(ts)
+        if not ts:
+            return
+        t = Text(tr("🌐 Đang public (/share stop <cổng> để dừng)\n"), "bold")
+        for tn in ts:
+            t.append(f":{tn.port} ", "cyan")
+            t.append((tn.url or tr("đang mở…")) + "\n", "green" if tn.url else "dim")
+        info.update(t)
+
+    def share(self, rest: str) -> None:
+        """/share [cổng|stop [cổng]] — như WebApp.share; lần đầu trong phiên hỏi lại (link công khai)."""
+        try:
+            action, port, yes = tunnel.parse_command(rest)
+        except ValueError:
+            self.notify(command_usage("share"), severity="warning")
+            return
+        if action == "list":
+            self.notify(self.tunnels.summary(), timeout=10)
+            return
+        if action == "stop":
+            async def _stop() -> None:
+                if port is None:
+                    n = await self.tunnels.stop_all()
+                    self.notify(tr("🌐 Đã dừng {n} tunnel", n=n) if n else tr("Chưa public cổng nào"))
+                elif not await self.tunnels.stop(port):
+                    self.notify(tr("Cổng {port} chưa được public", port=port), severity="warning")
+                self.refresh_view()
+            self.run_worker(_stop(), exclusive=False)
+            return
+        why = self.tunnels.check(port)
+        if why:
+            self.notify(why, severity="warning", timeout=8)
+            return
+
+        async def _go() -> None:
+            try:
+                t = await self.tunnels.start(port)
+            except ValueError as e:
+                self.notify(str(e), severity="warning", timeout=8)
+                return
+            if not t.url:
+                self.notify(tr("⏳ Đang mở tunnel cho cổng {port}…", port=port))
+            self.refresh_view()
+
+        def confirmed(ok) -> None:
+            if ok:
+                self._share_ok = True
+                self.run_worker(_go(), exclusive=False)
+        if yes or self._share_ok or self.tunnels.get(port):
+            confirmed(True)
+        else:
+            self.push_screen(ConfirmScreen(tr("🌐 Public cổng {port}?", port=port), tunnel.warning_text(port),
+                                           yes=tr("Public")), confirmed)
+
+    def on_tunnel_change(self, t) -> None:
+        if t.status == "up":
+            self.copy_to_clipboard(t.url)
+            self.orch.log(tr("🌐 Đã public cổng {port}: {url}", port=t.port, url=t.url))
+            self.notify(tr("🌐 Cổng {port}: {url} (đã chép)", port=t.port, url=t.url), timeout=10)
+        elif t.status == "failed":
+            self.orch.log(tr("✗ Không public được cổng {port}: {e}", port=t.port, e=t.error))
+            self.notify(tr("✗ Không public được cổng {port}: {e}", port=t.port, e=t.error), severity="error")
+        elif t.status == "stopped":
+            self.orch.log(tr("🌐 Đã dừng public cổng {port}", port=t.port))
+            self.notify(tr("🌐 Đã dừng public cổng {port}", port=t.port))
+        if self.is_running:
+            self.refresh_view()
 
     def write_sys(self, text: str) -> None:
         self.query_one("#tabs", TabbedContent).active = "tab-board"
@@ -8679,6 +8768,9 @@ class TeamApp(App):
                 self.show_job(self.shell.restart(job).id)
             elif bid == "job-remove" and not self.shell.remove(job):
                 self.notify(tr("Đang chạy — Dừng trước rồi mới xoá"), severity="warning")
+            elif bid == "job-share" and job.ports:
+                p = job.ports[0]
+                self.share(f"stop {p}" if self.tunnels.get(p) else str(p))
             self.refresh_view()
             return
         if bid in ("sh-new", "sh-close"):
@@ -8946,6 +9038,7 @@ class TeamApp(App):
                                            yes=tr("Thoát, bỏ thay đổi")), done)
             return
         self.shell.stop_all()  # không để lại dev server mồ côi sau khi thoát
+        await self.tunnels.stop_all()  # 🌐 /share: link công khai tắt cùng app
         self.grid.shutdown()  # CLI trong các ô của tab 🔲 Lưới
         await self.lsp.close()
         for run in self.orch.all_runs():  # cả lượt trưởng nhóm (lập kế hoạch, /init…): không để CLI chạy mồ côi
@@ -9807,6 +9900,8 @@ class TeamApp(App):
                 self.notify(tr("■ Đã dừng: {cmd}", cmd=job.cmd))
         elif cmd == "term":
             self.term_command(rest)
+        elif cmd == "share":
+            self.share(rest)
         elif cmd in ("code", "open", "vi"):
             target, line = parse_code_target(rest)
             self.open_code(target, line)

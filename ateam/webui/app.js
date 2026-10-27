@@ -1250,6 +1250,7 @@ function renderTerm() {
     box.innerHTML = `<div class="jobs" id="jobs"></div><div class="termwin"><div class="termwin-head" id="tw-head"></div><div class="termwin-body log" id="tw-body"></div><div class="tw-xterm hidden" id="tw-xterm"></div>
       <div class="pty-keys sh-keys hidden" id="sh-keys">${PTY_KEYS.map(([k], i) => `<button class="btn sm ghost" data-action="sh-key" data-k="${i}">${esc(k)}</button>`).join("")}</div></div>`;
   }
+  const live = liveTunnels();
   const label = (j) => ({ running: t("j_running"), done: t("j_done"), failed: t("j_failed"), stopped: t("j_stopped") }[j.status]);
   const shLabel = (x) => x.status === "run" ? badge("running", t("j_running")) : badge("cancelled", t("sh_exited"));
   const scripts = (S.scripts || []).slice(0, 14).map((s) => `<div class="script-row"><button class="script" data-action="run-script" data-cmd="${esc(s.cmd)}"><b>${esc(s.cmd)}</b><span>${esc(s.desc)}</span></button><button class="btn sm ghost sc-sh" data-action="sh-new" data-cmd="${esc(s.cmd)}" title="${esc(t("sh_run_in"))}" aria-label="${esc(t("sh_run_in"))}">⌨</button></div>`).join("");
@@ -1262,9 +1263,12 @@ function renderTerm() {
     <div class="job${!sh && j.id === S.openJob ? " sel" : ""}" data-action="open-job" data-job="${j.id}">
       <div class="job-cmd">${j.status === "running" ? '<span class="spin" style="--c:var(--running);width:11px;height:11px"></span>' : ""}${esc(j.cmd)}</div>
       <div class="job-meta">${badge(j.status === "stopped" ? "cancelled" : j.status === "running" ? "running" : j.status, label(j))}${elapsedHtml(j.started, j.finished)}
-        ${j.ports.map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">:${p}</a>`).join("")}
+        ${j.ports.map((p) => portHtml(p, false)).join("")}
         ${j.status === "running" ? `<button class="btn sm ghost job-stop" data-action="job" data-act="stop" data-job="${j.id}" title="${esc(t("stop"))}" aria-label="${esc(t("stop"))}">■</button>` : ""}</div>
     </div>`).join("") : `<div class="panel-sub" style="padding:4px 16px 8px">${esc(t("no_jobs_hint"))}</div>`)
+    + (live.length ? `<div class="jobs-head">${esc(t("share_list"))}</div><div class="tunnels">${live.map((x) => `<div class="tunnel-row">
+      <button class="btn sm tunnel-chip${x.url ? " up" : ""}" data-action="share-open" data-port="${x.port}">:${x.port} → ${esc(x.url ? x.url.replace("https://", "") : t("share_wait"))}</button>
+      <button class="btn sm ghost job-stop" data-action="share-stop" data-port="${x.port}" title="${esc(t("share_stop"))}" aria-label="${esc(t("share_stop"))}">■</button></div>`).join("")}</div>` : "")
     + (scripts ? `<div class="jobs-head">${esc(t("scripts"))}</div><div class="scripts">${scripts}</div>` : "");
   $("#tw-body").classList.toggle("hidden", !!sh);
   $("#tw-xterm").classList.toggle("hidden", !sh);
@@ -1284,7 +1288,7 @@ function renderTerm() {
     } else tsFit(sh.id);
   }
   const head = $("#tw-head");
-  const sig = sh ? JSON.stringify(["sh", sh.id, sh.status, sh.title, sh.cwd]) : job ? JSON.stringify([job.id, job.status, job.ports]) : "";
+  const sig = sh ? JSON.stringify(["sh", sh.id, sh.status, sh.title, sh.cwd]) : job ? JSON.stringify([job.id, job.status, job.ports, live.filter((x) => job.ports.includes(x.port))]) : "";
   if (head.dataset.sig !== sig) {
     head.dataset.sig = sig;
     head.innerHTML = sh ? `<span class="cmd">⌨ ${esc(sh.title)}${sh.cwd ? ` · ${esc(sh.cwd)}` : ""}</span>
@@ -1292,7 +1296,7 @@ function renderTerm() {
         ${sh.status !== "run" ? `<button class="btn sm" data-action="sh-start" data-sh="${esc(sh.id)}">↻ ${esc(t("sh_reopen"))}</button>` : `<button class="btn sm" data-action="sh-stop" data-sh="${esc(sh.id)}">■ ${esc(t("stop"))}</button>`}
         <button class="btn sm" data-action="sh-close" data-sh="${esc(sh.id)}" title="${esc(t("sh_close_hint"))}">✕ ${esc(t("sh_close"))}</button>
       </span>` : job ? `<span class="lights"><i></i><i></i><i></i></span><span class="cmd">$ ${esc(job.cmd)}</span>
-      ${job.ports.map((p) => `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">localhost:${p}</a>`).join("")}
+      ${job.ports.map((p) => portHtml(p, true)).join("")}
       <span style="margin-left:auto;display:flex;gap:6px">
         <button class="btn sm" data-action="sh-new" data-cmd="${esc(job.cmd)}" title="${esc(t("sh_run_in_hint"))}">⌨ ${esc(t("sh_run_in"))}</button>
         ${job.status === "running" ? `<button class="btn sm" data-action="job" data-act="stop" data-job="${job.id}">■ ${esc(t("stop"))}</button>` : ""}
@@ -1304,6 +1308,39 @@ function renderTerm() {
     }
   }
   if (S.scripts == null || now() - S.scriptsAt > 30) loadScripts();
+}
+/* 🌐 /share: tunnel đang mở (starting/up) — server gửi trong ảnh chụp trạng thái */
+function liveTunnels() {
+  return ((S.state && S.state.tunnels) || []).filter((x) => x.status === "starting" || x.status === "up");
+}
+/* cổng bắt được từ output lệnh: link localhost + nút 🌐 public (đã public: chip URL, bấm xem QR / dừng) */
+function portHtml(p, long) {
+  const tn = liveTunnels().find((x) => x.port === p);
+  const link = `<a class="port" href="http://localhost:${p}" target="_blank" rel="noopener">${long ? "localhost" : ""}:${p}</a>`;
+  if (!tn) return link + `<button class="btn sm ghost share-btn" data-action="share" data-port="${p}" title="${esc(t("share_hint"))}" aria-label="${esc(t("share_hint"))}">🌐</button>`;
+  const txt = tn.url ? (long ? tn.url.replace("https://", "") : "🌐") : t("share_wait");
+  return link + `<button class="btn sm tunnel-chip${tn.url ? " up" : ""}" data-action="share-open" data-port="${p}" title="${esc(tn.url || t("share_wait"))}">${long ? "🌐 " : ""}${esc(txt)}</button>`;
+}
+/* popup một tunnel: URL + mã QR (mở trên điện thoại) + chép / mở / dừng; chờ cloudflared in URL nếu chưa có */
+async function shareModal(port) {
+  const body = () => {
+    const tn = ((S.state && S.state.tunnels) || []).find((x) => x.port === port);
+    if (!tn || tn.status === "stopped") return `<p class="muted">${esc(t("share_list"))}: —</p>`;
+    if (tn.status === "failed") return `<p class="share-err">${esc(t("share_failed", { e: tn.error }))}</p>`;
+    if (!tn.url) return `<p class="muted">⏳ ${esc(t("share_busy"))}</p>`;
+    return `<div class="phone-item">${tn.svg ? `<img class="phone-qr" alt="QR" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(tn.svg)}">` : ""}
+      <div class="phone-url"><code>${esc(tn.url)}</code><button class="btn sm" data-action="copy-url" data-url="${esc(tn.url)}">${esc(t("phone_copy"))}</button>
+      <a class="btn sm" href="${esc(tn.url)}" target="_blank" rel="noopener">${esc(t("share_open"))}</a></div></div>
+      <p class="muted small">${esc(t("share_note"))}</p>
+      <div class="share-actions"><button class="btn danger" data-action="share-stop" data-port="${port}">■ ${esc(t("share_stop"))}</button></div>`;
+  };
+  const m = openModal(`${modalHead(esc(t("share_title", { port })))}<div class="modal-pad">${body()}</div>`);
+  let last = "";
+  while (m.isConnected) {  // vẽ lại khi trạng thái tunnel đổi (có URL, lỗi, dừng)
+    const html = body();
+    if (html !== last) { last = html; $(".modal-pad", m).innerHTML = html; }
+    await new Promise((ok) => setTimeout(ok, 700));
+  }
 }
 function openJob(id) {
   S.openJob = id;
@@ -2291,6 +2328,13 @@ const ACTIONS = {
   "side-toggle": () => setSideMin(!document.documentElement.classList.contains("side-min")),
   "roles": () => Setup.rolesModal(),
   "goal-plan": (el, e) => { e.stopPropagation(); planModal(+el.dataset.goal); },
+  "share": (el, e) => { e.stopPropagation(); busyBtn(el, request("submit", { text: `/share ${el.dataset.port}` }, t("share_busy"))); },
+  "share-open": (el, e) => { e.stopPropagation(); shareModal(+el.dataset.port); },
+  "share-stop": (el, e) => {
+    e.stopPropagation();
+    const m = el.closest(".modal");
+    request("submit", { text: `/share stop ${el.dataset.port}` }).then(() => { if (m) closeModal(m); });
+  },
   "copy-url": (el) => { navigator.clipboard.writeText(el.dataset.url).then(() => toast(t("copied"), "ok")); },
   "close-drawer": () => closeDrawer(),
   "close-modal": (el) => closeModal(el.closest(".modal")),

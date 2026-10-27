@@ -5121,4 +5121,81 @@ EN: dict[str, str] = {
         "Reset file column width",
     "Kéo để đổi độ rộng · bấm đúp: về mặc định":
         "Drag to resize · double-click: reset",
+    # --- 🌐 /share: public cổng local qua Cloudflare Tunnel
+    'Cổng không hợp lệ: {v} (vd 3000)':
+        'Invalid port: {v} (e.g. 3000)',
+    '⏳ Đang mở tunnel cho cổng {port}…':
+        '⏳ Opening a tunnel for port {port}…',
+    '🌐 public 1 cổng local ra internet qua Cloudflare Tunnel (link https công khai, Ctrl+C để dừng)':
+        '🌐 expose a local port to the internet via Cloudflare Tunnel (public https link, Ctrl+C to stop)',
+    'cổng, vd 3000':
+        'port, e.g. 3000',
+    '\n🌐 Cổng {port}: {url}':
+        '\n🌐 Port {port}: {url}',
+    'Ctrl+C để dừng.':
+        'Ctrl+C to stop.',
+    '[cổng | stop [cổng]]':
+        '[port | stop [port]]',
+    '🌐 public 1 cổng local ra internet qua Cloudflare Tunnel (link https công khai); trống: xem các cổng đang public':
+        '🌐 expose a local port to the internet via Cloudflare Tunnel (public https link); empty: list shared ports',
+    '🌐 Tắt':
+        '🌐 Stop',
+    '🌐 Đang public (/share stop <cổng> để dừng)\n':
+        '🌐 Shared (/share stop <port> to stop)\n',
+    '🌐 Public cổng {port} ra internet (Cloudflare Tunnel)':
+        '🌐 Expose port {port} to the internet (Cloudflare Tunnel)',
+    '🌐 Public':
+        '🌐 Share',
+    '🌐 Đã public cổng {port}: {url}':
+        '🌐 Port {port} is public: {url}',
+    '🌐 Cổng {port}: {url} (đã chép)':
+        '🌐 Port {port}: {url} (copied)',
+    '🌐 Public cổng {port}?':
+        '🌐 Make port {port} public?',
+    '✗ Không public được cổng {port}: {e}':
+        '✗ Could not share port {port}: {e}',
+    'đang mở…':
+        'opening…',
+    'Public':
+        'Share',
+    '🌐 Đã dừng public cổng {port}':
+        '🌐 Stopped sharing port {port}',
+    '🌐 Đã dừng {n} tunnel':
+        '🌐 Stopped {n} tunnel(s)',
+    'Chưa public cổng nào':
+        'No port is shared',
+    'Cổng {port} chưa được public':
+        'Port {port} is not shared',
+    'Chưa cài cloudflared — cài bằng `brew install cloudflared` (macOS) rồi thử lại.':
+        'cloudflared is not installed — install it with `brew install cloudflared` (macOS) and try again.',
+    'Cổng {port} sẽ có một địa chỉ https://…trycloudflare.com công khai: ai có link đều vào được, không cần mật khẩu hay token. Chỉ public dev server / trang demo, đừng public thứ có dữ liệu thật hoặc trang quản trị. Tunnel tự tắt khi bạn đóng ateam.':
+        'Port {port} will get a public https://…trycloudflare.com address: anyone with the link can open it, no password or token. Only share dev servers / demo pages, never anything with real data or an admin panel. The tunnel stops when you close ateam.',
+    'Cổng {port} là chính giao diện ateam web — mở từ xa bằng nút 📱 hoặc `ateam web --tunnel` (có token).':
+        'Port {port} is the ateam web UI itself — open it remotely with the 📱 button or `ateam web --tunnel` (token protected).',
+    'Chưa public cổng nào. Gõ /share <cổng>, vd /share 3000.':
+        'No port is shared. Type /share <port>, e.g. /share 3000.',
+    'Không có gì đang chạy ở cổng {port} trên máy này — chạy dev server trước rồi public.':
+        'Nothing is listening on port {port} on this machine — start the dev server first, then share it.',
+    'cloudflared đã dừng (mã {rc})':
+        'cloudflared exited (code {rc})',
+    'Không chạy được cloudflared: {e}':
+        'Could not run cloudflared: {e}',
+    '🌐 Public cổng này ra internet (Cloudflare Tunnel)':
+        '🌐 Expose this port to the internet (Cloudflare Tunnel)',
+    '🌐 Public cổng {port}':
+        '🌐 Share port {port}',
+    'Dừng public':
+        'Stop sharing',
+    '🌐 Đang public':
+        '🌐 Shared ports',
+    'Đang mở tunnel…':
+        'Opening tunnel…',
+    'Ai có link đều vào được, không cần token. Link đổi mỗi lần public và tự tắt khi đóng ateam.':
+        'Anyone with the link can open it, no token needed. The link changes each time and stops when ateam closes.',
+    'Không public được: {e}':
+        'Could not share: {e}',
+    '🌐 Cổng {port}: {url}':
+        '🌐 Port {port}: {url}',
+    '🌐 Public cổng local':
+        '🌐 Shared local ports',
 }

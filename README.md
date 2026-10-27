@@ -412,6 +412,17 @@ Alt+số hoặc chuột (mọi phím khác, kể cả Esc / Ctrl+C, vào shell).
   worktree `.ateam/worktrees/sh-t12` trên nhánh của task để bạn sửa tay, chạy test. *✓ Merge* tự commit phần bạn sửa
   vào nhánh rồi mới merge; *✗ Từ chối* / chạy lại task thì đóng shell và gỡ worktree đó.
 
+**🌐 Public một cổng local** (cần `cloudflared`: `brew install cloudflared`, không cần tài khoản Cloudflare) — cho
+khách / điện thoại xem thử dev server qua một link https `*.trycloudflare.com`:
+
+- Nút **🌐** cạnh cổng mà lệnh `!` in ra (`localhost:5173`…) ở tab Terminal (TUI: nút *🌐 Public* dưới danh sách
+  lệnh), hoặc gõ `/share 3000` cho cổng bất kỳ đang chạy trên máy. Lần đầu mỗi phiên ateam hỏi lại vì **ai có link đều
+  vào được, không có token**. Có URL thì web hiện chip 🌐 (bấm: mã QR, Chép, Mở, Dừng); TUI tự chép URL.
+- `/share` xem các cổng đang public, `/share stop 3000` dừng một cổng, `/share stop` dừng hết. Đóng ateam là mọi
+  tunnel tắt theo. Không chạy app: `ateam share 3000` (Ctrl+C để dừng, in cả mã QR).
+- URL đổi mỗi lần public. Không public được chính cổng của `ateam web` theo cách này — dùng 📱 / `--tunnel` (có
+  token). Chỉ public dev server / trang demo, đừng public trang có dữ liệu thật hay trang quản trị.
+
 ## Quản lý git (tab 🌿 Git)
 
 `/git` (hoặc Ctrl+T xoay tới tab **🌿 Git**) — làm mọi việc git hằng ngày mà không rời app:

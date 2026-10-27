@@ -30,6 +30,7 @@ from . import (__version__, clipboard, gitops, lsp, mentions, notes, notify, pal
 from .config import Config, found_models, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import DB, GOAL_ENDED, Goal, Task
 from .qr import QR
+from .tunnel import TunnelManager, parse_command as share_command, warning_text as share_warning
 from .web_auth import Remote, auth_middleware, load_token, security_headers
 from .i18n import LANG_NAMES, LANGS, get_lang, normalize, save_lang, set_lang, tr
 from .orchestrator import SYSTEM, Orchestrator
@@ -202,6 +203,11 @@ def ui_strings() -> dict[str, str]:
         "sh_task_hint": tr("Mở shell trong worktree của task — sửa tay, chạy test; ✓ Merge sẽ gồm cả phần bạn sửa"),
         "no_jobs_hint": tr("Gõ ! rồi lệnh ở ô dưới, vd !npm run dev — hoặc chọn một script gợi ý:"),
         "stop": tr("Dừng"), "restart": tr("Chạy lại"), "remove": tr("Xoá"),
+        "share_hint": tr("🌐 Public cổng này ra internet (Cloudflare Tunnel)"), "share_wait": tr("đang mở…"),
+        "share_title": tr("🌐 Public cổng {port}"), "share_stop": tr("Dừng public"), "share_open": tr("Mở"),
+        "share_list": tr("🌐 Đang public"), "share_busy": tr("Đang mở tunnel…"),
+        "share_note": tr("Ai có link đều vào được, không cần token. Link đổi mỗi lần public và tự tắt khi đóng ateam."),
+        "share_failed": tr("Không public được: {e}"),
         "j_running": tr("đang chạy"), "j_done": tr("xong"), "j_failed": tr("lỗi"), "j_stopped": tr("đã dừng"),
         "exit_code": tr("thoát với mã {rc}"), "files": tr("File"), "scripts": tr("Script của dự án"),
         "shortcuts": tr("Ctrl+K: ô nhập · F2: duyệt kế hoạch · Esc: đóng"),
@@ -666,6 +672,9 @@ class WebApp:
         self.remote = remote or Remote(Path(root) / ".ateam", port=port)
         self.orch = Orchestrator(root, cfg, db, on_event=self.on_orch_event)
         self.shell = shell.ShellManager(root, on_event=self.on_shell_event)
+        # 🌐 /share: public cổng local qua Cloudflare quick tunnel (không public chính server này — 📱 có token)
+        self.tunnels = TunnelManager(self.on_tunnel_change, reserved=(port,))
+        self._share_ok = False  # đã xác nhận cảnh báo "ai có link đều vào được" trong phiên này
         self.index = mentions.FileIndex(root)
         self.git = GitWeb(self)
         self.code = CodeWeb(self)
@@ -753,6 +762,7 @@ class WebApp:
 
     async def _shutdown(self, _app) -> None:
         await self.remote.stop_tunnel()
+        await self.tunnels.stop_all()
         if not self.next_root:  # /open chạy lại server ở dự án khác: cửa sổ kia vẫn dùng tiếp
             for p in self.windows:
                 if p.returncode is None:
@@ -946,6 +956,22 @@ class WebApp:
                 item["raw"] = data["raw"]
             self._queue(item)
 
+    def on_tunnel_change(self, t) -> None:
+        if t.status == "up":
+            self.orch.log(tr("🌐 Đã public cổng {port}: {url}", port=t.port, url=t.url))
+        elif t.status == "failed":
+            self.orch.log(tr("✗ Không public được cổng {port}: {e}", port=t.port, e=t.error))
+        elif t.status == "stopped":
+            self.orch.log(tr("🌐 Đã dừng public cổng {port}", port=t.port))
+
+    def tunnels_json(self) -> list[dict]:
+        out = []
+        for t in self.tunnels.tunnels.values():
+            d = t.to_json()
+            d["svg"] = QR(t.url).to_svg(5) if t.url else ""
+            out.append(d)
+        return out
+
     def on_shell_event(self, kind: str, job, line: str) -> None:
         if kind == "line":
             self._queue({"k": "job", "id": job.id, "line": line})
@@ -1103,7 +1129,7 @@ class WebApp:
         jobs = [{"id": j.id, "cmd": j.cmd, "status": j.status, "started": j.started, "finished": j.finished,
                  "rc": j.rc, "ports": j.ports} for j in self.shell.jobs.values()]
         return {"t": "state", "goals": goals, "tasks": [task_json(t, full=False) for t in tasks], "agents": agents,
-                "grill": grill, "ask": ask, "jobs": jobs, "shells": self.grid.shells(), "paused": o.paused, "worktree": o.use_worktree,
+                "grill": grill, "ask": ask, "jobs": jobs, "tunnels": self.tunnels_json(), "shells": self.grid.shells(), "paused": o.paused, "worktree": o.use_worktree,
                 "lead": cfg.lead, "commit_agent": cfg.commit_agent, "workflow": cfg.default_workflow, "compacting": o.compacting,
                 "continue": reports.continue_candidates(self.db, tasks_all, goals_all), "busy": len(o.runs), "todos": todos.load(self.root),
                 "tags": todos.load_tags(self.root), "notes": notes.summaries(self.root), "git_changes": self.git.changes}
@@ -1712,6 +1738,33 @@ class WebApp:
         except (ValueError, IndexError):  # thiếu/sai tham số -> chỉ cách dùng
             return command_usage(cmd), "warn"
 
+    async def share(self, rest: str) -> tuple:
+        """/share [cổng|stop [cổng]] — như TeamApp.share; lần đầu trong phiên hỏi lại (cảnh báo link công khai)."""
+        action, port, yes = share_command(rest)
+        if action == "list":
+            return "", "", text_box(tr("🌐 Public cổng local"), self.tunnels.summary())
+        if action == "stop":
+            if port is None:
+                n = await self.tunnels.stop_all()
+                return (tr("🌐 Đã dừng {n} tunnel", n=n), "info") if n else (tr("Chưa public cổng nào"), "info")
+            if not await self.tunnels.stop(port):
+                return tr("Cổng {port} chưa được public", port=port), "warn"
+            return tr("🌐 Đã dừng public cổng {port}", port=port), "info"
+        why = self.tunnels.check(port)
+        if why:
+            return why, "warn"
+        if not yes and not self._share_ok and not self.tunnels.get(port):
+            return "", "", {"open": {"confirm": {"title": tr("🌐 Public cổng {port}?", port=port),
+                                                 "text": share_warning(port), "yes": tr("Public"),
+                                                 "cmd": f"/share {port} --yes"}}}
+        self._share_ok = True
+        try:
+            t = await self.tunnels.start(port)
+        except ValueError as e:
+            return str(e), "warn"
+        return (tr("🌐 Cổng {port}: {url}", port=port, url=t.url) if t.url
+                else tr("⏳ Đang mở tunnel cho cổng {port}…", port=port)), "info"
+
     def chat(self, agent: str, text: str) -> tuple | None:
         """Tin nhắn ô 💬 (thẻ agent, tab Agents) hoặc /chat: như TeamApp.send_chat."""
         text = text.strip()
@@ -1799,6 +1852,8 @@ class WebApp:
             if not job or not self.shell.stop(job):
                 return tr("Không có lệnh nào đang chạy để dừng"), "warn"
             return tr("■ Đã dừng: {cmd}", cmd=job.cmd), "info"
+        if cmd == "share":
+            return await self.share(rest)
         if cmd == "term":  # /term · /term <lệnh> · /term #12 (shell ở worktree của task #12)
             m = re.fullmatch(r"#?t?(\d+)", rest) if rest.startswith(("#", "t")) else None
             if m:
