@@ -23,12 +23,12 @@ from pathlib import Path
 from aiohttp import web
 
 from .i18n import tr
+from .tunnel import TUNNEL_RE, quick_tunnel, terminate  # noqa: F401 (TUNNEL_RE: code cũ import từ đây)
 
 COOKIE = "ateam_auth"
 COOKIE_AGE = 30 * 86400
 MAX_FAILS = 20       # sai token quá chừng này lần trong FAIL_WINDOW giây → khoá tạm
 FAIL_WINDOW = 600
-TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 
 def is_loopback(host: str) -> bool:
@@ -112,24 +112,16 @@ class Remote:
     # ------------------------------------------------------------------ cloudflared
     async def start_tunnel(self, on_url) -> None:
         """Quick tunnel (không cần tài khoản): cloudflared in URL https://*.trycloudflare.com ra stderr."""
-        self.proc = await asyncio.create_subprocess_exec(
-            "cloudflared", "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{self.port}",
-            stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE)
-        assert self.proc.stderr is not None
-        async for raw in self.proc.stderr:
-            m = TUNNEL_RE.search(raw.decode("utf-8", "replace"))
-            if m and not self.tunnel_url:
-                self.tunnel_url = m.group(0)
-                on_url(self.tunnel_url)
+        def got(url: str) -> None:
+            self.tunnel_url = url
+            on_url(url)
+
+        def proc(p) -> None:
+            self.proc = p
+        await quick_tunnel(f"http://127.0.0.1:{self.port}", got, proc)
 
     async def stop_tunnel(self) -> None:
-        if self.proc and self.proc.returncode is None:
-            self.proc.terminate()
-            try:
-                await asyncio.wait_for(self.proc.wait(), 5)
-            except asyncio.TimeoutError:
-                self.proc.kill()
+        await terminate(self.proc)
 
 
 def _secure(request: web.Request) -> bool:

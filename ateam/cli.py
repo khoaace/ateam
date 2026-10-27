@@ -706,6 +706,45 @@ def cmd_update(args) -> int:
     return 0 if ok or msg == tr("Đang dùng bản mới nhất ({version}).", version=cur) else 1
 
 
+def cmd_share(args) -> int:
+    """`ateam share 3000`: public cổng local qua Cloudflare quick tunnel tới khi Ctrl+C (như /share trong app)."""
+    from . import tunnel
+    from .qr import QR
+    port = tunnel.parse_port(args.port)
+    if port is None:
+        print(tr("Cổng không hợp lệ: {v} (vd 3000)", v=args.port), file=sys.stderr)
+        return 1
+    if not tunnel.available():
+        print(tunnel.install_hint(), file=sys.stderr)
+        return 1
+    print("⚠ " + tunnel.warning_text(port))
+
+    async def go() -> int:
+        mgr = tunnel.TunnelManager()
+
+        def changed(t) -> None:
+            if t.status == "up":
+                print(tr("\n🌐 Cổng {port}: {url}", port=port, url=t.url))
+                print(QR(t.url).to_text())
+                print(tr("Ctrl+C để dừng."), flush=True)
+        mgr.on_change = changed
+        try:
+            t = await mgr.start(port)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        print(tr("⏳ Đang mở tunnel cho cổng {port}…", port=port), flush=True)
+        try:
+            await t.task
+        finally:
+            await mgr.stop_all()
+        if t.status == "failed":
+            print("✗ " + t.error, file=sys.stderr)
+            return 1
+        return 0
+    return asyncio.run(go())
+
+
 def cmd_cooldown(args) -> int:
     from .limits import save_cooldown
     import time as _t
@@ -809,6 +848,9 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("schedule", help=tr("⏰ hẹn giờ chạy mục tiêu (22:30 · +45m · daily 08:00 · quota claude); "
                                            "trống: xem lịch · rm <số>: huỷ — chạy khi ateam đang mở"))
     s.add_argument("spec", nargs=argparse.REMAINDER)
+    s = sub.add_parser("share", help=tr("🌐 public 1 cổng local ra internet qua Cloudflare Tunnel (link https công "
+                                        "khai, Ctrl+C để dừng)"))
+    s.add_argument("port", help=tr("cổng, vd 3000"))
     s = sub.add_parser("cooldown", help=tr("cho agent tạm nghỉ N phút, hoặc 'off'"))
     s.add_argument("agent")
     s.add_argument("minutes", nargs="?")
@@ -823,7 +865,7 @@ def main(argv: list[str] | None = None) -> int:
                 "compact": cmd_compact, "list": cmd_list,
                 "log": cmd_log, "run": cmd_run, "set": cmd_set, "models": cmd_models, "diff": cmd_diff,
                 "merge": cmd_merge, "reject": cmd_reject, "verify": cmd_verify,
-                "usage": cmd_usage, "update": cmd_update, "cooldown": cmd_cooldown,
+                "usage": cmd_usage, "update": cmd_update, "cooldown": cmd_cooldown, "share": cmd_share,
                 "schedule": cmd_schedule, "undo": cmd_undo}
     try:
         return handlers[args.cmd](args)

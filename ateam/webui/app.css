@@ -553,6 +553,15 @@ button.ag-model:hover { border-color: var(--border); background: var(--surface);
 .job-stop { margin-left: auto; padding: 0 8px; color: var(--failed); }
 .port { font: 600 11px var(--mono); color: var(--accent-2); border: 1px solid color-mix(in srgb, var(--accent-2) 45%, var(--border)); padding: 0 5px; border-radius: var(--radius); text-decoration: none; }
 .port:hover { text-decoration: underline; }
+.share-btn { height: 18px; padding: 0 4px; font-size: 11px; }
+.tunnel-chip { height: 18px; padding: 0 6px; font: 600 11px var(--mono); max-width: 100%; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.termwin-head .tunnel-chip { max-width: 280px; height: 20px; flex: 0 1 auto; min-width: 0; }
+.tunnel-chip.up { color: var(--done); border-color: color-mix(in srgb, var(--done) 50%, var(--border)); }
+.share-err { color: var(--failed); }
+.share-actions { display: flex; justify-content: flex-end; }
+.tunnels { padding: 4px 6px 8px; display: flex; flex-direction: column; gap: 4px; }
+.tunnel-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.tunnel-row .tunnel-chip { flex: 1; min-width: 0; text-align: left; }
 .scripts { padding: 4px 6px 10px; display: flex; flex-direction: column; gap: 2px; }
 .script { display: flex; flex-direction: column; text-align: left; padding: 6px 8px; border-radius: var(--radius); border: 0; background: transparent; cursor: pointer; }
 .script:hover { background: var(--surface-2); }
