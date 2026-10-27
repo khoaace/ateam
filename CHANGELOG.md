@@ -1,11 +1,12 @@
 # Changelog
 
-## Chưa phát hành
+## 0.57.1 — 27/10/2026
 
-- Tab 📝 Code (web + TUI): **tạo thư mục mới** — nút cạnh ＋ File mới, menu chuột phải *Thư mục mới ở đây…*, `>Thư mục
-  mới` trong palette. Cây file giờ hiện cả thư mục rỗng (git không liệt kê thư mục rỗng nên trước đây không thấy).
-- Tab 📝 Code: **kéo mép để đổi độ rộng cột file**, bấm đúp về mặc định, độ rộng được nhớ. TUI thêm `<` `>` `=` ở danh
-  sách file và `:files 40` / `:files +4` / `:files =`.
+- **Tab 📝 Code: tạo thư mục mới và kéo đổi độ rộng cột file** (web + TUI). Nút ＋ Thư mục cạnh ＋ File mới, menu chuột
+  phải *Thư mục mới ở đây…*, `>Thư mục mới` trong palette; cây file giờ hiện cả thư mục rỗng (git không liệt kê thư
+  mục rỗng nên trước đây không thấy).
+- Kéo mép giữa cột file và editor để đổi độ rộng, bấm đúp về mặc định, độ rộng được nhớ (web: theo trình duyệt; TUI:
+  `state.json`). TUI thêm `<` `>` `=` ở danh sách file và `:files 40` / `:files +4` / `:files =`.
 
 ## 0.57.0 — 26/10/2026
 
