@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
+from . import apiclient
 from . import checkpoint
 from . import limits
 from . import mentions
@@ -83,9 +84,7 @@ class Orchestrator:
         self.state = self.root / ".ateam"
         self.logs = self.state / "logs"
         self.logs.mkdir(parents=True, exist_ok=True)
-        gi = self.state / ".gitignore"
-        if not gi.exists():
-            gi.write_text("*\n")
+        apiclient.ensure_gitignore(self.state)  # bỏ qua cả .ateam trừ api/ (collection của tab 🛰 API)
         self.runs: dict[int, Run] = {}
         self.lead_busy: set[int] = set()  # goal đang được lập kế hoạch / review
         self.lead_runs: dict[int, Run] = {}  # lượt trưởng nhóm đang chạy theo mục tiêu (huỷ khi bỏ /grill)

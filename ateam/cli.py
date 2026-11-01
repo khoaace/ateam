@@ -757,6 +757,46 @@ def cmd_cooldown(args) -> int:
     return 0
 
 
+def cmd_api(args) -> int:
+    """`ateam api [list]` · `ateam api run [collection] [--env x] [--only tên]`: chạy collection của tab 🛰 API,
+    exit 1 khi có request lỗi / assert sai — dùng làm lệnh kiểm tra (`ateam verify ateam api run smoke`)."""
+    from . import apiclient
+    root = find_root(args.dir)
+    names = apiclient.list_collections(root)
+    if args.action == "list":
+        if not names:
+            print(tr("Chưa có collection nào trong {v}", v=apiclient.api_dir(root)))
+        for n in names:
+            c = apiclient.load_collection(root, n) or {}
+            print(f"{n}  ({len(c.get('requests') or [])} request)")
+        envs = apiclient.list_envs(root)
+        if envs:
+            print(tr("Môi trường: {v}", v=", ".join(envs)))
+        return 0
+    name = args.name or (names[0] if len(names) == 1 else "")
+    coll = apiclient.load_collection(root, name) if name else None
+    if not coll:
+        print(tr("Không thấy collection '{name}' — có: {v}", name=name, v=", ".join(names) or tr("(trống)")))
+        return 2
+
+    def show(req: dict, r: dict) -> None:
+        res = r["response"]
+        head = f"{r['request']['method']} {r['request']['url']}"
+        if res.get("error"):
+            print(f"✗ {head}  — {res['error']}")
+        else:
+            print(f"{'✓' if r['ok'] else '✗'} {head}  → {res['status']}  {res['ms']} ms")
+        for a in r["asserts"]:
+            print(f"    {'✓' if a['ok'] else '✗'} {a['msg']}")
+    results = asyncio.run(apiclient.run_collection(root, coll, args.env or "", args.only or "", on_result=show))
+    if not results:
+        print(tr("Không có request nào để chạy"))
+        return 2
+    bad = sum(1 for r in results if not r["ok"])
+    print(tr("{ok}/{n} request đạt", ok=len(results) - bad, n=len(results)))
+    return 1 if bad else 0
+
+
 # ---------------------------------------------------------------------------- main
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ateam", description=tr("AI Team — điều phối nhiều AI agent CLI."))
@@ -854,6 +894,11 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("cooldown", help=tr("cho agent tạm nghỉ N phút, hoặc 'off'"))
     s.add_argument("agent")
     s.add_argument("minutes", nargs="?")
+    s = sub.add_parser("api", help=tr("chạy collection HTTP của tab 🛰 API (.ateam/api/) — lỗi thì thoát mã 1"))
+    s.add_argument("action", nargs="?", choices=["run", "list"], default="run")
+    s.add_argument("name", nargs="?", help=tr("tên collection (bỏ trống nếu chỉ có một)"))
+    s.add_argument("--env", help=tr("môi trường trong .ateam/api/env/"))
+    s.add_argument("--only", help=tr("chỉ chạy request / thư mục có tên này"))
     s = sub.add_parser("run", help=tr("chạy hết các task đang chờ rồi thoát"))
     s.add_argument("-q", "--quiet", action="store_true")
 
@@ -866,7 +911,7 @@ def main(argv: list[str] | None = None) -> int:
                 "log": cmd_log, "run": cmd_run, "set": cmd_set, "models": cmd_models, "diff": cmd_diff,
                 "merge": cmd_merge, "reject": cmd_reject, "verify": cmd_verify,
                 "usage": cmd_usage, "update": cmd_update, "cooldown": cmd_cooldown, "share": cmd_share,
-                "schedule": cmd_schedule, "undo": cmd_undo}
+                "schedule": cmd_schedule, "undo": cmd_undo, "api": cmd_api}
     try:
         return handlers[args.cmd](args)
     except KeyboardInterrupt:

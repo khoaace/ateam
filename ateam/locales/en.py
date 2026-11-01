@@ -5198,4 +5198,40 @@ EN: dict[str, str] = {
         '🌐 Port {port}: {url}',
     '🌐 Public cổng local':
         '🌐 Shared local ports',
+    'URL phải bắt đầu bằng http:// hoặc https:// (hoặc / khi có biến base_url)':
+        'URL must start with http:// or https:// (or / when a base_url variable is set)',
+    'không có':
+        'missing',
+    'assert không hiểu: {v}':
+        'unrecognized assert: {v}',
+    '{v}: không có giá trị':
+        '{v}: no value',
+    '{v} (thực tế: {got})':
+        '{v} (actual: {got})',
+    '{v}: không có response':
+        '{v}: no response',
+    'Lệnh curl không hợp lệ: {e}':
+        'Invalid curl command: {e}',
+    'Không phải lệnh curl':
+        'Not a curl command',
+    'Lệnh curl thiếu URL':
+        'The curl command has no URL',
+    'Chưa có collection nào trong {v}':
+        'No collections in {v} yet',
+    'Môi trường: {v}':
+        'Environments: {v}',
+    "Không thấy collection '{name}' — có: {v}":
+        "Collection '{name}' not found — available: {v}",
+    'Không có request nào để chạy':
+        'No requests to run',
+    '{ok}/{n} request đạt':
+        '{ok}/{n} requests passed',
+    'chạy collection HTTP của tab 🛰 API (.ateam/api/) — lỗi thì thoát mã 1':
+        'run an HTTP collection from the 🛰 API tab (.ateam/api/) — exits with code 1 on failure',
+    'tên collection (bỏ trống nếu chỉ có một)':
+        'collection name (optional when there is only one)',
+    'môi trường trong .ateam/api/env/':
+        'environment in .ateam/api/env/',
+    'chỉ chạy request / thư mục có tên này':
+        'only run the request / folder with this name',
 }
