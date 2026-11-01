@@ -5390,4 +5390,46 @@ EN: dict[str, str] = {
         'Enter an environment name',
     'Nhập tên secret':
         'Enter a secret name',
+    '✨ Quét code':
+        '✨ Scan code',
+    'Agent đọc route trong code rồi đề xuất request (không sửa file)':
+        'An agent reads the routes in the code and proposes requests (no files changed)',
+    'Agent đọc code của dự án, liệt kê các endpoint thành request sẵn sàng gửi. Bạn chọn request nào thêm vào collection; request đã có được bỏ qua.':
+        "The agent reads the project's code and turns its endpoints into ready-to-send requests. You pick which ones to add to the collection; existing requests are skipped.",
+    'Tập trung vào (tuỳ chọn) — vd chỉ module đơn hàng':
+        'Focus on (optional) — e.g. only the orders module',
+    'Quét':
+        'Scan',
+    'Agent đang đọc code…':
+        'The agent is reading the code…',
+    'Tìm thấy {n} request':
+        'Found {n} requests',
+    'Thêm request đã chọn':
+        'Add selected requests',
+    'Đã thêm {n} request':
+        'Added {n} requests',
+    '🛠 Giao agent sửa':
+        '🛠 Ask an agent to fix',
+    'Tạo task cho agent tìm nguyên nhân trong code và sửa — kèm request, response, assert sai và log dev server (secret đã được che).':
+        'Create a task for an agent to find the cause in the code and fix it — with the request, response, failed asserts and dev server log (secrets are hidden).',
+    'Ghi chú thêm cho agent (tuỳ chọn) — vd đáng lẽ phải trả 201':
+        'Extra note for the agent (optional) — e.g. it should return 201',
+    'Giao việc':
+        'Assign',
+    '✅ Chạy sau mỗi task':
+        '✅ Run after each task',
+    'Đặt collection này làm lệnh kiểm tra (/verify): task làm hỏng API thì tự giao sửa':
+        'Use this collection as the check command (/verify): tasks that break the API get sent back for fixing',
+    'Quét API trong code':
+        'Scan the API in the code',
+    '{agent} không trả về danh sách request (xem .ateam/logs/lead.log)':
+        '{agent} did not return a request list (see .ateam/logs/lead.log)',
+    '{agent} không tìm thêm được endpoint nào':
+        '{agent} found no new endpoints',
+    'Sửa API: {v}':
+        'Fix API: {v}',
+    '🛠 Đã giao {agent} sửa (task #{tid})':
+        '🛠 Asked {agent} to fix it (task #{tid})',
+    '✅ Từ giờ chạy collection “{name}” sau mỗi task (dev server phải đang chạy) — tắt: /verify off':
+        '✅ Collection “{name}” now runs after each task (the dev server must be running) — turn off: /verify off',
 }

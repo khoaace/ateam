@@ -78,6 +78,19 @@ elif [[ "$P" == *"EXPLAIN CODE"* ]]; then
   echo "**Đoạn này** trả về lời chào."
   echo ""
   echo "- dùng \`hello(name)\`"
+elif [[ "$P" == *"SCAN HTTP API"* ]]; then
+  # ✨ quét code sinh request (tab 🛰 API): collection giữa <<<API>>> … <<<END>>>, bọc rào markdown; có một dòng
+  # thiếu url (bị bỏ), method lạ (thành GET), và GET /health để test bỏ request đã có trong collection
+  [[ "$P" == *"KHONG_CO_API"* ]] && { echo "Không thấy route nào."; exit 0; }
+  echo "Đang đọc route..."
+  printf '%s\n' '<<<API>>>' '```json' '{"base_url": "http://localhost:8000", "requests": [
+    {"name": "Đăng nhập", "folder": "auth", "method": "post", "url": "/login", "body": {"type": "json", "text": {"email": "a@b.vn"}},
+     "asserts": ["status == 200"], "extract": ["token = json $.token"]},
+    {"name": "Sản phẩm", "folder": "products", "method": "GET", "url": "/products/{{id}}", "auth": {"type": "bearer", "token": "{{token}}"},
+     "query": [{"key": "page", "value": "1"}]},
+    {"name": "Sức khoẻ", "method": "GET", "url": "/health"},
+    {"name": "Lạ", "method": "FETCH", "url": "/x"},
+    {"name": "Thiếu url"}]}' '```' '<<<END>>>'
 elif [[ "$P" == *"WRITE AN AGENT SKILL"* ]]; then
   # ✨ viết skill (theo mô tả / rút từ mục tiêu đã xong): SKILL.md giữa <<<SKILL>>> … <<<END>>>, bọc rào markdown
   name="phat-hanh"; [[ "$P" == *"captures how the team completed"* ]] && name="tu-muc-tieu"

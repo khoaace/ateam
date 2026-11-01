@@ -15,7 +15,7 @@ window.ApiView = (() => {
   async function call(action, data = {}, busy = "") {
     const m = await request("http", Object.assign({ action }, data), busy);
     if (m.http && m.http.collections) st = m.http;
-    return m.http ? m : (m.text && toast(m.text, m.level || "warn"), null);
+    return m.http ? m : null;  // lỗi: onToast (app.js) đã hiện lời nhắn
   }
 
   /* ---------------------------------------------------------------- khung */
@@ -31,7 +31,8 @@ window.ApiView = (() => {
             <div class="row"><select class="field one sm" id="api-env"></select>
               <button class="btn sm ghost" data-a="vars">${esc(t("ap_vars"))}</button></div>
             <div class="row"><button class="btn sm primary" data-a="req-new">${esc(t("ap_new_req"))}</button>
-              <button class="btn sm" data-a="curl">${esc(t("ap_curl"))}</button>
+              <button class="btn sm" data-a="curl">${esc(t("ap_curl"))}</button></div>
+            <div class="row"><button class="btn sm" data-a="scan" title="${esc(t("ap_scan_hint"))}">${esc(t("ap_scan"))}</button>
               <button class="btn sm" data-a="run">${esc(t("ap_run_all"))}</button></div>
             <input class="field one sm" id="api-q" placeholder="${esc(t("ap_search"))}" autocomplete="off">
           </div>
@@ -175,8 +176,10 @@ window.ApiView = (() => {
     const res = results[r.id];
     if (!res) { box.innerHTML = `<div class="nnone muted">${esc(t("ap_no_resp"))}</div>`; return; }
     const rp = res.response;
+    const fixBtn = `<button class="btn sm" data-a="fix">${esc(t("ap_fix"))}</button>`;
     if (rp.error) {
-      box.innerHTML = `<div class="arh"><span class="chip" style="color:var(--failed)">${esc(t("ap_net_err"))}</span><span class="muted">${rp.ms} ms</span></div>
+      box.innerHTML = `<div class="arh"><span class="chip" style="color:var(--failed)">${esc(t("ap_net_err"))}</span><span class="muted">${rp.ms} ms</span>
+        <span class="sp"></span>${fixBtn}</div>
         <pre class="abody err">${esc(rp.error)}</pre>`;
       return;
     }
@@ -195,7 +198,7 @@ window.ApiView = (() => {
     const ext = res.extracted && res.extracted.length ? `<span class="muted">${esc(t("ap_extracted", { v: res.extracted.join(", ") }))}</span>` : "";
     box.innerHTML = `<div class="arh"><span class="chip" style="color:var(--${cls})"><span class="dot"></span>${rp.status} ${esc(rp.reason || "")}</span>
       <span class="muted">${rp.ms} ms · ${size(rp.size)}${rp.truncated ? " · " + esc(t("ap_truncated")) : ""}</span>${ext}
-      <span class="sp"></span><button class="btn sm ghost" data-a="copy-body">${esc(t("ap_copy_body"))}</button></div>
+      <span class="sp"></span>${rp.status >= 400 || fails ? fixBtn : ""}<button class="btn sm ghost" data-a="copy-body">${esc(t("ap_copy_body"))}</button></div>
       <div class="tabs">${tabs}</div><div class="arb">${body}</div>`;
   }
 
@@ -238,7 +241,7 @@ window.ApiView = (() => {
     const acts = {
       "coll-new": newColl, "coll-del": delColl, "vars": varsModal, "req-new": () => newReq(),
       "curl": importCurl, "run": runAll, "history": historyModal, "send": sendCur, "dup": dupReq, "req-del": delReq,
-      "copy-curl": copyCurl,
+      "copy-curl": copyCurl, "scan": scanModal, "fix": fixModal,
       "copy-body": () => { const x = r && results[r.id]; if (x) copy(x.response.body || ""); },
       "tab": () => { P.tab = b.dataset.v; keep(); renderEd(); },
       "rtab": () => { P.rtab = b.dataset.v; keep(); renderResp(); },
@@ -343,11 +346,15 @@ window.ApiView = (() => {
     const m = await call("run", { collection: P.coll, env: P.env }, t("ap_running"));
     if (!m) return;
     const rows = m.http.run;
-    openModal(`${modalHead(esc(t("ap_run_title", { v: P.coll })))}<div class="modal-body plain"><div class="arun">${rows.map((x) => `
+    const box = openModal(`${modalHead(esc(t("ap_run_title", { v: P.coll })))}<div class="modal-body plain"><div class="arun">${rows.map((x) => `
       <div class="arr ${x.ok ? "ok" : "bad"}" data-rid="${x.id}"><b>${x.ok ? "✓" : "✗"} ${esc(x.name || "#" + x.id)}</b>
         <span class="muted">${x.error ? esc(x.error) : `${x.status} · ${x.ms} ms`}</span>
         ${x.asserts.filter((a) => !a.ok).map((a) => `<div class="bad small">✗ ${esc(a.msg)}</div>`).join("")}</div>`).join("")}
-      </div><div class="muted small pad">${esc(m.text || "")} · <code>ateam api run ${esc(P.coll)}${P.env ? " --env " + esc(P.env) : ""}</code></div></div>`, { box: "md" });
+      </div><div class="row-actions arun-foot"><span class="muted small">${esc(m.text || "")} · <code>ateam api run ${esc(P.coll)}${P.env ? " --env " + esc(P.env) : ""}</code></span>
+      <button class="btn sm" data-v="verify" title="${esc(t("ap_verify_hint"))}">${esc(t("ap_verify"))}</button></div></div>`, { box: "md" });
+    const vb = $('[data-v="verify"]', box);
+    vb.addEventListener("click", () => busyBtn(vb, request("http", { action: "verify", collection: P.coll, env: P.env }))
+      .then((r) => { if (r.level === "ok") closeModal(box); }));
   }
   async function importCurl() {
     const m0 = openModal(`${modalHead(esc(t("ap_curl")))}<div class="modal-pad"><div class="confirm-text">${esc(t("ap_curl_q"))}</div>
@@ -372,6 +379,65 @@ window.ApiView = (() => {
       if (!row) return;
       const x = h[+row.dataset.h];
       closeModal(box); newReq(Object.assign({}, x.request, { name: x.name || "" }));
+    });
+  }
+
+  /* ---------------------------------------------------------------- AI: quét code, giao agent sửa */
+  const agentPicks = (sel) => S.state.agents.filter((a) => a.installed).map((a) =>
+    `<button class="pick${a.name === sel ? " on" : ""}" data-agent="${esc(a.name)}" title="${esc(a.role || "")}">${agentHtml(a.name)}${a.lead ? ` <span class="muted">★</span>` : ""}</button>`).join("");
+  const leadName = () => (S.state.agents.find((a) => a.lead) || {}).name || "";
+  function pickAgent(m) {
+    m.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-agent]");
+      if (!b) return;
+      $$("[data-agent]", m).forEach((x) => x.classList.toggle("on", x === b));
+    });
+    return () => { const on = $("[data-agent].on", m); return on ? on.dataset.agent : ""; };
+  }
+  function scanModal() {
+    const m = openModal(`${modalHead(esc(t("ap_scan")))}<div class="modal-pad avars">
+      <div class="confirm-text">${esc(t("ap_scan_q"))}</div>
+      <input class="field one" id="api-focus" placeholder="${esc(t("ap_scan_focus"))}" autofocus>
+      <div class="picks">${agentPicks(leadName())}</div>
+      <div class="row-actions end"><button class="btn primary" id="api-scan-go">${esc(t("ap_scan_go"))}</button></div></div>`, { box: "sm" });
+    const who = pickAgent(m), go = $("#api-scan-go", m);
+    go.addEventListener("click", async () => {
+      const r = await busyBtn(go, call("scan", { collection: P.coll, focus: $("#api-focus", m).value, agent: who() }, t("ap_scanning")));
+      if (!r) return;
+      closeModal(m); scanResult(r.http.scan);
+    });
+  }
+  function scanResult(sc) {
+    const rs = sc.requests;
+    const m = openModal(`${modalHead(esc(t("ap_scan_found", { n: rs.length })))}<div class="modal-body plain"><div class="arun">${rs.map((r, i) => `
+      <label class="arr scan"><span><input type="checkbox" data-i="${i}" checked> <span class="am m-${esc(r.method)}">${esc(r.method)}</span> <b>${esc(r.url)}</b></span>
+        <span class="muted">${esc([r.folder, r.name].filter(Boolean).join(" · "))}</span></label>`).join("")}</div>
+      <div class="row-actions arun-foot">${sc.base_url ? `<span class="muted small">base_url: <code>${esc(sc.base_url)}</code></span>` : "<span></span>"}
+        <button class="btn primary" id="api-scan-add">${esc(t("ap_scan_add"))}</button></div></div>`, { box: "md" });
+    $("#api-scan-add", m).addEventListener("click", async () => {
+      const pick = $$("input[data-i]:checked", m).map((x) => rs[+x.dataset.i]);
+      if (!pick.length || !(await ensureColl())) return;
+      let id = nextId();
+      for (const r of pick) coll.requests.push(Object.assign({}, r, { id: id++ }));
+      if (sc.base_url && !coll.vars.base_url) coll.vars.base_url = sc.base_url;
+      P.req = coll.requests[coll.requests.length - pick.length].id; keep();
+      closeModal(m); touch(); renderList(); renderEd();
+      toast(t("ap_scan_added", { n: pick.length }), "ok");
+    });
+  }
+  function fixModal() {
+    const r = cur(), res = r && results[r.id];
+    if (!res) return;
+    const m = openModal(`${modalHead(esc(t("ap_fix")))}<div class="modal-pad avars">
+      <div class="confirm-text">${esc(t("ap_fix_q"))}</div>
+      <div class="picks">${agentPicks(leadName())}</div>
+      <textarea class="field asrc short" id="api-note" placeholder="${esc(t("ap_fix_note"))}"></textarea>
+      <div class="row-actions end"><button class="btn primary" id="api-fix-go">${esc(t("ap_fix_go"))}</button></div></div>`, { box: "sm" });
+    const who = pickAgent(m);
+    $("#api-fix-go", m).addEventListener("click", async () => {
+      const ok = await request("http", { action: "fix", collection: P.coll, env: P.env, request: r, result: res,
+                                         agent: who(), note: $("#api-note", m).value });
+      if (ok.level === "ok") closeModal(m);
     });
   }
 

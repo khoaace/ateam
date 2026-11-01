@@ -4,16 +4,21 @@ Request đang soạn gửi kèm từ trình duyệt (chưa cần lưu); collecti
 tên, không trả giá trị (web từ xa cũng an toàn). `--readonly`: chỉ cho thao tác đọc (READONLY)."""
 from __future__ import annotations
 
+import shlex
+import shutil
+import sys
 from typing import TYPE_CHECKING
 
 from . import apiclient as A
-from .i18n import tr
+from . import prompts as P
+from .i18n import get_lang, tr
 
 if TYPE_CHECKING:
     from .web import WebApp
 
 READONLY = ("state", "get", "history", "env_get", "curl")
-SLOW = ("send", "run")
+SLOW = ("send", "run", "scan")
+MAX_FIX_BODY = 4000   # ký tự body response gửi kèm prompt sửa lỗi
 
 
 class ApiWeb:
@@ -36,6 +41,42 @@ class ApiWeb:
             cols.append({"name": n, "count": len(c.get("requests") or [])})
         return {"collections": cols, "envs": A.list_envs(self.root), "secrets": sorted(A.load_secrets(self.root)),
                 "ports": self.ports(), "dir": ".ateam/api/"}
+
+    def server_log(self, n: int = 80) -> str:
+        """Dòng cuối của dev server đang chạy ở tab Terminal (lệnh còn sống có port) — gửi kèm prompt sửa lỗi."""
+        jobs = [j for j in self.app.shell.jobs.values() if j.alive and j.ports]
+        return "\n".join(jobs[-1].lines[-n:]) if jobs else ""
+
+    @staticmethod
+    def run_cmd(coll: str, env: str = "", only: str = "") -> str:
+        """Lệnh `ateam api run …` chạy được trong shell của lệnh kiểm tra (cài từ mã nguồn: python -m ateam)."""
+        exe = "ateam" if shutil.which("ateam") else f"{shlex.quote(sys.executable)} -m ateam"
+        return " ".join([exe, "api", "run", shlex.quote(coll)] + (["--env", shlex.quote(env)] if env else [])
+                        + (["--only", shlex.quote(only)] if only else []))
+
+    def fix_prompt(self, d: dict) -> tuple:
+        """(tiêu đề, prompt) giao agent sửa request lỗi — mọi giá trị secret thay bằng {{tên}}."""
+        req, res = d.get("request") or {}, d.get("result") or {}
+        coll, env = self._coll(d), str(d.get("env") or "")
+        sec = A.load_secrets(self.root)
+        p = A.prepare(req, A.variables(self.root, coll, env))
+        body = p["body"].decode("utf-8", "replace") if p["body"] else ""
+        rq = A.mask("\n".join([f"{p['method']} {p['url']}"] + [f"{k}: {v}" for k, v in p["headers"]]
+                               + ([""] + [body] if body else [])), sec)
+        rp = res.get("response") or {}
+        if rp.get("error"):
+            rs = "(no response) " + str(rp["error"])
+        else:
+            text = str(rp.get("body") or "")
+            rs = A.mask("\n".join([f"HTTP {rp.get('status')} {rp.get('reason') or ''} ({rp.get('ms')} ms)"]
+                                   + [f"{k}: {v}" for k, v in rp.get("headers") or []] + ["",
+                                   text[:MAX_FIX_BODY] + ("\n…(truncated)" if len(text) > MAX_FIX_BODY else "")]), sec)
+        failed = [A.mask(str(a.get("msg") or a.get("line")), sec) for a in res.get("asserts") or [] if not a.get("ok")]
+        prompt = P.api_fix_prompt(request=rq, response=rs, failed=failed, server_log=A.mask(self.server_log(), sec),
+                                  note=str(d.get("note") or "").strip(), lang=get_lang(),
+                                  rerun=self.run_cmd(str(d.get("collection") or ""), env, str(req.get("name") or ""))
+                                  if d.get("collection") else "(send the request again from the 🛰 API tab)")
+        return tr("Sửa API: {v}", v=f"{p['method']} {A.mask(p['url'], sec)}")[:80], prompt
 
     def _coll(self, d: dict) -> dict | None:
         name = str(d.get("collection") or "")
@@ -104,6 +145,26 @@ class ApiWeb:
             lvl = "ok" if ok == len(rows) else "warn"
             return (tr("{ok}/{n} request đạt", ok=ok, n=len(rows)), lvl,
                     {"http": {"run": rows, "secrets": sorted(A.load_secrets(root))}})
+        if act == "scan":
+            c = self._coll(d)
+            have = [f"{r.get('method') or 'GET'} {r.get('url') or ''}" for r in (c or {}).get("requests") or []]
+            ok, res = await self.app.orch.api_scan(have, str(d.get("focus") or ""), str(d.get("agent") or ""))
+            return (res, "warn") if not ok else ("", "", {"http": {"scan": res}})
+        if act == "fix":
+            agents = self.app.cfg.active_agents()
+            agent = str(d.get("agent") or "")
+            if agent not in agents:
+                agent = self.app.cfg.lead
+            title, prompt = self.fix_prompt(d)
+            tid = self.app.orch.add_task(agent, prompt, title)
+            return tr("🛠 Đã giao {agent} sửa (task #{tid})", agent=agent, tid=tid), "ok", {"open": {"task_link": tid}}
+        if act == "verify":
+            name = str(d.get("collection") or "")
+            if not self._coll(d):
+                return tr("Không thấy collection '{name}'", name=name), "warn"
+            await self.app.command("/verify " + self.run_cmd(name, str(d.get("env") or "")))
+            return tr("✅ Từ giờ chạy collection “{name}” sau mỗi task (dev server phải đang chạy) — tắt: /verify off",
+                      name=name), "ok"
         if act == "history":
             return "", "", {"http": {"history": A.load_history(root)}}
         if act == "import_curl":

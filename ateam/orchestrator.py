@@ -1797,6 +1797,30 @@ class Orchestrator:
         return True, {"name": str(meta.get("name") or "").strip(),
                       "description": " ".join(str(meta.get("description") or "").split()), "body": body.strip()}
 
+    async def api_scan(self, existing: list[str], focus: str = "", agent: str = "") -> tuple[bool, "dict | str"]:
+        """✨ Tab 🛰 API: agent (mặc định trưởng nhóm) đọc code, liệt kê endpoint thành request. Không lưu: trả
+        (thành công, {base_url, requests: [request đã chuẩn hoá]} để người dùng chọn gộp vào collection — hoặc lời
+        nhắn lỗi). existing: "METHOD url" đã có, agent bỏ qua."""
+        from .i18n import get_lang
+        who = agent if agent in self.cfg.active_agents() else self.cfg.lead
+        prompt = P.api_scan_prompt(cwd=str(self.root), existing=existing, focus=focus.strip(), lang=get_lang(),
+                                   overview=await self.overview_block())
+        out = await self._call_lead(prompt, tr("Quét API trong code"), first=who, slow=True)
+        data = P.extract_api(P.strip_echo(out or "", prompt))
+        if not data:
+            return False, tr("{agent} không trả về danh sách request (xem .ateam/logs/lead.log)", agent=who)
+        have = {x.upper() for x in existing}
+        reqs = []
+        for r in data["requests"]:
+            if isinstance(r, dict) and str(r.get("url") or "").strip():
+                c = apiclient.clean_request(r)
+                if f"{c['method']} {c['url']}".upper() not in have:
+                    reqs.append(c)
+        if not reqs:
+            return False, tr("{agent} không tìm thêm được endpoint nào", agent=who)
+        base = str(data.get("base_url") or "").strip()
+        return True, {"base_url": base if base.startswith(("http://", "https://")) else "", "requests": reqs}
+
     async def suggest_workflow(self, description: str) -> tuple[bool, "dict | str"]:
         """Trưởng nhóm thiết kế workflow tuỳ chỉnh theo mô tả của người dùng (form /custom → ✨ Gợi ý).
         Trả về (thành công, dữ liệu điền form — xem wizard.suggestion_form — hoặc lời nhắn lỗi)."""

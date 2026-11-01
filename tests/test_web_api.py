@@ -76,3 +76,65 @@ def test_web_page_has_api_view():
     assert 'data-view="api"' in html and 'id="view-api"' in html and "/static/api.js" in html
     js = (ROOT / "ateam/webui/app.js").read_text(encoding="utf-8")
     assert '"api"]' in js and "ApiView.show()" in js
+
+
+def test_extract_api_parser():
+    from ateam import prompts as P
+    assert P.extract_api("không có gì") is None
+    assert P.extract_api("<<<API>>>\n{hỏng\n<<<END>>>") is None
+    assert P.extract_api('<<<API>>>\n{"requests": 1}\n<<<END>>>') is None
+    d = P.extract_api('mẫu <<<API>>> {"requests": []} <<<END>>>\nthật:\n<<<API>>>\n```json\n'
+                      '[{"url": "/a"}]\n```\n<<<END>>>')
+    assert d == {"requests": [{"url": "/a"}]}  # khối cuối cùng; mảng trần = danh sách request
+
+
+def test_web_http_scan_fix_verify(env, project, monkeypatch):
+    """✨ Quét code (agent giả lập): chuẩn hoá request, bỏ request đã có; 🛠 Giao agent sửa: task có prompt đủ
+    request/response/assert sai/log dev server, secret bị che; ✅ đặt collection làm lệnh kiểm tra."""
+    pytest.importorskip("aiohttp")
+    from ateam import apiclient as A
+    from ateam import prompts as P
+    wa = _web_app(env, project, monkeypatch)
+    A.save_collection(project, {"name": "shop", "requests": [{"id": 1, "name": "health", "method": "GET", "url": "/health"}]})
+    A.save_secrets(project, {"token": "tok-secret-123"})
+    monkeypatch.setattr(wa.api, "server_log", lambda n=80: "GET /orders 500\nKeyError: user tok-secret-123")
+
+    async def main():
+        h = lambda **d: wa.handle({"op": "http", **d})  # noqa: E731
+        sc = (await h(action="scan", collection="shop", focus="đơn hàng"))[2]["http"]["scan"]
+        assert sc["base_url"] == "http://localhost:8000"
+        by = {r["url"]: r for r in sc["requests"]}
+        assert sorted(by) == ["/login", "/products/{{id}}", "/x"]      # bỏ /health (đã có) và dòng thiếu url
+        assert by["/login"]["method"] == "POST" and by["/x"]["method"] == "GET"
+        assert by["/login"]["body"] == {"type": "json", "text": '{\n  "email": "a@b.vn"\n}'}
+        assert by["/login"]["extract"] == ["token = json $.token"]
+        assert by["/products/{{id}}"]["query"] == [["page", "1", True]]
+        assert by["/products/{{id}}"]["auth"] == {"type": "bearer", "token": "{{token}}"}
+        req = {"name": "orders", "method": "GET", "url": "http://127.0.0.1:9/orders",
+               "headers": [["Authorization", "Bearer {{token}}", True]], "asserts": ["status == 200"]}
+        result = {"response": {"status": 500, "reason": "Internal Server Error", "ms": 3, "headers": [["X-A", "1"]],
+                               "body": '{"error": "boom"}'},
+                  "asserts": [{"line": "status == 200", "ok": False, "msg": "status == 200 (thực tế: 500)"}]}
+        text, lvl, extra = await h(action="fix", collection="shop", request=req, result=result, agent="codex",
+                                   note="phải trả danh sách rỗng")
+        tid = extra["open"]["task_link"]
+        t = wa.db.task(tid)
+        assert lvl == "ok" and t.agent == "codex" and t.title.startswith("Sửa API: GET http://127.0.0.1:9/orders")
+        assert "tok-secret-123" not in t.prompt and "Bearer {{token}}" in t.prompt
+        for part in ("FIX AN HTTP ENDPOINT", "HTTP 500 Internal Server Error", '{"error": "boom"}',
+                     "status == 200 (thực tế: 500)", "KeyError: user {{token}}", "phải trả danh sách rỗng",
+                     "api run shop --only orders"):
+            assert part in t.prompt, part
+        t2 = (await h(action="fix", request=req, result={"response": {"error": "Connection refused"}}, agent="ghost"))
+        assert wa.db.task(t2[2]["open"]["task_link"]).agent == wa.cfg.lead  # agent lạ: trưởng nhóm
+        assert "(no response) Connection refused" in wa.db.task(t2[2]["open"]["task_link"]).prompt
+        assert (await h(action="verify", collection="khong-co"))[1] == "warn"
+        assert (await h(action="verify", collection="shop", env="local"))[1] == "ok"
+        assert wa.cfg.verify.command.endswith("api run shop --env local")
+        wa.remote.readonly = True
+        for act in ("scan", "fix", "verify"):
+            assert "readonly" in (await h(action=act, collection="shop"))[0]
+
+    asyncio.run(main())
+    assert wa.slow_op({"op": "http", "action": "scan"})
+    assert "SCAN HTTP API" in P.api_scan_prompt(cwd="/x", existing=["GET /a"], focus="", lang="vi")

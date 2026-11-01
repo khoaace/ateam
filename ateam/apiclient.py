@@ -417,6 +417,39 @@ async def run_collection(root: Path, coll: dict, env: str = "", only: str = "",
     return out
 
 
+# ---------------------------------------------------------------------------- chuẩn hoá (AI quét code, nhập)
+def _rows(v) -> list:
+    out = []
+    for r in v if isinstance(v, list) else []:
+        if isinstance(r, (list, tuple)) and len(r) >= 2 and str(r[0]).strip():
+            out.append([str(r[0]).strip(), str(r[1]), r[2] is not False if len(r) > 2 else True])
+        elif isinstance(r, dict) and str(r.get("key") or "").strip():
+            out.append([str(r["key"]).strip(), str(r.get("value") or ""), r.get("enabled", True) is not False])
+    return out
+
+
+def clean_request(r: dict) -> dict:
+    """Request do agent viết / người dùng nhập -> đúng khuôn collection (chỉ khoá đã biết, đúng kiểu)."""
+    method = str(r.get("method") or "GET").upper()
+    b = r.get("body") if isinstance(r.get("body"), dict) else {}
+    kind = b.get("type") if b.get("type") in ("none", "json", "form", "raw") else "none"
+    body: dict = {"type": kind}
+    if kind in ("json", "raw"):
+        text = b.get("text")
+        body["text"] = text if isinstance(text, str) else json.dumps(text, ensure_ascii=False, indent=2)
+    elif kind == "form":
+        body["form"] = _rows(b.get("form"))
+    a = r.get("auth") if isinstance(r.get("auth"), dict) else {}
+    atype = a.get("type") if a.get("type") in ("bearer", "basic") else "none"
+    auth = {"type": atype, **{k: str(a.get(k) or "") for k in (("token",) if atype == "bearer" else
+                                                            ("user", "password") if atype == "basic" else ())}}
+    lines = lambda v: [str(x).strip() for x in v if str(x).strip()] if isinstance(v, list) else []  # noqa: E731
+    return {"name": str(r.get("name") or "").strip()[:120], "folder": str(r.get("folder") or "").strip()[:60],
+            "method": method if method in METHODS else "GET", "url": str(r.get("url") or "").strip(),
+            "query": _rows(r.get("query")), "headers": _rows(r.get("headers")), "body": body, "auth": auth,
+            "asserts": lines(r.get("asserts")), "extract": lines(r.get("extract"))}
+
+
 # ---------------------------------------------------------------------------- curl
 def to_curl(p: dict, secrets: Optional[dict] = None) -> str:
     """Lệnh curl tương đương request đã prepare (secret thay bằng {{tên}})."""

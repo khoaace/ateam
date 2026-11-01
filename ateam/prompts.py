@@ -965,3 +965,80 @@ command passes. Do not delete or weaken tests to make them pass, unless a test i
 Keep the fix minimal: change only what the failure needs.
 {FIX_CHECK_RULE}
 End your answer with a line starting with 'SUMMARY:' describing what you fixed (at most ~3 lines)."""
+
+
+def api_scan_prompt(*, cwd: str, existing: list[str], focus: str, lang: str, overview: str = "") -> str:
+    """✨ Quét code sinh request cho tab 🛰 API: collection JSON giữa <<<API>>> … <<<END>>>. existing: "METHOD url"
+    đã có trong collection (không lặp lại)."""
+    names = {"vi": "Vietnamese", "en": "English"}.get(lang, "the user's language")
+    have = "\n".join(f"- {x}" for x in existing[:200]) or "(none)"
+    return f"""SCAN HTTP API of the project in: {cwd}
+{(overview + chr(10)) if overview else ''}
+Read the code (do NOT modify any file, do NOT start servers) and find the HTTP endpoints the project serves:
+route definitions of any framework (FastAPI, Flask, Django, Express, NestJS, Next.js API routes, Laravel, Rails,
+Spring, Gin/Echo/net-http, ASP.NET…), plus OpenAPI/Swagger files if present.
+{('Focus from the user: ' + focus + chr(10)) if focus else ''}
+Requests already in the collection (skip them):
+{have}
+
+For each endpoint write one ready-to-send request:
+- "url": the path only, starting with "/" (it is appended to {{{{base_url}}}}); path parameters as {{{{name}}}}
+- "method", "name" (short, in {names}), "folder" (group by resource or router file)
+- "query"/"headers": [["key", "value", true], …]; JSON bodies: "body": {{"type": "json", "text": "<pretty JSON example built from the schema/validation in the code>"}}
+- protected routes: "auth": {{"type": "bearer", "token": "{{{{token}}}}"}}; the login/token route gets
+  "extract": ["token = json $.<path to the token in its response>"] and is listed first
+- "asserts": the status code the handler returns on success (e.g. "status == 201"), plus "json $.<field> exists"
+  for one or two key response fields
+Never put real secrets in the requests; use {{{{variables}}}}.
+Also guess "base_url" from the dev server config (port in settings, .env.example, package.json scripts…).
+
+Reply with the collection between the markers, nothing after the end marker:
+<<<API>>>
+{{"base_url": "http://localhost:8000", "requests": [{{"name": "…", "folder": "…", "method": "GET", "url": "/…", "asserts": ["status == 200"]}}]}}
+<<<END>>>"""
+
+
+def extract_api(text: str) -> dict | None:
+    """Collection JSON giữa <<<API>>> cuối cùng và <<<END>>> sau nó (bỏ rào markdown). None nếu không có / hỏng."""
+    i = text.rfind("<<<API>>>")
+    if i < 0:
+        return None
+    body = text[i + len("<<<API>>>"):]
+    j = body.find("<<<END>>>")
+    body = body[:j].strip() if j >= 0 else ""
+    m = re.match(r"^```[\w-]*\n(.*)\n```$", body, re.S)
+    if m:
+        body = m.group(1).strip()
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return None
+    if isinstance(data, list):
+        data = {"requests": data}
+    if not isinstance(data, dict) or not isinstance(data.get("requests"), list):
+        return None
+    return data
+
+
+def api_fix_prompt(*, request: str, response: str, failed: list[str], server_log: str, note: str,
+                   rerun: str, lang: str) -> str:
+    """🛠 Giao agent sửa: request ở tab 🛰 API trả lỗi / assert sai. Secret đã được thay bằng {{tên}}."""
+    names = {"vi": "Vietnamese", "en": "English"}.get(lang, "the user's language")
+    fails = "\n".join(f"- {x}" for x in failed) or "(no failed asserts — the status or response itself is wrong)"
+    return f"""FIX AN HTTP ENDPOINT. The user called the project's API from ateam and it did not behave as expected.
+Find the cause in the code and fix it (the code, not the expectations — unless an expectation is clearly wrong;
+then say so). Values like {{{{token}}}} are variables hiding secrets, not literal text.
+
+REQUEST:
+{request}
+
+RESPONSE:
+{response}
+
+FAILED CHECKS:
+{fails}
+{(chr(10) + 'DEV SERVER LOG (last lines):' + chr(10) + server_log + chr(10)) if server_log else ''}
+{('NOTE FROM THE USER: ' + note + chr(10)) if note else ''}
+After fixing, if the dev server is running (it may need a restart to pick up your change), check with:
+  {rerun}
+Write your SUMMARY in {"the same language as the user's note" if note else names}."""

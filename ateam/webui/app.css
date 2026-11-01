@@ -1815,3 +1815,6 @@ html.grid-full .side, html.grid-full .top, html.grid-full .composer, html.grid-f
   .aurl .am-sel { width: 84px; }
   .atab { max-height: none; }
 }
+.arr.scan { flex-direction: row; justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; }
+.arr.scan:hover { background: var(--surface-2); } .arr.scan b { font-weight: 500; word-break: break-all; }
+.arun-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; }
