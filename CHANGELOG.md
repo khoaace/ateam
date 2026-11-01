@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.60.0 — 01/11/2026
+
+- **🛰 Tab API trong TUI** — bản rút gọn của trang API trên web, cùng collection `.ateam/api/` (tab sau Terminal,
+  Alt+8): danh sách request, method + URL (Enter gửi), Params / Headers / Body / Auth / Kiểm tra, response JSON tô màu
+  kèm kết quả assert, ▶ Chạy hết, 🛠 giao trưởng nhóm sửa; tự lưu như Ghi chú. Bảng khoá–giá trị viết thành dòng chữ
+  (`khoá=giá trị`, `Khoá: giá trị`, `#` đầu dòng = tắt). Phím tắt đổi: To-do Alt+9, Ghi chú Alt+0, Thống kê qua
+  Ctrl+T / thanh bên.
+- **⇪ Nhập Postman / OpenAPI** — nút *⇪ Nhập* (web) nhận lệnh curl, file JSON collection Postman v2.1 (giữ thư mục, auth
+  kế thừa, assert mã status từ script test) hoặc đặc tả OpenAPI 3 / Swagger 2 (thư mục theo tag, body ví dụ dựng từ
+  schema, route có security gắn sẵn Bearer `{{token}}`); từ terminal: `ateam api import <file>`.
+- **`/api`** mở tab API; `/api run [collection] [môi trường]` chạy cả collection ngay trong app.
+
 ## 0.59.0 — 01/11/2026
 
 - **🛰 API — gọi thử HTTP kiểu Postman ngay trong `ateam web`** — soạn request (method, URL, params, headers,
