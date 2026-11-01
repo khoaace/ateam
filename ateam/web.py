@@ -25,8 +25,8 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from . import (__version__, clipboard, gitops, lsp, mentions, notes, notify, palette, projects, quota, reports, rules,
-               shell, theme, todos, update, wizard)
+from . import (__version__, apiclient, clipboard, gitops, lsp, mentions, notes, notify, palette, projects, quota,
+               reports, rules, shell, theme, todos, update, wizard)
 from .config import Config, found_models, load_config, load_state, needs_setup, save_project_setting, save_state
 from .db import DB, GOAL_ENDED, Goal, Task
 from .qr import QR
@@ -515,8 +515,10 @@ def ui_strings() -> dict[str, str]:
         "ap_no_env": tr("(không dùng môi trường)"),
         "ap_vars": tr("Biến"),
         "ap_new_req": tr("＋ Request"),
-        "ap_curl": tr("Nhập curl"),
-        "ap_curl_q": tr("Dán lệnh curl (vd Copy as cURL ở DevTools của trình duyệt)"),
+        "ap_curl": tr("⇪ Nhập"),
+        "ap_file": tr("Chọn file JSON…"),
+        "ap_curl_q": tr("Dán lệnh curl (vd Copy as cURL ở DevTools) — thêm một request; hoặc dán / chọn file JSON "
+                        "collection Postman (v2.1) hay đặc tả OpenAPI 3 / Swagger 2 — tạo collection mới"),
         "ap_import": tr("Nhập"),
         "ap_run_all": tr("▶ Chạy hết"),
         "ap_running": tr("Đang chạy collection…"),
@@ -2058,6 +2060,12 @@ class WebApp:
             return "", "", {"open": {"view": "notes", "note": n["id"] if n else None}}
         if cmd == "tags":
             return "", "", {"open": {"view": "todo", "modal": "tags"}}
+        if cmd == "api":
+            sub, _, args = rest.strip().partition(" ")
+            if sub != "run":
+                return "", "", {"open": {"view": "api"}}
+            text, _ok = await apiclient.run_report(self.root, args)
+            return "", "", text_box("🛰 API", text)
         if cmd == "grid":
             if rest.strip():
                 new, err = await self.grid.add(rest.strip())

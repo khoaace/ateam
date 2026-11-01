@@ -200,6 +200,8 @@ Khác:
   /pause  /resume                   tạm dừng / tiếp tục nhận task mới
   /todo [việc cần làm]              tab ✅ To-do: việc riêng dự án, hiểu #tag !cao @mai 17:00 (lưu ngoài repo)
   /notes [tiêu đề]   /tags          tab 🗒 Ghi chú (markdown, tự lưu) / quản lý tag dùng chung
+  /api [run [tên] [môi trường]]     tab 🛰 API: gọi thử HTTP kiểu Postman, collection ở .ateam/api/ (commit được);
+                                    run: chạy cả collection (như ateam api run, dùng được làm /verify)
   /clear                            dọn task & mục tiêu đã kết thúc khỏi bảng (nút 🗑 trên bảng)
   /compact [trọng tâm]              trưởng nhóm tóm tắt ghi chú, mục tiêu & log cho prompt sau gọn hơn
   /init [trọng tâm]                 trưởng nhóm tìm hiểu dự án 1 lần, viết .ateam/project.md gửi kèm mọi kế
@@ -321,6 +323,8 @@ COMMANDS = [
     ("plan", tr("[mục tiêu]"), tr("xem lại kế hoạch của mục tiêu, kể cả đã duyệt / đã xong")),
     ("todo", tr("[việc cần làm]"), tr("mở tab To-do (lưu ngoài repo); kèm nội dung thì thêm việc · hiểu #tag !cao @mai")),
     ("notes", tr("[tiêu đề]"), tr("mở tab 🗒 Ghi chú (lưu ngoài repo); kèm tiêu đề thì tạo ghi chú mới")),
+    ("api", tr("[run [collection] [môi trường]]"), tr("tab 🛰 API: gọi thử HTTP kiểu Postman (collection ở .ateam/api/); "
+                                                   "run: chạy cả collection, in kết quả")),
     ("tags", "", tr("quản lý tag dùng chung cho To-do và Ghi chú")),
     ("grid", tr("[agent]"), tr("mở tab 🔲 Lưới: mỗi ô là CLI thật của một agent; kèm agent thì thêm ô")),
     ("continue", tr("<m12|t40> <yêu cầu>"), tr("tiếp tục mục tiêu / thread đã xong (F6)")),
@@ -3305,13 +3309,13 @@ def tab_labels() -> dict[str, str]:
 
     return {"tab-board": bare(tr("📋 Bảng việc")), "tab-grid": tr("Lưới"), "tab-team": "Agents",
             "tab-custom": "Workflows", "tab-code": "Code", "tab-git": "Git", "tab-term": "Terminal", "tab-todo": "To-do",
-            "tab-notes": bare(tr("🗒 Ghi chú")), "tab-dash": bare(tr("📊 Thống kê"))}
+            "tab-notes": bare(tr("🗒 Ghi chú")), "tab-dash": bare(tr("📊 Thống kê")), "tab-api": "API"}
 
 
 def side_groups() -> list[tuple[str, list[str]]]:
     """Nhóm ở thanh bên; thứ tự giữ đúng TeamApp.TAB_ORDER (Alt+1…0, Ctrl+T)."""
     return [(tr("Làm việc"), ["tab-board", "tab-grid", "tab-team", "tab-custom"]),
-            (tr("Dự án"), ["tab-code", "tab-git", "tab-term"]),
+            (tr("Dự án"), ["tab-code", "tab-git", "tab-term", "tab-api"]),
             (tr("Của bạn"), ["tab-todo", "tab-notes", "tab-dash"])]
 
 
@@ -5691,6 +5695,9 @@ class TeamApp(App):
                             with Horizontal(id="sh-headrow"):
                                 yield Static(id="sh-head")
                                 yield Btn(tr("✕ Đóng"), id="sh-close")
+            with TabPane(labels["tab-api"], id="tab-api"):
+                from .tui_api import ApiPanel
+                yield ApiPanel(self.root, id="api-tab")
             with TabPane(labels["tab-todo"], id="tab-todo"):
                 from .tui_todo import NotesPanel, TodoPanel
                 yield TodoPanel(self.root, id="todo-tab")
@@ -6211,6 +6218,13 @@ class TeamApp(App):
             self.notify(tr("🌐 Đã dừng public cổng {port}", port=t.port))
         if self.is_running:
             self.refresh_view()
+
+    async def _api_run(self, args: str) -> None:
+        """/api run [collection] [môi trường]: chạy cả collection, kết quả vào log hệ thống (Ctrl+L)."""
+        from . import apiclient
+        text, ok = await apiclient.run_report(self.root, args)
+        self.write_sys(text)
+        self.notify(text.splitlines()[-1], severity="information" if ok else "warning")
 
     def write_sys(self, text: str) -> None:
         self.query_one("#tabs", TabbedContent).active = "tab-board"
@@ -7916,6 +7930,8 @@ class TeamApp(App):
             fns += [self.query_one("#todo-tab").reload]  # web sửa cùng file: đọc lại theo mtime
         elif tab == "tab-notes":
             fns += [self.query_one("#notes-tab").reload]
+        elif tab == "tab-api":
+            fns += [self.query_one("#api-tab").reload]  # web sửa cùng collection: đọc lại theo mtime
         if tab == "tab-git" and time.time() - self._git_at > 3 and not self._git_loading:
             # thay đổi do agent/editor bên ngoài: đọc lại git status định kỳ khi đang xem tab
             self.run_worker(self.refresh_git(), exclusive=False)
@@ -8225,6 +8241,8 @@ class TeamApp(App):
                 panel.query_one("#todo-list" if panel.items() else "#todo-input").focus()
             elif event.pane.id == "tab-notes":
                 self.query_one("#notes-tab").shown()
+            elif event.pane.id == "tab-api":
+                self.query_one("#api-tab").shown()
 
     def _refresh_agents(self) -> None:
         chunks: list[Text] = []
@@ -8964,8 +8982,8 @@ class TeamApp(App):
             return
         self.push_screen(PlanViewScreen(g, self.db.tasks(goal_id=g.id)))
 
-    TAB_ORDER = ["tab-board", "tab-grid", "tab-team", "tab-custom", "tab-code", "tab-git", "tab-term", "tab-todo", "tab-notes",
-                 "tab-dash"]
+    TAB_ORDER = ["tab-board", "tab-grid", "tab-team", "tab-custom", "tab-code", "tab-git", "tab-term", "tab-api", "tab-todo",
+                 "tab-notes", "tab-dash"]  # 11 tab: Alt+1…0 tới 10 tab đầu, Thống kê qua Ctrl+T / thanh bên
 
     def action_toggle_tab(self) -> None:
         tabs = self.query_one("#tabs", TabbedContent)
@@ -9802,6 +9820,12 @@ class TeamApp(App):
             self.query_one("#tabs", TabbedContent).active = "tab-notes"
             if rest.strip():
                 self.query_one("#notes-tab").new_note(rest.strip())
+            return
+        elif cmd == "api":
+            self.query_one("#tabs", TabbedContent).active = "tab-api"
+            sub, _, args = rest.strip().partition(" ")
+            if sub == "run":
+                self.run_worker(self._api_run(args), exclusive=True, group="api-run")
             return
         elif cmd == "tags":
             from .tui_todo import TagScreen

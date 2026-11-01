@@ -423,6 +423,36 @@ khách / điện thoại xem thử dev server qua một link https `*.trycloudfl
 - URL đổi mỗi lần public. Không public được chính cổng của `ateam web` theo cách này — dùng 📱 / `--tunnel` (có
   token). Chỉ public dev server / trang demo, đừng public trang có dữ liệu thật hay trang quản trị.
 
+## Gọi thử API kiểu Postman (tab 🛰 API)
+
+Mở mục **API** trên thanh bên (web) / tab **API** (TUI), hoặc gõ `/api`. Collection là file JSON ở
+`.ateam/api/<tên>.json` — **commit được** để cả đội (và agent) dùng chung; `.ateam/.gitignore` chừa riêng `api/`.
+Sửa là tự lưu.
+
+- **Soạn request**: method + URL, Params, Headers, Body (JSON / Form / Raw), Auth (Bearer / Basic), gửi bằng
+  ⌘/Ctrl+Enter (TUI: Enter ở ô URL). Response: status, thời gian, kích thước, body JSON tô màu, headers.
+- **Biến `{{tên}}`**: của collection, của môi trường (`.ateam/api/env/<tên>.json`, commit được — chọn ở thanh bên) và
+  **secret** (token, mật khẩu — ở `~/.config/ateam/`, ngoài repo, không bao giờ hiện lại hay lọt vào lịch sử, curl,
+  prompt gửi agent). URL bắt đầu bằng `/` được nối sau `{{base_url}}`; tạo môi trường mới thì ateam tự điền
+  `base_url` theo port của dev server đang chạy ở tab Terminal. `{{$uuid}}`, `{{$timestamp}}` có sẵn.
+- **Kiểm tra** — mỗi dòng một assert: `status == 201`, `time < 500`, `json $.items.length >= 1`,
+  `json $.data.id exists`, `header content-type contains json`, `body contains ok` (phép so `== != < > <= >= contains
+  !contains matches exists !exists`). **Lấy biến** từ response cho request sau: `token = json $.data.token`,
+  `sid = header X-Session` (lưu thành secret).
+- **▶ Chạy hết** chạy cả collection theo thứ tự; `ateam api run [collection] [--env x] [--only tên]` chạy từ terminal
+  (thoát mã 1 khi có lỗi). *✅ Chạy sau mỗi task* đặt nó làm `/verify`: task nào làm hỏng API tự được giao sửa (dev
+  server phải đang chạy). `/api run [collection] [môi trường]` chạy ngay trong app.
+- **⇪ Nhập**: dán lệnh curl (Copy as cURL ở DevTools) → một request; file JSON collection **Postman** v2.1 hoặc đặc tả
+  **OpenAPI 3 / Swagger 2** → collection mới (`ateam api import <file>` từ terminal). OpenAPI dạng YAML: đổi sang JSON
+  trước. *Copy curl* chép request thành lệnh curl (secret thay bằng `{{tên}}`). Lịch sử 50 lần gửi gần nhất.
+- **✨ Quét code** (web): agent đọc route trong repo (FastAPI, Express, NestJS, Laravel, Spring, Gin…) rồi đề xuất
+  request sẵn sàng gửi — bạn chọn request nào thêm; request đã có được bỏ qua.
+- **🛠 Giao agent sửa**: request lỗi / trả 4xx-5xx / assert sai → một nút tạo task kèm request, response, assert sai và
+  log dev server (secret đã che). TUI giao cho trưởng nhóm.
+
+TUI là bản rút gọn: bảng khoá–giá trị viết thành dòng chữ (`khoá=giá trị` cho Params / Form, `Khoá: giá trị` cho
+Headers, `#` đầu dòng = tắt); quét code, nhập file, popup biến / secret chỉ có trên web.
+
 ## Quản lý git (tab 🌿 Git)
 
 `/git` (hoặc Ctrl+T xoay tới tab **🌿 Git**) — làm mọi việc git hằng ngày mà không rời app:

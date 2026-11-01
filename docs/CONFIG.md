@@ -34,6 +34,12 @@ trong mảng = thứ tự hiển thị; xoá / gộp tag thì sửa luôn cả h
 `~/.config/ateam/notes/<cùng tên file>.json`: mảng `{id, title, body, tags, pinned, created, updated}`; lưu kèm
 `updated` đã đọc nên hai nơi cùng sửa không đè mất nhau.
 
+Tab 🛰 API (`ateam/apiclient.py`): collection ở `<dự án>/.ateam/api/<tên>.json` (`{name, vars, requests: [{id, name,
+folder, method, url, query, headers, body, auth, asserts, extract, timeout?, follow?, insecure?}]}` — `query`/`headers`
+/ `body.form` là mảng `[khoá, giá trị, bật]`), môi trường ở `.ateam/api/env/<tên>.json` (`{tên: giá trị}`) — hai thứ này
+commit được. Secret và biến lấy từ response ở `~/.config/ateam/api-secrets/<cùng tên file>.json` (`{tên: giá trị}`, ngoài
+repo); lịch sử ở `.ateam/api-history.json`.
+
 Rule của dự án (`/rules`, `ateam/rules.py`) lưu cùng kiểu, ở `~/.config/ateam/rules/<cùng tên file>.json`: mảng
 `{id, title, text, enabled, targets, created}`; `targets` rỗng = mọi agent, `"agent:<tên>"` / `"role:<vai trò>"`
 (`role:lead` = trưởng nhóm, gồm mọi lượt lập kế hoạch / review / viết commit message của ai làm thay).

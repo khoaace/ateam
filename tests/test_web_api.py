@@ -48,9 +48,9 @@ def test_web_http_ops(env, project, monkeypatch, server):  # noqa: F811
         text, lvl, extra = await h(action="run", collection="shop")
         assert lvl == "ok" and "2/2" in text and [x["ok"] for x in extra["http"]["run"]] == [True, True]
         assert len((await h(action="history"))[2]["http"]["history"]) == 1  # chỉ lần gửi tay, không tính lần chạy
-        imp = (await h(action="import_curl", text="curl -X DELETE http://h/items/1"))[2]["http"]["request"]
+        imp = (await h(action="import", text="curl -X DELETE http://h/items/1"))[2]["http"]["request"]
         assert imp["method"] == "DELETE"
-        assert (await h(action="import_curl", text="ls"))[1] == "warn"
+        assert (await h(action="import", text="ls"))[1] == "warn"
         # môi trường (commit được) + secret (ngoài repo, chỉ trả tên)
         assert (await h(action="env_save", env="local", values={"base_url": server, " ": "x"}))[1] == "ok"
         assert (await h(action="env_get", env="local"))[2]["http"]["values"] == {"base_url": server}

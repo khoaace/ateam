@@ -469,6 +469,29 @@ hạn: `todos.bucket` (tuần tính tới hết Chủ nhật). Ghi chú lưu kè
 (`TodoPanel`, `TodoEditScreen`, `TagScreen`, `NotesPanel`), nạp muộn trong `TeamApp.compose` để import ngược `tui`
 không vòng.
 
+## Tab 🛰 API (`apiclient.py`, `web_api.py`, `tui_api.py`)
+
+`apiclient.py` là lõi dùng chung (không phụ thuộc Textual / aiohttp): lưu trữ (collection `.ateam/api/<tên>.json`, env
+`.ateam/api/env/`, secret `todos.path_for(root, "api-secrets")`, lịch sử `.ateam/api-history.json`), `variables()` (secret
+> env > vars của collection), `prepare()` (request mẫu + biến → method/url/headers/body), `send_sync()` bằng urllib
+chạy qua `asyncio.to_thread` (không treo vòng lặp; lỗi HTTP vẫn là response, lỗi mạng → `{error}`), assert/extract dạng
+dòng chữ (`ASSERT_RE`, `json_path` tự viết: `$.a.b[0]`, `.length`), `run_request` / `run_collection` (extract lưu vào
+secret nên request sau dùng được), `mask()` thay giá trị secret bằng `{{tên}}` trước khi trả trình duyệt / ghi lịch
+sử / xuất curl / gửi agent. Nhập: `from_curl`, `from_postman` (thư mục lồng nhau, auth kế thừa, assert status từ script
+test), `from_openapi` (OpenAPI 3 + Swagger 2, `$ref` nội bộ, body ví dụ từ schema), `import_text` tự nhận dạng;
+`clean_request` chuẩn hoá mọi request từ ngoài (AI, file nhập). `ensure_gitignore` nâng `.ateam/.gitignore` từ `*` lên
+`*` + `!api/` + `!api/**` (file người dùng tự sửa thì giữ nguyên).
+
+Web: `ApiWeb.op` xử lý `{"op": "http", "action": …}` (state/get/new/save/delete/send/curl/run/history/import/env_*/
+secret_*/scan/fix/verify); request đang soạn gửi thẳng từ trình duyệt nên không cần lưu trước khi gửi; secret chỉ trả
+tên; `--readonly` chỉ cho `READONLY`; `send`/`run`/`scan` là thao tác chậm (chạy riêng). ✨ Quét code:
+`Orchestrator.api_scan` → `P.api_scan_prompt` (agent đọc code, không sửa file) → `<<<API>>>{json}<<<END>>>` →
+`P.extract_api` → `clean_request`, bỏ request đã có. 🛠 Giao sửa: `apiclient.fix_task` dựng prompt
+(`P.api_fix_prompt`) kèm `dev_log` của lệnh `!` đang chạy có port → `orch.add_task`. ✅ Verify: `/verify` +
+`apiclient.run_cmd` (`ateam api run …`, hoặc `python -m ateam` khi không có lệnh `ateam` trên PATH).
+TUI: `ApiPanel` (`tui_api.py`, nạp muộn), tự lưu theo timer như Ghi chú, đọc lại khi file đổi mtime mà chưa gõ gì;
+`_quiet_sel` chỉ chặn sự kiện của ô chọn khi vòng làm mới đặt lại chúng (không chặn ô đang gõ).
+
 ## Mở folder / dự án khác (`/open`)
 
 Mọi thứ (Orchestrator, DB, khoá phiên, cấu hình, `FileIndex`, `ShellManager`…) gắn với một `root`, nên đổi dự án là
@@ -632,5 +655,7 @@ thấy `tui.BusyApp`; dưới web driver `/lang` chỉ thoát app (không `execv
 | `<dự án>/.ateam/grid.json` | bố cục tab 🔲 Lưới (ô, agent, model/effort, kích thước) |
 | `<dự án>/.ateam/tui.lock` | khoá chỉ-1-phiên giao diện (flock, tự nhả khi tiến trình thoát) |
 | `<dự án>/.ateam/worktrees/` | worktree tạm của task (chế độ worktree) |
-| `<dự án>/.ateam/.gitignore` | `*` — cả thư mục không vào git |
+| `<dự án>/.ateam/api/` | tab 🛰 API: collection `<tên>.json`, môi trường `env/<tên>.json` — commit được |
+| `<dự án>/.ateam/api-history.json` | 50 request gửi gần nhất (không vào git) |
+| `<dự án>/.ateam/.gitignore` | `*` + `!api/` + `!api/**` — cả thư mục không vào git, trừ `api/` |
 | `~/.ateam/venv`, `~/.local/bin/ateam` | bản cài bằng `install.sh` |

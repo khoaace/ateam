@@ -763,6 +763,23 @@ def cmd_api(args) -> int:
     from . import apiclient
     root = find_root(args.dir)
     names = apiclient.list_collections(root)
+    if args.action == "import":
+        try:
+            res = apiclient.import_text(Path(args.name or "").read_text(encoding="utf-8")) if args.name else None
+        except OSError as e:
+            print(tr("Không đọc được file: {e}", e=e))
+            return 2
+        except ValueError as e:
+            print(e)
+            return 2
+        if not res or "collection" not in res:
+            print(tr("Cần file JSON của Postman / OpenAPI: ateam api import <file>"))
+            return 2
+        c = res["collection"]
+        c["name"] = apiclient.unique_name(root, c["name"])
+        apiclient.save_collection(root, c, c["name"])
+        print(tr("Đã nhập {n} request vào collection “{name}”", n=len(c["requests"]), name=c["name"]))
+        return 0
     if args.action == "list":
         if not names:
             print(tr("Chưa có collection nào trong {v}", v=apiclient.api_dir(root)))
@@ -780,14 +797,7 @@ def cmd_api(args) -> int:
         return 2
 
     def show(req: dict, r: dict) -> None:
-        res = r["response"]
-        head = f"{r['request']['method']} {r['request']['url']}"
-        if res.get("error"):
-            print(f"✗ {head}  — {res['error']}")
-        else:
-            print(f"{'✓' if r['ok'] else '✗'} {head}  → {res['status']}  {res['ms']} ms")
-        for a in r["asserts"]:
-            print(f"    {'✓' if a['ok'] else '✗'} {a['msg']}")
+        print("\n".join(apiclient.result_lines(r)))
     results = asyncio.run(apiclient.run_collection(root, coll, args.env or "", args.only or "", on_result=show))
     if not results:
         print(tr("Không có request nào để chạy"))
@@ -895,8 +905,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("agent")
     s.add_argument("minutes", nargs="?")
     s = sub.add_parser("api", help=tr("chạy collection HTTP của tab 🛰 API (.ateam/api/) — lỗi thì thoát mã 1"))
-    s.add_argument("action", nargs="?", choices=["run", "list"], default="run")
-    s.add_argument("name", nargs="?", help=tr("tên collection (bỏ trống nếu chỉ có một)"))
+    s.add_argument("action", nargs="?", choices=["run", "list", "import"], default="run")
+    s.add_argument("name", nargs="?", help=tr("tên collection (bỏ trống nếu chỉ có một); import: file JSON Postman / "
+                                              "OpenAPI"))
     s.add_argument("--env", help=tr("môi trường trong .ateam/api/env/"))
     s.add_argument("--only", help=tr("chỉ chạy request / thư mục có tên này"))
     s = sub.add_parser("run", help=tr("chạy hết các task đang chờ rồi thoát"))

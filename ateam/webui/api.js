@@ -356,14 +356,21 @@ window.ApiView = (() => {
     vb.addEventListener("click", () => busyBtn(vb, request("http", { action: "verify", collection: P.coll, env: P.env }))
       .then((r) => { if (r.level === "ok") closeModal(box); }));
   }
-  async function importCurl() {
-    const m0 = openModal(`${modalHead(esc(t("ap_curl")))}<div class="modal-pad"><div class="confirm-text">${esc(t("ap_curl_q"))}</div>
+  async function importCurl() {  // curl -> một request; file JSON Postman / OpenAPI -> collection mới
+    const m0 = openModal(`${modalHead(esc(t("ap_curl")))}<div class="modal-pad avars"><div class="confirm-text">${esc(t("ap_curl_q"))}</div>
       <textarea class="field asrc" id="api-curl" spellcheck="false" autofocus placeholder="curl https://…"></textarea>
-      <div class="row-actions end"><button class="btn primary" id="api-curl-go">${esc(t("ap_import"))}</button></div></div>`, { box: "md" });
+      <div class="row-actions arun-foot"><label class="btn sm ghost">${esc(t("ap_file"))}<input type="file" id="api-file" accept=".json,application/json" hidden></label>
+        <button class="btn primary" id="api-curl-go">${esc(t("ap_import"))}</button></div></div>`, { box: "md" });
+    $("#api-file", m0).addEventListener("change", async (e) => {
+      const f = e.target.files[0];
+      if (f) $("#api-curl", m0).value = await f.text();
+    });
     $("#api-curl-go", m0).addEventListener("click", async () => {
-      const m = await call("import_curl", { text: $("#api-curl", m0).value });
+      const m = await call("import", { text: $("#api-curl", m0).value });
       if (!m) return;
-      closeModal(m0); newReq(m.http.request);
+      closeModal(m0);
+      if (m.http.request) newReq(m.http.request);
+      else { await flush(); P.coll = m.http.created; P.req = null; await loadColl(); }
     });
   }
   async function historyModal() {

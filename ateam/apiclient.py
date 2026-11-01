@@ -20,7 +20,9 @@ import base64
 import json
 import re
 import shlex
+import shutil
 import ssl
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -29,11 +31,13 @@ import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
+from . import prompts as P
 from . import todos
-from .i18n import tr
+from .i18n import get_lang, tr
 
 MAX_BODY = 2 * 1024 ** 2   # byte body response giữ lại
 HISTORY_MAX = 50
+MAX_FIX_BODY = 4000   # ký tự body response gửi kèm prompt sửa lỗi
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
 GITIGNORE = "*\n!api/\n!api/**\n"   # .ateam/.gitignore: chỉ collection/env được commit
 VAR_RE = re.compile(r"\{\{\s*(\$?[\w.-]+)\s*\}\}")
@@ -417,6 +421,83 @@ async def run_collection(root: Path, coll: dict, env: str = "", only: str = "",
     return out
 
 
+def result_lines(r: dict) -> list:
+    """Kết quả một request (run_request) thành dòng chữ: ✓/✗ METHOD url → status ms, rồi từng assert."""
+    res, head = r["response"], f"{r['request']['method']} {r['request']['url']}"
+    out = [f"✗ {head}  — {res['error']}" if res.get("error") else
+           f"{'✓' if r['ok'] else '✗'} {head}  → {res['status']}  {res['ms']} ms"]
+    return out + [f"    {'✓' if a['ok'] else '✗'} {a['msg']}" for a in r["asserts"]]
+
+
+async def run_report(root: Path, args: str = "") -> tuple:
+    """`/api run [collection] [môi trường]` (web + TUI): (chữ kết quả, đạt hết?). Bỏ tên khi chỉ có một collection."""
+    try:
+        parts = shlex.split(args)
+    except ValueError:
+        parts = args.split()
+    names = list_collections(root)
+    name = parts[0] if parts else (names[0] if len(names) == 1 else "")
+    coll = load_collection(root, name) if name else None
+    if not coll:
+        return tr("Không thấy collection '{name}' — có: {v}", name=name, v=", ".join(names) or tr("(trống)")), False
+    lines: list = []
+    res = await run_collection(root, coll, parts[1] if len(parts) > 1 else "",
+                               on_result=lambda _q, r: lines.extend(result_lines(r)))
+    bad = sum(1 for r in res if not r["ok"])
+    lines.append(tr("{ok}/{n} request đạt", ok=len(res) - bad, n=len(res)) if res else tr("Không có request nào để chạy"))
+    return "\n".join(lines), bool(res) and not bad
+
+
+# ---------------------------------------------------------------------------- 🛠 giao agent sửa
+def dev_ports(shell) -> list:
+    """Port dev server đang chạy ở tab Terminal (shell.ShellManager) — gợi ý base_url."""
+    out: list = []
+    for j in shell.jobs.values():
+        if j.alive:
+            out += [p for p in j.ports if p not in out]
+    return out
+
+
+def dev_log(shell, n: int = 80) -> str:
+    """Dòng cuối của dev server đang chạy ở tab Terminal (lệnh `!` còn sống, có port) — gửi kèm prompt sửa lỗi.
+    shell: shell.ShellManager."""
+    jobs = [j for j in shell.jobs.values() if j.alive and j.ports]
+    return "\n".join(jobs[-1].lines[-n:]) if jobs else ""
+
+
+def run_cmd(coll: str, env: str = "", only: str = "") -> str:
+    """Lệnh `ateam api run …` chạy được trong shell của lệnh kiểm tra (cài từ mã nguồn: python -m ateam)."""
+    exe = "ateam" if shutil.which("ateam") else f"{shlex.quote(sys.executable)} -m ateam"
+    return " ".join([exe, "api", "run", shlex.quote(coll)] + (["--env", shlex.quote(env)] if env else [])
+                    + (["--only", shlex.quote(only)] if only else []))
+
+
+def fix_task(root: Path, d: dict, server_log: str = "") -> tuple:
+    """🛠 Giao agent sửa: (tiêu đề, prompt) từ request mẫu + kết quả gửi (d: collection, env, request, result, note);
+    mọi giá trị secret thay bằng {{tên}}. server_log: dòng cuối của dev server đang chạy."""
+    req, res, env = d.get("request") or {}, d.get("result") or {}, str(d.get("env") or "")
+    name = str(d.get("collection") or "")
+    coll = load_collection(root, name) if name else None
+    sec = load_secrets(root)
+    p = prepare(req, variables(root, coll, env))
+    body = p["body"].decode("utf-8", "replace") if p["body"] else ""
+    rq = mask("\n".join([f"{p['method']} {p['url']}"] + [f"{k}: {v}" for k, v in p["headers"]]
+                        + ([""] + [body] if body else [])), sec)
+    rp = res.get("response") or {}
+    if rp.get("error"):
+        rs = "(no response) " + str(rp["error"])
+    else:
+        text = str(rp.get("body") or "")
+        cut = text[:MAX_FIX_BODY] + ("\n…(truncated)" if len(text) > MAX_FIX_BODY else "")
+        rs = mask("\n".join([f"HTTP {rp.get('status')} {rp.get('reason') or ''} ({rp.get('ms')} ms)"]
+                            + [f"{k}: {v}" for k, v in rp.get("headers") or []] + ["", cut]), sec)
+    failed = [mask(str(a.get("msg") or a.get("line")), sec) for a in res.get("asserts") or [] if not a.get("ok")]
+    rerun = run_cmd(name, env, str(req.get("name") or "")) if name else "(send the request again from the 🛰 API tab)"
+    prompt = P.api_fix_prompt(request=rq, response=rs, failed=failed, server_log=mask(server_log, sec),
+                              note=str(d.get("note") or "").strip(), rerun=rerun, lang=get_lang())
+    return tr("Sửa API: {v}", v=f"{p['method']} {mask(p['url'], sec)}")[:80], prompt
+
+
 # ---------------------------------------------------------------------------- chuẩn hoá (AI quét code, nhập)
 def _rows(v) -> list:
     out = []
@@ -448,6 +529,216 @@ def clean_request(r: dict) -> dict:
             "method": method if method in METHODS else "GET", "url": str(r.get("url") or "").strip(),
             "query": _rows(r.get("query")), "headers": _rows(r.get("headers")), "body": body, "auth": auth,
             "asserts": lines(r.get("asserts")), "extract": lines(r.get("extract"))}
+
+
+# ---------------------------------------------------------------------------- nhập Postman / OpenAPI
+def _pm_rows(v) -> list:
+    return [[str(x.get("key") or ""), str(x.get("value") or ""), not x.get("disabled")]
+            for x in v if isinstance(x, dict) and str(x.get("key") or "").strip()] if isinstance(v, list) else []
+
+
+def _pm_auth(a) -> Optional[dict]:
+    if not isinstance(a, dict):
+        return None
+    kv = {x.get("key"): x.get("value") for x in a.get(a.get("type") or "", []) if isinstance(x, dict)} \
+        if isinstance(a.get(a.get("type") or ""), list) else {}
+    if a.get("type") == "bearer":
+        return {"type": "bearer", "token": str(kv.get("token") or "")}
+    if a.get("type") == "basic":
+        return {"type": "basic", "user": str(kv.get("username") or ""), "password": str(kv.get("password") or "")}
+    if a.get("type") == "noauth":
+        return {"type": "none"}
+    return None
+
+
+def _pm_tests(item: dict) -> str:
+    """Script tab Tests của một request Postman (exec là chuỗi hoặc mảng dòng)."""
+    out = []
+    for e in item.get("event") or []:
+        sc = e.get("script") if isinstance(e, dict) and e.get("listen") == "test" else None
+        if isinstance(sc, dict):
+            ex = sc.get("exec") or ""
+            out.append("\n".join(map(str, ex)) if isinstance(ex, list) else str(ex))
+    return "\n".join(out)
+
+
+PM_STATUS = re.compile(r"(?:to\.have\.status|\.code\)?\.to\.(?:eql|equal))\(\s*(\d{3})\s*\)|responseCode\.code\s*===?\s*(\d{3})")
+
+
+def from_postman(data: dict) -> dict:
+    """Postman Collection v2.0/v2.1 -> collection. Thư mục lồng nhau thành "a/b"; auth kế thừa từ collection/thư
+    mục; script test chỉ lấy assert mã status (`pm.response.to.have.status(200)`)."""
+    out: list = []
+
+    def walk(items, folder: str, auth) -> None:
+        for it in items if isinstance(items, list) else []:
+            if not isinstance(it, dict):
+                continue
+            if isinstance(it.get("item"), list):
+                sub = f"{folder}/{it.get('name') or ''}".strip("/")
+                walk(it["item"], sub, _pm_auth(it.get("auth")) or auth)
+                continue
+            rq = it.get("request")
+            if isinstance(rq, str):
+                rq = {"url": rq}
+            if not isinstance(rq, dict):
+                continue
+            u = rq.get("url")
+            url = (u.get("raw") or "") if isinstance(u, dict) else str(u or "")
+            query = _pm_rows(u.get("query")) if isinstance(u, dict) else []
+            if query and "?" in url:
+                url = url.split("?", 1)[0]
+            b, body = rq.get("body") if isinstance(rq.get("body"), dict) else {}, {"type": "none"}
+            if b.get("mode") == "raw" and str(b.get("raw") or "").strip():
+                lang = (((b.get("options") or {}).get("raw") or {}).get("language") or "")
+                kind = "json" if lang == "json" or str(b["raw"]).lstrip()[:1] in "{[" else "raw"
+                body = {"type": kind, "text": str(b["raw"])}
+            elif b.get("mode") in ("urlencoded", "formdata"):
+                body = {"type": "form", "form": _pm_rows(b.get(b["mode"]))}
+            codes = [a or b2 for a, b2 in PM_STATUS.findall(_pm_tests(it))]
+            out.append(clean_request({"name": it.get("name") or "", "folder": folder, "method": rq.get("method") or "GET",
+                                      "url": url, "query": query, "headers": _pm_rows(rq.get("header")), "body": body,
+                                      "auth": _pm_auth(rq.get("auth")) or auth or {"type": "none"},
+                                      "asserts": [f"status == {codes[0]}"] if codes else []}))
+
+    walk(data.get("item"), "", _pm_auth(data.get("auth")))
+    info = data.get("info") if isinstance(data.get("info"), dict) else {}
+    vs = {str(v.get("key")): str(v.get("value") or "") for v in data.get("variable") or []
+          if isinstance(v, dict) and v.get("key")}
+    return {"name": str(info.get("name") or "postman"), "vars": vs, "requests": out}
+
+
+def _example(schema, root: dict, depth: int = 0):
+    """Giá trị ví dụ dựng từ JSON schema (example/default/enum, theo kiểu), $ref nội bộ; giới hạn độ sâu."""
+    if not isinstance(schema, dict) or depth > 6:
+        return None
+    ref = schema.get("$ref")
+    if isinstance(ref, str) and ref.startswith("#/"):
+        node = root
+        for part in ref[2:].split("/"):
+            node = node.get(part, {}) if isinstance(node, dict) else {}
+        return _example(node, root, depth + 1)
+    for k in ("example", "default"):
+        if k in schema:
+            return schema[k]
+    if isinstance(schema.get("enum"), list) and schema["enum"]:
+        return schema["enum"][0]
+    for k in ("allOf", "oneOf", "anyOf"):
+        if isinstance(schema.get(k), list) and schema[k]:
+            parts = [_example(x, root, depth + 1) for x in schema[k]]
+            if k == "allOf" and all(isinstance(x, dict) for x in parts):
+                return {kk: vv for x in parts for kk, vv in x.items()}
+            return parts[0]
+    t = schema.get("type")
+    if t == "object" or isinstance(schema.get("properties"), dict):
+        return {k: _example(v, root, depth + 1) for k, v in (schema.get("properties") or {}).items()}
+    if t == "array":
+        item = _example(schema.get("items"), root, depth + 1)
+        return [item] if item is not None else []
+    if t == "string":
+        return {"date-time": "2026-01-01T00:00:00Z", "date": "2026-01-01", "email": "a@b.vn",
+                "uuid": str(uuid.UUID(int=0))}.get(schema.get("format"), "string")
+    return {"integer": 0, "number": 0, "boolean": False}.get(t)
+
+
+def from_openapi(data: dict) -> dict:
+    """OpenAPI 3.x hoặc Swagger 2.0 (JSON) -> collection: thư mục theo tag, {id} -> {{id}}, tham số query/header,
+    body ví dụ dựng từ schema, route có security -> Bearer {{token}}, assert mã 2xx đầu tiên."""
+    info = data.get("info") if isinstance(data.get("info"), dict) else {}
+    if data.get("swagger"):
+        host = str(data.get("host") or "")
+        base = (f"{(data.get('schemes') or ['http'])[0]}://{host}" if host else "") + str(data.get("basePath") or "")
+    else:
+        srv = (data.get("servers") or [{}])[0]
+        base = str(srv.get("url") or "") if isinstance(srv, dict) else ""
+    glob_sec = bool(data.get("security"))
+    out = []
+    for path, ops in (data.get("paths") or {}).items():
+        if not isinstance(ops, dict):
+            continue
+        shared = ops.get("parameters") if isinstance(ops.get("parameters"), list) else []
+        for m, op in ops.items():
+            if m.upper() not in METHODS or not isinstance(op, dict):
+                continue
+            params = [_resolve(p, data) for p in shared + (op.get("parameters") or [])]
+            q = [[p["name"], _text(_example(p.get("schema") or p, data)), bool(p.get("required"))]
+                 for p in params if isinstance(p, dict) and p.get("in") == "query" and p.get("name")]
+            h = [[p["name"], _text(_example(p.get("schema") or p, data)), True]
+                 for p in params if isinstance(p, dict) and p.get("in") == "header" and p.get("name")]
+            body: dict = {"type": "none"}
+            rb = _resolve(op.get("requestBody"), data) if op.get("requestBody") else None
+            schema = None
+            if isinstance(rb, dict):
+                content = rb.get("content") or {}
+                js = next((v for k, v in content.items() if "json" in k), None)
+                if isinstance(js, dict):
+                    schema = js.get("example", None)
+                    schema = schema if schema is not None else _example(js.get("schema"), data)
+            else:
+                bp = next((p for p in params if isinstance(p, dict) and p.get("in") == "body"), None)
+                schema = _example(bp.get("schema"), data) if bp else None
+            if schema is not None:
+                body = {"type": "json", "text": json.dumps(schema, ensure_ascii=False, indent=2)}
+            codes = sorted(c for c in (op.get("responses") or {}) if str(c).startswith("2") and str(c).isdigit())
+            sec = op.get("security", None)
+            secured = bool(sec) if sec is not None else glob_sec
+            out.append(clean_request({
+                "name": op.get("summary") or op.get("operationId") or f"{m.upper()} {path}",
+                "folder": (op.get("tags") or [""])[0], "method": m, "url": re.sub(r"\{(\w+)\}", r"{{\1}}", path),
+                "query": q, "headers": h, "body": body,
+                "auth": {"type": "bearer", "token": "{{token}}"} if secured else {"type": "none"},
+                "asserts": [f"status == {codes[0]}"] if codes else []}))
+    return {"name": str(info.get("title") or "openapi"), "vars": {"base_url": base} if base else {}, "requests": out}
+
+
+def _text(v) -> str:
+    """Giá trị ví dụ -> chữ cho ô query/header (true/false/số kiểu JSON, None -> trống)."""
+    return "" if v is None else v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+
+
+def _resolve(node, root: dict):
+    for _ in range(5):
+        if isinstance(node, dict) and isinstance(node.get("$ref"), str) and node["$ref"].startswith("#/"):
+            cur = root
+            for part in node["$ref"][2:].split("/"):
+                cur = cur.get(part, {}) if isinstance(cur, dict) else {}
+            node = cur
+        else:
+            break
+    return node
+
+
+def import_text(text: str) -> dict:
+    """Nhận dạng nội dung dán / file: lệnh curl -> {"request"}; JSON Postman / OpenAPI -> {"collection"}.
+    Ném ValueError kèm lời nhắn cho người dùng."""
+    t = text.strip()
+    if t.startswith("curl"):
+        return {"request": from_curl(t)}
+    try:
+        data = json.loads(t)
+    except ValueError:
+        raise ValueError(tr("Không nhận ra nội dung — dán lệnh curl, hoặc file JSON của Postman / OpenAPI "
+                            "(OpenAPI dạng YAML: đổi sang JSON trước)")) from None
+    if not isinstance(data, dict):
+        raise ValueError(tr("Không nhận ra nội dung — dán lệnh curl, hoặc file JSON của Postman / OpenAPI "
+                            "(OpenAPI dạng YAML: đổi sang JSON trước)"))
+    if data.get("openapi") or data.get("swagger"):
+        coll = from_openapi(data)
+    elif isinstance(data.get("item"), list):
+        coll = from_postman(data)
+    else:
+        raise ValueError(tr("JSON này không phải collection Postman hay đặc tả OpenAPI"))
+    for i, r in enumerate(coll["requests"], 1):
+        r["id"] = i
+    return {"collection": coll}
+
+
+def unique_name(root: Path, name: str) -> str:
+    stem, have, n = slug(name), set(list_collections(root)), 2
+    out = stem
+    while out in have:
+        out, n = f"{stem}-{n}", n + 1
+    return out
 
 
 # ---------------------------------------------------------------------------- curl

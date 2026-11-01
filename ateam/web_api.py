@@ -4,21 +4,16 @@ Request đang soạn gửi kèm từ trình duyệt (chưa cần lưu); collecti
 tên, không trả giá trị (web từ xa cũng an toàn). `--readonly`: chỉ cho thao tác đọc (READONLY)."""
 from __future__ import annotations
 
-import shlex
-import shutil
-import sys
 from typing import TYPE_CHECKING
 
 from . import apiclient as A
-from . import prompts as P
-from .i18n import get_lang, tr
+from .i18n import tr
 
 if TYPE_CHECKING:
     from .web import WebApp
 
 READONLY = ("state", "get", "history", "env_get", "curl")
 SLOW = ("send", "run", "scan")
-MAX_FIX_BODY = 4000   # ký tự body response gửi kèm prompt sửa lỗi
 
 
 class ApiWeb:
@@ -27,12 +22,7 @@ class ApiWeb:
         self.root = app.root
 
     def ports(self) -> list:
-        """Port dev server đang chạy ở tab Terminal — gợi ý base_url."""
-        out = []
-        for j in self.app.shell.jobs.values():
-            if j.alive:
-                out += [p for p in j.ports if p not in out]
-        return out
+        return A.dev_ports(self.app.shell)
 
     def state(self) -> dict:
         cols = []
@@ -42,41 +32,11 @@ class ApiWeb:
         return {"collections": cols, "envs": A.list_envs(self.root), "secrets": sorted(A.load_secrets(self.root)),
                 "ports": self.ports(), "dir": ".ateam/api/"}
 
-    def server_log(self, n: int = 80) -> str:
-        """Dòng cuối của dev server đang chạy ở tab Terminal (lệnh còn sống có port) — gửi kèm prompt sửa lỗi."""
-        jobs = [j for j in self.app.shell.jobs.values() if j.alive and j.ports]
-        return "\n".join(jobs[-1].lines[-n:]) if jobs else ""
-
-    @staticmethod
-    def run_cmd(coll: str, env: str = "", only: str = "") -> str:
-        """Lệnh `ateam api run …` chạy được trong shell của lệnh kiểm tra (cài từ mã nguồn: python -m ateam)."""
-        exe = "ateam" if shutil.which("ateam") else f"{shlex.quote(sys.executable)} -m ateam"
-        return " ".join([exe, "api", "run", shlex.quote(coll)] + (["--env", shlex.quote(env)] if env else [])
-                        + (["--only", shlex.quote(only)] if only else []))
+    def server_log(self) -> str:
+        return A.dev_log(self.app.shell)
 
     def fix_prompt(self, d: dict) -> tuple:
-        """(tiêu đề, prompt) giao agent sửa request lỗi — mọi giá trị secret thay bằng {{tên}}."""
-        req, res = d.get("request") or {}, d.get("result") or {}
-        coll, env = self._coll(d), str(d.get("env") or "")
-        sec = A.load_secrets(self.root)
-        p = A.prepare(req, A.variables(self.root, coll, env))
-        body = p["body"].decode("utf-8", "replace") if p["body"] else ""
-        rq = A.mask("\n".join([f"{p['method']} {p['url']}"] + [f"{k}: {v}" for k, v in p["headers"]]
-                               + ([""] + [body] if body else [])), sec)
-        rp = res.get("response") or {}
-        if rp.get("error"):
-            rs = "(no response) " + str(rp["error"])
-        else:
-            text = str(rp.get("body") or "")
-            rs = A.mask("\n".join([f"HTTP {rp.get('status')} {rp.get('reason') or ''} ({rp.get('ms')} ms)"]
-                                   + [f"{k}: {v}" for k, v in rp.get("headers") or []] + ["",
-                                   text[:MAX_FIX_BODY] + ("\n…(truncated)" if len(text) > MAX_FIX_BODY else "")]), sec)
-        failed = [A.mask(str(a.get("msg") or a.get("line")), sec) for a in res.get("asserts") or [] if not a.get("ok")]
-        prompt = P.api_fix_prompt(request=rq, response=rs, failed=failed, server_log=A.mask(self.server_log(), sec),
-                                  note=str(d.get("note") or "").strip(), lang=get_lang(),
-                                  rerun=self.run_cmd(str(d.get("collection") or ""), env, str(req.get("name") or ""))
-                                  if d.get("collection") else "(send the request again from the 🛰 API tab)")
-        return tr("Sửa API: {v}", v=f"{p['method']} {A.mask(p['url'], sec)}")[:80], prompt
+        return A.fix_task(self.root, d, self.server_log())
 
     def _coll(self, d: dict) -> dict | None:
         name = str(d.get("collection") or "")
@@ -162,16 +122,23 @@ class ApiWeb:
             name = str(d.get("collection") or "")
             if not self._coll(d):
                 return tr("Không thấy collection '{name}'", name=name), "warn"
-            await self.app.command("/verify " + self.run_cmd(name, str(d.get("env") or "")))
+            await self.app.command("/verify " + A.run_cmd(name, str(d.get("env") or "")))
             return tr("✅ Từ giờ chạy collection “{name}” sau mỗi task (dev server phải đang chạy) — tắt: /verify off",
                       name=name), "ok"
         if act == "history":
             return "", "", {"http": {"history": A.load_history(root)}}
-        if act == "import_curl":
+        if act == "import":  # lệnh curl -> một request; JSON Postman / OpenAPI -> collection mới
             try:
-                return "", "", {"http": {"request": A.from_curl(str(d.get("text") or ""))}}
+                res = A.import_text(str(d.get("text") or ""))
             except ValueError as e:
                 return str(e), "warn"
+            if "request" in res:
+                return "", "", {"http": {"request": res["request"]}}
+            c = res["collection"]
+            c["name"] = A.unique_name(root, c["name"])
+            A.save_collection(root, c, c["name"])
+            return (tr("Đã nhập {n} request vào collection “{name}”", n=len(c["requests"]), name=c["name"]), "ok",
+                    {"http": {**self.state(), "created": c["name"]}})
         if act == "env_get":
             name = str(d.get("env") or "")
             return "", "", {"http": {"env": name, "values": A.load_env(root, name)}}
