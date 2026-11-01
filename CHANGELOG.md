@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.59.0 — 01/11/2026
+
+- **🛰 API — gọi thử HTTP kiểu Postman ngay trong `ateam web`** — soạn request (method, URL, params, headers,
+  body JSON/form/raw, Bearer/Basic), gửi bằng ⌘/Ctrl+Enter, xem response (JSON tô màu, headers, thời gian, kích
+  thước). Collection lưu ở `.ateam/api/<tên>.json` — commit được để chia sẻ với đồng đội (`.ateam/.gitignore` giờ
+  chừa `api/`); tự lưu khi sửa. Biến `{{tên}}` theo collection / môi trường (`.ateam/api/env/`) / secret (ngoài repo,
+  không bao giờ hiện lại hay lọt vào lịch sử, curl, prompt); URL bắt đầu bằng `/` nối sau `{{base_url}}`, gợi ý từ
+  port dev server đang chạy ở tab Terminal. Nhập curl, copy curl, lịch sử 50 lần gửi gần nhất.
+- **Assert & nối chuỗi request** — mỗi dòng một điều kiện (`status == 200`, `json $.items.length >= 1`,
+  `header content-type contains json`, `time < 500`…); `token = json $.data.token` lấy biến từ response cho request sau.
+  *▶ Chạy hết* chạy cả collection.
+- **✨ Quét code sinh request** — agent đọc route trong repo (FastAPI, Express, Laravel, Spring…), đề xuất request
+  sẵn sàng gửi; bạn chọn request nào thêm vào collection.
+- **🛠 Giao agent sửa** — request lỗi hoặc assert sai: một nút tạo task kèm request, response, assert sai và log dev
+  server (đã che secret).
+- **`ateam api run [collection] [--env x] [--only tên]`** — chạy collection từ terminal, thoát mã 1 khi có lỗi;
+  *✅ Chạy sau mỗi task* đặt nó làm lệnh kiểm tra (`/verify`) để task làm hỏng API tự được giao sửa.
+  TUI chưa có tab API (sẽ có ở bản sau).
+
 ## 0.58.0 — 27/10/2026
 
 - **🌐 Public một cổng local qua Cloudflare Tunnel** (web + TUI) — nút 🌐 cạnh cổng lệnh `!` in ra ở tab Terminal, hoặc
