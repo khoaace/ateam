@@ -390,6 +390,8 @@ async def run_request(root: Path, coll: Optional[dict], req: dict, env: str = ""
     if got:
         save_secrets(root, {**load_secrets(root), **got})
     secrets = {**load_secrets(root)}
+    for x in results:
+        x["msg"] = mask(x["msg"], secrets)
     shown = {"method": p["method"], "url": mask(p["url"], secrets),
              "headers": [[k, mask(v, secrets)] for k, v in p["headers"]],
              "body": mask(p["body"].decode("utf-8", "replace"), secrets) if p["body"] else ""}

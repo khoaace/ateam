@@ -433,7 +433,7 @@ function render() {
 }
 function renderTop() {
   const st = S.state, c = counts();
-  const titles = { board: t("board"), team: t("team"), grid: t("grid"), term: t("terminal"), git: t("git"), code: t("code"), todo: t("todo"), notes: t("notes"), custom: t("custom"), dash: t("dash"), skills: t("skills") };
+  const titles = { board: t("board"), team: t("team"), grid: t("grid"), term: t("terminal"), git: t("git"), code: t("code"), todo: t("todo"), notes: t("notes"), custom: t("custom"), dash: t("dash"), skills: t("skills"), api: t("api") };
   $("#view-title").textContent = titles[S.view];
   const chips = [];
   if (c.running) chips.push(`<span class="chip s-running" style="color:var(--running)"><span class="dot"></span>${c.running} ${esc(t("running"))}</span>`);
@@ -2284,7 +2284,7 @@ input.addEventListener("keydown", (e) => {
 input.addEventListener("blur", () => setTimeout(hideSuggest, 150));
 
 /* ------------------------------------------------------------------ hành động (bấm) */
-const VIEWS = ["board", "team", "grid", "term", "git", "code", "todo", "notes", "dash", "custom", "skills"];
+const VIEWS = ["board", "team", "grid", "term", "git", "code", "todo", "notes", "dash", "custom", "skills", "api"];
 function setView(v) {
   if (!VIEWS.includes(v)) return;
   const prev = S.view;
@@ -2309,6 +2309,8 @@ function setView(v) {
   if (v === "todo" && window.TodoView) TodoView.show();
   if (v === "notes" && window.NotesView) NotesView.show();
   if (prev === "notes" && v !== "notes" && window.NotesView) NotesView.hide();
+  if (v === "api" && window.ApiView) ApiView.show();
+  if (prev === "api" && v !== "api" && window.ApiView) ApiView.hide();
   if (v === "grid" && window.GridView) GridView.show();
   if (prev === "grid" && v !== "grid") document.documentElement.classList.remove("grid-full");
 }

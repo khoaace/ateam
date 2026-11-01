@@ -39,6 +39,8 @@ from .pty_session import PtySession
 from .grid import SHELL, WHERE, GridHub, preset_names
 from .logtail import read_tail
 from .palette import safe_path
+from .web_api import ApiWeb
+from .web_api import READONLY as HTTP_READONLY, SLOW as HTTP_SLOW
 from .web_code import CodeWeb
 from .web_git import GitWeb
 from .web_setup import SetupWeb
@@ -506,6 +508,83 @@ def ui_strings() -> dict[str, str]:
         "tg_merge": tr("Gộp vào…"), "tg_merge_go": tr("Gộp"), "tg_save": tr("Lưu"), "tg_hint": tr("Enter lưu · Esc huỷ"),
         "tg_color": tr("Màu"), "tg_del_q": tr("Xoá tag “{v}”? Việc và ghi chú vẫn còn, chỉ gỡ tag."),
         "tg_empty": tr("Chưa có tag nào — gõ #tag khi thêm việc, hoặc thêm ở đây"),
+        "api": tr("API"),
+        "ap_new_coll": tr("＋ Collection"),
+        "ap_coll_name": tr("Tên collection (lưu ở .ateam/api/<tên>.json)"),
+        "ap_no_coll": tr("(chưa có collection)"),
+        "ap_no_env": tr("(không dùng môi trường)"),
+        "ap_vars": tr("Biến"),
+        "ap_new_req": tr("＋ Request"),
+        "ap_curl": tr("Nhập curl"),
+        "ap_curl_q": tr("Dán lệnh curl (vd Copy as cURL ở DevTools của trình duyệt)"),
+        "ap_import": tr("Nhập"),
+        "ap_run_all": tr("▶ Chạy hết"),
+        "ap_running": tr("Đang chạy collection…"),
+        "ap_run_title": tr("Chạy collection “{v}”"),
+        "ap_search": tr("Lọc request…"),
+        "ap_history": tr("Lịch sử"),
+        "ap_hist_empty": tr("Chưa gửi request nào"),
+        "ap_empty": tr("Chưa có request — bấm ＋ Request hoặc Nhập curl"),
+        "ap_no_match": tr("Không có request nào khớp"),
+        "ap_none": tr("Chọn hoặc tạo một request"),
+        "ap_untitled": tr("Request không tên"),
+        "ap_name_ph": tr("Tên request"),
+        "ap_folder_ph": tr("Thư mục"),
+        "ap_url_ph": tr("https://… hoặc /đường-dẫn (nối sau {{base_url}})"),
+        "ap_send": tr("Gửi"),
+        "ap_params": tr("Params"),
+        "ap_headers": tr("Headers"),
+        "ap_body": tr("Body"),
+        "ap_auth": tr("Auth"),
+        "ap_tests": tr("Kiểm tra"),
+        "ap_key": tr("Khoá"),
+        "ap_value": tr("Giá trị"),
+        "ap_b_none": tr("Không có"),
+        "ap_b_json": tr("JSON"),
+        "ap_b_form": tr("Form"),
+        "ap_b_raw": tr("Raw"),
+        "ap_format": tr("Định dạng JSON"),
+        "ap_bad_json": tr("JSON không hợp lệ: {v}"),
+        "ap_auth_none": tr("Không"),
+        "ap_bearer": tr("Bearer token"),
+        "ap_basic": tr("Basic (tài khoản + mật khẩu)"),
+        "ap_token": tr("Token"),
+        "ap_user": tr("Tài khoản"),
+        "ap_pass": tr("Mật khẩu"),
+        "ap_auth_hint": tr("Nên dùng biến như {{token}} lưu ở Biến → Secret để token/mật khẩu không bị commit theo collection"),
+        "ap_asserts": tr("Assert — mỗi dòng một điều kiện: status, time, size, body, json $.đường.dẫn, header tên; phép so ==, !=, <, >, <=, >=, contains, matches, exists, !exists"),
+        "ap_asserts_ph": tr("status == 200\njson $.data.id exists\njson $.items.length >= 1\nheader content-type contains json\ntime < 500"),
+        "ap_extract": tr("Lấy biến từ response — lưu thành secret (ngoài repo), request sau dùng {{token}}"),
+        "ap_extract_ph": tr("token = json $.data.token\nsid = header X-Session"),
+        "ap_no_resp": tr("Gửi request để xem response · ⌘/Ctrl+Enter"),
+        "ap_net_err": tr("Lỗi mạng"),
+        "ap_r_body": tr("Body"),
+        "ap_r_headers": tr("Headers"),
+        "ap_r_tests": tr("Kiểm tra"),
+        "ap_no_asserts": tr("Request này chưa có assert — thêm ở tab Kiểm tra"),
+        "ap_empty_body": tr("(body trống)"),
+        "ap_truncated": tr("đã cắt bớt"),
+        "ap_extracted": tr("Đã lưu biến: {v}"),
+        "ap_copy_body": tr("Copy body"),
+        "ap_copy_curl": tr("Copy curl"),
+        "ap_dup": tr("Nhân bản"),
+        "ap_del": tr("Xoá"),
+        "ap_del_req_q": tr("Xoá request “{v}”?"),
+        "ap_del_coll_q": tr("Xoá collection “{v}” (file .ateam/api/{v}.json)?"),
+        "ap_saved": tr("đã lưu"),
+        "ap_unsaved": tr("chưa lưu"),
+        "ap_env": tr("Môi trường"),
+        "ap_env_none": tr("Chưa chọn môi trường — chọn ở thanh bên hoặc tạo mới"),
+        "ap_env_new": tr("＋ Môi trường"),
+        "ap_env_name": tr("Tên môi trường (vd local, staging)"),
+        "ap_coll_vars": tr("Biến của collection (commit cùng collection)"),
+        "ap_env_vars": tr("Biến môi trường “{v}” (.ateam/api/env/, commit được)"),
+        "ap_secrets": tr("Secret — ngoài repo, không commit (token, mật khẩu, biến lấy từ response)"),
+        "ap_secret_set": tr("Đặt"),
+        "ap_secret_saved": tr("Đã lưu secret {v}"),
+        "ap_secret_hint": tr("Giá trị secret không hiện lại; nhập giá trị mới để thay"),
+        "ap_port_hint": tr("Dev server đang chạy ở tab Terminal: {v}"),
+        "ap_save": tr("Lưu"),
         "notes": tr("Ghi chú"), "n_search": tr("Tìm trong ghi chú…"), "n_new": tr("＋ Ghi chú"),
         "n_pinned": tr("Đã ghim"), "n_recent": tr("Gần đây"), "n_untitled": tr("Ghi chú không tên"),
         "n_title_ph": tr("Tiêu đề"), "n_body_ph": tr("Viết markdown… # tiêu đề, - danh sách, - [ ] việc, `code`"),
@@ -677,6 +756,7 @@ class WebApp:
         self._share_ok = False  # đã xác nhận cảnh báo "ai có link đều vào được" trong phiên này
         self.index = mentions.FileIndex(root)
         self.git = GitWeb(self)
+        self.api = ApiWeb(self)
         self.code = CodeWeb(self)
         self.lsp = lsp.Hub(root)  # đi tới định nghĩa / tìm chỗ dùng bằng language server (tab Code)
         self.setup = SetupWeb(self)
@@ -1304,6 +1384,8 @@ class WebApp:
             return d.get("action") in self.SLOW_GIT
         if op == "submit":
             return str(d.get("text") or "").strip().startswith(self.SLOW_CMDS)
+        if op == "http":
+            return d.get("action") in HTTP_SLOW
         return op in ("workflow_suggest", "workflow_from_goal", "code_format", "code_ai", "code_lsp", "code_blame",
                       "open_window") + SKILL_SLOW
 
@@ -1455,7 +1537,8 @@ class WebApp:
     async def handle(self, d: dict) -> tuple | None:
         """Một thao tác từ trình duyệt. Trả (thông báo, mức: info|ok|warn|error[, thêm]) hoặc None."""
         o, op = self.orch, d.get("op")
-        if self.remote.readonly and op not in READONLY_OPS and not (op == "note" and d.get("action") == "get"):
+        if self.remote.readonly and op not in READONLY_OPS and not (op == "note" and d.get("action") == "get") \
+                and not (op == "http" and d.get("action") in HTTP_READONLY):
             return tr("Chế độ chỉ xem (--readonly) — không làm được thao tác này"), "warn"
         if op == "submit":
             return await self.submit(str(d.get("text") or ""))
@@ -1630,6 +1713,8 @@ class WebApp:
             return None
         if op == "note":
             return self.note_op(d)
+        if op == "http":
+            return await self.api.op(d)
         if op == "goal_plan":
             return self.goal_plan(d.get("goal"))
         return tr("Không hiểu thao tác {op}", op=op), "warn"

@@ -5234,4 +5234,160 @@ EN: dict[str, str] = {
         'environment in .ateam/api/env/',
     'chỉ chạy request / thư mục có tên này':
         'only run the request / folder with this name',
+    'API':
+        'API',
+    '＋ Collection':
+        '＋ Collection',
+    'Tên collection (lưu ở .ateam/api/<tên>.json)':
+        'Collection name (saved as .ateam/api/<name>.json)',
+    '(chưa có collection)':
+        '(no collections yet)',
+    '(không dùng môi trường)':
+        '(no environment)',
+    'Biến':
+        'Variables',
+    '＋ Request':
+        '＋ Request',
+    'Nhập curl':
+        'Import curl',
+    'Dán lệnh curl (vd Copy as cURL ở DevTools của trình duyệt)':
+        'Paste a curl command (e.g. Copy as cURL from the browser DevTools)',
+    'Nhập':
+        'Import',
+    '▶ Chạy hết':
+        '▶ Run all',
+    'Đang chạy collection…':
+        'Running the collection…',
+    'Chạy collection “{v}”':
+        'Run collection “{v}”',
+    'Lọc request…':
+        'Filter requests…',
+    'Chưa gửi request nào':
+        'No requests sent yet',
+    'Chưa có request — bấm ＋ Request hoặc Nhập curl':
+        'No requests yet — click ＋ Request or Import curl',
+    'Không có request nào khớp':
+        'No matching requests',
+    'Chọn hoặc tạo một request':
+        'Select or create a request',
+    'Request không tên':
+        'Untitled request',
+    'Tên request':
+        'Request name',
+    'Thư mục':
+        'Folder',
+    'https://… hoặc /đường-dẫn (nối sau {{base_url}})':
+        'https://… or /path (appended to {{base_url}})',
+    'Params':
+        'Params',
+    'Headers':
+        'Headers',
+    'Body':
+        'Body',
+    'Auth':
+        'Auth',
+    'Khoá':
+        'Key',
+    'Giá trị':
+        'Value',
+    'Không có':
+        'None',
+    'JSON':
+        'JSON',
+    'Form':
+        'Form',
+    'Raw':
+        'Raw',
+    'Định dạng JSON':
+        'Format JSON',
+    'JSON không hợp lệ: {v}':
+        'Invalid JSON: {v}',
+    'Bearer token':
+        'Bearer token',
+    'Basic (tài khoản + mật khẩu)':
+        'Basic (username + password)',
+    'Token':
+        'Token',
+    'Tài khoản':
+        'Username',
+    'Mật khẩu':
+        'Password',
+    'Nên dùng biến như {{token}} lưu ở Biến → Secret để token/mật khẩu không bị commit theo collection':
+        'Use a variable like {{token}} stored under Variables → Secrets so tokens/passwords are not committed with the collection',
+    'Assert — mỗi dòng một điều kiện: status, time, size, body, json $.đường.dẫn, header tên; phép so ==, !=, <, >, <=, >=, contains, matches, exists, !exists':
+        'Asserts — one condition per line: status, time, size, body, json $.path, header name; operators ==, !=, <, >, <=, >=, contains, matches, exists, !exists',
+    'status == 200\njson $.data.id exists\njson $.items.length >= 1\nheader content-type contains json\ntime < 500':
+        'status == 200\njson $.data.id exists\njson $.items.length >= 1\nheader content-type contains json\ntime < 500',
+    'Lấy biến từ response — lưu thành secret (ngoài repo), request sau dùng {{token}}':
+        'Extract variables from the response — saved as secrets (outside the repo), later requests use {{token}}',
+    'token = json $.data.token\nsid = header X-Session':
+        'token = json $.data.token\nsid = header X-Session',
+    'Gửi request để xem response · ⌘/Ctrl+Enter':
+        'Send the request to see the response · ⌘/Ctrl+Enter',
+    'Lỗi mạng':
+        'Network error',
+    'Body':
+        'Body',
+    'Headers':
+        'Headers',
+    'Request này chưa có assert — thêm ở tab Kiểm tra':
+        'This request has no asserts — add them in the Tests tab',
+    '(body trống)':
+        '(empty body)',
+    'đã cắt bớt':
+        'truncated',
+    'Đã lưu biến: {v}':
+        'Saved variables: {v}',
+    'Copy body':
+        'Copy body',
+    'Copy curl':
+        'Copy curl',
+    'Nhân bản':
+        'Duplicate',
+    'Xoá request “{v}”?':
+        'Delete request “{v}”?',
+    'Xoá collection “{v}” (file .ateam/api/{v}.json)?':
+        'Delete collection “{v}” (file .ateam/api/{v}.json)?',
+    'đã lưu':
+        'saved',
+    'chưa lưu':
+        'unsaved',
+    'Môi trường':
+        'Environment',
+    'Chưa chọn môi trường — chọn ở thanh bên hoặc tạo mới':
+        'No environment selected — pick one in the sidebar or create one',
+    '＋ Môi trường':
+        '＋ Environment',
+    'Tên môi trường (vd local, staging)':
+        'Environment name (e.g. local, staging)',
+    'Biến của collection (commit cùng collection)':
+        'Collection variables (committed with the collection)',
+    'Biến môi trường “{v}” (.ateam/api/env/, commit được)':
+        'Environment “{v}” variables (.ateam/api/env/, committable)',
+    'Secret — ngoài repo, không commit (token, mật khẩu, biến lấy từ response)':
+        'Secrets — outside the repo, never committed (tokens, passwords, extracted variables)',
+    'Đặt':
+        'Set',
+    'Đã lưu secret {v}':
+        'Saved secret {v}',
+    'Giá trị secret không hiện lại; nhập giá trị mới để thay':
+        'Secret values are never shown again; enter a new value to replace one',
+    'Dev server đang chạy ở tab Terminal: {v}':
+        'Dev server running in the Terminal tab: {v}',
+    'Đã lưu môi trường “{name}”':
+        'Saved environment “{name}”',
+    "Không thấy collection '{name}'":
+        "Collection '{name}' not found",
+    'Nhập tên collection':
+        'Enter a collection name',
+    'Đã có collection “{name}”':
+        'Collection “{name}” already exists',
+    'Thiếu dữ liệu collection':
+        'Missing collection data',
+    'Thiếu request':
+        'Missing request',
+    'Nhập tên môi trường':
+        'Enter an environment name',
+    'Nhập tên secret':
+        'Enter a secret name',
 }

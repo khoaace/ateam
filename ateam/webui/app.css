@@ -1744,3 +1744,74 @@ html.grid-full .side, html.grid-full .top, html.grid-full .composer, html.grid-f
 .code-diff .cm-collapsedLines { background: var(--surface-2); color: var(--muted); font-size: 11px; }
 .code:not(.searching) .side-tab:not(.on) .slbl { display: none; }  /* 4 tab trong sidebar hẹp: tab không chọn chỉ còn icon */
 @media (max-width: 760px) { .code .side-tab .slbl { display: inline !important; } }
+
+/* ---------------------------------------------------------------- 🛰 API (api.js) */
+.api, .aview { height: 100%; }
+.aview { display: flex; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.alist { width: 290px; flex: none; border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+.alh { padding: 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
+.alh .row, .aeh .row, .arh { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.alh select { flex: 1; min-width: 0; width: auto; }
+.alh .field.one.sm { width: auto; }
+.aitems { flex: 1; overflow: auto; }
+.ai { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--border); cursor: pointer; min-width: 0; }
+.ai:hover { background: var(--surface-2); }
+.ai.sel { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); box-shadow: inset 2px 0 0 var(--accent); }
+.ai .an { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am { font: 700 10.5px var(--mono); min-width: 44px; color: var(--muted); flex: none; }
+.am.m-GET { color: var(--done); } .am.m-POST { color: var(--review); } .am.m-PUT, .am.m-PATCH { color: var(--term-link); }
+.am.m-DELETE { color: var(--failed); }
+.ast { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius); border: 1px solid var(--border); flex: none; }
+.ast.ok { color: var(--done); } .ast.bad { color: var(--failed); }
+.afoot { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--border); font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; }
+.afoot .path { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.afoot .saved { color: var(--done); } .afoot .unsaved { color: var(--review); }
+.aed { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.aeh { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
+.aeh .ntitle { font-size: 15px; }
+.aeh .afold { width: 140px; }
+.aurl .am-sel { width: 104px; flex: none; font-weight: 700; }
+.aurl .field.one.mono { flex: 1; min-width: 0; width: auto; }
+.atab { padding: 10px 14px; overflow: auto; max-height: 42%; flex: none; border-bottom: 1px solid var(--border); }
+.abar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.akv { display: flex; flex-direction: column; gap: 4px; }
+.kvr { display: flex; gap: 6px; align-items: center; }
+.kvr .field.one.sm { flex: 1; min-width: 0; width: auto; }
+.kvr code { min-width: 110px; font: 12px var(--mono); color: var(--term-cyan); }
+.icon-btn.sm { width: 24px; height: 24px; font-size: 11px; }
+.kvr .icon-btn[hidden] { display: grid; visibility: hidden; }  /* dòng trống cuối: giữ chỗ cho thẳng cột */
+.asrc { width: 100%; min-height: 160px; resize: vertical; box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius); outline: 0;
+  background: var(--term-bg); color: var(--term-fg); font: 12.5px/1.6 var(--mono); padding: 8px 10px; }
+.asrc:focus { border-color: var(--accent); }
+.asrc.short { min-height: 90px; }
+.aform { display: flex; flex-direction: column; gap: 8px; }
+.af { display: flex; gap: 10px; align-items: center; } .af span { width: 90px; color: var(--muted); } .af .field { flex: 1; width: auto; }
+.aresp { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.arh { padding: 8px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.arh .sp { flex: 1; }
+.arb { flex: 1; min-height: 0; overflow: auto; background: var(--term-bg); }
+.abody { margin: 0; padding: 10px 14px; font: 12.5px/1.55 var(--mono); color: var(--term-fg); background: var(--term-bg); white-space: pre-wrap; word-break: break-word; min-height: 100%; box-sizing: border-box; }
+.abody.err { color: var(--failed); }
+.abody .tk-s { color: var(--tk-s); } .abody .tk-n { color: var(--tk-n); } .abody .tk-k { color: var(--tk-k); } .abody .tk-f { color: var(--tk-f); }
+.ahdrs { padding: 8px 14px; font: 12px var(--mono); display: flex; flex-direction: column; gap: 3px; }
+.ahdrs div { display: flex; gap: 10px; } .ahdrs b { min-width: 180px; color: var(--text-2); font-weight: 600; } .ahdrs span { word-break: break-all; }
+.aasserts { padding: 8px 14px; font: 12.5px var(--mono); display: flex; flex-direction: column; gap: 4px; }
+.aasserts .ok { color: var(--done); } .aasserts .bad, .arr .bad { color: var(--failed); }
+.arun { display: flex; flex-direction: column; }
+.arr { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+.arr b { font-weight: 650; } .arr.ok b { color: var(--done); } .arr.bad b { color: var(--failed); }
+.arr.hist { cursor: pointer; } .arr.hist:hover { background: var(--surface-2); } .arr.hist b { color: var(--text); font-weight: 500; word-break: break-all; }
+.avars { display: flex; flex-direction: column; gap: 8px; }
+.avars .panel-title.small { font-size: 12px; margin-top: 6px; }
+.avars > .btn { align-self: flex-start; }
+.avars .row-actions { display: flex; }
+@media (max-width: 760px) {
+  .api, .aview { height: auto; }  /* điện thoại: cả trang cuộn, không ép danh sách + editor vào một màn hình */
+  .aview { flex-direction: column; }
+  .alist { width: 100%; border-right: 0; border-bottom: 1px solid var(--border); }
+  .aitems { max-height: 240px; }
+  .aresp { min-height: 320px; }
+  .aeh .afold, .aeh [data-a="dup"] { display: none; }
+  .aurl .am-sel { width: 84px; }
+  .atab { max-height: none; }
+}
