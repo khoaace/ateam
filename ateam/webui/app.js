@@ -426,6 +426,7 @@ function render() {
   if (S.view === "team") renderTeam();
   if (S.view === "term") renderTerm();
   if (window.TodoView) TodoView.render();  // cả số việc chưa xong trên thanh bên
+  if (window.GitPop) GitPop.render();  // nút nổi Git: số thay đổi, ↑↓, ẩn ở tab Git
   if (window.NotesView) NotesView.render();
   if (S.openTask != null) renderDrawer(false);
   if (S.view === "code" && window.CodeView) CodeView.stateChanged();
@@ -2425,6 +2426,9 @@ document.addEventListener("keydown", (e) => {
     if (b) { e.preventDefault(); setView(b.dataset.view); }
     return;
   }
+  if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyG" && !topModal()) {  // Alt+G: nút nổi Git
+    e.preventDefault(); if (window.GitPop) GitPop.toggle(); return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (S.view === "code") setView("board"); input.focus(); return; }
   if (e.key === "F2") {
     e.preventDefault();
@@ -2441,6 +2445,7 @@ document.addEventListener("keydown", (e) => {
     if (topModal()) { e.preventDefault(); closeModal(); }
     else if (window.Lofi && Lofi.popOpen()) Lofi.hidePop();
     else if (window.TodoPop && TodoPop.isOpen()) TodoPop.close();
+    else if (window.GitPop && GitPop.isOpen()) GitPop.close();
     else if (S.view === "todo" && window.TodoView && TodoView.escape()) e.preventDefault();
     else if (S.view === "notes" && window.NotesView && NotesView.escape()) e.preventDefault();
     else if (S.openTask != null) closeDrawer();

@@ -248,6 +248,16 @@ def parse_branches(text: str) -> list[Branch]:
     return out
 
 
+def parse_numstat(text: str) -> dict[str, list[int]]:
+    """`git diff --numstat` → {đường dẫn: [thêm, bớt]}; dòng nhị phân ("-\t-\t…") bỏ qua."""
+    out: dict[str, list[int]] = {}
+    for line in text.splitlines():
+        p = line.split("\t", 2)
+        if len(p) == 3 and p[0].isdigit() and p[1].isdigit():
+            out[p[2]] = [int(p[0]), int(p[1])]
+    return out
+
+
 def parse_stashes(text: str) -> list[Stash]:
     out = []
     for line in text.splitlines():
@@ -381,6 +391,15 @@ class GitRepo:
     async def diff_text(self, *args: str) -> str:
         rc, out = await self.run("diff", "-M", "--no-color", *args)
         return out if rc == 0 else ""
+
+    async def numstat(self) -> dict[str, dict[str, list[int]]]:
+        """Số dòng thêm/bớt từng file: {"s": đã stage, "w": chưa stage} → {đường dẫn: [thêm, bớt]} (nút nổi Git ở web).
+        File nhị phân bị bỏ qua; file chưa theo dõi không có trong `git diff` nên cũng không có số."""
+        out: dict[str, dict[str, list[int]]] = {}
+        for key, args in (("s", ("--cached",)), ("w", ())):
+            rc, text = await self.run("diff", "--numstat", "--no-renames", "--no-color", *args)
+            out[key] = parse_numstat(text) if rc == 0 else {}
+        return out
 
     async def staged_diff(self, limit: int = 60_000) -> str:
         """Diff đã stage (cho trưởng nhóm viết commit message), cắt bớt nếu quá dài."""

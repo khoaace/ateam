@@ -378,6 +378,58 @@ def test_web_git_ops_and_diff(env, project, monkeypatch):
     asyncio.run(main())
 
 
+def test_web_gitpop_numstat_branch_and_stash_switch(env, project, monkeypatch):
+    """Nút nổi Git (gitpop.js): ảnh chụp trạng thái có git_info, /api/git/status?numstat=1 có +/− dòng,
+    tạo nhánh từ nhánh gốc khác, chuyển nhánh khi thay đổi chưa commit đụng nhánh đích → need_stash, rồi stash và chuyển."""
+    import subprocess
+
+    import pytest
+    pytest.importorskip("aiohttp")
+    from aiohttp.test_utils import TestClient, TestServer
+    wa = _web_app(env, project, monkeypatch)
+
+    def g(*a):
+        return subprocess.run(["git", *a], cwd=project, check=True, capture_output=True, text=True).stdout.strip()
+
+    async def main():
+        client = TestClient(TestServer(wa.make_app(), host="127.0.0.1", port=wa.port))
+        await client.start_server()
+        try:
+            main_branch = g("branch", "--show-current")
+            (project / "base.txt").write_text("base\nmột\nhai\n")
+            st = await (await client.get("/api/git/status?numstat=1")).json()
+            assert st["numstat"] == {"s": {}, "w": {"base.txt": [2, 0]}}
+            assert "numstat" not in await (await client.get("/api/git/status")).json()  # tab Git không cần
+            snap = wa.snapshot()["git_info"]
+            assert snap["repo"] and snap["branch"] == main_branch and snap["ahead"] == 0 and not snap["conflicts"]
+            assert wa.snapshot()["git_changes"] == 1
+            # nhánh "khac" sửa base.txt rồi commit; tạo "tu-main" từ nhánh gốc (không phải nhánh đang đứng)
+            g("stash", "-q")
+            g("checkout", "-qb", "khac")
+            (project / "base.txt").write_text("base\nkhác\n")
+            g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "khác")
+            r = await wa.handle({"op": "git", "action": "create_branch", "name": "tu-main", "start": main_branch})
+            assert r[1] == "ok" and g("branch", "--show-current") == "tu-main"
+            assert (project / "base.txt").read_text() == "base\n"
+            g("stash", "pop", "-q")
+            # thay đổi chưa commit đụng base.txt của "khac": checkout thường bị từ chối, báo cần stash
+            r = await wa.handle({"op": "git", "action": "checkout", "name": "khac"})
+            assert r[1] == "warn" and r[2]["need_stash"]
+            r = await wa.handle({"op": "git", "action": "checkout", "name": "khac", "stash": True})
+            assert r[1] == "ok" and g("branch", "--show-current") == "khac"
+            assert (project / "base.txt").read_text() == "base\nkhác\n"
+            assert "tự stash" in g("stash", "list") or "auto-stash" in g("stash", "list")
+            # stash rồi mà chuyển vẫn lỗi (nhánh không có): lấy lại thay đổi ngay
+            (project / "base.txt").write_text("base\nđang sửa\n")
+            r = await wa.handle({"op": "git", "action": "checkout", "name": "khong-co", "stash": True})
+            assert r[1] == "warn" and "đang sửa" in (project / "base.txt").read_text()
+            assert len(g("stash", "list").splitlines()) == 1
+        finally:
+            await client.close()
+
+    asyncio.run(main())
+
+
 def test_web_quota_bars(env, project, monkeypatch):
     """Hạn mức 5h/tuần: tab mở là nhận tin "quota" (không chờ vòng 60 giây); /api/quota?refresh=1 hỏi lại.
     claude/agy giả lập in /usage, codex chưa có phiên → báo lỗi; grok không có."""

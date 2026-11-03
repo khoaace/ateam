@@ -1,5 +1,13 @@
 # Changelog
 
+## Chưa phát hành
+
+- **🌿 Nút nổi Git (web)** — nút tròn ngay trên nút ✅ To-do (Alt+G), số trên nút là file thay đổi, nhãn ↑/↓ khi lệch
+  remote, đỏ khi đang xung đột. Bấm mở popover: tên nhánh + Fetch / Pull / Push, tick từng file để stage (+/− dòng,
+  Δ diff, ↶ bỏ thay đổi), ô commit có ✨ AI viết, amend, `--no-verify`, menu ▾ (Commit & Push, Commit --no-verify,
+  Stage tất cả rồi commit, AI viết rồi commit). Bấm tên nhánh: tìm / chuyển / tạo nhánh (chọn nhánh gốc); có thay đổi
+  chưa commit thì chọn *Mang theo* hoặc *Stash rồi chuyển*. Điện thoại: bottom sheet. Nút lofi dời lên trên nút Git.
+
 ## 0.60.0 — 01/11/2026
 
 - **🛰 Tab API trong TUI** — bản rút gọn của trang API trên web, cùng collection `.ateam/api/` (tab sau Terminal,
