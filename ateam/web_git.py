@@ -129,6 +129,8 @@ class GitWeb:
         self.app = app
         self.repo = gitops.GitRepo(app.root)
         self.changes = 0  # số file thay đổi — số trên mục Git ở thanh bên (ảnh chụp trạng thái "git_changes")
+        # nút nổi Git (gitpop.js): nhánh, lệch remote, xung đột — ảnh chụp trạng thái "git_info"
+        self.info: dict = {"repo": False}
         self._changes_at = 0.0
         self._counting = False
 
@@ -140,13 +142,17 @@ class GitWeb:
 
         async def go() -> None:
             try:
-                st = await self.repo.status()
-                self.changes = len(st.files) if st.is_repo else 0
+                self._remember(await self.repo.status())
             except Exception:
                 pass
             finally:
                 self._changes_at, self._counting = time.time(), False
         asyncio.ensure_future(go())
+
+    def _remember(self, st: gitops.RepoStatus) -> None:
+        self.changes = len(st.files) if st.is_repo else 0
+        self.info = {"repo": st.is_repo, "branch": st.branch, "detached": st.detached, "ahead": st.ahead,
+                     "behind": st.behind, "state": st.state, "conflicts": len(st.conflicts)} if st.is_repo else {"repo": False}
 
     def routes(self) -> list:
         return [web.get("/api/git/status", self.api_status), web.get("/api/git/log", self.api_log),
@@ -154,10 +160,13 @@ class GitWeb:
                 web.get("/api/git/diff", self.api_diff), web.get("/api/diff/{tid}", self.api_task_diff),
                 web.get("/api/git/conflict", self.api_conflict)]
 
-    async def api_status(self, _r: web.Request) -> web.Response:
+    async def api_status(self, r: web.Request) -> web.Response:
         st = await self.repo.status()
-        self.changes, self._changes_at = (len(st.files) if st.is_repo else 0), time.time()
+        self._remember(st)
+        self._changes_at = time.time()
         out = status_json(st)
+        if r.query.get("numstat") and st.is_repo:  # nút nổi Git: +/− dòng cạnh từng file
+            out["numstat"] = await self.repo.numstat()
         out["has_commits"] = bool(st.oid)
         out["busy"] = len(self.app.orch.runs)
         return web.json_response(out)
@@ -257,8 +266,8 @@ class GitWeb:
             "discard_all": g.discard_all,
             "fetch": g.fetch, "pull": g.pull, "push": lambda: g.push(force=bool(d.get("force"))),
             "abort": g.abort, "init": g.init,
-            "checkout": lambda: g.checkout(d.get("name", "")),
-            "create_branch": lambda: g.create_branch(d.get("name", "")),
+            "checkout": lambda: self._checkout(d.get("name", ""), stash=bool(d.get("stash"))),
+            "create_branch": lambda: g.create_branch(d.get("name", ""), start=str(d.get("start") or "")),
             "rename_branch": lambda: g.rename_branch(d.get("name", ""), d.get("new", "")),
             "delete_branch": lambda: g.delete_branch(d.get("name", ""), force=bool(d.get("force"))),
             "merge": lambda: g.merge(d.get("name", "")),
@@ -275,7 +284,23 @@ class GitWeb:
         if act not in calls:
             return tr("Không hiểu thao tác {op}", op=f"git {act}"), "warn"
         ok, msg = await calls[act]()
+        if act == "checkout" and not ok and not d.get("stash") and ("overwritten" in msg or "stash" in msg):
+            return msg, "warn", {"need_stash": True}  # thay đổi chưa commit đụng nhánh đích: hỏi stash rồi chuyển
         return msg, "ok" if ok else "warn"
+
+    async def _checkout(self, name: str, stash: bool = False) -> tuple[bool, str]:
+        """Chuyển nhánh; `stash`: cất thay đổi chưa commit trước (kể cả file mới), chuyển lỗi thì lấy lại ngay."""
+        g = self.repo
+        if not stash or (await g.status()).clean:
+            return await g.checkout(name)
+        ok, msg = await g.stash_push(tr("ateam: tự stash trước khi chuyển sang {name}", name=name))
+        if not ok:
+            return ok, msg
+        ok, msg = await g.checkout(name)
+        if not ok:
+            await g.stash_apply("stash@{0}", pop=True)
+            return ok, msg
+        return True, tr("{msg} — thay đổi cũ đã cất vào stash", msg=msg)
 
     async def command(self, cmd: str, rest: str) -> tuple | None:
         """/git, /commit, /push, /pull, /fetch, /branch, /checkout, /stash — cùng nghĩa TeamApp.git_command."""

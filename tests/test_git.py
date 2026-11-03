@@ -490,3 +490,10 @@ def test_tui_leave_git_tab_stays_left(env, project, monkeypatch):
                 await pilot.pause(0.2)
             assert app.query_one("#tabs").active == "tab-board", app.focused
     asyncio.run(main())
+
+
+def test_parse_numstat():
+    """`git diff --numstat`: số dòng thêm/bớt từng file cho nút nổi Git (web); file nhị phân bỏ qua."""
+    text = "3\t1\tsrc/a.py\n-\t-\tlogo.png\n0\t12\tdocs/x y.md\n"
+    assert gitops.parse_numstat(text) == {"src/a.py": [3, 1], "docs/x y.md": [0, 12]}
+    assert gitops.parse_numstat("") == {}

@@ -82,7 +82,7 @@ window.Lofi = (() => {
     fab.setAttribute("aria-expanded", popOpen ? "true" : "false");
     $$(".lofi-st", b).forEach((x) => x.classList.toggle("on", x.dataset.st === L.station));
   }
-  function setPop(on) { popOpen = on; render(); }
+  function setPop(on) { if (on && window.GitPop) GitPop.close(); popOpen = on; render(); }
 
   function open() {
     const d = document.createElement("div");

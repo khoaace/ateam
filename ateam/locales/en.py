@@ -5480,4 +5480,60 @@ EN: dict[str, str] = {
         'Choose a JSON file…',
     'Dán lệnh curl (vd Copy as cURL ở DevTools) — thêm một request; hoặc dán / chọn file JSON collection Postman (v2.1) hay đặc tả OpenAPI 3 / Swagger 2 — tạo collection mới':
         'Paste a curl command (e.g. Copy as cURL from DevTools) — adds one request; or paste / choose a Postman collection (v2.1) or OpenAPI 3 / Swagger 2 JSON file — creates a new collection',
+    'Commit message':
+        'Commit message',
+    'Thêm cách commit':
+        'More commit options',
+    'push lên remote ngay sau khi commit':
+        'push to the remote right after committing',
+    'bỏ qua hook pre-commit / commit-msg':
+        'skip pre-commit / commit-msg hooks',
+    'Stage tất cả rồi commit':
+        'Stage everything, then commit',
+    'AI viết message rồi commit':
+        'Let AI write the message, then commit',
+    'nhánh':
+        'branch',
+    'Chuyển / tạo nhánh':
+        'Switch / create branch',
+    'Tìm nhánh, hoặc gõ tên để tạo mới…':
+        'Find a branch, or type a name to create one…',
+    'từ':
+        'from',
+    'Mang theo':
+        'Bring along',
+    'Stash rồi chuyển':
+        'Stash, then switch',
+    'tạo nhánh':
+        'create branch',
+    'detached HEAD':
+        'detached HEAD',
+    '{n} thay đổi':
+        '{n} changes',
+    'Mở tab Git':
+        'Open the Git tab',
+    'chưa push':
+        'not pushed',
+    'Commit {n} file':
+        'Commit {n} files',
+    'Commit tất cả {n} file':
+        'Commit all {n} files',
+    'bỏ qua hook lần commit này':
+        'hooks skipped for this commit',
+    '{s} đã stage · {w} chưa stage':
+        '{s} staged · {w} unstaged',
+    'remote đã xoá':
+        'gone on remote',
+    'Không có nhánh nào khớp — Enter để tạo mới':
+        'No matching branch — press Enter to create it',
+    'tên nhánh không hợp lệ':
+        'invalid branch name',
+    'Đang có {n} thay đổi chưa commit trên {b}. Khi chuyển nhánh:':
+        '{n} uncommitted changes on {b}. When switching:',
+    'Thay đổi chưa commit đụng file của {name}. Cất vào stash rồi chuyển?':
+        'Uncommitted changes touch files on {name}. Stash them and switch?',
+    'ateam: tự stash trước khi chuyển sang {name}':
+        'ateam: auto-stash before switching to {name}',
+    '{msg} — thay đổi cũ đã cất vào stash':
+        '{msg} — previous changes were stashed',
 }

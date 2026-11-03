@@ -433,6 +433,6 @@ window.GitView = (() => {
     show() { refresh(); clearInterval(G.timer); G.timer = setInterval(() => { if (!document.hidden && !topModal()) refresh(); }, 3000); },
     hide() { clearInterval(G.timer); G.timer = null; },
     aiMessage() { setTimeout(aiMessage, 300); },
-    branches, stash, resolve,
+    branches, stash, resolve, aiAgents, commitAgent,  // aiAgents/commitAgent: ô chọn agent ✨ ở nút nổi Git (gitpop.js)
   };
 })();

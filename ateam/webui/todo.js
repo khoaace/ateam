@@ -818,6 +818,7 @@ window.TodoPop = (() => {
     });
   }
   function setOpen(on) {
+    if (on && window.GitPop) GitPop.close();
     open = on;
     sig = "";
     render();
