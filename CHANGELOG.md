@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## 0.61.0 — 03/11/2026
 
 - **🌿 Nút nổi Git (web)** — nút tròn ngay trên nút ✅ To-do (Alt+G), số trên nút là file thay đổi, nhãn ↑/↓ khi lệch
   remote, đỏ khi đang xung đột. Bấm mở popover: tên nhánh + Fetch / Pull / Push, tick từng file để stage (+/− dòng,
