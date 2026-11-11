@@ -2092,3 +2092,37 @@ def test_tui_update_restarts_app(env, project, monkeypatch):
         assert app.restart_requested and not app.is_running
 
     asyncio.run(main())
+
+
+def test_task_table_hides_empty_adhoc_and_fits_title(project, monkeypatch, tmp_path):
+    """Nhóm 📌 Ngoài kế hoạch rỗng không chiếm dòng; chữ cột Task cắt theo bề rộng bảng (có …) nên không sinh thanh
+    cuộn ngang."""
+    import asyncio
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import TeamApp
+
+    db = DB(project / ".ateam/team.db")
+    g = db.add_goal("Thêm đăng nhập bằng Google, có test và cập nhật README " * 3)
+    db.update_goal(g, status="running")
+    long = "API đăng nhập Google OAuth với rất nhiều chữ dài để chắc chắn bị cắt " * 2
+    t1 = db.add_task("codex", long, "x", goal_id=g, status="queued", source="plan")
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), db)
+        app.orch.paused = True
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause(0.6)
+            table = app.query_one("#tasks")
+            assert "g:adhoc" not in app._gorder and app._gorder == [f"g:{g}", str(t1)]
+            room = app._title_room()
+            assert 12 <= room <= table.size.width
+            cell = table.get_cell(str(t1), "title")
+            assert cell.cell_len <= room and cell.plain.endswith("…")
+            assert not table.show_horizontal_scrollbar
+    asyncio.run(main())

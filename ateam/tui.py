@@ -5824,6 +5824,9 @@ class TeamApp(App):
         board = self.query_one("#board")
         board.set_class(w < NARROW_WIDTH, "narrow")
         board.set_class(NARROW_WIDTH <= w < 140, "mid")
+        if getattr(self, "_layout_w", None) != w:  # bề rộng bảng đổi: dựng lại để chữ cột Task cắt đúng chỗ
+            self._layout_w = w
+            self._gorder = []
         self.query_one("#git-main").set_class(w < NARROW_WIDTH, "narrow")
         self.query_one("#code").set_class(w < 110, "narrow")
         self.code_side_width(self.code_side_w, total=w)
@@ -8381,7 +8384,13 @@ class TeamApp(App):
     def _group_folded(self, key: str, ended: bool) -> bool:
         return self._folded.get(key, ended)
 
-    def _task_cells(self, task, now: float, tree: str) -> tuple:
+    def _title_room(self) -> int:
+        """Số ô còn lại cho cột Task = bề rộng bảng trừ các cột cố định (4+13+12+6), đệm ô và thanh cuộn dọc.
+        Cắt chữ theo đó thì cột Task vừa khung, không đẩy ra thanh cuộn ngang. 0 = chưa biết (chưa vẽ)."""
+        w = self.query_one("#tasks", DataTable).size.width
+        return max(12, w - 47) if w else 0
+
+    def _task_cells(self, task, now: float, tree: str, room: int = 0) -> tuple:
         label, style = STATUS.get(task.status, (task.status, ""))
         icon = SPIN[self._frame] if task.status == "running" else STATUS_ICON.get(task.status, "·")
         deps = f" ⟵{','.join(map(str, task.depends_on))}" if task.depends_on else ""
@@ -8392,6 +8401,8 @@ class TeamApp(App):
         if task.error and task.status in ("failed", "blocked", "conflict"):
             title.append("  " + task.error.splitlines()[0][:80], PAL.get("err", "red"))
         agent = task.agent + (f"@{task.effort}" if task.effort else "")
+        if room:
+            title.truncate(room, overflow="ellipsis")
         return (Text(str(task.id)), Text(agent), Text(f"{icon} {label}", style),
                 Text(dur, "dim", justify="right"), title)
 
@@ -8421,20 +8432,24 @@ class TeamApp(App):
         gids = set(by) | {g.id for g in goals.values() if g.status not in GOAL_ENDED}
         rows: list[tuple[str, tuple]] = []
         blank = (Text(""), Text(""), Text(""))
+        room = self._title_room()
 
         def body(ts: list) -> None:
             for i, x in enumerate(ts):
-                rows.append((str(x.id), self._task_cells(x, now, "  └ " if i == len(ts) - 1 else "  ├ ")))
+                rows.append((str(x.id), self._task_cells(x, now, "  └ " if i == len(ts) - 1 else "  ├ ", room)))
 
-        fold = self._group_folded("g:adhoc", False)
-        h = Text(tr("📌 Ngoài kế hoạch"), f"bold {PAL.get('warn', 'yellow')}")
-        h.append(f"  {len(adhoc)}", "dim")
-        if fold:
-            self._group_counts(adhoc, h)
-        h.append(tr("  · n: giao task cho agent"), "dim")
-        rows.append(("g:adhoc", (Text("▸" if fold else "▾", "bold"),) + blank + (h,)))
-        if not fold:
-            body(adhoc)
+        if adhoc:  # nhóm rỗng không chiếm dòng (giao task ngoài kế hoạch: phím n hoặc ô "Giao nhanh" phía trên)
+            fold = self._group_folded("g:adhoc", False)
+            h = Text(tr("📌 Ngoài kế hoạch"), f"bold {PAL.get('warn', 'yellow')}")
+            h.append(f"  {len(adhoc)}", "dim")
+            if fold:
+                self._group_counts(adhoc, h)
+            h.append(tr("  · n: giao task cho agent"), "dim")
+            if room:
+                h.truncate(room, overflow="ellipsis")
+            rows.append(("g:adhoc", (Text("▸" if fold else "▾", "bold"),) + blank + (h,)))
+            if not fold:
+                body(adhoc)
         for gid in sorted(gids, reverse=True):
             g, ts = goals.get(gid), by.get(gid, [])
             ended = g is None or g.status in GOAL_ENDED
@@ -8465,6 +8480,8 @@ class TeamApp(App):
                 if g.workflow:
                     h.append(f"⚙{g.workflow} ", "cyan")
                 h.append(g.text.splitlines()[0][:80] if g.text else "", "bold")
+            if room:
+                h.truncate(room, overflow="ellipsis")
             rows.append((key, (Text("▸" if fold else "▾", "bold"),) + blank + (h,)))
             if not fold:
                 body(ts)

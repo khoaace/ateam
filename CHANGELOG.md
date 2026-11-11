@@ -1,5 +1,12 @@
 # Changelog
 
+## Chưa phát hành — UI/UX giai đoạn 1: sửa lỗi hiển thị
+
+- **Web**: nút nổi Git / To-do / lofi không còn che nút hành động ở cuối trang (view chừa lề phải 68px) và ẩn khi
+  ngăn chi tiết task đang mở; thanh bên cuộn phần điều hướng riêng nên hạn mức và "Đã kết nối" luôn thấy ở chân.
+- **TUI**: chữ cột Task cắt theo bề rộng bảng (có …) thay vì đẩy ra thanh cuộn ngang; nhóm 📌 Ngoài kế hoạch
+  rỗng không còn chiếm một dòng.
+
 ## 0.61.0 — 03/11/2026
 
 - **🌿 Nút nổi Git (web)** — nút tròn ngay trên nút ✅ To-do (Alt+G), số trên nút là file thay đổi, nhãn ↑/↓ khi lệch

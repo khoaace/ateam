@@ -1279,3 +1279,19 @@ def test_web_update_restarts_server(env, project, monkeypatch):
 
     asyncio.run(main())
     assert {"upd_restarting", "upd_busy", "upd_restart"} <= set(wa.hello()["T"])
+
+
+def test_web_floating_buttons_and_sidebar_foot_layout():
+    """Nút nổi (Git / To-do / lofi) không che nội dung: view chừa lề phải, ẩn khi ngăn chi tiết task mở; thanh bên cuộn
+    phần điều hướng riêng để chân (hạn mức, "Đã kết nối") luôn thấy."""
+    import re
+
+    from ateam.web import STATIC
+    css = (STATIC / "app.css").read_text(encoding="utf-8")
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert re.search(r"@media \(min-width: 901px\) \{ \.view \{ padding-right: 6\d+px; \} \}", css)
+    assert "body.drawer-open .gfab" in css and "body.drawer-open .tdfab" in css and "body.drawer-open .lofi" in css
+    assert 'classList.add("drawer-open")' in js and 'toggle("drawer-open", false)' in js
+    nav = re.search(r"^\.nav \{([^}]*)\}", css, re.M)
+    assert nav and "overflow-y: auto" in nav.group(1) and "min-height: 120px" in nav.group(1)
+    assert re.search(r"^\.side-foot \{ flex: none;", css, re.M)
