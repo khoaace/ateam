@@ -97,6 +97,20 @@ Quy ước khi thêm màn hình / vùng mới (để TUI đồng bộ):
 - Phím tắt không hiện ở footer nữa: ghi vào `help_text` (F1) và gợi ý một dòng trong chính vùng đó.
 - Chụp cả terminal rộng (thanh bên) và hẹp (< 120 cột, thanh tab): `size=(150, 45)` và `size=(100, 40)`.
 
+Quy ước chung TUI ↔ web (giữ hai giao diện đồng bộ):
+
+- **Điều hướng**: nhóm và thứ tự mục ở thanh bên TUI (`side_groups()`) giống thanh bên web (`index.html`): Điều phối
+  (Bảng việc, Lưới, Agents, Workflows, Skills) → Mã nguồn (Code, Git, Terminal, API) → Cá nhân (To-do, Ghi chú) →
+  Báo cáo (Thống kê). Mục mới thêm vào cả hai nơi; `tests/test_ui_parity.py` bắt lệch.
+- **Nút**: chính (nền màu nhấn) → phụ (nền nhạt) → nguy hiểm (chữ/nền đỏ nhạt). TUI: `Btn` variant `primary` / mặc
+  định / `error`; web: `.btn.primary` / `.btn` / `.btn.danger`.
+- **Màu trạng thái chỉ dùng cho trạng thái**: đang chạy (cyan), chờ duyệt (vàng), xong (xanh lá), lỗi (đỏ), xếp hàng
+  (xám). Không dùng các màu này để trang trí.
+- **Cỡ chữ web**: không nhỏ hơn 11px (chữ phụ), 12px (thân), 13–14px (tiêu đề nhỏ); dùng các cỡ có sẵn trong `app.css`,
+  đừng thêm cỡ mới.
+- **Trang không dùng ô nhập mục tiêu** (web): thêm tên view vào `NO_COMPOSER` ở `app.js` để ẩn ô nhập; muốn mở lại
+  tạm từ code thì gọi `prefill(...)`.
+
 ## Công thức cho thay đổi thường gặp
 
 **Thêm agent mặc định**: thêm khối `[agents.<tên>]` trong `DEFAULT_CONFIG` (`config.py`) với

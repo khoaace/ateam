@@ -2289,8 +2289,8 @@ EN: dict[str, str] = {
         'Loading…',
     'Lệnh có trên web':
         'Commands available on the web',
-    'Ctrl+K: ô nhập · F2: duyệt kế hoạch · Esc: đóng':
-        'Ctrl+K: input · F2: approve plan · Esc: close',
+    'Ctrl+K: bảng lệnh · F2: duyệt kế hoạch · Esc: đóng':
+        'Ctrl+K: command palette · F2: approve plan · Esc: close',
     'worktree':
         'worktree',
     'shared':
@@ -4483,6 +4483,12 @@ EN: dict[str, str] = {
         "sidebar",
     "trợ giúp":
         "help",
+    "giao task":
+        "add task",
+    "nhóm":
+        "group",
+    "chat riêng":
+        "chat",
     "Mục tiêu & task":
         "Goals & tasks",
     "Chi tiết · log":

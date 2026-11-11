@@ -1295,3 +1295,45 @@ def test_web_floating_buttons_and_sidebar_foot_layout():
     nav = re.search(r"^\.nav \{([^}]*)\}", css, re.M)
     assert nav and "overflow-y: auto" in nav.group(1) and "min-height: 120px" in nav.group(1)
     assert re.search(r"^\.side-foot \{ flex: none;", css, re.M)
+
+
+def test_web_font_scale_and_keyboard_focus():
+    """Chữ không nhỏ hơn 11px (trừ số trên huy hiệu/vòng hạn mức); mọi điều khiển có viền focus khi dùng bàn phím;
+    mục điều hướng đang mở có aria-current."""
+    import re
+
+    from ateam.web import STATIC
+    css = (STATIC / "app.css").read_text(encoding="utf-8")
+    small = [v for v in re.findall(r"font-size: *(\d+(?:\.\d+)?)px", css) if float(v) < 11]
+    assert len(small) <= 6, small  # badge, vòng hạn mức, SVG: còn vài chỗ cố ý nhỏ
+    assert "button:focus-visible" in css and "input:focus-visible" in css and "textarea:focus-visible" in css
+    assert 'setAttribute("aria-current", "page")' in (STATIC / "app.js").read_text(encoding="utf-8")
+
+
+def test_web_pinned_drawer_and_composer_only_where_used():
+    """Màn ≥1680px: chi tiết task ghim cạnh danh sách (.main chừa lề bằng bề rộng ngăn kéo, bảng việc xếp như màn hẹp).
+    Git / To-do / Ghi chú / API / Thống kê / Code không dùng ô nhập nên ẩn nó; gõ "/" ngoài ô nhập mở lại tạm."""
+    import re
+
+    from ateam.web import STATIC
+    css = (STATIC / "app.css").read_text(encoding="utf-8")
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert re.search(r"@media \(min-width: 1680px\) \{\s*\.drawer \{ width: min\(560px, 40vw\); \}\s*"
+                     r"body\.drawer-open \.main \{ margin-right: min\(560px, 40vw\); \}", css)
+    assert "body.drawer-open .tboard { flex-direction: column-reverse" in css
+    m = re.search(r"const NO_COMPOSER = new Set\(\[([^\]]*)\]\)", js)
+    assert m and all(f'"{v}"' in m.group(1) for v in ("code", "git", "todo", "notes", "api", "dash"))
+    assert "body.no-composer .tdfab" in css and "body.no-composer .gfab" in css and "body.no-composer .lofi" in css
+    # "/" ngoài ô nhập → prefill; ô nhập mở tạm tự ẩn khi gửi / rời ô trống
+    assert 'e.key === "/"' in js and 'prefill("/")' in js and "S.peek = false; syncComposer();" in js
+
+
+def test_web_mobile_polish_rules():
+    """Giai đoạn 5: khối CSS điện thoại — view chừa chỗ cho nút nổi, Git cuộn trang, vùng chạm lớn trên cảm ứng."""
+    from ateam.web import STATIC
+    css = (STATIC / "app.css").read_text(encoding="utf-8")
+    block = css[css.index("điện thoại / máy tính bảng (giai đoạn 5)"):]
+    assert ".view { padding-bottom: 112px; }" in block
+    assert ".git { height: auto; }" in block
+    assert "@media (max-width: 560px)" in block and ".top .chips { display: none; }" in block
+    assert "@media (pointer: coarse)" in block and ".btn.sm { height: 34px; }" in block

@@ -1,5 +1,37 @@
 # Changelog
 
+## Chưa phát hành — UI/UX giai đoạn 5: điện thoại và máy tính bảng (web)
+
+- Rà ở 390px và 768px: không còn tràn ngang; tiêu đề trang không bị bẻ dòng, nút hành động đầu trang xuống dòng gọn,
+  dòng cuối trang cuộn lên khỏi cột nút nổi, nút dài ở Agents tự xuống dòng.
+- Tab Git trên màn hẹp cuộn cả trang (danh sách file không bị ép còn 1–2 dòng bởi ô commit).
+- Thiết bị cảm ứng: nút, ô chọn, mục điều hướng cao ≥ 34px; ẩn gợi ý phím Enter / Shift+Enter ở ô nhập.
+
+## Chưa phát hành — UI/UX giai đoạn 4: đồng bộ TUI với web
+
+- **TUI**: thanh bên dùng cùng tên nhóm và thứ tự với web — Điều phối / Mã nguồn / Cá nhân / Báo cáo (Thống kê đứng
+  riêng ở "Báo cáo"); thêm mục **Skills** (bấm mở popup `/skills`).
+- **Web**: gợi ý phím ở chân trang sửa lại cho đúng — Ctrl+K là bảng lệnh (không phải ô nhập).
+- `tests/test_ui_parity.py` bắt thanh bên TUI và web lệch nhau; `docs/DEVELOPMENT.md` ghi quy ước chung (điều hướng,
+  nút chính / phụ / nguy hiểm, màu trạng thái, cỡ chữ).
+
+## Chưa phát hành — UI/UX giai đoạn 3: luồng chính (web)
+
+- **Chi tiết task ghim cạnh danh sách** ở màn ≥1680px: ngăn chi tiết không còn đè lên bảng việc, đọc log và nhìn danh
+  task cùng lúc (bảng việc xếp như màn hẹp, khung Tổng quan xuống dưới). Màn nhỏ hơn giữ ngăn kéo như cũ.
+- **Ô nhập mục tiêu chỉ hiện ở trang dùng nó**: Git, To-do, Ghi chú, API, Thống kê, Code ẩn ô nhập (thêm khoảng
+  80px chiều cao); nút nổi dồn xuống. Gõ `/` ngoài ô nhập mở lại ô nhập với `/` (lệnh nhanh), gửi hoặc rời ô trống
+  thì ẩn lại; nút "tiếp tục" ở Thống kê cũng mở lại tạm.
+
+## Chưa phát hành — UI/UX giai đoạn 2: dễ đọc và nhất quán
+
+- **Web**: chữ không còn nhỏ hơn 11px (10 → 11, 11 → 12, 12.5 → 13; chỉ còn số trên huy hiệu và vòng hạn mức nhỏ hơn),
+  còn 5 cỡ chính 11 / 12 / 13 / 14 / 16; viền focus cho mọi nút, ô nhập, liên kết khi dùng bàn phím;
+  `aria-current` cho mục điều hướng đang mở.
+- **TUI**: tab Agents mỗi agent rảnh còn 3 dòng (trước 5): model và effort một dòng `model: sonnet ▾  effort: max ▾`,
+  bấm mở bảng chọn; phóng to agent (F7) vẫn liệt kê đủ và bấm một mục là đổi ngay. Thanh trạng thái thêm phím riêng
+  của tab đang mở (Bảng việc: `n` giao task, `g` nhóm; Agents: `F7` chat riêng) khi còn chỗ.
+
 ## Chưa phát hành — UI/UX giai đoạn 1: sửa lỗi hiển thị
 
 - **Web**: nút nổi Git / To-do / lofi không còn che nút hành động ở cuối trang (view chừa lề phải 68px) và ẩn khi

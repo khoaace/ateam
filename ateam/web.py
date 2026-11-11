@@ -214,7 +214,7 @@ def ui_strings() -> dict[str, str]:
         "share_failed": tr("Không public được: {e}"),
         "j_running": tr("đang chạy"), "j_done": tr("xong"), "j_failed": tr("lỗi"), "j_stopped": tr("đã dừng"),
         "exit_code": tr("thoát với mã {rc}"), "files": tr("File"), "scripts": tr("Script của dự án"),
-        "shortcuts": tr("Ctrl+K: ô nhập · F2: duyệt kế hoạch · Esc: đóng"),
+        "shortcuts": tr("Ctrl+K: bảng lệnh · F2: duyệt kế hoạch · Esc: đóng"),
         "worktree": tr("worktree"), "shared": tr("shared"),
         # --- tab Git
         "git_conflicts": tr("Xung đột"), "git_staged": tr("Đã stage"), "git_changes": tr("Thay đổi"),

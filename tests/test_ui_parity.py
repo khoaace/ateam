@@ -291,3 +291,52 @@ def test_tui_log_to_agent_pane_being_rebuilt(env, project, monkeypatch):
             app.pane("moi").body  # mount xong thì ghi bình thường
             await pilot.press("ctrl+q")
     asyncio.run(main())
+
+
+def test_sidebar_groups_match_web():
+    """Thanh bên TUI và web: cùng tên nhóm, cùng thứ tự mục (web: index.html; TUI: side_groups). Thêm màn hình mới thì
+    phải thêm vào cả hai, nếu không test này đỏ."""
+    import re
+
+    from ateam.tui import side_groups
+    from ateam.web import STATIC, ui_strings
+
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    nav = html[html.index('<nav class="nav"'):html.index("</nav>")]
+    strings = ui_strings()
+    web: list[tuple[str, list[str]]] = []
+    for m in re.finditer(r'<div class="nav-group" data-t="(\w+)"|<button class="nav-item[^"]*" data-view="(\w+)"', nav):
+        if m.group(1):
+            web.append((strings[m.group(1)], []))
+        else:
+            web[-1][1].append(m.group(2))
+    view_to_tab = {"board": "tab-board", "grid": "tab-grid", "team": "tab-team", "custom": "tab-custom", "skills": "skills",
+                   "code": "tab-code", "git": "tab-git", "term": "tab-term", "api": "tab-api", "todo": "tab-todo",
+                   "notes": "tab-notes", "dash": "tab-dash"}
+    assert [(name, [view_to_tab[v] for v in views]) for name, views in web] == side_groups()
+
+
+def test_tui_sidebar_skills_item_opens_skills_screen(env, project, monkeypatch):
+    """Mục Skills ở thanh bên TUI (không phải tab) bấm mở popup /skills."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import SkillsScreen, TeamApp
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        app.orch.paused = True
+        async with app.run_test(size=(160, 40)) as pilot:
+            await pilot.pause(0.5)
+            assert "Skills" in app.query_one("Sidebar").build(app).plain
+            await app.run_action("open_skills")
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, SkillsScreen)
+            await pilot.press("escape")
+            await pilot.press("ctrl+q")
+    asyncio.run(main())
