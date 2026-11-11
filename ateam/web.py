@@ -1434,7 +1434,10 @@ class WebApp:
         self.clients.add(ws)
         try:
             await ws.send_str(json.dumps(self.hello(), ensure_ascii=False))
-            await ws.send_str(json.dumps(self.snapshot(), ensure_ascii=False))
+            first = json.dumps(self.snapshot(), ensure_ascii=False)
+            if first == self._last_state:  # vòng đẩy khỏi gửi lại đúng ảnh chụp này cho tab vừa nối
+                self._sent[ws] = (self._last_state, None)
+            await ws.send_str(first)
             if self.quota["items"] is not None:
                 await ws.send_str(json.dumps(self.quota, ensure_ascii=False))
             elif self._quota_lock and not self._quota_lock.locked():  # tab đầu tiên: không chờ vòng 60 giây
