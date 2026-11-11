@@ -1378,6 +1378,7 @@ function openTask(tid) {
   if (S.drawerTab !== "log" && tid === 0) S.drawerTab = "log";
   renderDrawer(true);
   $("#drawer").classList.add("open");
+  document.body.classList.add("drawer-open");
   if (S.drawerTab === "log") loadLog(tid);
   $$(".card.sel, .tbrow.sel").forEach((c) => c.classList.remove("sel"));
   $$(`.card[data-task="${tid}"], .tbrow[data-task="${tid}"]`).forEach((c) => c.classList.add("sel"));
@@ -1385,6 +1386,7 @@ function openTask(tid) {
 function closeDrawer() {
   S.openTask = null;
   $("#drawer").classList.remove("open");
+  document.body.classList.toggle("drawer-open", false);
   $$(".card.sel, .tbrow.sel").forEach((c) => c.classList.remove("sel"));
 }
 function renderDrawer(full) {

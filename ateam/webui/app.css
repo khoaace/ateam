@@ -156,7 +156,7 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 .brand-proj:hover:not(:disabled) { color: var(--text); text-decoration: underline; }
 .brand-proj:disabled { cursor: default; }
 .brand-proj::before { content: "~/"; }
-.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-height: 120px; overflow-y: auto; }  /* nav cuộn riêng: chân (hạn mức, kết nối) luôn thấy */
 .nav-group { font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 12px 10px 4px; }
 .nav-group:first-child { padding-top: 2px; }
 .nav-item {
@@ -174,7 +174,7 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 .nav-count:empty { display: none; }
 .nav-count.live { background: transparent; color: var(--running); border-color: color-mix(in srgb, var(--running) 55%, var(--border)); }
 .soon { margin-left: auto; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 0 5px; }
-.side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
+.side-foot { flex: none; margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
 .conn { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); padding: 4px 8px 0; }
 .conn .dot { width: 7px; height: 7px; border-radius: 1px; background: var(--failed); }
 .conn.ok .dot { background: var(--done); }
@@ -233,6 +233,8 @@ button.ver-up { cursor: pointer; text-decoration: underline dotted; }
 .top-actions { display: flex; gap: 6px; align-items: center; }
 .views { flex: 1; min-height: 0; position: relative; }
 .view { position: absolute; inset: 0; overflow: auto; padding: 10px 16px 16px; }
+@media (min-width: 901px) { .view { padding-right: 68px; } }  /* chừa cột nút nổi Git / To-do / lofi (góc phải dưới) khỏi che nút hành động */
+body.drawer-open .tdfab, body.drawer-open .gfab, body.drawer-open .lofi { visibility: hidden; }  /* ngăn chi tiết task đè lên cột nút nổi */
 
 /* ---------------------------------------------------------------- nút */
 .btn {
@@ -958,7 +960,7 @@ kbd { font: 600 10.5px var(--mono); padding: 0 4px; border-radius: var(--radius)
   .brand { border-bottom: 0; padding: 0 4px; }
   .side-toggle { display: none; }
   .brand-proj, .side-foot .ver, .side-foot .conn span:last-child, .soon, .nav-item span[data-t] { display: none; }
-  .nav { flex-direction: row; }
+  .nav { flex-direction: row; flex: none; min-height: 0; overflow: visible; }
   .side-foot { margin: 0 0 0 auto; flex-direction: row; align-items: center; border-top: 0; padding-top: 0; }
   .side-foot .quota { display: none; }
   .nav-item { width: auto; padding: 6px; }
