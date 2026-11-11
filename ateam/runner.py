@@ -123,6 +123,8 @@ class Run:
             *self.argv, cwd=self.cwd, env=self.env, stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
             start_new_session=True)
+        if self.cancelled:  # cancel() gọi lúc tiến trình chưa kịp sinh ra (máy bận): _kill khi đó chưa có gì để dừng
+            self._kill()
         dec = codecs.getincrementaldecoder("utf-8")(errors="replace")
         buf = [""]
         assert self.proc.stdout
@@ -165,6 +167,8 @@ class Run:
             os.close(slave)
             os.close(master)
             raise
+        if self.cancelled:  # như nhánh pipe: bị huỷ trước khi tiến trình kịp sinh ra
+            self._kill()
         # Giữ slave mở tới khi tiến trình thoát: trên macOS, đóng hết phía slave làm mất phần
         # output còn nằm trong pty chưa kịp đọc (agent in nhanh rồi thoát -> mất sạch output).
         loop = asyncio.get_running_loop()

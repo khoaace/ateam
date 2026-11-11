@@ -190,6 +190,28 @@ def test_run_without_timeout_runs_to_end():
     assert asyncio.run(run.start()) == 0 and got == ["xong"] and not run.timed_out
 
 
+def test_run_cancelled_before_spawn_still_stops():
+    """cancel() gọi khi tiến trình chưa kịp sinh ra (máy bận) vẫn phải dừng nó — không chạy hết 30 giây."""
+    import asyncio
+    import os
+    import sys
+    import time
+
+    from ateam.runner import Run
+
+    async def main(pty):
+        run = Run([sys.executable, "-c", "import time; time.sleep(30)"], ".", dict(os.environ), use_pty=pty,
+                  timeout=0, on_line=lambda s: None)
+        job = asyncio.ensure_future(run.start())
+        run.cancel()  # start() chưa chạy tới create_subprocess_exec
+        t0 = time.time()
+        await job
+        return time.time() - t0
+
+    assert asyncio.run(main(False)) < 10
+    assert asyncio.run(main(True)) < 10
+
+
 def test_mentions_render_per_agent(tmp_path):
     from ateam import mentions
     (tmp_path / "src").mkdir()
