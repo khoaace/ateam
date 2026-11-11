@@ -3310,14 +3310,17 @@ def tab_labels() -> dict[str, str]:
 
     return {"tab-board": bare(tr("📋 Bảng việc")), "tab-grid": tr("Lưới"), "tab-team": "Agents",
             "tab-custom": "Workflows", "tab-code": "Code", "tab-git": "Git", "tab-term": "Terminal", "tab-todo": "To-do",
-            "tab-notes": bare(tr("🗒 Ghi chú")), "tab-dash": bare(tr("📊 Thống kê")), "tab-api": "API"}
+            "tab-notes": bare(tr("🗒 Ghi chú")), "tab-dash": bare(tr("📊 Thống kê")), "tab-api": "API",
+            "skills": "Skills"}  # "skills" không phải tab: mục thanh bên mở popup /skills
 
 
 def side_groups() -> list[tuple[str, list[str]]]:
-    """Nhóm ở thanh bên; thứ tự giữ đúng TeamApp.TAB_ORDER (Alt+1…0, Ctrl+T)."""
-    return [(tr("Làm việc"), ["tab-board", "tab-grid", "tab-team", "tab-custom"]),
-            (tr("Dự án"), ["tab-code", "tab-git", "tab-term", "tab-api"]),
-            (tr("Của bạn"), ["tab-todo", "tab-notes", "tab-dash"])]
+    """Nhóm ở thanh bên — tên và thứ tự giống thanh bên web (Điều phối / Mã nguồn / Cá nhân / Báo cáo); các tab giữ
+    đúng thứ tự TeamApp.TAB_ORDER (Alt+1…0, Ctrl+T). "skills" không phải tab: bấm mở popup /skills (web: trang Skills)."""
+    return [(tr("Điều phối"), ["tab-board", "tab-grid", "tab-team", "tab-custom", "skills"]),
+            (tr("Mã nguồn"), ["tab-code", "tab-git", "tab-term", "tab-api"]),
+            (tr("Cá nhân"), ["tab-todo", "tab-notes"]),
+            (tr("Báo cáo"), ["tab-dash"])]
 
 
 SIDE_WIDTH = 24  # cột thanh bên (cả padding)
@@ -3384,7 +3387,8 @@ class Sidebar(Static):
                 label = labels[pid]
                 room = width - 2 - (len(str(n)) + 1 if n else 0)
                 line = f" {label[:room]:<{room}}" + (f" {n}" if n else "") + " "
-                click = Style(meta={"@click": f"app.goto_tab({TeamApp.TAB_ORDER.index(pid)})"})
+                click = Style(meta={"@click": "app.open_skills" if pid == "skills"
+                                    else f"app.goto_tab({TeamApp.TAB_ORDER.index(pid)})"})
                 t.append("▌" if on else " ", Style(color=PAL["info"], bold=True))
                 t.append(line, (Style(bold=True, bgcolor=self.active_bg(app)) if on else Style()) + click)
                 t.append("\n")
@@ -9044,6 +9048,10 @@ class TeamApp(App):
         order = self.TAB_ORDER
         tabs.active = order[(order.index(tabs.active) + 1) % len(order)] if tabs.active in order else order[0]
         self.refresh_view()
+
+    def action_open_skills(self) -> None:
+        """Mục Skills ở thanh bên (như /skills)."""
+        self.push_screen(SkillsScreen())
 
     def action_goto_tab(self, i: int) -> None:
         """Alt+1…9, Alt+0 (tab thứ 10): tới thẳng tab theo thứ tự trên thanh tab."""

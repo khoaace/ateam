@@ -1,5 +1,13 @@
 # Changelog
 
+## Chưa phát hành — UI/UX giai đoạn 4: đồng bộ TUI với web
+
+- **TUI**: thanh bên dùng cùng tên nhóm và thứ tự với web — Điều phối / Mã nguồn / Cá nhân / Báo cáo (Thống kê đứng
+  riêng ở "Báo cáo"); thêm mục **Skills** (bấm mở popup `/skills`).
+- **Web**: gợi ý phím ở chân trang sửa lại cho đúng — Ctrl+K là bảng lệnh (không phải ô nhập).
+- `tests/test_ui_parity.py` bắt thanh bên TUI và web lệch nhau; `docs/DEVELOPMENT.md` ghi quy ước chung (điều hướng,
+  nút chính / phụ / nguy hiểm, màu trạng thái, cỡ chữ).
+
 ## Chưa phát hành — UI/UX giai đoạn 3: luồng chính (web)
 
 - **Chi tiết task ghim cạnh danh sách** ở màn ≥1680px: ngăn chi tiết không còn đè lên bảng việc, đọc log và nhìn danh

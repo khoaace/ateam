@@ -1944,7 +1944,7 @@ function submit() {
   hideSuggest();
   autosize();
   renderComposerMode();
-  if (S.peek) { S.peek = false; syncComposer(); }  // ô nhập mở tạm bằng Ctrl+K ở trang không dùng nó
+  if (S.peek) { S.peek = false; syncComposer(); }  // ô nhập mở tạm (gõ "/", nút "tiếp tục") ở trang không dùng nó
 }
 let suggestSeq = 0;
 const TASK_FILTERS = {
@@ -2311,7 +2311,7 @@ function setView(v) {
   });
   $$(".view").forEach((s) => s.classList.toggle("hidden", s.id !== "view-" + v));
   S.peek = false;
-  syncComposer();  // Code / Git / To-do / Ghi chú / API / Thống kê không dùng ô nhập: ẩn cho rộng chỗ (Ctrl+K hiện lại)
+  syncComposer();  // Code / Git / To-do / Ghi chú / API / Thống kê không dùng ô nhập: ẩn cho rộng chỗ (gõ "/" hiện lại)
   render();
   if (v === "term" && S.openJob != null && prev !== "term") loadJob(S.openJob);
   if (v === "term") tsAttach().then(() => {
