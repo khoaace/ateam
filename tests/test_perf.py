@@ -229,3 +229,41 @@ def test_tui_board_table_is_capped(env, project, monkeypatch):
             await pilot.press("ctrl+q")
 
     asyncio.run(main())
+
+
+def test_run_spills_old_output_to_disk(monkeypatch):
+    """Lượt agent in rất nhiều: RAM chỉ giữ phần đuôi, `output` vẫn đủ từng dòng (khối DELEGATE ở đầu không mất)."""
+    import sys
+
+    from ateam import runner
+    monkeypatch.setattr(runner, "SPILL_LINES", 10)
+    seen = []
+    code = "print('<<<NOTE>>> đầu <<<END>>>');\nfor i in range(95): print('dòng', i)\nprint('SUMMARY: xong')"
+    run = runner.Run([sys.executable, "-c", code], ".", {"PYTHONIOENCODING": "utf-8"}, use_pty=False, timeout=0,
+                     on_line=seen.append)
+    assert asyncio.run(run.start()) == 0
+    want = ["<<<NOTE>>> đầu <<<END>>>"] + [f"dòng {i}" for i in range(95)] + ["SUMMARY: xong"]
+    assert seen == want
+    assert len(run.lines) < 20 and run.spilled + len(run.lines) == len(want)
+    assert run.output == "\n".join(want) and run.output is run.output
+    # keep_lines (dev server…): chỉ giữ đuôi, không ghi file
+    tail = runner.Run([sys.executable, "-c", code], ".", {"PYTHONIOENCODING": "utf-8"}, use_pty=False, timeout=0,
+                      on_line=lambda s: None, keep_lines=5)
+    assert asyncio.run(tail.start()) == 0
+    assert list(tail.lines) == want[-5:] and tail.spilled == 0 and tail._spill is None
+
+
+def test_vterm_history_shares_cells():
+    """Lịch sử terminal: ô giống nhau (cùng ký tự + kiểu chữ) là cùng một tuple — không tạo tuple riêng cho từng ô."""
+    from ateam import vterm
+    s = vterm.Screen(5, 40)
+    for i in range(30):
+        s.feed(("\x1b[32mabc abc\x1b[0m %d\r\n" % (i % 3)).encode())
+    assert len(s.history) >= 25
+    a, b = s.history[0], s.history[3]
+    assert "".join(c[0] for c in a).rstrip() == "abc abc 0" and a[0][1] != vterm.DEFAULT
+    assert all(x is y for x, y in zip(a, b))          # hai dòng giống nhau: dùng chung từng ô
+    assert a[0] is a[4] and a[0] is not a[1]          # 'a' xanh ở hai chỗ là một; 'a' khác 'b'
+    assert len({id(c) for ln in s.history for c in ln}) < len(s.history) + 20  # mỗi dòng thêm tối đa một ô trống riêng
+    s.feed("\x1b[31ma\x1b[0m".encode())                # đổi kiểu chữ: ô khác
+    assert s.lines[s.y][0] is not a[0] and s.lines[s.y][0][0] == "a"

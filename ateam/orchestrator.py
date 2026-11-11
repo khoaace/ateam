@@ -458,6 +458,9 @@ class Orchestrator:
                                    effort=effort)
         span = [time.time(), None, label]
         self.lead_spans.append(span)
+        if len(self.lead_spans) > 500:  # Timeline chỉ vẽ 3 giờ gần nhất: không giữ mãi mọi lượt của phiên chạy nhiều ngày
+            cut = time.time() - 6 * 3600
+            self.lead_spans[:] = [x for x in self.lead_spans if (x[1] or time.time()) > cut][-500:]
         act = self._begin_activity(lead.name, None, label, lead.label())
         rid = self.db.add_run(None, lead.name, "lead", len(prompt), goal_id=goal_id, cwd=str(self.root),
                               model=lead.split_effort(lead.model or "", lead.effort or "")[0])

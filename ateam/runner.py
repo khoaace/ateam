@@ -7,11 +7,14 @@ import codecs
 import os
 import re
 import signal
+import tempfile
 from collections import deque
 from typing import Callable
 
 from . import agystream
 
+SPILL_LINES = 20000  # lượt agent in nhiều hơn thế: phần cũ đẩy ra file tạm, RAM chỉ giữ ngần này dòng cuối
+MAX_META = 2000      # dòng chỉ để bắt id phiên (agy stream-json): id nằm ở phần mới nhất
 MAX_PARTIAL = 64 * 1024  # dòng chưa có \n dài hơn thế (spinner chỉ dùng \r, JSON một dòng…) thì cắt/đẩy ra
 
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
@@ -44,12 +47,17 @@ class Run:
         self.proc: asyncio.subprocess.Process | None = None
         self.lines: list[str] | deque[str] = deque(maxlen=keep_lines) if keep_lines else []
         self._output: str | None = None
+        # keep_lines vắng mặt (task của agent, cần cả output để bóc DELEGATE/NOTE/ASK/SUMMARY): lượt chạy nhiều giờ
+        # không giữ hết trong RAM — phần cũ nằm ở file tạm, `output` ghép lại khi được đọc (sau khi lượt kết thúc)
+        self._spill = None        # file tạm chứa các dòng đã đẩy ra
+        self.spilled = 0          # số dòng đã đẩy ra file
+        self.spill_lines = 0 if keep_lines else SPILL_LINES
         self.cancelled = False
         self.timed_out = False
         self.max_partial = max_partial
         # agy --output-format stream-json: sự kiện JSON -> dòng dễ đọc; tool chỉ hiện, không vào output
         self.stream = agystream.AgyStream() if agystream.wants(argv) else None
-        self.meta: list[str] = []      # dòng chỉ để bắt id phiên (không vào output)
+        self.meta: deque[str] = deque(maxlen=MAX_META)  # dòng chỉ để bắt id phiên (không vào output)
         self.session_lost = False      # CLI báo không còn phiên --resume/--conversation: đã dừng sớm
 
     def _emit_text(self, buf: list[str], text: str, final: bool = False) -> None:
@@ -89,10 +97,26 @@ class Run:
         if keep:
             self.lines.append(line)
             self._output = None
+            if self.spill_lines and len(self.lines) >= 2 * self.spill_lines:
+                self._spill_old()
         try:
             self.on_line(line)
         except Exception:
             pass
+
+    def _spill_old(self) -> None:
+        """Đẩy nửa cũ của `lines` ra file tạm (xoá khi đóng / khi Run bị thu hồi). Không ghi được thì giữ trong RAM."""
+        try:
+            if self._spill is None:
+                self._spill = tempfile.TemporaryFile("w+", encoding="utf-8", errors="replace", newline="\n",
+                                                     prefix="ateam-run-")
+            n = len(self.lines) - self.spill_lines
+            self._spill.seek(0, os.SEEK_END)
+            self._spill.write("\n".join(self.lines[:n]) + "\n")
+            del self.lines[:n]
+            self.spilled += n
+        except OSError:
+            self.spill_lines = 0
 
     @property
     def usage(self):
@@ -262,5 +286,12 @@ class Run:
     @property
     def output(self) -> str:
         if self._output is None:  # được đọc nhiều lần sau mỗi lượt (_classify, session_of, parse_ask…)
-            self._output = "\n".join(self.lines)
+            head = ""
+            if self._spill is not None:
+                try:
+                    self._spill.seek(0)
+                    head = self._spill.read()  # đã kết thúc bằng \n
+                except (OSError, ValueError):
+                    head = ""
+            self._output = head + "\n".join(self.lines)
         return self._output
