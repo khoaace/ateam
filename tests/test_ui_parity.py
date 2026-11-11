@@ -152,7 +152,8 @@ def test_tui_terminal_scripts_and_grid_shell(env, project, monkeypatch):
             app.query_one("#grid-add").press()
             assert await wait(lambda: isinstance(app.screen, GridAddScreen))
             scr = app.screen
-            assert scr.names[0] == SHELL and scr.agent() != SHELL  # mặc định vẫn là agent đầu tiên
+            assert scr.names[0] == SHELL
+            assert await wait(lambda: scr.agent() != SHELL)  # mặc định vẫn là agent đầu tiên (on_mount có thể chưa chạy)
             scr.query_one("#ga-agents").highlighted = 0
             await pilot.pause(0.1)
             assert scr.result() == {"agent": SHELL, "model": "", "effort": "", "resume": False}

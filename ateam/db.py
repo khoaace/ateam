@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -115,6 +116,9 @@ FINISHED_BAD = (FAILED, CANCELLED, BLOCKED)
 GOAL_ENDED = ("done", "incomplete", "failed", "cancelled")
 
 
+LAZY_COLS = ("prompt", "result")  # cột chữ dài của task: bản đọc nhẹ (DB.board) chỉ nạp khi có chỗ đọc tới
+
+
 @dataclass
 class Task:
     id: int
@@ -153,6 +157,31 @@ class Task:
         d["ask"] = json.loads(d["ask"]) if d.get("ask") else None
         d["skills"] = json.loads(d["skills"]) if d.get("skills") else None
         return cls(**d)
+
+    @classmethod
+    def light_row(cls, r: sqlite3.Row, db: "DB") -> "Task":
+        """Task không mang `prompt`/`result` (LAZY_COLS — có thể vài chục KB mỗi task): bảng việc đọc lại cả bảng
+        nhiều lần, hầu như không chỗ nào cần hai cột này. Đọc tới thì `__getattr__` mới lấy từ DB (một dòng)."""
+        d = dict(r)
+        d["depends_on"] = json.loads(d.get("depends_on") or "[]")
+        d["ask"] = json.loads(d["ask"]) if d.get("ask") else None
+        d["skills"] = json.loads(d["skills"]) if d.get("skills") else None
+        t = cls.__new__(cls)
+        t.__dict__.update(d)
+        t.__dict__["_db"] = db
+        return t
+
+    def __getattr__(self, name: str):
+        # chỉ được gọi khi thuộc tính vắng mặt: prompt/result của task đọc dạng nhẹ (light_row)
+        if name in LAZY_COLS:
+            db = self.__dict__.get("_db")
+            if db is not None:
+                r = db.conn.execute("SELECT prompt, result FROM tasks WHERE id=?", (self.__dict__["id"],)).fetchone()
+                db.lazy_loads += 1
+                self.__dict__["prompt"] = r["prompt"] if r else ""
+                self.__dict__["result"] = r["result"] if r else None
+                return self.__dict__[name]
+        raise AttributeError(name)
 
     def question(self) -> dict | None:
         """Câu hỏi đang chờ trả lời (task ở trạng thái asking)."""
@@ -218,6 +247,8 @@ class DB:
         self.conn = sqlite3.connect(str(self.path), timeout=15, check_same_thread=False,
                                     isolation_level=None)
         self.conn.row_factory = sqlite3.Row
+        self._board: tuple | None = None  # (version, tasks nhẹ, goals) — board() dùng lại khi DB chưa đổi
+        self.lazy_loads = 0  # số lần nạp muộn prompt/result (test canh: vẽ bảng việc không được nạp từng task)
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA busy_timeout=15000")
         self.conn.execute("PRAGMA synchronous=NORMAL")  # an toàn với WAL, không fsync mỗi lệnh UPDATE
@@ -306,6 +337,21 @@ class DB:
             q += " WHERE " + " AND ".join(conds)
         q += " ORDER BY id"
         return [Task.from_row(r) for r in self.conn.execute(q, args)]
+
+    def version(self) -> tuple:
+        """Dấu thay đổi của cả DB, gần như miễn phí: `data_version` đổi khi tiến trình khác ghi (TUI ↔ web ↔ CLI),
+        `total_changes` đổi khi chính kết nối này ghi."""
+        return (self.conn.execute("PRAGMA data_version").fetchone()[0], self.conn.total_changes)
+
+    def board(self) -> tuple[list[Task], list[Goal]]:
+        """(mọi task dạng nhẹ, mọi mục tiêu) cho vòng vẽ 0,5 giây của TUI/web: chỉ đọc lại khi DB đổi. Đọc cả bảng
+        kèm prompt/kết quả mỗi nửa giây tốn hàng chục MB rác và >100 ms khi dự án có vài nghìn task."""
+        v = self.version()
+        if self._board is None or self._board[0] != v:
+            cols = ", ".join(f.name for f in dataclasses.fields(Task) if f.name not in LAZY_COLS)
+            tasks = [Task.light_row(r, self) for r in self.conn.execute(f"SELECT {cols} FROM tasks ORDER BY id")]
+            self._board = (v, tasks, self.goals())
+        return list(self._board[1]), list(self._board[2])
 
     def update_task(self, tid: int, **fields) -> None:
         if not fields:

@@ -106,3 +106,126 @@ def test_reflow_log_written_while_tab_hidden_not_vertical():
             await pilot.pause()
             assert [s.text.rstrip() for s in log.lines] == ["trước khi ẩn", "ghi lúc tab đang ẩn"]
     asyncio.run(main())
+
+
+def test_board_reads_db_only_on_change_and_lazy_text(project):
+    """DB.board(): vòng vẽ 0,5 giây không đọc lại bảng khi DB chưa đổi; task dạng nhẹ nạp prompt/kết quả khi cần."""
+    from ateam.db import DB
+    db = DB(project / ".ateam/team.db")
+    tid = db.add_task("codex", "tiêu đề", "prompt rất dài", status="queued")
+    db.update_task(tid, result="kết quả", error="lỗi")
+    tasks, goals = db.board()
+    assert goals == [] and [t.id for t in tasks] == [tid]
+    t = tasks[0]
+    assert "prompt" not in t.__dict__ and "result" not in t.__dict__ and t.error == "lỗi"
+    assert db.board()[0][0] is t  # DB chưa đổi: dùng lại, không đọc lại
+    tasks.clear()                 # danh sách trả về là bản sao: nơi gọi sửa không hỏng cache
+    assert db.board()[0][0] is t
+    assert db.lazy_loads == 0
+    assert (t.prompt, t.result) == ("prompt rất dài", "kết quả") and db.lazy_loads == 1
+    assert t.prompt and db.lazy_loads == 1  # nạp một lần
+    db.update_task(tid, status="done")       # chính kết nối này ghi
+    t2 = db.board()[0][0]
+    assert t2 is not t and t2.status == "done"
+    other = DB(project / ".ateam/team.db")   # tiến trình khác ghi (TUI ↔ web ↔ `ateam add`)
+    other.add_task("claude", "khác", "p")
+    assert len(db.board()[0]) == 2
+    try:
+        t2.khong_co
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("thuộc tính lạ phải báo AttributeError")
+
+
+def test_web_snapshot_does_not_load_task_text(env, project, monkeypatch):
+    """Ảnh chụp bảng việc của web không nạp prompt/kết quả từng task (mỗi lần là một truy vấn); task nháp thì có."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    from tests.test_web import _web_app
+    wa = _web_app(env, project, monkeypatch)
+    for i in range(30):
+        wa.db.update_task(wa.db.add_task("codex", f"t{i}", "p" * 5000, status="done"), result="r" * 5000)
+    draft = wa.db.add_task("codex", "nháp", "prompt nháp", status="draft")
+    snap = wa.snapshot()
+    by = {t["id"]: t for t in snap["tasks"]}
+    assert by[draft]["prompt"] == "prompt nháp" and "result" not in by[draft]
+    assert all("prompt" not in t for i, t in by.items() if i != draft)
+    assert wa.db.lazy_loads == 1
+
+
+def test_web_slow_tab_is_dropped_not_queued(env, project, monkeypatch):
+    """Tab không nhận kịp: quá SEND_HARD thì đóng kết nối thay vì xếp hàng mãi trong RAM; lagging() hoãn ảnh chụp."""
+    import pytest
+    pytest.importorskip("aiohttp")
+    from ateam import web as webmod
+    from tests.test_web import _web_app
+    wa = _web_app(env, project, monkeypatch)
+    monkeypatch.setattr(webmod, "SEND_SOFT", 100)
+    monkeypatch.setattr(webmod, "SEND_HARD", 1000)
+
+    class SlowWS:
+        closed = False
+
+        def __init__(self):
+            self.gate = asyncio.Event()
+            self.got = []
+
+        async def send_str(self, data):
+            await self.gate.wait()
+            self.got.append(data)
+
+        async def close(self, **kw):
+            self.closed = True
+            self.gate.set()
+
+    async def main():
+        ws = SlowWS()
+        jobs = [asyncio.ensure_future(wa._send(ws, "x" * 300)) for _ in range(3)]
+        await asyncio.sleep(0)
+        assert wa._pending[ws] == 900 and wa.lagging(ws) and not ws.closed
+        await wa._send(ws, "x" * 300)  # vượt SEND_HARD
+        assert ws.closed
+        await asyncio.gather(*jobs)
+        assert ws not in wa._pending
+        await wa._send(ws, "y")        # đã đóng: bỏ
+        assert "y" not in ws.got
+        ok = SlowWS()
+        ok.gate.set()
+        await wa._send(ok, "z" * 300)
+        assert ok.got == ["z" * 300] and ok not in wa._pending and not wa.lagging(ok)
+
+    asyncio.run(main())
+
+
+def test_tui_board_table_is_capped(env, project, monkeypatch):
+    """Bảng việc TUI chỉ vẽ BOARD_LIMIT task gần nhất + task còn dở, và vẽ không nạp prompt/kết quả từng task."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    importlib.reload(importlib.import_module("ateam.config"))
+    from textual.widgets import DataTable
+    from ateam import tui
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    monkeypatch.setattr(tui, "BOARD_LIMIT", 20)
+
+    async def main():
+        ensure_global_config()
+        db = DB(project / ".ateam/team.db")
+        old_asking = db.add_task("codex", "còn dở", "p", status="asking")
+        for i in range(60):
+            db.add_task("codex", f"t{i}", "p", status="done")
+        app = tui.TeamApp(project, load_config(project), db)
+        async with app.run_test(size=(160, 48)) as pilot:
+            await pilot.pause(0.8)
+            if app.task_groups:
+                app.action_toggle_task_groups()  # bảng phẳng: mỗi task một dòng
+            await pilot.pause(0.2)
+            assert set(app._rows) == {old_asking} | set(range(42, 62))
+            assert app.query_one("#tasks", DataTable).row_count == 21
+            before = db.lazy_loads
+            app.refresh_view()
+            assert db.lazy_loads == before
+            await pilot.press("ctrl+q")
+
+    asyncio.run(main())
