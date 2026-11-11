@@ -1278,6 +1278,10 @@ EN: dict[str, str] = {
         "✨ {lead} is writing the commit message…",
     "🗑 Dọn {v} task đã xong":
         "🗑 Clear {v} finished task(s)",
+    " · đang ẩn {n} task cũ":
+        " · {n} older task(s) hidden",
+    "⚠ web: một tab nhận quá chậm — đóng kết nối để nó nối lại":
+        "⚠ web: a tab is receiving too slowly — closing its connection so it reconnects",
     "📋 Kế hoạch #{goal_id} sẵn sàng — Enter hoặc F2 để duyệt & chạy":
         "📋 Plan #{goal_id} is ready — Enter or F2 to approve & run",
     "  (gõ yêu cầu mới rồi Enter, Esc huỷ)":

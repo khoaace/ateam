@@ -101,6 +101,7 @@ def apply_palette(pal: dict[str, str]) -> None:
 
 
 apply_palette(theme.palette(None))
+BOARD_LIMIT = 400  # bảng việc vẽ tối đa ngần này task gần nhất (+ task còn dở) — như TASK_LIMIT của web
 SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 NARROW_WIDTH = 110  # terminal hẹp hơn: bảng việc và log xếp dọc thay vì hai cột
 # ô nhập đang ở "/continue <ref> …" (ref = m12 / t40), nhóm 1 = ref
@@ -7912,7 +7913,8 @@ class TeamApp(App):
         tabs = self.screen_stack[0].query("#tabs") if self.screen_stack else None
         if not tabs:  # app đang đóng (đổi theme lúc thoát vẫn gọi lại refresh)
             return
-        self._snap = {"tasks": self.db.tasks(), "goals": self.db.goals()}
+        tasks, goals = self.db.board()  # chỉ đọc lại DB khi nó đổi; task dạng nhẹ (prompt/kết quả nạp muộn)
+        self._snap = {"tasks": tasks, "goals": goals}
         self.show_notices(self.notices.diff(self._snap["tasks"], self._snap["goals"]))
         tab = tabs.first(TabbedContent).active
         fns = [self._refresh_goals, self._refresh_plan, self._refresh_grill]
@@ -8203,10 +8205,10 @@ class TeamApp(App):
             self.set_timer(delay, self.refresh_view)
 
     def snap_tasks(self) -> list:
-        return self._snap["tasks"] if self._snap else self.db.tasks()
+        return self._snap["tasks"] if self._snap else self.db.board()[0]
 
     def snap_goals(self) -> list:
-        return self._snap["goals"] if self._snap else self.db.goals()
+        return self._snap["goals"] if self._snap else self.db.board()[1]
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         if event.tabbed_content.id == "tabs":
@@ -8326,11 +8328,16 @@ class TeamApp(App):
         tasks = [t for t in self.snap_tasks() if t.source != CHAT]  # lượt chat hiện ở ô agent (tab Agents)
         empty = self.query_one("#tasks-empty", Static)
         table.display, empty.display = bool(tasks), not tasks
+        tids, gids = self.orch.finished_ids(tasks, self.snap_goals())
+        hidden = 0
+        if len(tasks) > BOARD_LIMIT:  # như web (TASK_LIMIT): bảng chỉ vẽ task gần nhất + task còn dở, không vẽ lại
+            lo = tasks[-BOARD_LIMIT].id  # hàng nghìn dòng cũ mỗi 0,5 giây
+            shown = [t for t in tasks if t.id >= lo or t.status in ACTIVE]
+            hidden, tasks = len(tasks) - len(shown), shown
         alive = {t.id for t in tasks}
         for tid in [i for i in self._rows if i not in alive and not self.task_groups]:  # đã dọn (/clear, nút Dọn)
             table.remove_row(str(tid))
             del self._rows[tid]
-        tids, gids = self.orch.finished_ids(tasks, self.snap_goals())
         tools = self.query_one("#board-tools")
         tools.display = bool(tids or gids)
         opts = self.adhoc_agent_options()
@@ -8340,7 +8347,10 @@ class TeamApp(App):
             sel.set_options(opts)
             sel.value = self.adhoc_agent(opts)
         if tids or gids:
-            self.query_one("#board-clear", Button).label = tr("🗑 Dọn {v} task đã xong", v=len(tids))
+            label = tr("🗑 Dọn {v} task đã xong", v=len(tids))
+            if hidden:
+                label += tr(" · đang ẩn {n} task cũ", n=hidden)
+            self.query_one("#board-clear", Button).label = label
         if not tasks:
             t = Text()
             t.append(tr("Chưa có task nào.\n\n"), "bold")

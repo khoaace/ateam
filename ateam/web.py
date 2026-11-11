@@ -50,6 +50,8 @@ STATIC = Path(__file__).with_name("webui")
 LOG_TAIL = 600       # số dòng cuối của log gửi khi mở 1 task
 LOG_FLUSH = 0.1      # gom dòng log rồi gửi một lần (agent in hàng trăm dòng/giây)
 IMAGE_MAX = 20 * 1024 ** 2  # ảnh dán vào ô nhập
+SEND_SOFT = 256 * 1024       # tab còn chờ nhiều hơn thế: hoãn ảnh chụp bảng việc tới vòng sau
+SEND_HARD = 16 * 1024 ** 2   # tab chờ quá ngần này ký tự: đóng kết nối, trang tự nối lại (lưu file lớn đi chiều ngược lại)
 TASK_LIMIT = 400     # bảng việc gửi tối đa ngần này task gần nhất
 QUOTA_EVERY = 60     # giây giữa hai lần hỏi hạn mức 5h/tuần của các CLI (khi có trình duyệt đang mở)
 
@@ -758,14 +760,14 @@ def task_json(t: Task, full: bool = True) -> dict:
     """full=False (ảnh chụp bảng việc gửi mỗi khi đổi): bỏ prompt/kết quả — có thể dài vài chục KB mỗi task;
     ngăn chi tiết lấy qua /api/task/{id}. Riêng task nháp giữ prompt (khung duyệt kế hoạch hiện nó)."""
     d = {"id": t.id, "goal": t.goal_id, "parent": t.parent_id, "agent": t.agent, "title": t.title,
-         "prompt": t.prompt, "status": t.status, "deps": t.depends_on, "source": t.source,
-         "result": t.result, "error": t.error, "branch": t.branch, "created": t.created,
+         "status": t.status, "deps": t.depends_on, "source": t.source,
+         "error": t.error, "branch": t.branch, "created": t.created,
          "started": t.started, "finished": t.finished, "model": t.model, "effort": t.effort,
          "attempts": t.attempts, "question": t.question(), "skills": t.skills or []}
-    if not full:
-        del d["result"]
-        if t.status != "draft":
-            del d["prompt"]
+    if full:
+        d["prompt"], d["result"] = t.prompt, t.result
+    elif t.status == "draft":  # task dạng nhẹ (DB.board): không đụng prompt/result của task khác — mỗi lần là một truy vấn
+        d["prompt"] = t.prompt
     return d
 
 
@@ -813,6 +815,8 @@ class WebApp:
         self.setup = SetupWeb(self)
         self.skills = SkillsOps(self)
         self.clients: set[web.WebSocketResponse] = set()
+        self._pending: dict[web.WebSocketResponse, int] = {}  # ký tự đang chờ gửi của từng tab (_send)
+        self._sent: dict[web.WebSocketResponse, tuple] = {}   # (state, live) đã gửi cho từng tab (_push_loop)
         self.discovering = False  # đang hỏi danh sách model từ các CLI (wizard hiện "⏳")
         self._last_state = ""
         self._last_live = ""
@@ -1149,12 +1153,36 @@ class WebApp:
         self.broadcast({"t": "prefs", "vim": st.get("vim", True) is not False, "accent": st.get("accent") or "",
                         "accent_color": theme.ACCENTS.get(st.get("accent") or "", ""), **code_prefs(st)})
 
-    @staticmethod
-    async def _send(ws: web.WebSocketResponse, data: str) -> None:
+    async def _send(self, ws: web.WebSocketResponse, data: str) -> None:
+        """Gửi một tin cho một tab, có đếm phần đang chờ: trình duyệt chậm (điện thoại qua tunnel, tab bị treo) không
+        nhận kịp thì các tin xếp hàng trong RAM của server. Quá SEND_HARD thì đóng kết nối — trang tự nối lại và
+        nhận ảnh chụp mới — thay vì để hàng chờ lớn mãi."""
+        if ws.closed:
+            return
+        size = len(data)
+        if self._pending.get(ws, 0) + size > SEND_HARD:
+            self._pending.pop(ws, None)
+            self.orch.log(tr("⚠ web: một tab nhận quá chậm — đóng kết nối để nó nối lại"))
+            try:
+                await ws.close(code=1013, message=b"slow")
+            except Exception:
+                pass
+            return
+        self._pending[ws] = self._pending.get(ws, 0) + size
         try:
             await ws.send_str(data)
         except (ConnectionError, RuntimeError):
             pass
+        finally:
+            left = self._pending.get(ws, 0) - size
+            if left > 0:
+                self._pending[ws] = left
+            else:
+                self._pending.pop(ws, None)
+
+    def lagging(self, ws: web.WebSocketResponse) -> bool:
+        """Tab còn nhiều tin chưa nhận xong: ảnh chụp bảng việc chờ vòng sau (chỉ bản mới nhất mới đáng gửi)."""
+        return self._pending.get(ws, 0) > SEND_SOFT
 
     UPDATE_EVERY = 6 * 3600  # web hay để chạy nhiều ngày: hỏi lại bản mới định kỳ
 
@@ -1181,7 +1209,7 @@ class WebApp:
         while True:
             await asyncio.sleep(0.5)
             try:
-                tasks, goals = self.db.tasks(), self.db.goals()  # một lần đọc DB cho cả vòng
+                tasks, goals = self.db.board()  # một lần cho cả vòng, và chỉ đọc lại DB khi nó đổi
                 self.push_notices(self.notices.diff(tasks, goals))
             except Exception:
                 continue
@@ -1194,15 +1222,21 @@ class WebApp:
             except Exception as e:  # DB đang bị ghi dở… — lần sau đọc lại
                 self.orch.log(f"⚠ web: {e}")
                 continue
-            out = []
             if state != self._last_state:
                 self._last_state = state
-                out.append(state)
             if live != self._last_live:
                 self._last_live = live
-                out.append(live)
-            for data in out:  # gửi song song: một trình duyệt chậm (điện thoại qua tunnel) không giữ chân cả nhóm
-                await asyncio.gather(*(self._send(ws, data) for ws in list(self.clients) if not ws.closed))
+            # mỗi tab nhớ bản đã gửi: tab chậm bỏ qua vòng này (không xếp chồng ảnh chụp cũ), kịp rồi thì nhận thẳng
+            # bản mới nhất; không await nên một trình duyệt chậm không giữ chân cả nhóm
+            for ws in list(self.clients):
+                if ws.closed or self.lagging(ws):
+                    continue
+                sent = self._sent.get(ws) or (None, None)
+                if sent[0] is not self._last_state:
+                    self._spawn(self._send(ws, self._last_state))
+                if sent[1] is not self._last_live:
+                    self._spawn(self._send(ws, self._last_live))
+                self._sent[ws] = (self._last_state, self._last_live)
 
     async def _quota_loop(self) -> None:
         while True:
@@ -1235,8 +1269,10 @@ class WebApp:
     # ------------------------------------------------------------------ ảnh chụp trạng thái
     def snapshot(self, tasks_all: list[Task] | None = None, goals_all: list[Goal] | None = None) -> dict:
         o, cfg = self.orch, self.cfg
-        goals_all = self.db.goals() if goals_all is None else goals_all
-        tasks_all = self.db.tasks() if tasks_all is None else tasks_all
+        if goals_all is None or tasks_all is None:
+            board = self.db.board()
+            tasks_all = board[0] if tasks_all is None else tasks_all
+            goals_all = board[1] if goals_all is None else goals_all
         keep = {g.id for g in goals_all[-8:]} | {g.id for g in goals_all if g.status not in GOAL_ENDED}
         goals = [goal_json(g, g.status in ("planning", "reviewing") or g.id in o.lead_busy)
                  for g in goals_all if g.id in keep]
@@ -1418,6 +1454,8 @@ class WebApp:
         finally:
             self.clients.discard(ws)
             self.grid_ws.discard(ws)
+            self._pending.pop(ws, None)
+            self._sent.pop(ws, None)
             for pid, (sess, owner) in list(self.ptys.items()):  # tab đóng: đóng luôn terminal của nó
                 if owner is ws:
                     sess.close()

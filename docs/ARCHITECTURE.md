@@ -531,7 +531,11 @@ cho timeline. TUI chỉ đọc hai cấu trúc này, không sửa.
 
 ### Hiệu năng vẽ (TUI)
 
-- `refresh_view` (mỗi 0,5 giây và sau `changed`) đọc DB **một lần** (`self._snap`: tasks, goals) cho mọi
+- `refresh_view` (mỗi 0,5 giây và sau `changed`) lấy bảng việc **một lần** qua `DB.board()` (`self._snap`: tasks,
+  goals) — `board()` chỉ đọc lại DB khi `DB.version()` đổi (`PRAGMA data_version` + `total_changes`), task ở dạng nhẹ:
+  `prompt`/`result` nạp muộn khi có chỗ đọc tới (`Task.light_row`, `LAZY_COLS`), nên **đừng đọc `t.prompt`/`t.result`
+  trong vòng lặp qua mọi task** (mỗi task một truy vấn; `db.lazy_loads` đếm, `tests/test_perf.py` canh). Bảng task
+  chỉ vẽ `BOARD_LIMIT` (400) task gần nhất + task còn dở. Ảnh chụp dùng cho mọi
   `_refresh_*` (cả `GrillBar`, `PlanBar`, `Timeline` qua `snap_tasks()/snap_goals()`; `db.usage` 5 giây một lần;
   dashboard chỉ dựng lại khi `DB.change_sig()` đổi); chỉ vẽ tab đang mở (bảng việc / Đội / Terminal; tab Git tự đọc lại git mỗi 3 giây), chuyển tab thì vẽ ngay
   (`on_tabbed_content_tab_activated`). `set_static()` chỉ gọi `Static.update` khi nội dung đổi.
@@ -602,7 +606,9 @@ bind); `/open` chạy lại với `--port <cổng thật>` để trình duyệt 
 
 - `GET /ws` (WebSocket): server gửi `hello` (chuỗi giao diện `ui_strings()`, mọi lệnh của `tui.COMMANDS`, dữ liệu gợi ý
   — agent + model/effort hợp lệ, workflow, màu nhấn, tuỳ chọn), gửi lại khi cấu hình đổi (/setup, /custom, /models
-  làm mới); `state` — ảnh chụp bảng việc (`snapshot()`), dựng lại mỗi 0,5 giây, chỉ gửi khi khác lần trước — task
+  làm mới); `state` — ảnh chụp bảng việc (`snapshot()`, từ `DB.board()`), dựng lại mỗi 0,5 giây, chỉ gửi khi khác lần
+  trước; tab còn nhiều tin chưa nhận (`lagging()`, quá `SEND_SOFT`) thì hoãn tới vòng sau và nhận thẳng bản mới nhất,
+  tab chờ quá `SEND_HARD` bị đóng kết nối để tự nối lại (`_send` đếm phần đang chờ của từng tab) — task
   không mang `prompt`/`result` (trừ prompt của task nháp), ngăn chi tiết lấy qua `/api/task/<id>`; `live` — dòng cuối
   của task đang chạy (đổi liên tục nên tách khỏi `state`, để ảnh chụp lớn chỉ gửi khi bảng việc thật sự đổi);
   `lines` — dòng log task (`k: "log"`) và output lệnh `!` (`k: "job"`) gom `LOG_FLUSH` (0,1 giây) một lần; `prefs`,
