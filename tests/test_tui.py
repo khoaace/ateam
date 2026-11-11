@@ -2094,9 +2094,13 @@ def test_tui_update_restarts_app(env, project, monkeypatch):
     asyncio.run(main())
 
 
-def test_task_table_hides_empty_adhoc_and_fits_title(project, monkeypatch, tmp_path):
+def test_task_table_hides_empty_adhoc_and_fits_title(env, project, monkeypatch):
     """Nhóm 📌 Ngoài kế hoạch rỗng không chiếm dòng; chữ cột Task cắt theo bề rộng bảng (có …) nên không sinh thanh
     cuộn ngang."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
     import asyncio
     import importlib
 
