@@ -4483,6 +4483,12 @@ EN: dict[str, str] = {
         "sidebar",
     "trợ giúp":
         "help",
+    "giao task":
+        "add task",
+    "nhóm":
+        "group",
+    "chat riêng":
+        "chat",
     "Mục tiêu & task":
         "Goals & tasks",
     "Chi tiết · log":

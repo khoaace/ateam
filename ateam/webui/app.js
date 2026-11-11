@@ -2292,7 +2292,12 @@ function setView(v) {
   if (!VIEWS.includes(v)) return;
   const prev = S.view;
   S.view = v;
-  $$(".nav-item[data-view]").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
+  $$(".nav-item[data-view]").forEach((b) => {
+    const on = b.dataset.view === v;
+    b.classList.toggle("active", on);
+    b.toggleAttribute("aria-current", on);  // đọc màn hình biết mục đang mở
+    if (on) b.setAttribute("aria-current", "page");
+  });
   $$(".view").forEach((s) => s.classList.toggle("hidden", s.id !== "view-" + v));
   $(".composer").classList.toggle("hidden", v === "code");  // tab Code dùng cả chiều cao cho editor
   render();

@@ -155,11 +155,18 @@ def test_tui_model_effort_picker(env, project, monkeypatch):
             await pilot.press("escape")
             await pilot.pause(0.2)
             assert not isinstance(app.screen, ChoiceScreen) and claude.effort == "max"
-            # tab Đội hiện danh sách model/effort, mục đang dùng nằm trong đó
+            # tab Đội: danh sách gọn — một dòng "model: sonnet ▾   effort: max ▾" (bấm mở bảng chọn)
             await pilot.press("ctrl+t", "ctrl+t")  # Bảng việc → Lưới → Agents
             await pilot.pause(0.8)
             head = str(app.pane("claude").head.render())
+            assert "model: sonnet ▾" in head and "effort: max ▾" in head and "haiku" not in head
+            # phóng to agent (chat riêng): liệt kê đủ, mục đang dùng nằm trong đó
+            app.set_focus_agent("claude")
+            await pilot.pause(0.8)
+            head = str(app.pane("claude").head.render())
             assert "effort:" in head and "sonnet" in head and "haiku" in head
+            app.set_focus_agent(None)
+            await pilot.pause(0.3)
             # lần đầu mở app tự hỏi opencode/agy danh sách model
             for _ in range(20):
                 if "xai/grok-5-fast" in app.cfg.agents["opencode"].models:
@@ -2129,4 +2136,34 @@ def test_task_table_hides_empty_adhoc_and_fits_title(env, project, monkeypatch):
             cell = table.get_cell(str(t1), "title")
             assert cell.cell_len <= room and cell.plain.endswith("…")
             assert not table.show_horizontal_scrollbar
+    asyncio.run(main())
+
+
+def test_statusbar_shows_tab_keys(env, project, monkeypatch):
+    """Thanh trạng thái thêm phím riêng của tab đang mở (Bảng việc: n, g; Agents: F7) trước 4 phím chung."""
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    git_init(project)
+
+    import asyncio
+    import importlib
+
+    import ateam.config
+    importlib.reload(ateam.config)
+    from ateam.config import ensure_global_config, load_config
+    from ateam.db import DB
+    from ateam.tui import StatusBar, TeamApp
+
+    async def main():
+        ensure_global_config()
+        app = TeamApp(project, load_config(project), DB(project / ".ateam/team.db"))
+        app.orch.paused = True
+        async with app.run_test(size=(160, 40)) as pilot:
+            await pilot.pause(0.6)
+            bar = app.query_one("#statusbar", StatusBar)
+            assert "giao task" in bar.build(app).plain and "F1" in bar.build(app).plain
+            await pilot.press("ctrl+t", "ctrl+t")  # Agents
+            await pilot.pause(0.4)
+            plain = bar.build(app).plain
+            assert "F7 chat riêng" in plain and "giao task" not in plain
     asyncio.run(main())

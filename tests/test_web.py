@@ -1295,3 +1295,16 @@ def test_web_floating_buttons_and_sidebar_foot_layout():
     nav = re.search(r"^\.nav \{([^}]*)\}", css, re.M)
     assert nav and "overflow-y: auto" in nav.group(1) and "min-height: 120px" in nav.group(1)
     assert re.search(r"^\.side-foot \{ flex: none;", css, re.M)
+
+
+def test_web_font_scale_and_keyboard_focus():
+    """Chữ không nhỏ hơn 11px (trừ số trên huy hiệu/vòng hạn mức); mọi điều khiển có viền focus khi dùng bàn phím;
+    mục điều hướng đang mở có aria-current."""
+    import re
+
+    from ateam.web import STATIC
+    css = (STATIC / "app.css").read_text(encoding="utf-8")
+    small = [v for v in re.findall(r"font-size: *(\d+(?:\.\d+)?)px", css) if float(v) < 11]
+    assert len(small) <= 6, small  # badge, vòng hạn mức, SVG: còn vài chỗ cố ý nhỏ
+    assert "button:focus-visible" in css and "input:focus-visible" in css and "textarea:focus-visible" in css
+    assert 'setAttribute("aria-current", "page")' in (STATIC / "app.js").read_text(encoding="utf-8")

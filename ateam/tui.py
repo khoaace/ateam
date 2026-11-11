@@ -3482,15 +3482,30 @@ class StatusBar(Static):
         resting = [a for a in app.cfg.active_agents() if app.orch.in_cooldown(a)]
         if resting:
             t.append(tr("⏸ nghỉ: {v}", v=", ".join(resting)), STATUS["conflict"][1])
-        keys = Text()
-        for i, (k, label, act) in enumerate((("F1", tr("trợ giúp"), "app.help"), ("^T", "tab", "app.toggle_tab"),
-                                             ("^B", tr("thanh bên"), "app.toggle_sidebar"),
-                                             ("^Q", tr("thoát"), "app.quit"))):
-            if i:
-                keys.append("  ")
-            keys.append(k, Style(bold=True, meta={"@click": act}))
-            keys.append(" " + label, Style(dim=True, meta={"@click": act}))
+        common = (("F1", tr("trợ giúp"), "app.help"), ("^T", "tab", "app.toggle_tab"),
+                  ("^B", tr("thanh bên"), "app.toggle_sidebar"), ("^Q", tr("thoát"), "app.quit"))
+        try:  # phím riêng của tab đang mở (chỉ hiện khi còn chỗ), đứng trước 4 phím chung
+            tab = app.query_one("#tabs", TabbedContent).active
+        except Exception:  # noqa: BLE001 — chưa dựng xong
+            tab = ""
+        own = {"tab-board": (("n", tr("giao task"), "app.adhoc_task"), ("g", tr("nhóm"), "app.toggle_task_groups")),
+               "tab-team": (("F7", tr("chat riêng"), "app.focus_agent"),)}.get(tab, ())
         room = self.size.width - 2 - t.cell_len
+
+        def keyrow(items) -> Text:
+            keys = Text()
+            for i, (k, label, act) in enumerate(items):
+                if i:
+                    keys.append("  ")
+                keys.append(k, Style(bold=True, meta={"@click": act}))
+                keys.append(" " + label, Style(dim=True, meta={"@click": act}))
+            return keys
+
+        keys = keyrow(common)
+        if own:
+            wide = keyrow(own + common)
+            if room >= wide.cell_len + 2:
+                keys = wide
         if room >= keys.cell_len + 2:  # hẹp: bỏ phím tắt, giữ trạng thái
             t.append(" " * (room - keys.cell_len))
             t.append_text(keys)
@@ -8673,10 +8688,22 @@ class TeamApp(App):
             if role or a.role:
                 t.append(f"\n{role}" if role else "\n", "bold")
                 t.append(("  · " if role and a.role else "") + (a.role[:80] if a.role else ""), "dim")
-            t.append("\n")
-            t.append_text(choice_line("model", a.model_choices(), a.model, PANE_MODELS, agent=name))
-            t.append("\n")
-            t.append_text(choice_line("effort", a.efforts_for(), a.current_effort(), agent=name))
+            compact = self.focus_agent != name  # danh sách: model/effort một dòng (bấm mở bảng chọn); phóng to: liệt kê đủ
+            if compact:
+                t.append("\n")
+                for label, cur, choices in (("model", a.model, a.model_choices()), ("effort", a.current_effort(), a.efforts_for())):
+                    t.append(f"{label}: ", "dim")
+                    shown = cur or (tr("(mặc định)") if choices else tr("(không có)"))
+                    if choices:
+                        t.append(f"{shown} ▾", Style.parse("bold cyan") + Style(meta={"@click": f"app.pick_agent_opt({name!r}, {label!r})"}))
+                    else:
+                        t.append(shown, "dim")
+                    t.append("   ")
+            else:
+                t.append("\n")
+                t.append_text(choice_line("model", a.model_choices(), a.model, PANE_MODELS, agent=name))
+                t.append("\n")
+                t.append_text(choice_line("effort", a.efforts_for(), a.current_effort(), agent=name))
             if not a.installed():
                 t.append(tr("\n✗ chưa cài lệnh '{binary}'", binary=a.binary), "red")
             elif self.orch.in_cooldown(name) and not acts:
@@ -8698,7 +8725,7 @@ class TeamApp(App):
                     if act["last_line"]:
                         t.append(f"\n  › {act['last_line'][:90]}", "dim")
             last_done = next((x for x in reversed(mine) if x.finished), None)
-            t.append(f"\n✓{n_done}", PAL["ok"])
+            t.append(f"  ✓{n_done}" if compact and not acts else f"\n✓{n_done}", PAL["ok"])
             t.append(f" ✗{n_fail}", PAL["err"] if n_fail else "dim")
             t.append(f" ⏳{n_wait}", PAL["info"] if n_wait else "dim")
             u = usage.get(name)

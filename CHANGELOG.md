@@ -1,5 +1,14 @@
 # Changelog
 
+## Chưa phát hành — UI/UX giai đoạn 2: dễ đọc và nhất quán
+
+- **Web**: chữ không còn nhỏ hơn 11px (10 → 11, 11 → 12, 12.5 → 13; chỉ còn số trên huy hiệu và vòng hạn mức nhỏ hơn),
+  còn 5 cỡ chính 11 / 12 / 13 / 14 / 16; viền focus cho mọi nút, ô nhập, liên kết khi dùng bàn phím;
+  `aria-current` cho mục điều hướng đang mở.
+- **TUI**: tab Agents mỗi agent rảnh còn 3 dòng (trước 5): model và effort một dòng `model: sonnet ▾  effort: max ▾`,
+  bấm mở bảng chọn; phóng to agent (F7) vẫn liệt kê đủ và bấm một mục là đổi ngay. Thanh trạng thái thêm phím riêng
+  của tab đang mở (Bảng việc: `n` giao task, `g` nhóm; Agents: `F7` chat riêng) khi còn chỗ.
+
 ## Chưa phát hành — UI/UX giai đoạn 1: sửa lỗi hiển thị
 
 - **Web**: nút nổi Git / To-do / lofi không còn che nút hành động ở cuối trang (view chừa lề phải 68px) và ẩn khi

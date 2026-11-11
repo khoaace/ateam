@@ -41,7 +41,19 @@ def test_tui_click_effort_chip(env, project, monkeypatch):
             pane = app.pane("codex")
             efforts = app.cfg.agents["codex"].efforts_for()
             assert "high" in efforts
-            # dòng "effort: low medium high …" của tiêu đề ô (padding trái 1)
+            # danh sách gọn: "effort: medium ▾" — bấm mở bảng chọn, chưa đổi gì
+            lines = str(pane.head.render()).split("\n")
+            y0 = next(i for i, ln in enumerate(lines) if "effort: " in ln)
+            await pilot.click(pane.head, offset=(1 + lines[y0].index("effort: ") + len("effort: "), y0))
+            await pilot.pause(0.3)
+            assert app.screen_stack[1:] and app.cfg.agents["codex"].effort != "high"
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert not app.screen_stack[1:]
+            # phóng to agent: liệt kê đủ, bấm một mục đổi ngay
+            app.set_focus_agent("codex")
+            await pilot.pause(0.5)
+            # dòng "effort: low medium high …" của tiêu đề ô phóng to (padding trái 1)
             y = str(pane.head.render()).split("\n").index(next(
                 ln for ln in str(pane.head.render()).split("\n") if ln.startswith("effort: ")))
             x = 1 + len("effort: ") + sum(len(e) + 1 for e in efforts[:efforts.index("high")]) + 1
