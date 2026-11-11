@@ -2001,3 +2001,28 @@ html.grid-full .side, html.grid-full .top, html.grid-full .composer, html.grid-f
 .arr.scan { flex-direction: row; justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; }
 .arr.scan:hover { background: var(--surface-2); } .arr.scan b { font-weight: 500; word-break: break-all; }
 .arun-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; }
+
+/* ---------------------------------------------------------------- điện thoại / máy tính bảng (giai đoạn 5)
+   Rà ở 390px và 768px: không tràn ngang, vùng chạm ≥ 34px, nút nổi không che dòng cuối, ô nhập gọn. */
+.ag-btns { flex-wrap: wrap; }
+@media (max-width: 900px) {
+  .top h1 { white-space: nowrap; flex: none; }
+  .top-actions { min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .view { padding-bottom: 112px; }  /* dòng cuối cuộn lên khỏi cột nút nổi Git / To-do */
+  .git { height: auto; }  /* Git: trang cuộn, danh sách file không bị ép còn 1–2 dòng bởi ô commit */
+  .gmain { flex: none; }
+  .gfiles { flex: none; min-height: 160px; max-height: 42vh; }
+  .glog { max-height: 50vh; }
+  .team-tools > .btn { max-width: 100%; white-space: normal; text-align: left; }  /* "Thiết lập đầy đủ (/setup)…" tràn ngang */
+}
+@media (max-width: 560px) {
+  .top .chips { display: none; }  /* số task đang chạy / chờ đã có ở huy hiệu thanh điều hướng */
+}
+@media (pointer: coarse) {
+  .btn { min-height: 36px; }
+  .btn.sm { height: 34px; }
+  .icon-btn { width: 38px; height: 38px; }
+  .nav-item { min-height: 40px; }
+  .composer-hint { display: none; }  /* gợi ý phím Enter / Shift+Enter vô nghĩa trên cảm ứng: trả chỗ cho nội dung */
+  .fsearch .field, input[type="text"], input[type="search"], select { min-height: 36px; }
+}

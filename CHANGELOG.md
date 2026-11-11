@@ -1,5 +1,12 @@
 # Changelog
 
+## Chưa phát hành — UI/UX giai đoạn 5: điện thoại và máy tính bảng (web)
+
+- Rà ở 390px và 768px: không còn tràn ngang; tiêu đề trang không bị bẻ dòng, nút hành động đầu trang xuống dòng gọn,
+  dòng cuối trang cuộn lên khỏi cột nút nổi, nút dài ở Agents tự xuống dòng.
+- Tab Git trên màn hẹp cuộn cả trang (danh sách file không bị ép còn 1–2 dòng bởi ô commit).
+- Thiết bị cảm ứng: nút, ô chọn, mục điều hướng cao ≥ 34px; ẩn gợi ý phím Enter / Shift+Enter ở ô nhập.
+
 ## Chưa phát hành — UI/UX giai đoạn 4: đồng bộ TUI với web
 
 - **TUI**: thanh bên dùng cùng tên nhóm và thứ tự với web — Điều phối / Mã nguồn / Cá nhân / Báo cáo (Thống kê đứng

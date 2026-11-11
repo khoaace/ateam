@@ -1326,3 +1326,14 @@ def test_web_pinned_drawer_and_composer_only_where_used():
     assert "body.no-composer .tdfab" in css and "body.no-composer .gfab" in css and "body.no-composer .lofi" in css
     # "/" ngoài ô nhập → prefill; ô nhập mở tạm tự ẩn khi gửi / rời ô trống
     assert 'e.key === "/"' in js and 'prefill("/")' in js and "S.peek = false; syncComposer();" in js
+
+
+def test_web_mobile_polish_rules():
+    """Giai đoạn 5: khối CSS điện thoại — view chừa chỗ cho nút nổi, Git cuộn trang, vùng chạm lớn trên cảm ứng."""
+    from ateam.web import STATIC
+    css = (STATIC / "app.css").read_text(encoding="utf-8")
+    block = css[css.index("điện thoại / máy tính bảng (giai đoạn 5)"):]
+    assert ".view { padding-bottom: 112px; }" in block
+    assert ".git { height: auto; }" in block
+    assert "@media (max-width: 560px)" in block and ".top .chips { display: none; }" in block
+    assert "@media (pointer: coarse)" in block and ".btn.sm { height: 34px; }" in block
