@@ -1,5 +1,13 @@
 # Changelog
 
+## Chưa phát hành — UI/UX giai đoạn 3: luồng chính (web)
+
+- **Chi tiết task ghim cạnh danh sách** ở màn ≥1680px: ngăn chi tiết không còn đè lên bảng việc, đọc log và nhìn danh
+  task cùng lúc (bảng việc xếp như màn hẹp, khung Tổng quan xuống dưới). Màn nhỏ hơn giữ ngăn kéo như cũ.
+- **Ô nhập mục tiêu chỉ hiện ở trang dùng nó**: Git, To-do, Ghi chú, API, Thống kê, Code ẩn ô nhập (thêm khoảng
+  80px chiều cao); nút nổi dồn xuống. Gõ `/` ngoài ô nhập mở lại ô nhập với `/` (lệnh nhanh), gửi hoặc rời ô trống
+  thì ẩn lại; nút "tiếp tục" ở Thống kê cũng mở lại tạm.
+
 ## Chưa phát hành — UI/UX giai đoạn 2: dễ đọc và nhất quán
 
 - **Web**: chữ không còn nhỏ hơn 11px (10 → 11, 11 → 12, 12.5 → 13; chỉ còn số trên huy hiệu và vòng hạn mức nhỏ hơn),

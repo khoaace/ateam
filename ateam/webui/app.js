@@ -1944,6 +1944,7 @@ function submit() {
   hideSuggest();
   autosize();
   renderComposerMode();
+  if (S.peek) { S.peek = false; syncComposer(); }  // ô nhập mở tạm bằng Ctrl+K ở trang không dùng nó
 }
 let suggestSeq = 0;
 const TASK_FILTERS = {
@@ -2218,6 +2219,7 @@ function continueShortcut() {  // F6: tiếp tục mục tiêu của task đang 
   if (!ref) updateSuggest();
 }
 function prefill(text) {
+  if (NO_COMPOSER.has(S.view) && !S.peek) { S.peek = true; syncComposer(); }  // gọi từ trang đã ẩn ô nhập (nút "tiếp tục", "/")
   input.value = text;
   input.focus();
   input.setSelectionRange(text.length, text.length);
@@ -2284,10 +2286,19 @@ input.addEventListener("keydown", (e) => {
   if (open && e.key === "Escape") { e.preventDefault(); hideSuggest(); return; }
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); }
 });
-input.addEventListener("blur", () => setTimeout(hideSuggest, 150));
+input.addEventListener("blur", () => setTimeout(() => {
+  hideSuggest();
+  if (S.peek && !input.value.trim() && !$(".composer").contains(document.activeElement)) { S.peek = false; syncComposer(); }
+}, 250));
 
 /* ------------------------------------------------------------------ hành động (bấm) */
 const VIEWS = ["board", "team", "grid", "term", "git", "code", "todo", "notes", "dash", "custom", "skills", "api"];
+const NO_COMPOSER = new Set(["code", "git", "todo", "notes", "api", "dash"]);
+function syncComposer() {
+  const off = NO_COMPOSER.has(S.view) && !S.peek;
+  $(".composer").classList.toggle("hidden", off);
+  document.body.classList.toggle("no-composer", NO_COMPOSER.has(S.view) && !S.peek);
+}
 function setView(v) {
   if (!VIEWS.includes(v)) return;
   const prev = S.view;
@@ -2299,7 +2310,8 @@ function setView(v) {
     if (on) b.setAttribute("aria-current", "page");
   });
   $$(".view").forEach((s) => s.classList.toggle("hidden", s.id !== "view-" + v));
-  $(".composer").classList.toggle("hidden", v === "code");  // tab Code dùng cả chiều cao cho editor
+  S.peek = false;
+  syncComposer();  // Code / Git / To-do / Ghi chú / API / Thống kê không dùng ô nhập: ẩn cho rộng chỗ (Ctrl+K hiện lại)
   render();
   if (v === "term" && S.openJob != null && prev !== "term") loadJob(S.openJob);
   if (v === "term") tsAttach().then(() => {
@@ -2436,7 +2448,13 @@ document.addEventListener("keydown", (e) => {
   if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === "KeyG" && !topModal()) {  // Alt+G: nút nổi Git
     e.preventDefault(); if (window.GitPop) GitPop.toggle(); return;
   }
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (S.view === "code") setView("board"); input.focus(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (S.view === "code") setView("board");
+    input.focus(); return; }
+  // trang đã ẩn ô nhập (Git, To-do…): gõ "/" ngoài ô nhập mở lại ô nhập với "/" (lệnh nhanh); xong thì ẩn lại
+  if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey && NO_COMPOSER.has(S.view) && !topModal()
+      && !(e.target.closest && e.target.closest("input, textarea, select, [contenteditable], .xterm, .cm-editor"))) {
+    e.preventDefault(); prefill("/"); updateSuggest(); return;
+  }
   if (e.key === "F2") {
     e.preventDefault();
     const g = S.state && S.state.goals.find((x) => x.status === "awaiting");

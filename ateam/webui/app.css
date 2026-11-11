@@ -234,7 +234,11 @@ button.ver-up { cursor: pointer; text-decoration: underline dotted; }
 .views { flex: 1; min-height: 0; position: relative; }
 .view { position: absolute; inset: 0; overflow: auto; padding: 10px 16px 16px; }
 @media (min-width: 901px) { .view { padding-right: 68px; } }  /* chừa cột nút nổi Git / To-do / lofi (góc phải dưới) khỏi che nút hành động */
-body.drawer-open .tdfab, body.drawer-open .gfab, body.drawer-open .lofi { visibility: hidden; }  /* ngăn chi tiết task đè lên cột nút nổi */
+body.drawer-open .tdfab, body.drawer-open .gfab, body.drawer-open .lofi { visibility: hidden; }
+/* trang không dùng ô nhập (Git, To-do, Ghi chú, API, Thống kê): ẩn ô nhập, nút nổi dồn xuống; Ctrl+K hiện lại */
+body.no-composer .tdfab { bottom: 24px; }
+body.no-composer .gfab { bottom: 76px; }
+body.no-composer .lofi { bottom: 128px; }  /* ngăn chi tiết task đè lên cột nút nổi */
 
 /* ---------------------------------------------------------------- nút */
 .btn {
@@ -638,6 +642,11 @@ button.ag-model:hover { border-color: var(--border); background: var(--surface);
   transform: translateX(100%); transition: transform .18s linear;
 }
 .drawer.open { transform: none; }
+/* màn rất rộng (≥1680px): chi tiết task ghim cạnh danh sách (chia đôi) thay vì đè lên; hẹp: ngăn kéo như cũ */
+@media (min-width: 1680px) {
+  .drawer { width: min(560px, 40vw); }
+  body.drawer-open .main { margin-right: min(560px, 40vw); }
+}
 .dr-head { padding: 12px 14px 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
 .dr-top { display: flex; align-items: flex-start; gap: 10px; }
 .dr-title { font-size: 14px; font-weight: 650; line-height: 1.4; flex: 1; word-break: break-word; }
@@ -1825,6 +1834,11 @@ html.grid-full .side, html.grid-full .top, html.grid-full .composer, html.grid-f
   .tboard { flex-direction: column-reverse; align-items: stretch; }
   .bl-side { width: auto; position: static; flex-direction: row; flex-wrap: wrap; }
   .bl-side .bbox { flex: 1 1 280px; }
+}
+@media (min-width: 1680px) {  /* chi tiết task ghim cạnh danh sách: bảng việc hẹp lại như màn ≤1100px (khung Tổng quan xuống dưới) */
+  body.drawer-open .tboard { flex-direction: column-reverse; align-items: stretch; }
+  body.drawer-open .bl-side { width: auto; position: static; flex-direction: row; flex-wrap: wrap; }
+  body.drawer-open .bl-side .bbox { flex: 1 1 280px; }
 }
 @media (max-width: 760px) {
   .tbrow { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "b t tm" "id a a"; row-gap: 4px; }

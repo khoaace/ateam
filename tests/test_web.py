@@ -1308,3 +1308,21 @@ def test_web_font_scale_and_keyboard_focus():
     assert len(small) <= 6, small  # badge, vòng hạn mức, SVG: còn vài chỗ cố ý nhỏ
     assert "button:focus-visible" in css and "input:focus-visible" in css and "textarea:focus-visible" in css
     assert 'setAttribute("aria-current", "page")' in (STATIC / "app.js").read_text(encoding="utf-8")
+
+
+def test_web_pinned_drawer_and_composer_only_where_used():
+    """Màn ≥1680px: chi tiết task ghim cạnh danh sách (.main chừa lề bằng bề rộng ngăn kéo, bảng việc xếp như màn hẹp).
+    Git / To-do / Ghi chú / API / Thống kê / Code không dùng ô nhập nên ẩn nó; gõ "/" ngoài ô nhập mở lại tạm."""
+    import re
+
+    from ateam.web import STATIC
+    css = (STATIC / "app.css").read_text(encoding="utf-8")
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert re.search(r"@media \(min-width: 1680px\) \{\s*\.drawer \{ width: min\(560px, 40vw\); \}\s*"
+                     r"body\.drawer-open \.main \{ margin-right: min\(560px, 40vw\); \}", css)
+    assert "body.drawer-open .tboard { flex-direction: column-reverse" in css
+    m = re.search(r"const NO_COMPOSER = new Set\(\[([^\]]*)\]\)", js)
+    assert m and all(f'"{v}"' in m.group(1) for v in ("code", "git", "todo", "notes", "api", "dash"))
+    assert "body.no-composer .tdfab" in css and "body.no-composer .gfab" in css and "body.no-composer .lofi" in css
+    # "/" ngoài ô nhập → prefill; ô nhập mở tạm tự ẩn khi gửi / rời ô trống
+    assert 'e.key === "/"' in js and 'prefill("/")' in js and "S.peek = false; syncComposer();" in js
