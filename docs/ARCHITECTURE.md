@@ -329,6 +329,9 @@ không có chế độ tương tác nên không thêm được). `grid.py`:
   — mở lại ateam thì ô hiện "chưa mở", Enter/⟲ mới chạy CLI (tiếp tục phiên nếu `resume`).
 - `GridHub` dùng chung TUI ↔ web: mỗi ô một `PtySession` + buffer output (256KB) để vẽ lại khi màn hình/tab mới
   gắn vào; `write` với ô `bcast` thì gửi cho mọi ô bật "gửi tất cả"; sự kiện `data|exit|layout` qua `listen()`.
+- Bộ nhớ: `Run` của task agent (không `keep_lines`) chỉ giữ `SPILL_LINES` dòng cuối trong RAM, phần cũ ghi ra file
+  tạm và `run.output` ghép lại khi đọc (sau lượt chạy) — parser giao thức vẫn thấy cả output; `vterm.Screen` cho các ô
+  giống nhau dùng chung một tuple (`cells_for`), nên 3000 dòng lịch sử chỉ tốn con trỏ.
 - TUI (`tui_grid.py`): `TermView` vẽ `vterm.Screen` (giả lập VT100/xterm thuần Python: CSI/SGR/OSC, alt screen,
   scroll region, ký tự rộng, lịch sử cuộn) bằng `render_line`, làm mới 30fps khi `Screen.version` đổi; phím →
   `vterm.encode`. Khi ô đang focus, `App.check_action` trả False cho mọi binding Ctrl (trừ thoát) để Ctrl+C/Ctrl+R…

@@ -142,7 +142,7 @@ class ShellManager:
 
         # -l: nạp profile như mở terminal (PATH của nvm/volta/bun…); pty: lệnh in như trong terminal thật
         job.run = Run([shell, "-lc", cmd], str(self.root), dict(os.environ), use_pty=True,
-                      timeout=FOREVER, on_line=on_line, keep_lines=MAX_LINES)
+                      timeout=FOREVER, on_line=on_line, keep_lines=1)  # output giữ ở job.lines, không giữ thêm bản thứ hai
 
         async def go() -> None:
             try:

@@ -39,11 +39,27 @@ def char_width(ch: str) -> int:
     return 1
 
 
+_CELLS: dict = {}  # attr -> {ký tự: ô}: các ô giống nhau dùng chung một tuple (xem Screen._put)
+
+
+def cells_for(attr: Attr) -> dict:
+    """Bảng ô dùng chung của một kiểu chữ. Mỗi ô là tuple (ký tự, kiểu) ~56 byte; tạo mới cho từng ô thì 3000 dòng
+    lịch sử × 200 cột tốn ~38 MB mỗi terminal, dùng chung thì còn ~5 MB (chỉ còn con trỏ)."""
+    d = _CELLS.get(attr)
+    if d is None:
+        if len(_CELLS) > 2000:  # truecolor đổi màu liên tục: không để bảng tra lớn mãi
+            _CELLS.clear()
+        d = _CELLS[attr] = {}
+    return d
+
+
 class Screen:
     def __init__(self, rows: int = 24, cols: int = 80, reply: Callable[[bytes], None] | None = None):
         self.rows, self.cols = max(1, rows), max(2, cols)
         self.reply = reply or (lambda b: None)
         self.history: list[list] = []
+        self._cells_attr: Attr | None = None  # kiểu chữ của bảng ô đang dùng (so bằng `is`: đổi SGR là tuple mới)
+        self._cells: dict = {}
         self._dec = codecs.getincrementaldecoder("utf-8")("replace")
         self.reset()
 
@@ -100,7 +116,8 @@ class Screen:
                     self.y -= cut_top
             while len(buf) < rows:
                 buf.append([BLANK] * cols)
-        self.history = [(line + [BLANK] * (cols - len(line)))[:cols] for line in self.history[-HISTORY_MAX:]]
+        del self.history[:-HISTORY_MAX]  # cắt trước rồi mới dựng lại theo bề rộng mới
+        self.history = [(line + [BLANK] * (cols - len(line)))[:cols] for line in self.history]
         self.rows, self.cols = rows, cols
         self.top, self.bottom = 0, rows - 1
         self.x, self.y = min(self.x, cols - 1), min(max(self.y, 0), rows - 1)
@@ -236,7 +253,15 @@ class Screen:
                 row[self.x - 1] = (" ", row[self.x - 1][1])
             if w == 1 and self.x + 1 < cols and row[self.x + 1][0] == "":  # ghi đè nửa đầu chữ rộng
                 row[self.x + 1] = (" ", row[self.x + 1][1])
-            row[self.x] = (ch, self.attr)
+            attr = self.attr
+            if attr is not self._cells_attr:
+                self._cells_attr, self._cells = attr, cells_for(attr)
+            cell = self._cells.get(ch)
+            if cell is None:
+                if len(self._cells) > 4000:  # CJK/emoji đủ loại: bảng của một kiểu chữ cũng có trần
+                    self._cells.clear()
+                cell = self._cells[ch] = (ch, attr)
+            row[self.x] = cell
             if w == 2:
                 row[self.x + 1] = ("", self.attr)
             if self.x + w >= cols:
