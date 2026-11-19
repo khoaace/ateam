@@ -480,6 +480,9 @@ Headers, `#` đầu dòng = tắt); quét code, nhập file, popup biến / secr
 - **Nhánh**: danh sách nhánh local + remote (mới nhất trước, `[ahead/behind]`), Enter chuyển sang (nhánh remote →
   tạo nhánh local theo dõi), tạo mới, đổi tên, merge vào nhánh hiện tại, xoá / xoá hẳn.
 - **Stash**: cất mọi thay đổi (kể cả file mới) kèm ghi chú, lấy lại (pop), áp dụng mà giữ stash, xoá.
+- **Link Pull Request / Merge Request** sau khi push một nhánh (không phải main/master) lên GitHub, GitLab, Bitbucket:
+  toast "Đã push" có nút 🔗 Tạo Pull Request, tên nhánh ở tab Git và nút nổi 🌿 có chip 🔗 tới khi đổi nhánh;
+  TUI có nút 🔗 PR, `/pr` mở trình duyệt. Link lấy từ output của máy chủ, không có thì dựng từ URL remote.
 
 Lệnh tắt: `/commit <message>`, `/commit --no-verify <message>` (hoặc `-n`), `/push [-f]` (`-f` = `--force-with-lease`), `/pull`, `/fetch`, `/branch [tên]`,
 `/checkout <nhánh>`, `/stash [message]`, `/stash pop`. Việc khác (rebase, tag, cherry-pick, thêm remote):

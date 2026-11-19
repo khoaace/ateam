@@ -379,6 +379,11 @@ stash/revert có cờ `-c user.*` dự phòng như `Orchestrator.git_ident`. M�
 - Pull: `--ff-only`, hai bên đã rẽ nhánh thì `--no-rebase` (merge; không viết lại lịch sử). Push lần đầu tự
   `-u <origin|remote đầu tiên> <nhánh>`; `/push -f` = `--force-with-lease`. Checkout `origin/x` tạo nhánh local
   theo dõi. "Bỏ commit cuối" = `reset --soft HEAD~1`, chặn khi commit đã có trên upstream (dùng Revert).
+- Link PR/MR sau push: `GitRepo.push` thành công → `last_pr` (`{url, kind PR|MR, view, branch}`). Ưu tiên link máy chủ
+  in ra (`pr_link_from_output`, dòng `remote:`), không có thì `build_pr_link` từ `remote_web_url(git remote get-url)`
+  (bỏ user/token) — chỉ GitHub/GitLab/Bitbucket, bỏ qua nhánh mặc định (`refs/remotes/<remote>/HEAD`, không có thì
+  main/master). `pr_for(branch)` chỉ trả link khi vẫn ở nhánh đó. Web: `op` push trả `{"pr"}` (nút trên toast), `pr` trong
+  `/api/git/status` và `git_info`; TUI: nút `#git-pr`, `/pr` → `App.open_url`.
 - Diff: `changes_diffset(staged)` / `commit_diffset(commit)` dựng `DiffSet` cho `DiffScreen` (tid 0). Quy ước
   `base`/`head` của `diff_versions`: `""` = index (`git show :path`), `None` = file trong thư mục,
   commit đầu tiên so với cây rỗng `EMPTY_TREE`.

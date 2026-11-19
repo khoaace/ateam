@@ -152,7 +152,13 @@ class GitWeb:
     def _remember(self, st: gitops.RepoStatus) -> None:
         self.changes = len(st.files) if st.is_repo else 0
         self.info = {"repo": st.is_repo, "branch": st.branch, "detached": st.detached, "ahead": st.ahead,
-                     "behind": st.behind, "state": st.state, "conflicts": len(st.conflicts)} if st.is_repo else {"repo": False}
+                     "behind": st.behind, "state": st.state, "conflicts": len(st.conflicts),
+                     "pr": self.pr_json(st.branch)} if st.is_repo else {"repo": False}
+
+    def pr_json(self, branch: str) -> dict | None:
+        """Link tạo/xem PR·MR sau lần push gần nhất (chip cạnh tên nhánh, nút trên toast) — None khi không có."""
+        link = self.repo.pr_for(branch)
+        return {"url": link["url"], "kind": link["kind"], "label": gitops.pr_label(link)} if link else None
 
     def routes(self) -> list:
         return [web.get("/api/git/status", self.api_status), web.get("/api/git/log", self.api_log),
@@ -168,6 +174,7 @@ class GitWeb:
         if r.query.get("numstat") and st.is_repo:  # nút nổi Git: +/− dòng cạnh từng file
             out["numstat"] = await self.repo.numstat()
         out["has_commits"] = bool(st.oid)
+        out["pr"] = self.pr_json(st.branch)
         out["busy"] = len(self.app.orch.runs)
         return web.json_response(out)
 
@@ -284,6 +291,8 @@ class GitWeb:
         if act not in calls:
             return tr("Không hiểu thao tác {op}", op=f"git {act}"), "warn"
         ok, msg = await calls[act]()
+        if act == "push" and ok and self.repo.last_pr:  # toast "Đã push" kèm nút 🔗 Tạo Pull/Merge Request
+            return msg, "ok", {"pr": self.pr_json(self.repo.last_pr["branch"])}
         if act == "checkout" and not ok and not d.get("stash") and ("overwritten" in msg or "stash" in msg):
             return msg, "warn", {"need_stash": True}  # thay đổi chưa commit đụng nhánh đích: hỏi stash rồi chuyển
         return msg, "ok" if ok else "warn"
@@ -321,6 +330,11 @@ class GitWeb:
             return await self.op({"action": "push", "force": rest in ("-f", "--force", "force")})
         if cmd in ("pull", "fetch"):
             return await self.op({"action": cmd})
+        if cmd == "pr":  # toast kèm nút 🔗 (mở tab mới phải do người dùng bấm, trình duyệt chặn popup tự mở)
+            pr = self.pr_json((await self.repo.status()).branch)
+            if not pr:
+                return tr("Chưa có link Pull Request — push nhánh (không phải main) lên GitHub/GitLab trước"), "warn"
+            return pr["url"], "ok", {"pr": pr}
         if cmd == "branch":
             if not rest:
                 return "", "", {"open": {"view": "git", "modal": "branches"}}

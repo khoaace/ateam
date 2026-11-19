@@ -5546,4 +5546,18 @@ EN: dict[str, str] = {
         'ateam: auto-stash before switching to {name}',
     '{msg} — thay đổi cũ đã cất vào stash':
         '{msg} — previous changes were stashed',
+    'Tạo Pull Request':
+        'Create pull request',
+    'Xem Pull Request':
+        'View pull request',
+    'Tạo Merge Request':
+        'Create merge request',
+    'Xem Merge Request':
+        'View merge request',
+    '🔗 {label}: {url}\nBấm 🔗 ở tab Git hoặc /pr để mở trình duyệt':
+        '🔗 {label}: {url}\nPress 🔗 in the Git tab or type /pr to open it in the browser',
+    'Chưa có link Pull Request — push nhánh (không phải main) lên GitHub/GitLab trước':
+        'No pull request link yet — push a branch (not main) to GitHub/GitLab first',
+    'mở link tạo/xem Pull Request · Merge Request của nhánh vừa push':
+        'open the create/view pull request · merge request link for the branch you just pushed',
 }

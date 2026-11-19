@@ -1,5 +1,11 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Link Pull Request / Merge Request sau khi push** (web + TUI): push nhánh lên GitHub, GitLab, Bitbucket thì toast có
+  nút 🔗 Tạo Pull Request / Merge Request; tab Git và nút nổi 🌿 giữ chip link tới khi đổi nhánh; TUI có nút 🔗 PR và
+  lệnh `/pr`. Link lấy từ output của máy chủ (GitLab "Xem Merge Request" khi MR đã có), không thì dựng từ URL remote.
+
 ## 0.62.0 — 11/11/2026
 
 ### UI/UX giai đoạn 5: điện thoại và máy tính bảng (web)

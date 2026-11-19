@@ -278,6 +278,77 @@ def short_error(out: str, limit: int = 300) -> str:
     return msg[:limit]
 
 
+# ---------------------------------------------------------------------------- link PR/MR sau khi push
+_URL_RE = re.compile(r"https?://\S+")
+_SCP_RE = re.compile(r"^(?:[^@/\s]+@)?([^:/\s]+):(?!//)(.+)$")  # git@github.com:chu/repo.git
+
+
+def remote_web_url(url: str) -> str:
+    """URL remote (https, ssh://, git@host:đường/dẫn) → trang web của repo, https, bỏ user/token và `.git`.
+    Remote là thư mục trên máy / file:// → ""."""
+    url = (url or "").strip()
+    if not url or url.startswith(("/", ".", "file:")):
+        return ""
+    m = re.match(r"^(?:https?|ssh|git|git\+ssh)://(?:[^@/]*@)?([^/:]+)(?::\d+)?/(.+)$", url)
+    if not m:
+        m = _SCP_RE.match(url)
+        if not m or "\\" in url:
+            return ""
+    host, path = m.group(1), m.group(2).strip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    return f"https://{host}/{path}" if path else ""
+
+
+def forge_of(web_url: str) -> str:
+    """github · gitlab · bitbucket · "" (máy chủ lạ — không đoán được đường dẫn tạo PR)."""
+    host = web_url.split("/")[2].lower() if web_url.count("/") >= 3 else ""
+    for name in ("github", "gitlab", "bitbucket"):
+        if name in host:
+            return name
+    return ""
+
+
+def pr_link_from_output(out: str) -> dict:
+    """Link máy chủ git tự in khi push (`remote: Create a pull request for 'x' on GitHub by visiting: …`,
+    GitLab `To create a merge request…` / `View merge request…`, Bitbucket, Gitea). {} khi không có."""
+    lines = [ln[len("remote:"):].strip() for ln in out.splitlines() if ln.startswith("remote:")]
+    for i, ln in enumerate(lines):
+        m = _URL_RE.search(ln)
+        if not m:
+            continue
+        url = m.group(0).rstrip(".,)")
+        ctx = " ".join(lines[max(0, i - 2):i + 1]).lower()
+        mr = "merge request" in ctx or "merge_requests" in url
+        if not (mr or "pull request" in ctx or "/pull/" in url or "pull-requests" in url or "/compare/" in url):
+            continue
+        return {"url": url, "kind": "MR" if mr else "PR",
+                "view": "view" in ctx and "create" not in ctx and "/new" not in url}
+    return {}
+
+
+def build_pr_link(web_url: str, branch: str) -> dict:
+    """Trang tạo PR/MR dựng từ URL repo khi máy chủ không in link (nhánh đã có trên remote, push lại).
+    Trang so sánh của GitHub/GitLab tự hiện "View pull request" nếu PR đã có."""
+    from urllib.parse import quote
+    forge = forge_of(web_url)
+    if not forge or not branch:
+        return {}
+    if forge == "github":
+        return {"url": f"{web_url}/compare/{quote(branch, safe='/')}?expand=1", "kind": "PR", "view": False}
+    if forge == "gitlab":
+        return {"url": f"{web_url}/-/merge_requests/new?merge_request%5Bsource_branch%5D={quote(branch, safe='')}",
+                "kind": "MR", "view": False}
+    return {"url": f"{web_url}/pull-requests/new?source={quote(branch, safe='')}", "kind": "PR", "view": False}
+
+
+def pr_label(link: dict) -> str:
+    """Chữ trên nút/toast: Tạo/Xem Pull Request (GitHub, Bitbucket) hoặc Merge Request (GitLab)."""
+    if link.get("kind") == "MR":
+        return tr("Xem Merge Request") if link.get("view") else tr("Tạo Merge Request")
+    return tr("Xem Pull Request") if link.get("view") else tr("Tạo Pull Request")
+
+
 class GitRepo:
     """Thao tác git trên thư mục dự án. Các hàm thay đổi trạng thái trả về (thành công, lời nhắn)."""
 
@@ -286,6 +357,29 @@ class GitRepo:
         self._ident: list[str] | None = None
         self._git_dir: Path | None = None
         self._lock: asyncio.Lock | None = None
+        # link tạo/xem PR·MR của lần push thành công gần nhất: {url, kind PR|MR, view, branch} — {} khi không có
+        self.last_pr: dict = {}
+
+    def pr_for(self, branch: str) -> dict:
+        """Link PR/MR còn hiện cạnh tên nhánh: chỉ khi vẫn đang ở nhánh vừa push."""
+        return self.last_pr if branch and self.last_pr.get("branch") == branch else {}
+
+    async def _push_pr_link(self, out: str, branch: str) -> dict:
+        """Link máy chủ in ra khi push; không có thì dựng từ URL remote — trừ nhánh mặc định (main/master)."""
+        link = pr_link_from_output(out)
+        if link:
+            return link
+        rc, remote = await self.run("config", f"branch.{branch}.remote")
+        remote = remote.strip() if rc == 0 and remote.strip() else "origin"
+        rc, url = await self.run("remote", "get-url", remote)
+        web_url = remote_web_url(url) if rc == 0 else ""
+        if not web_url:
+            return {}
+        rc, head = await self.run("symbolic-ref", "--short", f"refs/remotes/{remote}/HEAD")
+        default = head.strip()[len(remote) + 1:] if rc == 0 and head.strip().startswith(remote + "/") else ""
+        if branch == default or (not default and branch in ("main", "master")):
+            return {}
+        return build_pr_link(web_url, branch)
 
     @property
     def lock(self) -> asyncio.Lock:
@@ -764,6 +858,8 @@ class GitRepo:
         async with self.lock:
             rc, out = await self.run(*args, timeout=NET_TIMEOUT)
         if rc == 0:
+            link = await self._push_pr_link(out, st.branch)
+            self.last_pr = dict(link, branch=st.branch) if link else {}
             return True, tr("Đã cập nhật, không có gì mới") if "Everything up-to-date" in out else tr("Đã push {branch}", branch=st.branch)
         if "rejected" in out and ("fetch first" in out or "non-fast-forward" in out):
             return False, tr("Remote có commit mới hơn — Pull trước rồi push lại")
