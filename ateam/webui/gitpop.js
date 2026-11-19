@@ -151,6 +151,7 @@ window.GitPop = (() => {
       parts.push(`<span class="up">↑${st.ahead}${st.ahead ? " " + esc(t("gp_unpushed")) : ""}</span><span class="dn">↓${st.behind}</span>`,
         `<span class="up-name">→ ${esc(st.upstream)}</span>`);
     } else if (st.branch) parts.push(`<span>${esc(t("git_no_remote"))}</span>`);
+    if (st.pr) parts.push(prChip(st.pr, "pr"));  // vừa push: 🔗 Tạo/Xem Pull Request · Merge Request
     if (st.stashes) parts.push(`<span class="sp"></span><span class="ago">📦 ${st.stashes} stash</span>`);
     sync.innerHTML = parts.join("");
     sync.hidden = !parts.length;

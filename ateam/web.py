@@ -2192,7 +2192,7 @@ class WebApp:
                 return "", "", {"open": {"code": {"path": path, "line": line}}}
             return tr("Phím vim: {v} · /vim on|off · /vim <file> mở file",
                       v=tr("bật") if load_state().get("vim", True) is not False else tr("tắt")), "info"
-        if cmd in ("git", "commit", "push", "pull", "fetch", "branch", "checkout", "stash"):
+        if cmd in ("git", "commit", "push", "pull", "fetch", "branch", "checkout", "stash", "pr"):
             return await self.git.command(cmd, rest)
         if cmd == "quit":
             return tr("Đóng tab trình duyệt là xong; dừng hẳn server: Ctrl+C ở terminal chạy `ateam web`"), "info"

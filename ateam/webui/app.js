@@ -183,7 +183,8 @@ function onToast(m) {
   const o = m.open || {};
   // Ngăn chi tiết / popup chỉ mở khi người dùng chủ động (bấm, /log, /plan…). Kết quả của lệnh "làm việc"
   // (/continue, /update) chỉ báo bằng toast kèm nút "Xem" — đang gõ thì không bị che bảng việc.
-  const link = o.task_link != null ? { label: t("view_task"), run: () => openTask(o.task_link) } : null;
+  const link = o.task_link != null ? { label: t("view_task"), run: () => openTask(o.task_link) }
+    : m.pr ? { label: "🔗 " + m.pr.label, run: () => openPr(m.pr.url) } : null;  // push xong: tạo/xem PR·MR
   if (m.text) toast(m.text, m.level || "info", link);
   else if (link) toast("#" + o.task_link, "info", link);
   if (m.reload) setTimeout(() => location.reload(), 600);
@@ -1894,6 +1895,13 @@ function busyToast(text) {  // toast "đang chạy…": spinner, không tự t�
   el.appendChild(msg);
   $("#toasts").appendChild(el);
   return { done: () => { el.classList.add("out"); setTimeout(() => el.remove(), 250); } };
+}
+/* link PR/MR sau khi push (GitHub, GitLab, Bitbucket…): tab mới, không cho trang đích điều khiển ngược tab ateam */
+function openPr(url) {
+  if (/^https?:\/\//.test(url || "")) window.open(url, "_blank", "noopener,noreferrer");
+}
+function prChip(pr, cls = "chip pr") {
+  return pr && /^https?:\/\//.test(pr.url || "") ? `<a class="${cls}" href="${esc(pr.url)}" target="_blank" rel="noopener noreferrer" title="${esc(pr.url)}">🔗 ${esc(pr.label)}</a>` : "";
 }
 function toast(text, level = "info", action = null) {  // action = {label, run}: nút trên toast (vd "Xem" task vừa tạo)
   const el = document.createElement("div");

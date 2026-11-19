@@ -126,7 +126,7 @@ window.GitView = (() => {
     el.innerHTML = `
       <div class="ghdr panel">
         <div class="gbranch"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="9" r="2.4"/><path d="M6 8.4v7.2M18 11.4c0 3-3 3.6-6 4.2-2 .4-4 1-5.6 2.4"/></svg>
-          <b>${esc(head)}</b>${st.upstream ? `<span class="muted">→ ${esc(st.upstream)}</span>` : ""}<span class="chip">${esc(sync)}</span>
+          <b>${esc(head)}</b>${st.upstream ? `<span class="muted">→ ${esc(st.upstream)}</span>` : ""}<span class="chip">${esc(sync)}</span>${prChip(st.pr)}
           ${st.stashes ? `<span class="chip">📦 ${st.stashes} stash</span>` : ""}
           ${st.state ? `<span class="chip warn">⚠ ${esc(t("git_state", { v: st.state }))}</span>${st.groups.c.length ? "" : `<button class="btn sm primary" data-gact="continue">▶ ${esc(t("git_continue", { v: st.state }))}</button>`}<button class="btn sm danger" data-gact="abort">${esc(t("git_abort"))}</button>` : ""}</div>
         <div class="panel-actions">

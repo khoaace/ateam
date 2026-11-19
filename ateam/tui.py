@@ -307,6 +307,7 @@ COMMANDS = [
     ("commit", "[--no-verify] [message]", tr("commit (chưa stage gì thì commit tất cả); trống: "
                                              "trưởng nhóm viết message")),
     ("push", "[-f]", tr("push nhánh hiện tại (lần đầu tự tạo nhánh trên remote)")),
+    ("pr", "", tr("mở link tạo/xem Pull Request · Merge Request của nhánh vừa push")),
     ("pull", "", tr("pull nhánh hiện tại (fast-forward, không được thì merge)")),
     ("fetch", "", tr("fetch mọi remote")),
     ("branch", tr("[tên]"), tr("tạo & chuyển sang nhánh mới; trống: danh sách nhánh")),
@@ -5365,6 +5366,7 @@ class TeamApp(App):
     #git-head { width: 1fr; height: auto; padding: 0 1; }
     #git-actions { width: auto; height: auto; }
     #git-actions Button { margin-left: 1; }
+    #git-pr { display: none; }
     #git-main { height: 1fr; }
     #git-main.narrow { layout: vertical; }
     #git { padding: 0 1; }
@@ -5646,6 +5648,7 @@ class TeamApp(App):
                         with Horizontal(id="git-actions"):
                             yield Btn(tr("▶ Tiếp tục"), id="git-continue", variant="success")
                             yield Btn(tr("✗ Huỷ merge"), id="git-abort", variant="error")
+                            yield Btn("🔗 PR", id="git-pr")
                             yield Btn("⇣ Fetch", id="git-fetch")
                             yield Btn("⬇ Pull", id="git-pull")
                             yield Btn("⬆ Push", id="git-push", variant="primary")
@@ -7489,10 +7492,17 @@ class TeamApp(App):
             head.append(tr("  chưa có trên remote (Push để tạo)"), "dim")
         if st.stashes:
             head.append(f"   📦 {st.stashes} stash", "cyan")
+        pr = self.git.pr_for(st.branch)
+        if pr:
+            head.append(f"   🔗 {gitops.pr_label(pr)}", Style(color="magenta", bold=True, link=pr["url"]))
         if st.state:
             head.append(tr("   ⚠ đang {state} dở", state=st.state), "bold red")
         self.query_one("#git-head", Static).update(head)
         self.query_one("#git-abort").display = bool(st.state)
+        pr_btn = self.query_one("#git-pr", Button)
+        pr_btn.display = bool(pr)
+        if pr:
+            pr_btn.label = "🔗 " + pr["kind"]
         cont = self.query_one("#git-continue", Button)
         cont.display = bool(st.state) and not st.conflicts
         cont.label = tr("▶ Tiếp tục {state}", state=st.state)
@@ -7832,7 +7842,9 @@ class TeamApp(App):
         elif bid == "git-pull":
             self.git_do(g.pull, busy_check=True, label=tr("⬇ Đang pull…"))
         elif bid == "git-push":
-            self.git_do(g.push, label=tr("⬆ Đang push…"))
+            self.git_push()
+        elif bid == "git-pr":
+            self.open_pr()
         elif bid == "git-branches":
             self.git_branches()
         elif bid == "git-stash":
@@ -7878,6 +7890,25 @@ class TeamApp(App):
                                                                         "trạng thái đã stage) để "
                                                                         "sửa rồi commit lại?"), tr("Bỏ commit")), done)
 
+    def git_push(self, force: bool = False) -> None:
+        """Push nhánh hiện tại; xong thì báo thêm link tạo/xem Pull Request · Merge Request (nút 🔗 ở tab Git)."""
+        def done() -> None:
+            link = self.git.last_pr
+            if link:
+                self.notify(tr("🔗 {label}: {url}\nBấm 🔗 ở tab Git hoặc /pr để mở trình duyệt",
+                               label=gitops.pr_label(link), url=link["url"]), timeout=12, markup=False)
+        self.git_do(lambda: self.git.push(force=force), label=tr("⬆ Đang push…"), then=done)
+
+    def open_pr(self) -> None:
+        """/pr, nút 🔗: mở trang tạo/xem PR·MR của lần push gần nhất (vẫn đang ở nhánh đó)."""
+        st = self.git_status
+        link = self.git.pr_for(st.branch if st else "")
+        if not link:
+            self.notify(tr("Chưa có link Pull Request — push nhánh (không phải main) lên GitHub/GitLab trước"),
+                        severity="warning")
+            return
+        self.open_url(link["url"])
+
     def git_command(self, cmd: str, rest: str) -> None:
         """/git, /commit, /push, /pull, /fetch, /branch, /checkout, /stash."""
         g = self.git
@@ -7902,7 +7933,7 @@ class TeamApp(App):
                 return
             self.git_commit(msg, no_verify=True if skip else None)
         elif cmd == "push":
-            self.git_do(lambda: g.push(force=rest in ("-f", "--force", "force")), label=tr("⬆ Đang push…"))
+            self.git_push(force=rest in ("-f", "--force", "force"))
         elif cmd == "pull":
             self.git_do(g.pull, busy_check=True, label=tr("⬇ Đang pull…"))
         elif cmd == "fetch":
@@ -10022,6 +10053,8 @@ class TeamApp(App):
                                v=tr("bật") if self.query_one("#code-editor", CodeEditor).vim_on else tr("tắt")))
         elif cmd in ("git", "commit", "push", "pull", "fetch", "branch", "checkout", "stash"):
             self.git_command(cmd, rest)
+        elif cmd == "pr":
+            self.open_pr()
         elif cmd in ("flow", "flows"):
             name, _, goal = rest.partition(" ")
             if not name or not goal.strip():

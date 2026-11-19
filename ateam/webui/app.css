@@ -230,6 +230,8 @@ button.ver-up { cursor: pointer; text-decoration: underline dotted; }
 }
 .chip .dot { width: 6px; height: 6px; border-radius: 1px; background: currentColor; }
 .chip.warn { color: var(--review); border-color: color-mix(in srgb, var(--review) 45%, var(--border)); }
+a.chip.pr, .gp-sync a.pr { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); text-decoration: none; white-space: nowrap; }
+a.chip.pr:hover, .gp-sync a.pr:hover { text-decoration: underline; }
 .top-actions { display: flex; gap: 6px; align-items: center; }
 .views { flex: 1; min-height: 0; position: relative; }
 .view { position: absolute; inset: 0; overflow: auto; padding: 10px 16px 16px; }
@@ -1415,6 +1417,8 @@ body.gitpop-open .lofi-fab { visibility: hidden; }  /* popover Git đè cột n�
 .gp-sync .up { color: var(--running); } .gp-sync .dn { color: var(--review); } .gp-sync .warn { color: var(--failed); font-weight: 600; }
 .gp-sync .up-name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .gp-sync .sp { flex: 1; }
+.gp-sync a.pr { margin-left: auto; border: 0; flex: none; }
+.gp-sync .sp + .ago + a.pr, .gp-sync .sp ~ a.pr { margin-left: 0; }
 .gp-files { overflow-y: auto; flex: 1; min-height: 60px; padding-bottom: 6px; }
 .gp-gh { display: flex; align-items: center; gap: 8px; padding: 8px 10px 3px; font: 650 10.5px var(--mono); letter-spacing: .05em; color: var(--muted); text-transform: uppercase; }
 .gp-gh.cf { color: var(--failed); }
