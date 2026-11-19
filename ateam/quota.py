@@ -35,6 +35,12 @@ def window(kind: str, used: float, resets_at: float | None, group: str = "") -> 
             "group": group, "used": max(0.0, min(100.0, float(used))), "resets_at": resets_at}
 
 
+# tên múi giờ cũ claude còn in, nhưng tzdata mới không còn kèm (chỉ có trong gói tzdata-legacy)
+TZ_LEGACY = {"Asia/Saigon": "Asia/Ho_Chi_Minh", "Asia/Calcutta": "Asia/Kolkata", "Asia/Katmandu": "Asia/Kathmandu",
+             "Asia/Rangoon": "Asia/Yangon", "Europe/Kiev": "Europe/Kyiv", "Asia/Ulan_Bator": "Asia/Ulaanbaatar",
+             "America/Buenos_Aires": "America/Argentina/Buenos_Aires", "Pacific/Truk": "Pacific/Chuuk"}
+
+
 def _claude_reset(text: str, now: float) -> float | None:
     """"Oct 22 at 12:09pm (Asia/Saigon)", "Oct 20 at 6am", "7pm" → epoch (múi giờ trong ngoặc nếu có)."""
     m = CLAUDE_AT_RE.search(text or "")
@@ -45,7 +51,11 @@ def _claude_reset(text: str, now: float) -> float | None:
     if tzname:
         try:
             from zoneinfo import ZoneInfo
-            tz = ZoneInfo(tzname.strip())
+            name = tzname.strip()
+            try:
+                tz = ZoneInfo(name)
+            except Exception:  # tên cũ (Asia/Saigon…): tzdata mới (Ubuntu 23.10+) tách sang gói tzdata-legacy
+                tz = ZoneInfo(TZ_LEGACY.get(name, name))
         except Exception:  # tên múi giờ lạ / máy thiếu tzdata: dùng giờ máy
             tz = None
     base = dt.datetime.fromtimestamp(now, tz)
